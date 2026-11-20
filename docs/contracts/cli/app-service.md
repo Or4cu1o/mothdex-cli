@@ -89,7 +89,7 @@ type Preference struct {
     Languages, Formats, Sources []string // matched case-insensitively against extras/format/source_name
     Size SizePref                       // none (default) | smallest | largest
 }
-type LinkChoice struct { Index int; Link mothdex.Link; Score int; Reasons []string }
+type LinkChoice struct { Index int; Link mothdex.Link; Score int; Available bool; Reasons []string }
 
 type DownloadRequest struct {
     Ref Ref; Link LinkSelector
@@ -105,6 +105,10 @@ type DownloadRequest struct {
 
 - **Session.** `Search` saves `{query, page, slugs}` in cache namespace `session`. `Ref{Index}` resolves against it;
   no session or an index out of range gives `KindNotFound` with code `no_session` / `index_out_of_range`.
+- **Downloadable links first (T-16 CR-1).** Before ranking, links whose URL fails the downloader URL policy
+  (downloader §2: `https`, host in `download.allowed_hosts`, …) are removed from the candidates and returned as
+  `LinkChoice{Available: false, Reasons: ["host not allowed: <host>"]}` after the ranked ones. UIs show them as
+  unavailable; `--link n` on one of them fails with `untrusted_url`. The downloader re-checks at use anyway.
 - **Link ranking** (pure function, tested): keep `type == "Game"` links if any exist, otherwise all. Then sort
   stably and lexicographically by: (1) position of the first preferred language found in `extras` (tokens split on
   `,` and spaces; earlier in the preference list is better; no match sorts last), (2) position of `format` in the

@@ -27,10 +27,11 @@ download:
   not_found_retries: 3          # 0..5
   first_byte_timeout: 10m       # 30s..15m
   idle_timeout: 5m              # 30s..15m
-  on_exists: skip               # skip | rename | overwrite
+  on_exists: skip               # skip | rename (up to 99) | overwrite (honored only with --force)
+  max_file_size: 256GiB         # larger links are rejected (T-16 CR-5); sizes accept KiB/MiB/GiB
   verify: true                  # zip CRC + future hashes; size is always checked
   boxart: true
-  allowed_hosts: [proxy.mothdex.net]
+  allowed_hosts: [proxy.mothdex.net]   # https only, exact host match; v0.1 proxy-only (downloader §2)
   prefer:
     languages: []               # e.g. [En, Pt]
     formats: []
@@ -91,6 +92,9 @@ Global flags with a config equivalent: `--lang` (`interface.language`), `--no-co
 `--refresh` (per command: skip cache reads, not persisted), `--profile` (`profile.id`), `--config`. Command flags override their keys for that run only:
 `-j/--jobs` (`download.concurrency`), `-o/--output` (`download.dir`), `--no-boxart` (`download.boxart=false`),
 `-m/--max-results` (`interface.page_size`).
+
+**Safety flags with no config or env equivalent** (T-16): `-f/--force` (allows `on_exists: overwrite` and skips
+confirmations) and `--allow-executable` (downloader §6.1). They apply to one run only and are never persisted.
 
 ## 6. Validation and writing
 

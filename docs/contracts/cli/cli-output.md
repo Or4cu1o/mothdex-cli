@@ -6,6 +6,9 @@ Human output (tables, colors, progress, wording) belongs to Bússola (T-6). This
 ## 1. Streams
 
 - **stdout** carries only the result: the human table, or exactly one JSON document with `--json`.
+- **Untrusted text** (T-16 CR-14): every API string (title, filename, extras, source names) has `Cc` and `Cf` runes
+  (ANSI escapes, bidi controls, zero-width) removed before it reaches a terminal (human output, TUI, Shell). JSON
+  output keeps the raw value, escaped by the encoder.
 - **stderr** carries progress, warnings, prompts and logs. With `--json`, stderr shows only warnings and errors
   (no progress bars); `-q/--quiet` suppresses everything except errors.
 - `--json` implies non-interactive: no confirmation prompts; when a prompt would be needed, the command fails with
@@ -62,7 +65,7 @@ Entries and links use the API v1 field names exactly (api-client §1), so `data`
 | 3 | not found | `not_found`, `no_session`, `index_out_of_range` |
 | 4 | network or service unavailable | `network`, `rate_limited`, `upstream`, `api_incompatible`, `untrusted_url` |
 | 5 | integrity | `size_mismatch`, `integrity` |
-| 6 | local filesystem | `permission_denied`, `disk_full`, `exists`, `path_rejected` |
+| 6 | local filesystem | `permission_denied`, `disk_full`, `exists`, `path_rejected`, `unsafe_name` |
 | 7 | partial: batch with some jobs failed | the first failure code, plus all of them in `data.jobs[].error` |
 | 130 | interrupted (SIGINT/SIGTERM, `canceled`) | `canceled` |
 
@@ -76,7 +79,8 @@ This replaces the legacy two-value flag `-e <fmt> <path>`, which Cobra cannot ex
 
 - **json**: the same envelope as `--json` (so `schema_version` is included).
 - **csv**: RFC 4180, UTF-8 without BOM, header row, one row per entry or record. List values are joined with `;`.
-  Cells starting with `=`, `+`, `-`, `@`, tab or CR get a leading `'` (formula injection: titles are external data).
+  Cells starting with `=`, `+`, `-`, `@`, tab or CR get a leading `'` (formula injection: titles are external data),
+  after the control-character stripping above.
   - search columns: `index,slug,title,platform,regions,serial,links,best_link_filename,best_link_size`
   - history columns: `id,started_at,finished_at,state,slug,title,platform,filename,path,bytes,sha256,crc,attempts,error_code`
 - **txt**: the human table without colors, at a fixed width of 120 columns.

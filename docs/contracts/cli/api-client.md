@@ -141,11 +141,14 @@ absent** (not verified against production).
   reports when it opens. The app service persists `until` in the `state` cache namespace, so the next CLI
   invocation stays quiet too.
 
-## 5. Retries (reads are idempotent)
+## 5. Retries (reads are idempotent) and transport security
 
 Retryable kinds (`KindUpstream`, `KindNetwork`): up to **2** retries, exponential backoff 500 ms × 2ⁿ with full
 jitter, capped at 8 s. Every attempt takes a rate token. Backoff sleeps go through an injected `Sleeper`
 (the default uses `time.Timer` and respects `ctx`), so tests never sleep.
+
+TLS (T-16 CR-12): system roots, with `golang.org/x/crypto/x509roots/fallback` embedded for systems without a CA
+bundle (some emulation distros). There is **no** option, flag or env var that disables certificate verification.
 
 ## 6. Options (defaults)
 
