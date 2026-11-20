@@ -53,6 +53,9 @@ func OK(body []byte) Step { return Step{Body: body} }
 // Truncate declares the full length but drops the connection after n bytes
 // (a proxy whose piece wait timed out).
 func Truncate(body []byte, n int) Step {
+	if n < 0 || n >= len(body) {
+		panic("fakeproxy: Truncate offset must be inside the body, or the step does nothing")
+	}
 	return Step{Body: body, Truncate: true, TruncateAt: n}
 }
 
@@ -63,6 +66,9 @@ func StallBeforeFirstByte(body []byte, d time.Duration) Step {
 
 // StallMidStream sends the first at bytes, waits d, then sends the rest.
 func StallMidStream(body []byte, at int, d time.Duration) Step {
+	if at < 0 || at >= len(body) || d <= 0 {
+		panic("fakeproxy: StallMidStream needs an offset inside the body and d > 0, or the step does nothing")
+	}
 	return Step{Body: body, StallAt: at, StallFor: d}
 }
 

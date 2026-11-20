@@ -35,11 +35,14 @@ type Server struct {
 	clock *fakeclock.Clock
 	done  chan struct{}
 
-	mu      sync.Mutex
-	scripts map[string][]Step
-	hits    map[string]int
-	log     []Request
-	conns   int
+	closeOnce sync.Once
+
+	mu         sync.Mutex
+	scripts    map[string][]Step
+	hits       map[string]int
+	log        []Request
+	conns      int
+	transports []*http.Transport
 }
 
 // New starts the server and closes it with the test.
@@ -58,7 +61,7 @@ func New(t testing.TB, clock *fakeclock.Clock) *Server {
 		}
 	}
 	s.StartTLS()
-	t.Cleanup(s.close)
+	t.Cleanup(s.Close)
 	return s
 }
 
@@ -92,8 +95,18 @@ func (s *Server) Connections() int {
 func (s *Server) Transport() *http.Transport {
 	pool := x509.NewCertPool()
 	pool.AddCert(s.Certificate())
+	return s.transport(pool)
+}
+
+// UntrustedTransport is Transport without the server certificate in its root
+// pool, so every TLS handshake fails verification (T-16 case 33).
+func (s *Server) UntrustedTransport() *http.Transport {
+	return s.transport(x509.NewCertPool())
+}
+
+func (s *Server) transport(pool *x509.CertPool) *http.Transport {
 	addr := s.Listener.Addr().String()
-	return &http.Transport{
+	tr := &http.Transport{
 		Proxy:              nil,
 		DisableCompression: true,
 		TLSClientConfig:    &tls.Config{RootCAs: pool, ServerName: "example.com", MinVersion: tls.VersionTLS12},
@@ -101,19 +114,38 @@ func (s *Server) Transport() *http.Transport {
 			return (&net.Dialer{}).DialContext(ctx, network, addr)
 		},
 	}
+	s.mu.Lock()
+	s.transports = append(s.transports, tr)
+	s.mu.Unlock()
+	return tr
 }
 
 // Client wraps Transport and returns 3xx responses instead of following them.
-func (s *Server) Client() *http.Client {
+func (s *Server) Client() *http.Client { return s.client(s.Transport()) }
+
+// UntrustedClient wraps UntrustedTransport the same way.
+func (s *Server) UntrustedClient() *http.Client { return s.client(s.UntrustedTransport()) }
+
+func (s *Server) client(tr http.RoundTripper) *http.Client {
 	return &http.Client{
-		Transport:     s.Transport(),
+		Transport:     tr,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 }
 
-func (s *Server) close() {
-	close(s.done) // release stalled handlers first: Close waits for them
-	s.Close()
+// Close releases stalled handlers, closes idle client connections and shuts
+// the server down. It is safe to call more than once and from the test itself;
+// it is also registered with t.Cleanup.
+func (s *Server) Close() {
+	s.closeOnce.Do(func() {
+		close(s.done) // release stalled handlers first: Server.Close waits for them
+		s.Server.Close()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, tr := range s.transports {
+			tr.CloseIdleConnections()
+		}
+	})
 }
 
 func (s *Server) next(r *http.Request) (Step, bool) {
@@ -143,8 +175,10 @@ func (s *Server) wait(r *http.Request, d time.Duration) bool {
 	if d <= 0 {
 		return true
 	}
+	timer, stop := s.clock.NewTimer(d)
+	defer stop() // an abandoned wait must not stay pending on the clock
 	select {
-	case <-s.clock.After(d):
+	case <-timer:
 		return true
 	case <-r.Context().Done():
 	case <-s.done:

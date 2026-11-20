@@ -3,12 +3,15 @@
 package fakeclock
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
 )
 
-// blockTimeout is a deadlock guard for BlockUntil, not a unit of test timing.
+// blockTimeout is a deadlock guard for BlockUntil. It uses real time on
+// purpose and only fires when a test is already failing; do not use it to pace
+// anything.
 const blockTimeout = 10 * time.Second
 
 type waiter struct {
@@ -37,18 +40,54 @@ func (c *Clock) Now() time.Time {
 }
 
 // After returns a channel that receives once the clock has advanced by d.
-// A non-positive d fires immediately.
+// A non-positive d fires immediately. The timer stays pending until it fires;
+// use NewTimer when the wait can be abandoned.
 func (c *Clock) After(d time.Duration) <-chan time.Time {
+	ch, _ := c.NewTimer(d)
+	return ch
+}
+
+// NewTimer is After plus a stop function that removes the timer if it has not
+// fired yet, so an abandoned wait does not stay pending. stop reports whether
+// it removed the timer.
+func (c *Clock) NewTimer(d time.Duration) (<-chan time.Time, func() bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	ch := make(chan time.Time, 1)
 	if d <= 0 {
 		ch <- c.now
-		return ch
+		return ch, func() bool { return false }
 	}
-	c.waiters = append(c.waiters, &waiter{at: c.now.Add(d), ch: ch})
+	w := &waiter{at: c.now.Add(d), ch: ch}
+	c.waiters = append(c.waiters, w)
 	c.signalLocked()
-	return ch
+	return ch, func() bool { return c.remove(w) }
+}
+
+// Sleep waits d of fake time or until ctx ends, whichever comes first, and
+// leaves no timer pending either way. It matches a Sleeper interface.
+func (c *Clock) Sleep(ctx context.Context, d time.Duration) error {
+	ch, stop := c.NewTimer(d)
+	defer stop()
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *Clock) remove(w *waiter) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, x := range c.waiters {
+		if x == w {
+			c.waiters = append(c.waiters[:i], c.waiters[i+1:]...)
+			c.signalLocked()
+			return true
+		}
+	}
+	return false
 }
 
 // Advance moves time forward by d and fires every waiter that is now due.
@@ -79,11 +118,23 @@ func (c *Clock) Pending() int {
 // Advance only after the code under test has started waiting.
 func (c *Clock) BlockUntil(t testing.TB, n int) {
 	t.Helper()
+	c.waitFor(t, func(pending int) bool { return pending >= n }, "at least", n)
+}
+
+// BlockUntilIdle waits until no timer is pending, for example after the code
+// under test abandoned a wait.
+func (c *Clock) BlockUntilIdle(t testing.TB) {
+	t.Helper()
+	c.waitFor(t, func(pending int) bool { return pending == 0 }, "exactly", 0)
+}
+
+func (c *Clock) waitFor(t testing.TB, ok func(int) bool, kind string, n int) {
+	t.Helper()
 	guard := time.NewTimer(blockTimeout)
 	defer guard.Stop()
 	for {
 		c.mu.Lock()
-		ready := len(c.waiters) >= n
+		ready := ok(len(c.waiters))
 		ch := c.changed
 		c.mu.Unlock()
 		if ready {
@@ -92,7 +143,7 @@ func (c *Clock) BlockUntil(t testing.TB, n int) {
 		select {
 		case <-ch:
 		case <-guard.C:
-			t.Fatalf("fakeclock: timed out waiting for %d pending timers (have %d)", n, c.Pending())
+			t.Fatalf("fakeclock: timed out waiting for %s %d pending timers (have %d)", kind, n, c.Pending())
 		}
 	}
 }
