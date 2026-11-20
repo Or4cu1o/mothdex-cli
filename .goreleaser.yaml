@@ -21,13 +21,13 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X main.version={{ .Version }}
-      - -X main.commit={{ .FullCommit }}
-      - -X main.date={{ .CommitDate }}
+      - -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Date={{ .CommitDate }}
     mod_timestamp: "{{ .CommitTimestamp }}"
     goos: [linux, windows, darwin]
     goarch: [amd64, arm64, arm, "386"]
-    goarm: ["7"]
+    goarm: ["6", "7"]
     ignore:
       - goos: darwin
         goarch: "386"
@@ -46,10 +46,17 @@ archives:
         formats: [zip]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
+    # Fixed mtimes keep the archives reproducible (binaries use mod_timestamp).
     files:
-      - LICENSE
-      - README.md
-      - CHANGELOG.md
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: CHANGELOG.md
+        info:
+          mtime: "{{ .CommitDate }}"
 
 checksum:
   name_template: checksums.txt

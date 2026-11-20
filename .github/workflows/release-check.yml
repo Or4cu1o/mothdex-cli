@@ -1,16 +1,24 @@
 name: Release check
 
 # Dry run of the release pipeline on pull requests that touch it. No signing
-# (no OIDC token on PRs), no publishing, no secrets.
+# (no OIDC token on PRs), no publishing, no secrets. The job is path-filtered,
+# so it must not be a required status check.
 on:
   pull_request:
     paths:
       - .goreleaser.yaml
       - .github/workflows/release.yml
       - .github/workflows/release-check.yml
+      - scripts/verify-dist.sh
       - tools/**
       - cmd/**
+      - internal/**
+      - pkg/**
       - go.mod
+      - go.sum
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
 
 permissions:
   contents: read
@@ -23,7 +31,7 @@ jobs:
   snapshot:
     name: goreleaser snapshot
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,6 +41,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install verification tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user-static file jq unzip
       - name: Install pinned release tools (goreleaser, cosign, syft)
         run: |
           for tool in goreleaser cosign syft; do
@@ -41,9 +51,11 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - run: goreleaser check
       - run: goreleaser release --snapshot --clean --skip=sign
-      - name: Check the snapshot output
+      - name: Verify the build output (9 targets)
+        run: scripts/verify-dist.sh dist
+      - name: Build again and compare the archives (reproducibility)
         run: |
-          test "$(ls dist/*.tar.gz dist/*.zip | wc -l)" -eq 8
-          test "$(ls dist/*.sbom.json | wc -l)" -eq 8
-          (cd dist && sha256sum --check checksums.txt)
-          ./dist/mothdex_linux_amd64_v1/mothdex
+          grep -E '[.](tar[.]gz|zip)$' dist/checksums.txt | sort > "$RUNNER_TEMP/first.txt"
+          goreleaser release --snapshot --clean --skip=sign
+          grep -E '[.](tar[.]gz|zip)$' dist/checksums.txt | sort > "$RUNNER_TEMP/second.txt"
+          diff "$RUNNER_TEMP/first.txt" "$RUNNER_TEMP/second.txt"

@@ -2,6 +2,8 @@ module github.com/Or4cu1o/mothdex-cli
 
 go 1.27
 
+toolchain go1.27.4
+
 require (
 	github.com/knadh/koanf/parsers/yaml v1.1.1
 	github.com/knadh/koanf/providers/confmap v1.0.1

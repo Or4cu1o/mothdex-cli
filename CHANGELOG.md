@@ -29,13 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Design documentation in `docs/`: contracts for the API client, app service, downloader, cache, config,
   system profiles and machine output; ADR-0001 (stack) and ADR-0002 (downloader without `Range`); UX
   conventions (Shell, TUI, `--prefer`); research notes. Adds the config key `download.prefer.size`.
-- Release pipeline: GoReleaser OSS configuration (linux amd64/arm64/armv7/386,
-  windows amd64/arm64, darwin amd64/arm64; static, trimpath, reproducible
-  timestamps), `checksums.txt`, SBOMs, keyless cosign signature, GitHub artifact
-  attestations, tag-only release workflow with per-job permissions and no
-  dependency cache, and a snapshot check on pull requests touching it. Release
+- Release pipeline: GoReleaser OSS configuration for 9 targets (linux
+  amd64/arm64/armv7/armv6/386, windows amd64/arm64, darwin amd64/arm64; static,
+  trimpath, reproducible timestamps), `checksums.txt`, SBOMs, keyless cosign
+  signature, GitHub artifact attestations, a tag-only release workflow
+  (semantic-version tags on `main`, per-job permissions, no dependency cache,
+  signature and attestation verification before publishing) and a snapshot check
+  on pull requests touching it (`scripts/verify-dist.sh`, double build). Release
   tools are pinned in `tools/*/go.mod`. Nothing is published to package managers.
-- `mothdex` prints commit and build date next to the version.
+  Artifact naming, verification and owner-side settings are in `docs/release.md`.
+- `internal/buildinfo`: version, commit and commit date of the binary
+  (ldflags, with a `runtime/debug` fallback for `go install` builds);
+  `mothdex` prints them.
 - Project skeleton: Go module, package layout with placeholders (including `internal/app`), minimal
   `mothdex` binary that prints its version.
 - GPL-3.0 license, governance documents, issue and pull request templates.

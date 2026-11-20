@@ -4,6 +4,8 @@ name: Release
 # build (OIDC for keyless signing, read-only repo) -> attest (OIDC +
 # attestations) -> publish (the only job that can write contents).
 # No dependency cache is used anywhere in this workflow.
+# The owner-side settings this depends on (environment `release` with required
+# reviewers, tag ruleset for v*) are documented in docs/release.md.
 on:
   push:
     tags: ["v*"]
@@ -14,15 +16,23 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  SIGNER_WORKFLOW: Or4cu1o/mothdex-cli/.github/workflows/release.yml
+
 jobs:
   build:
     name: build and sign
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
       id-token: write # cosign keyless signing (GitHub OIDC)
     steps:
+      - name: Require a semantic version tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "tag '$TAG' is not vX.Y.Z[-pre]"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -33,6 +43,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install verification tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user-static file jq unzip
       - name: Install pinned release tools (goreleaser, cosign, syft)
         run: |
           for tool in goreleaser cosign syft; do
@@ -41,6 +53,20 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Build, checksum, SBOM and sign
         run: goreleaser release --clean
+      - name: Verify the signature and its signer identity
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -s dist/checksums.txt.sigstore.json
+          cosign verify-blob \
+            --bundle dist/checksums.txt.sigstore.json \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${SIGNER_WORKFLOW}@refs/tags/${TAG}" \
+            dist/checksums.txt
+      - name: Verify the build output
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/verify-dist.sh dist "${TAG#v}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-dist
@@ -66,9 +92,14 @@ jobs:
         with:
           name: release-dist
           path: dist
-      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      - name: Attest every file listed in checksums.txt
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
+      - name: Attest checksums.txt itself
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/checksums.txt
 
   publish:
     name: publish GitHub release
@@ -85,7 +116,17 @@ jobs:
           path: dist
       - name: Verify checksums before publishing
         working-directory: dist
-        run: sha256sum --check checksums.txt
+        run: sha256sum --check --strict checksums.txt
+      - name: Verify attestations (signer workflow and tag) before publishing
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          for f in checksums.txt $(awk '{print $2}' checksums.txt); do
+            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$SIGNER_WORKFLOW" --source-ref "refs/tags/$TAG"
+          done
       - name: Create the release
         working-directory: dist
         env:

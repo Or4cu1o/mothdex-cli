@@ -8,13 +8,8 @@ import (
 
 	// Fallback CA roots for systems without a CA bundle (CR-12); verification is never disabled.
 	_ "golang.org/x/crypto/x509roots/fallback"
-)
 
-// Overridden at build time with -ldflags "-X main.version=..." (see .goreleaser.yaml).
-var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 )
 
 func main() {
@@ -25,6 +20,6 @@ func main() {
 }
 
 func run(w io.Writer) error {
-	_, err := fmt.Fprintf(w, "mothdex %s (commit %s, built %s)\n", version, commit, date)
+	_, err := fmt.Fprintln(w, buildinfo.Get())
 	return err
 }
