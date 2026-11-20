@@ -13,6 +13,11 @@ import (
 var (
 	// ErrNoSpace is ENOSPC (disk full while writing).
 	ErrNoSpace error = syscall.ENOSPC
+	// ErrDiskFullWindows is ERROR_DISK_FULL (112), what a full Windows volume
+	// reports; ErrHandleDiskFullWindows is ERROR_HANDLE_DISK_FULL (39). The
+	// disk_full classification must hold for them as well as for ENOSPC.
+	ErrDiskFullWindows       error = syscall.Errno(112)
+	ErrHandleDiskFullWindows error = syscall.Errno(39)
 	// ErrCrossDevice is EXDEV (rename across file systems).
 	ErrCrossDevice error = syscall.EXDEV
 	// ErrNoReplaceUnsupported is what a file system without a no-replace rename
@@ -38,9 +43,15 @@ func (Finalizer) Rename(fsys proxy.FS, from, to string, replace bool) error {
 	if err := f.enter(OpRename, from, to); err != nil {
 		return err
 	}
+	f.renameMu.Lock() // check and rename are one atomic step, like RENAME_NOREPLACE
+	defer f.renameMu.Unlock()
 	if !replace {
-		if _, err := f.root.Lstat(to); err == nil {
+		_, err := f.root.Lstat(to)
+		switch {
+		case err == nil:
 			return &fs.PathError{Op: "rename", Path: to, Err: fs.ErrExist}
+		case !errors.Is(err, fs.ErrNotExist):
+			return err
 		}
 	}
 	return f.root.Rename(from, to)

@@ -71,6 +71,7 @@ type FS struct {
 	dir  string
 	root *os.Root
 
+	renameMu   sync.Mutex // makes the no-replace check and the rename one step
 	mu         sync.Mutex
 	faults     []*fault
 	hooks      []*hook
@@ -109,8 +110,10 @@ func (f *FS) Dir() string { return f.dir }
 // Path returns the real path of a name inside the fake.
 func (f *FS) Path(name string) string { return filepath.Join(f.dir, filepath.FromSlash(name)) }
 
-// Fail makes the next times calls of op on names matching pattern (path.Match
-// syntax; "*" matches every name) return err. times <= 0 means every call.
+// Fail makes the next times calls of op on names matching pattern return err.
+// Pattern rules: "*" or "**" match every name, a pattern without "/" also
+// matches the base name (so "*.part" selects dest/x.part), anything else is a
+// path.Match pattern on the whole name. times <= 0 means every call.
 func (f *FS) Fail(op, pattern string, err error, times int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -131,7 +134,11 @@ func (f *FS) Before(op, pattern string, fn func()) {
 
 // LimitWrites lets total more bytes through, across all files, then fails
 // every write with err after writing what still fits (a disk that fills up).
+// Bytes freed by Truncate and Remove are credited back, as on a real disk.
 func (f *FS) LimitWrites(total int64, err error) {
+	if err == nil {
+		panic("fakefs: LimitWrites needs a non-nil error")
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.writeLimit = f.written + total
@@ -139,7 +146,8 @@ func (f *FS) LimitWrites(total int64, err error) {
 }
 
 // SetVolume gives names under prefix a free-space figure and a device id. The
-// longest matching prefix wins; "" matches everything.
+// longest matching prefix wins, "" or "." matches everything but loses to any
+// real prefix, and a later registration of the same prefix replaces an earlier one.
 func (f *FS) SetVolume(prefix string, free int64, dev uint64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -195,9 +203,23 @@ func matches(pattern, name, to string) bool {
 	return match(pattern, name) || (to != "" && match(pattern, to))
 }
 
+// match implements the pattern rules of Fail and Before: "*" and "**" select
+// every name (staging files live in sub-directories, and path.Match's * stops
+// at a slash); a pattern without a slash is matched against the base name too;
+// anything else is a path.Match pattern on the whole name.
 func match(pattern, name string) bool {
-	ok, err := path.Match(pattern, path.Clean(name))
-	return err == nil && ok
+	name = path.Clean(filepath.ToSlash(name))
+	if pattern == "*" || pattern == "**" {
+		return true
+	}
+	if ok, err := path.Match(pattern, name); err == nil && ok {
+		return true
+	}
+	if !strings.Contains(pattern, "/") {
+		ok, err := path.Match(pattern, path.Base(name))
+		return err == nil && ok
+	}
+	return false
 }
 
 // OpenExcl implements proxy.FS.
@@ -233,7 +255,16 @@ func (f *FS) Remove(name string) error {
 	if err := f.enter(OpRemove, name, ""); err != nil {
 		return err
 	}
+	if info, err := f.root.Lstat(name); err == nil && info.Mode().IsRegular() {
+		f.credit(info.Size())
+	}
 	return f.root.Remove(name)
+}
+
+func (f *FS) credit(n int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.written = max(f.written-n, 0)
 }
 
 // ReadDir implements proxy.FS.
@@ -262,8 +293,15 @@ func (f *FS) Free(name string) (int64, uint64, error) {
 	clean := path.Clean(filepath.ToSlash(name))
 	best, bestLen := volume{free: defaultFree, dev: defaultDev}, -1
 	for _, v := range f.volumes {
-		if (v.prefix == "." || clean == v.prefix || strings.HasPrefix(clean, v.prefix+"/")) && len(v.prefix) > bestLen {
-			best, bestLen = v, len(v.prefix)
+		if v.prefix != "." && clean != v.prefix && !strings.HasPrefix(clean, v.prefix+"/") {
+			continue
+		}
+		l := len(v.prefix)
+		if v.prefix == "." {
+			l = 0 // the catch-all loses to every real prefix
+		}
+		if l >= bestLen { // on equal length the last registration wins
+			best, bestLen = v, l
 		}
 	}
 	return best.free, best.dev, nil
@@ -300,6 +338,9 @@ func (x *file) Seek(off int64, whence int) (int64, error) { return x.f.Seek(off,
 func (x *file) Truncate(size int64) error {
 	if err := x.fs.enter(OpTruncate, x.name, ""); err != nil {
 		return err
+	}
+	if info, err := x.f.Stat(); err == nil && info.Size() > size {
+		x.fs.credit(info.Size() - size)
 	}
 	return x.f.Truncate(size)
 }
