@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -90,5 +91,13 @@ func truncate(s string) string {
 	if len(s) <= maxMessageSize {
 		return s
 	}
-	return s[:maxMessageSize]
+	return strings.ToValidUTF8(s[:cutAtRune(s, maxMessageSize)], "")
+}
+
+// cutAtRune returns the largest index <= limit that does not split a UTF-8 rune.
+func cutAtRune(s string, limit int) int {
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return limit
 }

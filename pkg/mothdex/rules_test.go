@@ -2,8 +2,10 @@ package mothdex
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestPlanRetry(t *testing.T) {
@@ -131,8 +133,10 @@ func TestClassifyResponses(t *testing.T) {
 		{"db error", 200, info("A database error occurred"), KindUpstream},
 		{"unexpected", 200, info("An unexpected error occurred"), KindUpstream},
 		{"unknown message", 200, info("Something new"), KindAPI},
-		{"code beats message", 200, `{"info":{"code":"not_found","error":"x"},"data":{}}`, KindNotFound},
+		{"code beats message", 200, `{"info":{"code":"entry_not_found","error":"x"},"data":{}}`, KindNotFound},
 		{"code invalid_request", 200, `{"info":{"code":"invalid_request"},"data":{}}`, KindInvalidRequest},
+		{"code database_error", 200, `{"info":{"code":"database_error"},"data":{}}`, KindUpstream},
+		{"code internal_error", 200, `{"info":{"code":"internal_error"},"data":{}}`, KindUpstream},
 		{"unknown code", 200, `{"info":{"code":"zzz","error":"Entry not found"},"data":{}}`, KindAPI},
 		{"400 any body", 400, "garbage", KindInvalidRequest},
 		{"400 with info", 400, info("Malformed JSON in request body"), KindInvalidRequest},
@@ -178,5 +182,16 @@ func TestErrorHelpers(t *testing.T) {
 	}
 	if KindCanceled.String() != "canceled" || Kind(0).String() != "unknown" {
 		t.Fatal("Kind.String")
+	}
+}
+
+func TestTruncateKeepsValidUTF8(t *testing.T) {
+	in := strings.Repeat("a", maxMessageSize-1) + "é" + "tail" // the rune straddles the limit
+	got := truncate(in)
+	if !utf8.ValidString(got) || len(got) > maxMessageSize {
+		t.Fatalf("invalid or too long: %d bytes valid=%v", len(got), utf8.ValidString(got))
+	}
+	if short := truncate("ok"); short != "ok" {
+		t.Fatalf("short string changed: %q", short)
 	}
 }

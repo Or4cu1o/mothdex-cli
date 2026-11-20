@@ -104,11 +104,13 @@ var messageKinds = map[string]Kind{
 	"An unexpected error occurred": KindUpstream,
 }
 
-// Known info.code values (upstream proposal U2). Unknown codes map to KindAPI.
+// Known info.code values, as named in docs/upstream/U2-hashes-issue.md. rate_limited is left out on
+// purpose: a 429 is classified by HTTP status. Unknown codes map to KindAPI.
 var codeKinds = map[string]Kind{
-	"not_found":       KindNotFound,
+	"entry_not_found": KindNotFound,
 	"invalid_request": KindInvalidRequest,
-	"upstream":        KindUpstream,
+	"database_error":  KindUpstream,
+	"internal_error":  KindUpstream,
 }
 
 // classifyInfoError maps an HTTP 200 info.error to a Kind. A code, when
