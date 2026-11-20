@@ -29,9 +29,10 @@ const (
 )
 
 // pseudoVersion matches the module versions Go stamps on builds made inside a
-// git checkout (v0.0.0-20261120225344-78edbf3e047a, with an optional +dirty)
-// and any "+dirty" version: these are not releases.
-var pseudoVersion = regexp.MustCompile(`-[0-9]{14}-[0-9a-f]{12}(\+dirty)?$|\+dirty$`)
+// git checkout (v0.0.0-20261120225344-78edbf3e047a, and after a tag
+// v0.1.1-0.20261120225344-78edbf3e047a or v0.2.0-rc.1.0.20261120225344-78edbf3e047a,
+// each with an optional +dirty) and any "+dirty" version: these are not releases.
+var pseudoVersion = regexp.MustCompile(`[-.][0-9]{14}-[0-9a-f]{12}(\+dirty)?$|\+dirty$`)
 
 // Info describes a build. Version, Commit and Date are empty when unknown (never
 // placeholder strings); Go, OS and Arch are always set.
