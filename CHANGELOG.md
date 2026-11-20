@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/config`: typed configuration with the precedence defaults < YAML file < `MOTHDEX_*` environment < flags
+  (per key, with the source of each value), closed schema v1 validation (types, ranges, `download.max_file_size`,
+  `download.prefer.size`, `profile.*`), OS default paths and portable mode, and atomic `set`/`reset` of the YAML file.
 - `mothdex` binary embeds fallback CA roots (`x509roots/fallback`) for systems without a CA bundle; `pkg/mothdex` has
   no option to disable certificate verification, and `WithHTTPClient` callers own their TLS policy.
   `info.error` messages lose Unicode control and format characters at parse time (defense in depth).
