@@ -2,6 +2,7 @@ package mothdex
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net/http"
@@ -276,5 +277,15 @@ func TestCrossHostRedirectIsRefused(t *testing.T) {
 	}), WithMaxRetries(0))
 	if _, err := h.client.Info(context.Background()); !IsNetwork(err) {
 		t.Fatalf("want KindNetwork for a refused redirect, got %v", err)
+	}
+}
+
+func TestDefaultHTTPClientTLSPolicy(t *testing.T) {
+	tr, ok := newDefaultHTTPClient().Transport.(*http.Transport)
+	if !ok || tr.TLSClientConfig == nil {
+		t.Fatal("default client must carry an explicit TLS config")
+	}
+	if tr.TLSClientConfig.MinVersion != tls.VersionTLS12 || tr.TLSClientConfig.InsecureSkipVerify {
+		t.Fatalf("TLS policy: %+v", tr.TLSClientConfig)
 	}
 }

@@ -7,6 +7,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+
+	// Embeds a CA bundle that crypto/x509 uses only when the system has none
+	// (some emulation distros). Certificate verification is never disabled.
+	_ "golang.org/x/crypto/x509roots/fallback"
 )
 
 const maxRedirects = 3

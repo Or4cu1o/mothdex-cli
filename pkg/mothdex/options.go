@@ -50,7 +50,8 @@ type Option func(*config)
 // WithBaseURL sets the API base URL. https is required; http only for loopback hosts.
 func WithBaseURL(u string) Option { return func(c *config) { c.baseURL = u } }
 
-// WithHTTPClient replaces the default HTTP client.
+// WithHTTPClient replaces the default HTTP client. The caller then owns the TLS policy (minimum version,
+// roots, redirects); the package offers no option to disable certificate verification.
 func WithHTTPClient(h *http.Client) Option { return func(c *config) { c.httpClient = h } }
 
 // WithTimeout sets the per-attempt timeout (headers and body).
