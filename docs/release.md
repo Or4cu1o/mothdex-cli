@@ -71,7 +71,8 @@ cosign verify-blob \
 
 # 3. Build provenance of a file
 gh attestation verify mothdex_X.Y.Z_linux_amd64.tar.gz --repo Or4cu1o/mothdex-cli \
-  --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml
+  --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml \
+  --source-ref refs/tags/vX.Y.Z
 ```
 
 ## How the pipeline works
