@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Design documentation in `docs/`: contracts for the API client, app service, downloader, cache, config,
+  system profiles and machine output; ADR-0001 (stack) and ADR-0002 (downloader without `Range`); UX
+  conventions (Shell, TUI, `--prefer`); research notes. Adds the config key `download.prefer.size`.
 - Project skeleton: Go module, package layout with placeholders (including `internal/app`), minimal
   `mothdex` binary that prints its version.
 - GPL-3.0 license, governance documents, issue and pull request templates.
