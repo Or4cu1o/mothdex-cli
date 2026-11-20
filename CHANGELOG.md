@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Contracts: `version` output shape (`version`, `commit`, commit `date`, `go`, `os`, `arch`; empty in dev builds)
+  and the release-artifact contract for `install.sh` (archive names, 9 targets including armv6, `uname` mapping,
+  checksum and optional cosign verification).
 - Config contract records the T-11 decisions: portable paths apply with any config file, config errors carry no
   `file:line`, `config reset` on a missing file writes only `version: 1`, and `mothdex.ValidateBaseURL` is the only
   rule for `api.base_url`.
