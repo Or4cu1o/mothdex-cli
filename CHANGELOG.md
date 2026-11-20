@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Contracts: `version` output shape (`version`, `commit`, commit `date`, `go`, `os`, `arch`; empty in dev builds)
+  and the release-artifact contract for `install.sh` (archive names, 9 targets including armv6, `uname` mapping,
+  checksum and optional cosign verification).
 - Config contract records the T-11 decisions: portable paths apply with any config file, config errors carry no
   `file:line`, `config reset` on a missing file writes only `version: 1`, and `mothdex.ValidateBaseURL` is the only
   rule for `api.base_url`.
@@ -19,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/testutil/fakeproxy` and `internal/testutil/fakeclock`: scripted TLS fake of the download proxy (truncate,
+  stalls, transient 404, 429, Content-Length mismatch, gzip, redirects, malicious Content-Disposition, oversized body)
+  driven by a fake clock, plus a catalog of the 52 downloader test cases from the T-16 threat model, all pending until
+  the downloader exists.
 - `internal/config`: typed configuration with the precedence defaults < YAML file < `MOTHDEX_*` environment < flags
   (per key, with the source of each value), closed schema v1 validation (types, ranges, `download.max_file_size`,
   `download.prefer.size`, `profile.*`), OS default paths and portable mode, and atomic `set`/`reset` of the YAML file.

@@ -47,6 +47,7 @@ Entries and links use the API v1 field names exactly (api-client §1), so `data`
 | `platforms` | `{platforms: [{id, name, brand, class}]}` sorted by id |
 | `regions` | `{regions: [{id, name}]}` |
 | `db-info` | `{total_entries}` |
+| `version` (and `--version`) | `{version, commit, date, go, os, arch}` (§3.1) |
 | `download` | `{jobs: [{slug, link_index, filename, path, state, bytes, expected_bytes, sha256, crc:"ok|skipped|failed", attempts, duration_ms, error:{code,message}|null}]}` |
 | `boxart` | `{slug, path}` |
 | `history` | `{records: [HistoryRecord]}` (same fields as a `download` job + `id, started_at, finished_at, platform, title, source_name`) |
@@ -54,6 +55,23 @@ Entries and links use the API v1 field names exactly (api-client §1), so `data`
 | `cache clear` | `{cleared: [ns]}` |
 | `config list/get` | `{settings: [{key, value, source}]}` |
 | `profile show/detect` | `{profile: {id, name, host, source, rom_root, verified, warnings[]}, unverified: [string]}` |
+
+### 3.1 Version information
+
+`mothdex version` and the global `--version` print the same data; with `--json` it is the `data` object of the
+standard envelope, and `meta.cli_version` always equals `data.version`.
+
+| Field | Content | Dev build (`go build`/`go run`, no ldflags) |
+|---|---|---|
+| `version` | SemVer **without** the leading `v` (`0.1.0`, `0.2.0-rc.1`), the same as the release artifact name ([`release-artifacts.md`](release-artifacts.md)) | `""` (`go install` builds use the module version from `runtime/debug.ReadBuildInfo` when present) |
+| `commit` | full 40-hex commit SHA | `""`, or `vcs.revision` from build info when present |
+| `date` | **commit** date (not build time; builds are reproducible), RFC 3339 UTC | `""`, or `vcs.time` when present |
+| `go` | Go toolchain version (`runtime.Version()`, e.g. `go1.26.3`) | always set |
+| `os`, `arch` | `runtime.GOOS`, `runtime.GOARCH` (`arm` for armv6/armv7) | always set |
+
+Unknown values are empty strings, never placeholders such as `none` or `unknown`. Human output:
+`mothdex 0.1.0 (commit 1a2b3c4, 2026-11-20)` (short SHA and date only), or `mothdex dev` when `version` is empty.
+The values live in `internal/buildinfo` (set with `-X` ldflags), so every package can read them.
 
 ## 4. Error codes and exit codes
 
