@@ -111,7 +111,8 @@ func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error     // never fat
   `http`, fixed path `/reloadgames`, no query; host only the IP literals `127.0.0.1` or `[::1]`; the loader rejects anything else, including
   `localhost`), uses a client with `Proxy: nil`, no redirects, a 3 s timeout, and reads at most 64 KiB of body. The ES reply arrives before the
   reload finishes, and a failure becomes a warning. `manual` prints the localized hint `profile.refresh_manual`.
-- **Installer contract (T-21):** `install.sh` uses the same detection rules, read from `mothdex profile show --json`
+- **Installer contract (T-21):** artifact names, the `uname` mapping and checksum verification are fixed in
+  [`release-artifacts.md`](release-artifacts.md). `install.sh` uses the same detection rules, read from `mothdex profile show --json`
   after a first run from a temp dir, or ported as a shell `case` with the same probes. It must check that `bin_dir`
   supports the exec bit (NTFS/exFAT do not, per T1e) and fall back to another directory with a warning. The launcher
   file runs `<bin_dir>/mothdex-gui` (or `mothdex tui` until E-M3).
