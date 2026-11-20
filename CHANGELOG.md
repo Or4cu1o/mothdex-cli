@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/cache`: on-disk cache (search, entry, meta, info, covers, session, state) with canonical request keys,
+  per-namespace TTL, sidecar metadata, stale reads, a 200 MB cap with expiry-first then LRU eviction, atomic writes,
+  an injected clock and private file modes (0700/0600).
 - `internal/config`: typed configuration with the precedence defaults < YAML file < `MOTHDEX_*` environment < flags
   (per key, with the source of each value), closed schema v1 validation (types, ranges, `download.max_file_size`,
   `download.prefer.size`, `profile.*`), OS default paths and portable mode, and atomic `set`/`reset` of the YAML file.
