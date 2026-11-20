@@ -44,7 +44,9 @@ func (hostFS) Open(name string) (fs.File, error) {
 	return os.Open(filepath.FromSlash(root + name))
 }
 
-// dirWritable creates and removes a temporary file, the only portable test of write access.
+// dirWritable creates and removes a temporary file, the only portable test of write access. It
+// is called only for a profile whose probes already matched, but it does touch the ROM root, so
+// Detect with OSEnv is not strictly write-free.
 func dirWritable(dir string) bool {
 	f, err := os.CreateTemp(dir, ".mothdex-probe-*")
 	if err != nil {

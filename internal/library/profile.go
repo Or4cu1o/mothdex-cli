@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/config"
 )
 
 // SchemaVersion is the profile schema this build understands.
@@ -91,6 +93,8 @@ type Profile struct {
 	BinDir   BinDir   `yaml:"bin_dir"`
 	Launcher Launcher `yaml:"launcher"`
 	Hook     Hook     `yaml:"refresh"`
+
+	ownRoot string // the profile's own expanded ROM root, set by Detect (not data)
 }
 
 // LoadOptions tunes loading.
@@ -172,6 +176,12 @@ func (p Profile) validatePaths() error {
 		if err := checkVariables(path); err != nil {
 			return err
 		}
+		if err := checkAbsolute(path); err != nil {
+			return err
+		}
+	}
+	if p.Launcher.Kind != "none" && p.Launcher.Kind != "" && p.Launcher.Dir == "" {
+		return errors.New("launcher.dir is required for sh and bat launchers")
 	}
 	return nil
 }
@@ -217,7 +227,7 @@ func (p Profile) validateFolders(o LoadOptions) ([]string, error) {
 // launcherNames returns the folder names that must never receive downloads: the fixed launcher
 // folders plus the last component of the profile's launcher directory.
 func launcherNames(launcherDir string) []string {
-	names := []string{"ports", "ports_scripts", "windows"}
+	names := config.LauncherFolders()
 	if last := lastComponent(launcherDir); last != "" {
 		names = append(names, last)
 	}
@@ -230,4 +240,69 @@ func lastComponent(path string) string {
 		return path[i+1:]
 	}
 	return path
+}
+
+// checkAbsolute requires a path to be absolute (or to start with a variable, which expands to
+// an absolute path). An empty path is allowed where the field is optional.
+func checkAbsolute(p string) error {
+	if p == "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "${") || driveRooted.MatchString(p) {
+		return nil
+	}
+	return fmt.Errorf("path %q must be absolute", p)
+}
+
+var driveRooted = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
+
+// IsLauncherPath reports whether path is, or lies inside, a place where the frontend runs
+// scripts: the profile's launcher directory, or a folder named ports, ports_scripts or windows
+// directly under the profile's own default ROM root; a path whose last component is such a
+// name is refused as well. Comparison is per component (never a string prefix) and ignores
+// case and look-alike letters (portſ). The preflight applies it to -o and profile.rom_root,
+// and DestDir to every result (T-16 case 15, downloader 6.2 G3). Use it on the resolved
+// profile from ProfileInfo.
+func (p Profile) IsLauncherPath(path string) bool {
+	target := components(path)
+	if len(target) == 0 {
+		return false
+	}
+	if dir := components(p.Launcher.Dir); len(dir) > 0 && within(target, dir) {
+		return true
+	}
+	if root := components(p.ownRoot); len(root) > 0 {
+		for _, l := range config.LauncherFolders() {
+			if within(target, append(append([]string{}, root...), strings.ToUpper(l))) {
+				return true
+			}
+		}
+	}
+	last := target[len(target)-1]
+	for _, l := range launcherNames(p.Launcher.Dir) {
+		if last == strings.ToUpper(l) {
+			return true
+		}
+	}
+	return false
+}
+
+// components splits a path written with either separator into upper-cased components, so that
+// comparison ignores case and folds look-alikes the way config.ValidateFolderName does.
+func components(p string) []string {
+	var out []string
+	for _, c := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		out = append(out, strings.ToUpper(c))
+	}
+	return out
+}
+
+// within reports whether target equals dir or lies inside it, component by component.
+func within(target, dir []string) bool {
+	if len(target) < len(dir) {
+		return false
+	}
+	for i := range dir {
+		if target[i] != dir[i] {
+			return false
+		}
+	}
+	return true
 }

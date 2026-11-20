@@ -88,8 +88,7 @@ type detector struct {
 func (d detector) forced(byID map[string]Profile, id, source string) ProfileInfo {
 	p, ok := byID[id]
 	if !ok {
-		info := d.build(d.generic, SourceAuto, probeResult{}, nil)
-		info.Warnings = append([]string{fmt.Sprintf("unknown profile %q: using generic", id)}, info.Warnings...)
+		info := d.build(d.generic, source, probeResult{}, []string{fmt.Sprintf("unknown profile %q: using generic", id)})
 		return info
 	}
 	res := d.probe(p)
@@ -189,17 +188,37 @@ func (d detector) probe(p Profile) probeResult {
 // rootFor resolves the ROM root: the user's override, the generic root, or the profile's
 // expanded root. An unresolvable root is "".
 func (d detector) rootFor(p Profile, res probeResult) string {
-	switch {
-	case d.cfg.ROMRoot != "":
-		return d.cfg.ROMRoot
-	case p.ID == GenericID:
-		return d.cfg.GenericROMRoot
+	root, _ := d.rootAndWarning(p, res)
+	return root
+}
+
+// ownRoot is the profile's own expanded ROM root (generic: the root the app computed).
+func (d detector) ownRoot(p Profile, res probeResult) (string, error) {
+	if p.ID == GenericID {
+		return d.cfg.GenericROMRoot, nil
 	}
 	root, err := d.withMatch(res).expand(p.Roms.Root)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return root
+	return root, nil
+}
+
+// rootAndWarning is rootFor plus the reason an override was refused: a profile.rom_root that
+// is, or lies inside, the launcher directory is ignored (T-16 case 15).
+func (d detector) rootAndWarning(p Profile, res probeResult) (root, warn string) {
+	v := d.withMatch(res)
+	own, _ := d.ownRoot(p, res)
+	if d.cfg.ROMRoot == "" {
+		return own, ""
+	}
+	launcherDir, _ := v.expand(p.Launcher.Dir)
+	probe := p
+	probe.Launcher.Dir, probe.ownRoot = launcherDir, own
+	if probe.IsLauncherPath(d.cfg.ROMRoot) {
+		return own, fmt.Sprintf("profile.rom_root %q is a launcher folder: ignored", d.cfg.ROMRoot)
+	}
+	return d.cfg.ROMRoot, ""
 }
 
 func (d detector) withMatch(res probeResult) values {
@@ -220,9 +239,14 @@ func (d detector) rootUsable(root string) bool {
 func (d detector) build(p Profile, source string, res probeResult, warns []string) ProfileInfo {
 	v := d.withMatch(res)
 	resolved := p
-	resolved.Roms.Root = d.rootFor(p, res)
-	resolved.BinDir.Path, _ = v.expand(p.BinDir.Path)
-	resolved.Launcher.Dir, _ = v.expand(p.Launcher.Dir)
+	var rootWarn string
+	resolved.Roms.Root, rootWarn = d.rootAndWarning(p, res)
+	if rootWarn != "" {
+		warns = append(warns, rootWarn)
+	}
+	resolved.ownRoot, _ = d.ownRoot(p, res)
+	resolved.BinDir.Path, warns = expandOrWarn(v, p.BinDir.Path, "bin_dir", p.ID, warns)
+	resolved.Launcher.Dir, warns = expandOrWarn(v, p.Launcher.Dir, "launcher.dir", p.ID, warns)
 	resolved.Roms.Folders, warns = d.mergeFolders(p, resolved.Launcher.Dir, warns)
 	if d.cfg.RefreshOff {
 		resolved.Hook = Hook{Kind: RefreshNone}
@@ -239,6 +263,16 @@ func (d detector) build(p Profile, source string, res probeResult, warns []strin
 		info.Warnings = append(info.Warnings, fmt.Sprintf("%d unverified item(s); run profile show", len(info.Unverified)))
 	}
 	return info
+}
+
+// expandOrWarn expands a path; on failure the path is empty (never a partial one such as
+// "/.local/bin" from a missing home) and a warning says why.
+func expandOrWarn(v values, raw, field, id string, warns []string) (string, []string) {
+	out, err := v.expand(raw)
+	if err != nil {
+		return "", append(warns, fmt.Sprintf("profile %s: %s could not be resolved (%v)", id, field, err))
+	}
+	return out, warns
 }
 
 // mergeFolders overlays the user's folder overrides on the profile map. An override that

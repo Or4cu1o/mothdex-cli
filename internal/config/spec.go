@@ -214,6 +214,9 @@ var platformIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 // launcherFolders are frontend script folders a download must never land in (profiles.md CR-3).
 var launcherFolders = []string{"ports", "ports_scripts", "windows"}
 
+// LauncherFolders returns the frontend script folders that never receive downloads (a copy).
+func LauncherFolders() []string { return append([]string(nil), launcherFolders...) }
+
 // folderPattern is an allowlist: letters, digits and a few separators. It excludes path
 // separators, ":" (drive and stream syntax) and control characters.
 var folderPattern = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} _+().-]*$`)

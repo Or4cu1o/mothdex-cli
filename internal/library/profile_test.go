@@ -111,6 +111,9 @@ func TestLoadRejections(t *testing.T) {
 		"match inside a probe":   replace("roms:", "detect: { all: [ { dir: '${MATCH}' } ] }\nroms:"),
 		"config key not allowed": replace("roms:", "detect: { all: [ { config: paths.data } ] }\nroms:"),
 		"bad launcher kind":      replace("kind: sh", "kind: exe"),
+		"relative roms root":     replace("root: /roms", "root: roms"),
+		"relative bin dir":       replace("launcher:", "bin_dir: { path: bin }\nlauncher:"),
+		"launcher without dir":   replace(", dir: /roms/ports", ""),
 		"url without http_get":   replace("{ kind: none }", "{ kind: none, url: 'http://127.0.0.1:1234/reloadgames' }"),
 		"refresh timeout > 3s":   replace("{ kind: none }", "{ kind: http_get, url: 'http://127.0.0.1:1234/reloadgames', timeout: 10s }"),
 	}

@@ -171,3 +171,33 @@ func TestDisabledRefreshIsNone(t *testing.T) {
 		t.Fatalf("batocera refreshes by default, got %q", on.Profile.Hook.Kind)
 	}
 }
+
+func TestDestDirRefusesLauncherLocations(t *testing.T) {
+	p := resolved("/r/ports", "linux", LayoutPerPlatformID, "", nil)
+	p.Launcher.Dir = "/r/ports"
+	if dir, err := p.DestDir("snes"); !errors.Is(err, ErrLauncherPath) || dir != "" {
+		t.Fatalf("got %q, %v: a result inside the launcher dir must be a hard error", dir, err)
+	}
+	ok := resolved("/r", "linux", LayoutPerPlatformID, "", nil)
+	ok.Launcher.Dir = "/r/ports"
+	if dir, err := ok.DestDir("snes"); err != nil || dir != "/r/snes" {
+		t.Fatalf("%q %v", dir, err)
+	}
+}
+
+type redirectingTransport struct{ calls int }
+
+func (r *redirectingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.calls++
+	h := http.Header{}
+	h.Set("Location", "http://evil.example/x")
+	return &http.Response{StatusCode: 302, Header: h, Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
+}
+
+func TestRefreshNeverFollowsRedirectsEvenWithADefaultClient(t *testing.T) {
+	rt := &redirectingTransport{}
+	err := hookProfile(RefreshHTTPGet, reloadURL).Refresh(context.Background(), &http.Client{Transport: rt})
+	if err == nil || rt.calls != 1 {
+		t.Fatalf("err %v, requests %d: a redirect must be a failure after a single request", err, rt.calls)
+	}
+}

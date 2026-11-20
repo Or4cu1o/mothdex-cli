@@ -65,6 +65,7 @@ func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error {
 	if err := ValidateRefreshURL(p.Hook.URL); err != nil {
 		return err
 	}
+	h = noRedirects(h)
 	ctx, cancel := context.WithTimeout(ctx, RefreshTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.Hook.URL, nil)
@@ -81,4 +82,17 @@ func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error {
 		return fmt.Errorf("refresh answered HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// noRedirects forces a *http.Client (on a copy) to stop at the first redirect. Any other
+// HTTPDoer is the caller's responsibility; use NewRefreshClient. A 3xx answer is a failure
+// either way.
+func noRedirects(h HTTPDoer) HTTPDoer {
+	c, ok := h.(*http.Client)
+	if !ok {
+		return h
+	}
+	cp := *c
+	cp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &cp
 }

@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back to generic with a warning), `DestDir` with platform-id and folder confinement, folder overrides, unverified-item
   reporting, and the refresh hook restricted to `http://127.0.0.1:1234/reloadgames` or `[::1]` (3 s, no proxy, no
   redirects, non-fatal). Only the 15 platform ids confirmed in the T1e research are mapped to folders; the rest stay
-  unmapped until sourced.
+  unmapped until sourced. A `profile.rom_root` (or any `DestDir` result) inside a launcher folder is refused
+  (`Profile.IsLauncherPath`, per component and look-alike aware).
 - `internal/cache`: on-disk cache (search, entry, meta, info, covers, session, state) with canonical request keys,
   per-namespace TTL, sidecar metadata, stale reads, a 200 MB cap with expiry-first then LRU eviction, atomic writes,
   an injected clock and private file modes (0700/0600).

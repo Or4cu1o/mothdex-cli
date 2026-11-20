@@ -12,6 +12,7 @@ var (
 	ErrUnmappedPlatform = errors.New("platform has no folder on this system")
 	ErrInvalidPlatform  = errors.New("invalid platform id")
 	ErrNoRomRoot        = errors.New("no ROM root for this profile")
+	ErrLauncherPath     = errors.New("destination is inside a launcher folder")
 )
 
 // DestDir returns the destination directory for a platform: RomRoot/<folder>. In every
@@ -33,7 +34,11 @@ func (p Profile) DestDir(platformID string) (string, error) {
 	if err := checkFolder(folder, launcherNames(p.Launcher.Dir)); err != nil {
 		return "", fmt.Errorf("folder for %q: %w", platformID, err)
 	}
-	return joinPath(p.OS, p.Roms.Root, folder), nil
+	dest := joinPath(p.OS, p.Roms.Root, folder)
+	if p.IsLauncherPath(dest) {
+		return "", fmt.Errorf("%w: %s", ErrLauncherPath, dest) // never return the path
+	}
+	return dest, nil
 }
 
 func (p Profile) folderFor(platformID string) (string, error) {

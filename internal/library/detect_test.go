@@ -242,3 +242,80 @@ func TestGlobIsLimitedToExistingMatches(t *testing.T) {
 		t.Fatalf("the first sorted glob match wins: %s %q", info.ID, info.RomRoot)
 	}
 }
+
+func TestROMRootInsideLauncherFoldersIsRefused(t *testing.T) {
+	bat := map[string]string{"usr/share/batocera/batocera.version": "40", "userdata/roms/.keep": ""}
+	emu := map[string]string{"etc/os-release": osRelease("emuelec", "EmuELEC"), "storage/roms/.keep": ""}
+	tests := []struct {
+		name  string
+		files map[string]string
+		root  string
+		own   string
+	}{
+		{"batocera launcher dir", bat, "/userdata/roms/ports", "/userdata/roms"},
+		{"batocera launcher subfolder", bat, "/userdata/roms/ports/snes", "/userdata/roms"},
+		{"batocera upper case", bat, "/userdata/roms/PORTS", "/userdata/roms"},
+		{"batocera look-alike", bat, "/userdata/roms/portſ", "/userdata/roms"},
+		{"batocera trailing slash", bat, "/userdata/roms/ports/", "/userdata/roms"},
+		{"emuelec ports_scripts", emu, "/storage/roms/ports_scripts", "/storage/roms"},
+		{"emuelec windows folder", emu, "/storage/roms/windows/x", "/storage/roms"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := map[string]string{}
+			for k, v := range tt.files {
+				files[k] = v
+			}
+			info := detect(t, testEnv(files), Config{ROMRoot: tt.root})
+			if info.RomRoot != tt.own || !strings.Contains(strings.Join(info.Warnings, "|"), "launcher folder") {
+				t.Fatalf("root %q warnings %v, want %q and a warning", info.RomRoot, info.Warnings, tt.own)
+			}
+		})
+	}
+	// RetroBat: the windows launcher folder, and a legitimate root on another drive.
+	rb := map[string]string{"C:/RetroBat/RetroBat.exe": "", "C:/RetroBat/roms/.keep": ""}
+	env := testEnv(rb)
+	env.GOOS = "windows"
+	refused := detect(t, env, Config{ROMRoot: `C:\RetroBat\roms\windows`})
+	if refused.RomRoot != `C:\RetroBat\roms` {
+		t.Fatalf("retrobat windows folder: %q %v", refused.RomRoot, refused.Warnings)
+	}
+	env2 := testEnv(map[string]string{"C:/RetroBat/RetroBat.exe": "", "C:/RetroBat/roms/.keep": "", "E:/Games/roms/.keep": ""})
+	env2.GOOS = "windows"
+	if ok := detect(t, env2, Config{ROMRoot: `E:\Games\roms`}); ok.RomRoot != `E:\Games\roms` {
+		t.Fatalf("a root on another drive must be accepted: %q %v", ok.RomRoot, ok.Warnings)
+	}
+}
+
+func TestIsLauncherPathIsPerComponent(t *testing.T) {
+	info := detect(t, testEnv(map[string]string{"usr/share/batocera/batocera.version": "40", "userdata/roms/.keep": ""}), Config{})
+	p := info.Profile
+	for path, want := range map[string]bool{
+		"/userdata/roms/ports": true, "/userdata/roms/ports/snes": true, "/userdata/roms/PORTS": true,
+		"/userdata/roms/ports_scripts": true, "/userdata/roms/windows/a": true, "/userdata/roms/portſ": true,
+		"/userdata/roms/ports2": false, "/userdata/roms/portsx/a": false, "/userdata/roms/snes": false,
+		"/userdata/roms": false, "/mnt/usb/roms": false, "": false,
+	} {
+		if got := p.IsLauncherPath(path); got != want {
+			t.Errorf("IsLauncherPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestUnresolvedPathsAreEmptyNeverPartial(t *testing.T) {
+	env := testEnv(nil)
+	env.Home = ""
+	info := detect(t, env, Config{Flag: "emudeck"})
+	if info.Profile.BinDir.Path != "" || info.RomRoot != "" {
+		t.Fatalf("a missing home must not produce /.local/bin: bin %q root %q", info.Profile.BinDir.Path, info.RomRoot)
+	}
+	if !strings.Contains(strings.Join(info.Warnings, "|"), "bin_dir could not be resolved") {
+		t.Fatalf("warnings %v", info.Warnings)
+	}
+}
+
+func TestUnknownForcedProfileKeepsItsSource(t *testing.T) {
+	if info := detect(t, testEnv(nil), Config{ID: "amiga"}); info.ID != GenericID || info.Source != SourceConfig {
+		t.Fatalf("%s/%s", info.ID, info.Source)
+	}
+}
