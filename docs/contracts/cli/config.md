@@ -9,7 +9,7 @@ Starting point: [legacy `CLIDOWNROM` `config.yml`](https://github.com/Or4cu1o/CL
 `config list` shows each effective value with its source: `default | file | env | flag`.
 
 Config file location, first match wins: `--config <path>` › `MOTHDEX_CONFIG` › portable mode › OS default (§3).
-A missing file is fine (defaults apply). The file is created only by `config set` or `config reset`.
+A missing file is fine (defaults apply). The file is created only by `config set` or `config reset` (§6).
 
 ## 2. Schema v1 (YAML, with defaults)
 
@@ -79,6 +79,10 @@ Dropped from the legacy file: `chunk_size`, `preferred_hosts`, `mirror_test_*`/`
 resolves under `<exe dir>/mothdex-data/`, except `download.dir`, which defaults to `<exe dir>/ROMs/<platform>` (legacy layout). This serves RetroBat and USB installs. Emulation systems (Batocera
 `/userdata`, EmuELEC `/storage`, …) get their paths from the detected profile ([`profiles.md`](profiles.md)).
 
+Portable paths are decided by the marker file alone (T-11 decision 1): they apply even when `--config` or
+`MOTHDEX_CONFIG` selects a different config file, which then only changes where settings are read and written.
+`config path` reports the resolved paths and a `Portable` flag, so users and scripts can tell which mode is active.
+
 ## 4. Environment variables
 
 Rule: `MOTHDEX_` + the key path in upper case, with `.` replaced by `_`. Example: `download.first_byte_timeout` →
@@ -98,10 +102,14 @@ confirmations) and `--allow-executable` (downloader §6.1). They apply to one ru
 
 ## 6. Validation and writing
 
-- Type and range errors give exit code 2 with `key`, the bad value and its source (`file:line` when known).
+- Type and range errors give exit code 2 with `key`, the bad value and its source (`default`, `file`, `env` or
+  `flag`). They carry **no `file:line`**: koanf does not keep YAML positions (T-11 decision 2).
+- `api.base_url` has a single URL rule, `mothdex.ValidateBaseURL` (used by both the config loader and the client):
+  `https` only, `http` only for loopback hosts, and no userinfo, query or fragment.
 - Unknown keys in the file are a warning, not an error (forward compatibility).
 - `config set <key> <value>` validates against the schema, then rewrites the YAML file atomically. Comments are **not**
-  preserved; this is documented in `config --help`. `config reset <key|all>` removes the key from the file.
+  preserved; this is documented in `config --help`. `config reset <key|all>` removes the key from the file;
+  when no file exists yet, it creates one containing only `version: 1` (T-11 decision 3).
 - No secrets exist in this schema; any future secret goes in an environment variable only, never in the file.
 
 ## Resolved questions (Regente, T-2 phase 1)
