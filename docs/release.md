@@ -1,57 +1,27 @@
 # Release artifacts and pipeline
 
-Status: pre-alpha. This page is the contract that `install.sh` (T-21b) and later
-package manifests (winget, Scoop, AUR) depend on. Renaming anything here after
-`v0.1.0` breaks pinned installers.
+Status: pre-alpha. The artifact names and the `install.sh` mapping are a stable
+interface once `v0.1.0` is published; they are specified in
+[contracts/cli/release-artifacts.md](contracts/cli/release-artifacts.md). This page
+describes the pipeline that produces them and how to verify a download.
 
-## Archive names
+## Artifacts in short
 
-```text
-mothdex_<version>_<os>_<arch>[v<arm>].tar.gz     linux, darwin
-mothdex_<version>_<os>_<arch>.zip                windows
-```
-
-`<version>` is the tag without the leading `v`. The binary (`mothdex` or
-`mothdex.exe`) sits at the archive root next to `LICENSE`, `README.md` and
-`CHANGELOG.md`; the executable bit (0755) is kept by tar. Every archive has a
-sibling `<archive>.sbom.json`.
-
-| Target | Archive suffix |
-|---|---|
-| Linux x86-64 | `linux_amd64.tar.gz` |
-| Linux ARM 64-bit | `linux_arm64.tar.gz` |
-| Linux ARM 32-bit, ARMv7 | `linux_armv7.tar.gz` |
-| Linux ARM 32-bit, ARMv6 (Raspberry Pi 1/Zero) | `linux_armv6.tar.gz` |
-| Linux x86 32-bit | `linux_386.tar.gz` |
-| Windows x86-64 / ARM 64-bit | `windows_amd64.zip` / `windows_arm64.zip` |
-| macOS Intel / Apple silicon | `darwin_amd64.tar.gz` / `darwin_arm64.tar.gz` |
-
-Release files: the 9 archives, their 9 SBOMs, `checksums.txt` (SHA-256 of all 18
-files) and `checksums.txt.sigstore.json` (cosign bundle). There is no archive for
-`windows/386`, `windows/arm`, `darwin/386` or `darwin/arm`.
-
-### `uname -m` mapping for installers
-
-| `uname -m` | Archive arch |
-|---|---|
-| `x86_64` | `amd64` |
-| `aarch64`, `arm64` | `arm64` |
-| `armv7l` | `armv7` |
-| `armv6l` | `armv6` (never map it to `armv7`: an ARMv7 binary dies with an illegal instruction) |
-| `i386`, `i686` | `386` |
-
-Choose `arm64` from the kernel architecture (`uname -m`), not from the userland:
-the binaries are static, so a 32-bit userland on a 64-bit kernel (EmuELEC) runs
-the `arm64` build fine. A future `mothdex-gui` must ship under its own prefix
-(`mothdex-gui_...`), never as extra files inside `mothdex_`.
+`mothdex_<version>_<os>_<arch>[.tar.gz|.zip]` for 9 targets (armv6 and armv7 are
+separate archives; never map `armv6l` to `armv7`), one `<archive>.sbom.json` per
+archive, `checksums.txt` and `checksums.txt.sigstore.json`. `checksums.txt` lists
+all 18 archives and SBOMs, and the cosign bundle signs it. The names, contents,
+targets and the `uname` mapping are in the contract above.
 
 ## Version information
 
-`mothdex` prints `mothdex <version> (commit <hash>, commit date <RFC3339 UTC>)`.
-The values come from `internal/buildinfo` (set with `-ldflags -X` by GoReleaser,
-falling back to Go's embedded build info for `go install` builds). The date is the
-**commit time**, not the build time, so builds are reproducible. Fields that are
-unknown are empty (JSON `version`, `commit`, `date`), never placeholder strings.
+`mothdex` prints `mothdex <version> (commit <7-char hash>, <commit date>)`, or
+`mothdex dev` for builds without a version. The values come from
+`internal/buildinfo` (set with `-ldflags -X` by GoReleaser; `go install
+module@version` builds fall back to Go's embedded build info, ignoring pseudo and
+dirty versions). The date is the **commit time** (RFC 3339 UTC), not the build
+time, so builds are reproducible. Format and JSON fields:
+[contracts/cli/cli-output.md](contracts/cli/cli-output.md) section 3.1.
 
 ## Verifying a download
 

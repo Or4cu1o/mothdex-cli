@@ -101,7 +101,7 @@ for entry in "${targets[@]}"; do
     *) continue ;;
   esac
   out="$($runner "$dir/$bin")"
-  want_out="mothdex ${version} (commit ${want_commit}, commit date ${want_date})"
+  want_out="mothdex ${version} (commit ${want_commit:0:7}, ${want_date:0:10})"
   [ "$out" = "$want_out" ] || fail "$name: output '$out', want '$want_out'"
 done
 

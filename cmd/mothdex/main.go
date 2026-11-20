@@ -20,6 +20,6 @@ func main() {
 }
 
 func run(w io.Writer) error {
-	_, err := fmt.Fprintln(w, buildinfo.Get())
+	_, err := fmt.Fprintln(w, buildinfo.Get().String())
 	return err
 }
