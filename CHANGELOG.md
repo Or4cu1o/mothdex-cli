@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `pkg/mothdex`: embedded fallback CA roots (`x509roots/fallback`) for systems without a CA bundle; the client has
+- `mothdex` binary embeds fallback CA roots (`x509roots/fallback`) for systems without a CA bundle; `pkg/mothdex` has
   no option to disable certificate verification, and `WithHTTPClient` callers own their TLS policy.
 - `pkg/mothdex`: client for the Mothdex API v1 (search, entry, random, platforms, regions, info) with typed
   errors (HTTP 200 `info.error` included), client-side rate limit (5 req/s), 429 handling, a breach circuit,
