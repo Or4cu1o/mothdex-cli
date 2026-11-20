@@ -30,6 +30,8 @@ TTL overrides: `cache.ttl.<ns>` (config.md). TTL `0` disables caching for that n
 - Files: `<key>.json` or `<key>.bin`, plus the sidecar `<key>.meta.json`:
   `{"v":1,"ns":"search","created_at":"RFC3339","expires_at":"RFC3339|null","size":123,"content_type":"image/jpeg"}`.
 - Last access = data file **mtime**, refreshed with `os.Chtimes` on a hit (at most once per minute per item).
+- Modes (T-16 CR-11): cache directories `0700`, files `0600` on POSIX systems. Cached API data is not trusted more
+  than network data: consumers (downloader, profiles) validate it at use.
 - Writes are atomic: temp file in the same directory, then rename (data first, sidecar last). A missing or corrupt
   sidecar or data file is a miss, and both files are deleted.
 
@@ -61,8 +63,11 @@ app service's stale fallback (≤ 7 d). Otherwise an expired item is a miss.
 - Total size is computed by one directory scan on `Open`, then kept in memory.
 - On `Put`, when the total exceeds the cap: delete expired items first, then least-recently-used items until the total
   is ≤ 90 % of the cap. A single item larger than 25 % of the cap is not stored.
-- Blobs (covers) are capped at 5 MiB each and must have an image content type (`image/jpeg|png|webp|gif`); anything
-  else is rejected (the URL is external input).
+- **Cover fetch** (T-16 CR-9) is an untrusted-URL path with its own policy: `https` only; the dialer `Control` hook
+  rejects loopback, private, link-local, CGNAT, multicast and unspecified IPs **after** DNS resolution; ≤ 3 redirects,
+  each re-checked; body ≤ 5 MiB; `Content-Type` **and** magic bytes must agree on `jpeg|png|webp|gif` (SVG and
+  anything else are rejected); `image.DecodeConfig` must report ≤ 4096 × 4096 px before any full decode. The blob is
+  only stored in the cache, never written elsewhere. Any violation is a cache miss with a debug log, never an error.
 
 ## 5. Concurrency
 

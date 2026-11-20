@@ -1,26 +1,43 @@
 # Contract: downloader (`internal/proxy`)
 
-Status: draft v1 (T-2 phase 1) · Owner: Alicerce · Implementer: Forja (T-17) · Risk: **High** (writes files named by the server)
+Status: draft v2 (T-2 + T-16 change requests) · Owner: Alicerce · Implementer: Forja (T-17) · Risk: **High** (writes files named by the server)
 Sources: [`mothdex-proxy/src/main.cpp`](https://github.com/cavv-dev/mothdex-proxy/blob/main/src/main.cpp) (`streamFile`, `getFileDetails`, `pieceWaitTimeout`) · Covers A1–A4. See [ADR-0002](../../adr/ADR-0002-downloader-without-range.md).
+Threat model: Sentinela, T-16 ([`T-16-threat-model-downloader.md`](../../security/T-16-threat-model-downloader.md); TH-nn and CR-n ids below). Every
+**MUST** here maps to at least one Ensaio test (T-18).
 
-Sentinela's threat model (T-16) must be accepted before T-17 starts; it may tighten §6 (paths) and §2 (hosts).
+Everything the API returns about a link (`url`, `filename`, `size`, `format`) and about its entry (`slug`, `platform`,
+`cover_url`) is **untrusted** (T-16 F1). It is validated **at use, in the downloader**, on every attempt, whether it
+came from the network or from the cache (CR-11).
 
-## 1. Proxy facts the design depends on
+## 1. Upstream facts the design depends on
 
-| Fact (main.cpp) | Consequence |
+| Fact | Consequence |
 |---|---|
-| `Range` is ignored; it always answers `200` with the whole file and `Content-Length` | no resume, no segments; every retry starts from byte 0 |
-| headers are written **before** the first piece is available | "warming" = headers received, 0 body bytes |
-| each piece may wait up to `pieceWaitTimeout` = 15 min; on timeout the stream just ends | short stream: detect `bytes < expected` and retry |
-| `404 "not found"` both for unknown names and when `makeRoom` cannot free disk | 404 is **possibly transient** |
-| `Content-Disposition` filename comes from the torrent | ignored; the name comes from `link.filename`, sanitized |
+| Proxy: `Range` is ignored; it always answers `200` with the whole file and `Content-Length` | no resume, no segments; every retry starts from byte 0 |
+| Proxy: headers are written **before** the first piece is available | "warming" = headers received, 0 body bytes |
+| Proxy: each piece may wait up to `pieceWaitTimeout` = 15 min; on timeout the stream just ends | short stream: detect `bytes < expected` and retry |
+| Proxy: `404 "not found"` both for unknown names and when `makeRoom` cannot free disk | 404 is **possibly transient** |
+| Proxy: never redirects; `Content-Disposition` filename comes from the torrent | any 3xx is anomalous; the name comes from `link.filename`, sanitized |
+| **Not every link is a proxy link** (T-16 F2): only torrent-sourced links use `proxy.mothdex.net`. Internet Archive, MarioCube, NoPayStation (often `http://`) and `mothdex.net/static` links are passed through verbatim | v0.1 downloads proxy links only (§2); other links are shown as unavailable (app-service §3) |
 
-## 2. Request
+## 2. Request and URL policy (CR-1, CR-8, CR-11; TH-16–19, TH-26)
 
-`GET link.url`, no `Range`, `Accept-Encoding: identity`, same User-Agent as the API client.
-Before connecting: the URL must be `https` and its host must be in `download.allowed_hosts`
-(default `["proxy.mothdex.net"]`). Redirects: at most 3, each one re-checked against the allowlist.
-Violation: `Failed(untrusted_url)`, not retryable.
+**v0.1 is proxy-only** (CR-1; the product scope needs the owner's confirmation through Regente, OQ-DL-4). A link is
+downloadable only if `url` passes every check, in Preflight, on **every** attempt:
+
+- parsed with `net/url`; scheme exactly `https` (`http` is **never** allowed, not even by config); empty `User`;
+  `Port()` empty or `443`;
+- host = exact lowercase ASCII match, after stripping one trailing dot, against `download.allowed_hosts`
+  (default `["proxy.mothdex.net"]`); IP literals and non-ASCII (IDN) hosts are rejected.
+
+Failure: `Failed(untrusted_url)`, not retryable. The app service filters such links out **before ranking**, so they
+never become the top choice (app-service §3).
+
+HTTP client: `GET`, no `Range`, `Accept-Encoding: identity`, `Transport.DisableCompression = true`, no cookie jar,
+same User-Agent and TLS settings as the API client (api-client §6). **Redirects: 0** for the proxy host (any 3xx is
+`Failed(untrusted_url)`). A future explicit host table may allow ≤ 3 redirects, each re-checked against the policy above.
+A response with a `Content-Encoding` other than empty or `identity` is `Failed(integrity)`. The body is always read
+through `io.LimitReader(body, size+1)`.
 
 ## 3. State machine
 
@@ -29,35 +46,54 @@ Queued ─▶ Preflight ─▶ Connecting ─▶ Warming ─▶ Transferring ─
               │             │           │            │              │             │
               ▼             └───────────┴─────┬──────┴──────────────┘             │
           Skipped / Failed                    ▼                                   ▼
-                                       RetryWait ─▶ Connecting           Failed (no retry)
-any state ── Cancel / ctx ─▶ Canceled (.part removed)
+                                       RetryWait ─▶ Connecting           Skipped / Failed (no retry)
+any state ── Cancel / ctx ─▶ Canceled (staging removed, reservations released)
 ```
 
 | State | Entered when | Leaves to |
 |---|---|---|
 | Queued | accepted by `Enqueue` | Preflight when a worker is free |
-| Preflight | sanitize name, resolve destination, check host, check free space ≥ `size × 1.05`, apply `on_exists` | Connecting · Skipped · Failed |
+| Preflight | §3.1 checks, in order | Connecting · Skipped · Failed |
 | Connecting | request sent; `connect_timeout` 30 s, `header_timeout` 60 s | Warming · RetryWait · Failed |
 | Warming | `200` + headers received, 0 body bytes; `first_byte_timeout` (default 10 m) | Transferring · RetryWait |
-| Transferring | ≥ 1 byte; streaming to `.part` with SHA-256 computed on the fly; `idle_timeout` (default 5 m) between reads | Verifying · RetryWait · Failed |
-| RetryWait | retryable failure, budget left (§5) | Connecting (`.part` truncated to 0) · Failed |
+| Transferring | ≥ 1 byte; streaming to the staging file with SHA-256 computed on the fly; `idle_timeout` (default 5 m) between reads | Verifying · RetryWait · Failed |
+| RetryWait | retryable failure, budget left (§5) | Connecting (staging file truncated to 0 **on the same fd**) · Failed |
 | Verifying | EOF with `bytes == expected` | Finalizing · RetryWait (one integrity retry) · Failed |
-| Finalizing | atomic move (§6) and history record | Done · Failed |
+| Finalizing | `fsync` file, no-replace finalize (§6.3), `fsync` destdir, history record | Done · Skipped (`on_exists` hit at finalize) · Failed |
 
-Expected size = `link.size`. If `Content-Length` is present and differs from `link.size`: `Failed(size_mismatch)`,
-not retryable (the catalog and the proxy disagree, so re-downloading cannot fix it). Missing `Content-Length`:
-proceed using `link.size`. More bytes than expected: abort immediately, `Failed(size_mismatch)`.
+`Done` is reported only after both `fsync` calls succeed (CR-5).
 
-## 4. Verification (A4)
+### 3.1 Preflight (CR-2, CR-5, CR-7; TH-08, TH-14, TH-15, TH-20)
 
-Order, all on the `.part`:
+1. URL policy (§2).
+2. **Size sanity:** `size ≤ 0` or `size > download.max_file_size` (default 256 GiB) → `Failed(size_mismatch)`.
+3. **Name:** `Sanitize(link.filename)` (§6.1); a deny-listed extension → `Failed(unsafe_name)` unless `--allow-executable`.
+4. **Destination dir** per §6.2 (platform id validation, confinement).
+5. **Name reservation:** an in-process set keyed by `casefold(NFC(destdir + "/" + name))`, taken here and released at
+   the terminal state. A collision inside the batch applies `on_exists` against the reserved name.
+6. **`on_exists`** against the filesystem (`skip` → `Skipped`; `rename`; `overwrite` only with `--force`).
+7. **Space reservation ledger**, one per filesystem (staging and destination may be on different filesystems):
+   `need = size + max(size / 20, 256 MiB)` with overflow-checked `int64` math (no floats). The job starts only if
+   `free − reserved(fs) ≥ need` on each filesystem it will write; otherwise `Failed(disk_full)`. Released at the
+   terminal state. `ENOSPC` while writing → `Failed(disk_full)` and immediate cleanup.
+8. **In-flight journal:** append `{jobID, staging paths, destdir, started_at}` to `<paths.data>/inflight.jsonl`;
+   the entry is removed at the terminal state (§6.4).
+
+`Content-Length` present and different from `link.size` → `Failed(size_mismatch)`, not retryable (the catalog and the
+proxy disagree, so re-downloading cannot fix it). Missing `Content-Length`: proceed with `link.size`. More bytes than
+expected (the `size+1` limit reader yields the extra byte) → abort immediately, `Failed(size_mismatch)`.
+
+## 4. Verification (A4; CR-8; TH-24)
+
+Order, all on the staging file:
 1. **Size**: `bytes == link.size` (always).
 2. **Zip CRC**: if the first bytes are `PK\x03\x04` (magic bytes, not the extension), read every member to EOF with
-   `archive/zip`, which checks CRC32. Bomb guard: stop if uncompressed bytes exceed `100 × size` or 64 GiB.
-   7z/rar: not checked (backlog), and the history records `crc: "skipped"`.
-3. **Upstream hashes** (future, `link.hashes != nil`): `scope=file` compares against the `.part`;
-   `scope=content` compares against the single archive member, or the file itself if it is not an archive.
-   Strongest available algorithm: sha1 > md5 > crc32.
+   `archive/zip`, which checks CRC32, discarding the output (**never extract**). Caps, all enforced: cumulative
+   uncompressed bytes ≤ `min(64 GiB, max(1 GiB, 20 × size))`; ≤ 65 535 members; reading stops on `ctx` cancel.
+   A cap hit is `Failed(integrity)`. 7z/rar: not checked (backlog), and history records `crc: "skipped"`.
+3. **Upstream hashes** (future, `link.hashes != nil`): `scope=file` compares against the staging file;
+   `scope=content` compares against the single archive member, or the file itself if it is not an archive
+   (multi-member: `hash: "skipped"`). Strongest available algorithm: sha1 > md5 > crc32.
 4. **Local SHA-256** of the file as downloaded, stored in history (proof of what was received, not of correctness).
 
 Config `download.verify: false` skips only steps 2 and 3; size is always checked.
@@ -71,39 +107,110 @@ An integrity failure gets **one** re-download; a second one ends in `Failed(inte
 | truncated stream (`EOF` with `bytes < expected`) | yes | same |
 | `5xx`, `429` | yes; `Retry-After` honored when larger | same |
 | `404` | yes (A3) | separate: `not_found_retries` (default 3) with fixed delays 30 s, 60 s, 120 s |
-| other `4xx`, `size_mismatch`, `untrusted_url`, disk full, permission | no | — |
+| other `4xx`, any 3xx, `size_mismatch`, `untrusted_url`, `unsafe_name`, `path_rejected`, disk full, permission | no | — |
 
 Backoff: full jitter, `sleep = rand(0, min(60 s, 2 s × 2^(attempt-1)))`, through an injected `Sleeper` and `Clock`.
 Each attempt is recorded (state, cause, bytes) for history.
 
 ## 6. Files and paths
 
-- `.part` path: `<paths.temp>/downloads/<jobID>.part` (no server-derived text in the temp name).
-- Final name: `Sanitize(link.filename)`; this rule is owned by T-16. Minimum: base name only, no `..`, no separators,
-  no control characters, no Windows reserved names or characters, ≤ 200 bytes UTF-8, never empty
-  (fallback `<slug>.<format>`).
-- The destination must resolve (after `EvalSymlinks` on the directory) inside the configured root. The final file is
-  opened with `O_EXCL` semantics, so it never follows a pre-existing symlink.
-- Atomic move: `os.Rename(.part, final)`; on `EXDEV` (different filesystem), copy to `<destdir>/.<jobID>.mothdex-tmp`,
-  `fsync`, then rename within `destdir`. A visible final file is always complete.
-- `download.on_exists`: `skip` (default; state `Skipped`), `rename` (`name (1).ext`), `overwrite` (only via `--force`).
-- At startup, `.part` and `.mothdex-tmp` files older than 24 h are deleted.
+### 6.1 `Sanitize` (CR-6, CR-3; spec owned by T-16 §5, reproduced here as binding)
+
+`Sanitize(raw string) (string, error)` is a **pure** function with the **same rules on every GOOS** (exFAT/NTFS
+drives on Linux, T-16 F10). Steps, in order:
+
+1. **Last component:** split on `/` and `\`; keep the last non-empty element.
+2. **Unicode:** invalid UTF-8 → dropped. Normalize to **NFC** (`golang.org/x/text/unicode/norm`). Drop runes in
+   `Cc`, `Cf` (bidi controls, zero-width), `Co`, `Cs`. If NFKC of the result contains `/`, `\` or `:`, those runes
+   become `_` (fullwidth look-alikes).
+3. **Forbidden characters:** `< > : " / \ | ? *`, `0x00–0x1F`, `0x7F` → `_`; collapse runs of `_` and spaces.
+4. **Edges:** strip leading `.`, ` `, `-`; strip trailing `.` and ` `; repeat until stable.
+5. **Reserved names** (case-insensitive, on the part before the first `.`, trailing spaces trimmed):
+   `CON PRN AUX NUL COM0–9 LPT0–9 COM¹ COM² COM³ LPT¹ LPT² LPT³ CONIN$ CONOUT$` → prefix `_`.
+6. **Length:** ≤ 200 bytes UTF-8; cut the stem on a rune boundary, keeping an extension of ≤ 16 bytes; re-run 4–5.
+7. **Empty or only dots/underscores** → `Sanitize(slug) + "." + format` when `format` matches `^[a-z0-9]{1,10}$`
+   (otherwise no extension); still empty → `download-<jobID>`.
+8. **Executable deny-list** (case-insensitive, last extension): `sh bash zsh csh ksh fish command run desktop appimage
+   py pl rb jar exe com scr pif bat cmd ps1 psm1 psd1 vbs vbe js jse wsf wsh hta msi msp msc cpl dll lnk url reg scf
+   inf library-ms settingcontent-ms appref-ms` → `ErrUnsafeName` (`Failed(unsafe_name)`) unless the run has the
+   **flag** `--allow-executable` (flag only; no config or env equivalent). `bin` is a ROM extension and is allowed.
+9. **Invariants** (panic in tests, error at runtime): `name == filepath.Base(name)`, `filepath.IsLocal(name)`, no rune
+   removed by steps 2–3 remains, `len(name) ≤ 200`, `name` is not `.` or `..`.
+
+Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name; history stores both the raw name
+(escaped) and the sanitized one.
+
+### 6.2 Destination directory and confinement (CR-2, CR-13; TH-01–07)
+
+- The destination dir comes from `-o`, `download.dir` or the profile (profiles §4). Every path component that comes
+  from data must be a **single local component**: the platform id must match `^[a-z0-9][a-z0-9_-]{0,31}$` **and** be
+  present in `/platforms` (cached `meta`), otherwise `Failed(path_rejected)`; `profile.folders` values must pass
+  `filepath.IsLocal` and contain no separator.
+- **Confinement applies to the final dir in every layout:** the resolved destdir must be inside the configured root,
+  and all file operations go through an `os.Root` opened on that root (no `..`, no symlink escape).
+- **"Inside the root" is a per-component check** (T-16 G4), never a string prefix (`C:\roms` vs `C:\roms2`,
+  `/userdata/roms` vs `/userdata/roms-old`): `rel, err := filepath.Rel(root, dest)` must succeed, `filepath.IsLocal(rel)`
+  must hold (or `rel == "."`), and no element of `rel` may be `..`. On Windows the comparison is case-insensitive and
+  both paths must be on the same volume (`filepath.VolumeName`).
+- **Never into a launcher folder** (T-16 G3, TH-06): the final destdir (from `-o`, `download.dir`, `profile.rom_root`
+  or the profile map) must not be equal to, or inside, the active profile's `launcher.dir` or any folder named
+  `ports`, `ports_scripts` or `windows` directly under the ROM root; otherwise `Failed(path_rejected)`, unless the run
+  has `--allow-executable`.
+- **Windows** (CR-13): Go ≥ 1.23 `EvalSymlinks` does not resolve junctions, so confinement is verified with
+  `GetFinalPathNameByHandle` on the opened destdir handle, compared against the same call on the root handle.
+- On POSIX systems, directories the downloader creates get mode `0700` and files `0600` (umask may only reduce them) (CR-7).
+
+### 6.3 Staging and finalize without replace (CR-4, CR-7; TH-08–13)
+
+- `jobID` = 128-bit random value, lowercase base32 without padding (26 chars, `[a-z2-7]`). No server text in staging names.
+- Staging: `<paths.temp>/downloads/<jobID>.part`, opened through `os.Root.OpenFile` with `O_CREATE|O_EXCL|O_NOFOLLOW`;
+  the same fd is reused (truncated) across retries.
+- Finalize **never replaces** an existing file (`os.Rename` and `os.Root.Rename` both replace, T-16 F8):
+  - Linux `renameat2(RENAME_NOREPLACE)` (`golang.org/x/sys/unix`); Windows `MoveFileExW` **without**
+    `MOVEFILE_REPLACE_EXISTING`, with `MOVEFILE_WRITE_THROUGH`; macOS `renameatx_np(RENAME_EXCL)`;
+  - unsupported (`EINVAL`/`ENOSYS`, e.g. some FUSE or exFAT drivers): `os.Root.Link` then remove the staging file; if
+    hard links are unsupported too, create an `O_EXCL` placeholder with the final name, then rename onto that
+    placeholder only;
+  - different filesystem (`EXDEV`): copy to `<destdir>/.<jobID>.mothdex-tmp` (`O_EXCL|O_NOFOLLOW`, `0600`), `fsync`,
+    then the same no-replace finalize inside `destdir`;
+  - `EEXIST` at finalize → apply `on_exists` again (`skip` → `Skipped`, staging removed).
+- `download.on_exists`: `skip` (default), `rename` (`name (1).ext` … `name (99).ext`; past 99 → `Failed(exists)`),
+  `overwrite`: only with the `--force` flag, never from config or env; it is the one case that uses a replacing rename,
+  for that single file. Before replacing, `Lstat` the target through the `os.Root`: anything that is not a regular
+  file (symlink, directory, device, FIFO, socket, Windows reparse point) → `Failed(path_rejected)`, and the target is
+  left untouched (T-16 G2, TH-10).
+
+### 6.4 Cleanup (CR-7; TH-15)
+
+At startup, delete only **regular** files (`Lstat`, never follow) older than 24 h by **mtime** whose names match exactly:
+- `^[a-z2-7]{26}\.part$` in `<paths.temp>/downloads/`;
+- `^\.[a-z2-7]{26}\.mothdex-tmp$` in the destdirs listed in `<paths.data>/inflight.jsonl`.
+
+Journal entries whose job files are gone are pruned. The downloader never deletes anything else.
 
 ## 7. Pool and events
 
 - Worker pool: `download.concurrency` default **2**, clamped 1..6. Parallelism is across files only (A1).
 - Events: `{JobID, State, Attempt, Bytes, Expected, RateBps, Err}`; progress events are throttled to 4/s.
-- Boxart (`cover_url`) is fetched through the `covers` cache, outside the pool; a failure never fails the job.
-- Every job reaches exactly one terminal state (`Done`, `Skipped`, `Failed`, `Canceled`) and writes one history record.
+- Boxart (`cover_url`) is fetched through the `covers` cache with its own URL policy (cache §4), outside the pool;
+  a failure never fails the job.
+- Every job reaches exactly one terminal state (`Done`, `Skipped`, `Failed`, `Canceled`), releases its reservations
+  (name, space, journal) and writes one history record.
 
 ## 8. Test hooks (T-18)
 
-`Downloader` takes `HTTPDoer`, `Clock`, `Sleeper`, `FS` root and `Rand` interfaces. The fake proxy covers: stall before
-the first byte, stall mid-stream, truncation, transient 404, 429, `Content-Length` mismatch, extra bytes,
-malicious filenames and redirect off the allowlist.
+`Downloader` takes `HTTPDoer`, `Clock`, `Sleeper`, `Rand`, an `os.Root`-based FS and a per-OS `Finalizer` (no-replace
+move) interface. The fake proxy covers: stall before the first byte, stall mid-stream, truncation, transient 404, 429,
+any 3xx, `Content-Length` mismatch, extra bytes, `Content-Encoding: gzip`, malicious filenames, off-policy URLs (http,
+userinfo, port, IP literal, IDN, trailing dot) and zip bombs. [T-16 §8](../../security/T-16-threat-model-downloader.md) lists the full test set.
 
 ## Resolved questions (Regente, T-2 phase 1)
 
 - OQ-DL-1: accepted. `scope=content` is checked only for single-member archives (or non-archives); otherwise history records `hash: "skipped"`.
 - OQ-DL-2: keep first byte 10 m and idle 5 m, hard cap 15 m. Tuning after real measurements is in the backlog.
 - OQ-DL-3: `download.allowed_hosts` is a config value defaulting to `["proxy.mothdex.net"]`; the T-10 fixtures confirm the host.
+
+## Open questions
+
+- OQ-DL-4 (CR-1, owner decision via Regente): v0.1 downloads proxy links only. Internet Archive, MarioCube, NoPayStation and `mothdex.net/static` links are listed but unavailable. Confirm, or name hosts for a later version (each needs its own facts: redirects, `Range`, `http`).
+- OQ-DL-5: no Mothdex `format` is known to collide with the deny-list (`pc`/`dos` ship zips in the observed data). The T-10 fixture script should count link extensions over a sample to confirm.

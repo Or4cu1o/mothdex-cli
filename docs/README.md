@@ -7,6 +7,7 @@ before it lands, and code that deviates from one is a bug in either the code or 
 |---|---|
 | [`contracts/cli/`](contracts/cli/) | [API client](contracts/cli/api-client.md) (`pkg/mothdex`), [app service](contracts/cli/app-service.md), [downloader](contracts/cli/downloader.md), [cache](contracts/cli/cache.md), [config](contracts/cli/config.md), [system profiles](contracts/cli/profiles.md), [machine output and exit codes](contracts/cli/cli-output.md) |
 | [`adr/`](adr/) | [ADR-0001 stack](adr/ADR-0001-stack.md), [ADR-0002 downloader without `Range`](adr/ADR-0002-downloader-without-range.md) |
+| [`security/`](security/) | [T-16 downloader threat model](security/T-16-threat-model-downloader.md) (Sentinela) |
 | [`ux/`](ux/) | human output conventions, `--prefer` syntax, Shell and TUI flows |
 | [`research/`](research/) | T1a Go libraries, T1b SDL2/purego, T1e emulation systems, T1f GoReleaser |
 

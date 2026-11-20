@@ -52,7 +52,10 @@ Probe types, all read-only: `file` (exists), `dir` (exists), `os_release: {KEY: 
 case-sensitive match), `glob` (at least one match, ≤ 2 path levels of wildcards), `config: <key>` (the config value is
 non-empty and the path exists). A probe that errors (permission, I/O) counts as **not matched**.
 
-`folders` keys must be Mothdex platform ids from `/platforms`; unknown keys are a load warning. Embedded profiles are
+`folders` keys must be Mothdex platform ids from `/platforms`; unknown keys are a load warning. **Values** (T-16 CR-2,
+CR-3) must be a single local component (`filepath.IsLocal`, no separator), and the loader **rejects** (error, profile
+not loaded) any value equal to a launcher folder (`ports`, `ports_scripts`, `windows`, or the last component of
+`launcher.dir`), so a download can never land where the frontend runs scripts. Embedded profiles are
 validated in CI. User overrides go in `<config dir>/profiles/<id>.yaml`, which replaces the embedded profile with the
 same id, or adds a new one.
 
@@ -96,13 +99,17 @@ func (p Profile) DestDir(platformID string) (string, error)         // ErrUnmapp
 func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error     // never fatal for callers
 ```
 
-- **Destination** (used by app-service `DownloadRequest.DestDir == ""`): `RomRoot/<folder>`. If the platform is missing
+- **Destination** (used by app-service `DownloadRequest.DestDir == ""`): `RomRoot/<folder>`. In `per_platform_id`
+  layout the folder is the platform id, which must match `^[a-z0-9][a-z0-9_-]{0,31}$` and be in `/platforms`;
+  confinement to `RomRoot` applies in every layout (downloader §6.2). If the platform is missing
   from `folders` and `unmapped: error`, the job fails in Preflight with code `unmapped_platform` (exit 2). The hint names
   `-o <dir>` or a `profile.folders.<id>` override. Interactive UIs offer a folder picker instead.
   Arcade ids (`mame`, `fbn`, `naomi`…) are deliberately **unmapped** on systems that split arcade by emulator, so the
   user chooses (T1e §4).
-- **Refresh** runs **once per batch** after `Wait` returns with at least one `Done` job, never per file. `http_get` is
-  limited to loopback URLs (the profile loader rejects anything else) with a 3 s timeout. The ES reply arrives before the
+- **Refresh** runs **once per batch** after `Wait` returns with at least one `Done` job, never per file. `http_get`
+  (T-16 CR-10) accepts only the URL `http://127.0.0.1:1234/reloadgames` or `http://[::1]:1234/reloadgames` (scheme
+  `http`, fixed path `/reloadgames`, no query; host only the IP literals `127.0.0.1` or `[::1]`; the loader rejects anything else, including
+  `localhost`), uses a client with `Proxy: nil`, no redirects, a 3 s timeout, and reads at most 64 KiB of body. The ES reply arrives before the
   reload finishes, and a failure becomes a warning. `manual` prints the localized hint `profile.refresh_manual`.
 - **Installer contract (T-21):** `install.sh` uses the same detection rules, read from `mothdex profile show --json`
   after a first run from a temp dir, or ported as a shell `case` with the same probes. It must check that `bin_dir`
