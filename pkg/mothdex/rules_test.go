@@ -195,3 +195,31 @@ func TestTruncateKeepsValidUTF8(t *testing.T) {
 		t.Fatalf("short string changed: %q", short)
 	}
 }
+
+func TestCleanMessage(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"plain", "Entry not found", "Entry not found"},
+		{"ansi escape", "bad\x1b[31m red\x1b[0m", "bad[31m red[0m"},
+		{"newline and tab", "a\nb\tc\r", "abc"},
+		{"nul and del", "a\x00b\x7fc", "abc"},
+		{"c1 control", "a\u009bb", "ab"},
+		{"bidi override", "a\u202eb\u2066c", "abc"},
+		{"zero width and bom", "a\u200bb\ufeffc", "abc"},
+		{"keeps accents and cjk", "Não é 日本", "Não é 日本"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cleanMessage(tt.in); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInfoErrorMessageIsCleaned(t *testing.T) {
+	body := []byte(`{"info":{"error":"Entry not found\u001b[2J"},"data":{}}`)
+	_, e := parseResponse("op", 200, http.Header{}, body, time.Time{})
+	if e == nil || e.Kind != KindAPI || e.Message != "Entry not found[2J" {
+		t.Fatalf("got %#v", e)
+	}
+}

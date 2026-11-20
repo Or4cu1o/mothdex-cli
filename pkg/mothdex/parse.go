@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -40,7 +41,7 @@ func parseResponse(op string, status int, header http.Header, body []byte, now t
 			Kind:       classifyInfoError(env.Info),
 			Op:         op,
 			HTTPStatus: status,
-			Message:    truncate(env.Info.Error),
+			Message:    cleanMessage(env.Info.Error),
 		}
 	}
 	return env.Data, nil
@@ -65,7 +66,7 @@ func bestEffortMessage(body []byte) string {
 	if json.Unmarshal(body, &env) != nil {
 		return ""
 	}
-	return truncate(env.Info.Error)
+	return cleanMessage(env.Info.Error)
 }
 
 // parseRetryAfter reads delta-seconds or an HTTP date; unusable values give 0.
@@ -85,6 +86,19 @@ func parseRetryAfter(v string, now time.Time) time.Duration {
 		return 0
 	}
 	return min(max(t.Sub(now), 0), maxRetryAfter)
+}
+
+// cleanMessage is defense in depth for server text that may reach a terminal: it drops Unicode
+// control (Cc) and format (Cf) characters, then bounds the length. Only info.error goes through it;
+// data fields stay raw and output sanitizing remains the job of the UI layer.
+func cleanMessage(s string) string {
+	clean := strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+	return truncate(clean)
 }
 
 func truncate(s string) string {

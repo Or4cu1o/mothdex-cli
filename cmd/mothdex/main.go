@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	// Fallback CA roots for systems without a CA bundle (CR-12); verification is never disabled.
+	_ "golang.org/x/crypto/x509roots/fallback"
 )
 
 // version is overridden at build time with -ldflags "-X main.version=...".
