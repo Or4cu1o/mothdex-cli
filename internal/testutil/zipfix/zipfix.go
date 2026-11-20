@@ -9,16 +9,23 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"sort"
 )
 
-// Valid returns a well-formed zip with one stored member per entry.
+// Valid returns a well-formed zip with one stored (uncompressed) member per
+// entry, in sorted name order so the bytes are the same on every run.
 func Valid(members map[string][]byte) []byte {
+	names := make([]string, 0, len(members))
+	for name := range members {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	for name, data := range members {
-		w, err := zw.Create(name)
+	for _, name := range names {
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
 		must(err)
-		_, err = w.Write(data)
+		_, err = w.Write(members[name])
 		must(err)
 	}
 	must(zw.Close())
@@ -39,8 +46,8 @@ func ManyEmpty(n int) []byte {
 
 // DeclaredSizeLie returns a zip whose single member inflates to more bytes
 // than its header declares: reading it to EOF must fail the size/CRC check.
-func DeclaredSizeLie(real, declared int) []byte {
-	data := bytes.Repeat([]byte{'A'}, real)
+func DeclaredSizeLie(actual, declared int) []byte {
+	data := bytes.Repeat([]byte{'A'}, actual)
 	comp := deflate(data)
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -58,7 +65,7 @@ func DeclaredSizeLie(real, declared int) []byte {
 }
 
 // Bomb returns a zip with one deflate member that inflates to n zero bytes
-// (about 1000:1), with an honest header, so only a cumulative cap stops it.
+// (over 100:1; deflate tops out near 1000:1), with an honest header, so only a cumulative cap stops it.
 // Building it streams n bytes through the compressor: keep n modest and reuse
 // the result across tests.
 func Bomb(n int64) []byte {
@@ -94,7 +101,13 @@ func Bomb(n int64) []byte {
 // Overlap returns a zip whose central directory lists members entries that all
 // point at the same local file (an overlapping-member bomb): the archive stays
 // small while the sum of the declared members is members times inner bytes.
+// Go's archive/zip reads every member; the names in the central directory
+// differ from the single local header name (bomb.bin), which unzip or 7z may
+// report. members is limited to 65535 and inner to 4 GiB (zip header fields).
 func Overlap(members int, inner int64) []byte {
+	if members < 1 || members > 0xFFFF || inner < 1 || inner >= 1<<32 {
+		panic("zipfix: Overlap needs 1..65535 members and an inner size below 4 GiB")
+	}
 	base := Bomb(inner) // one honest member at offset 0
 	r, err := zip.NewReader(bytes.NewReader(base), int64(len(base)))
 	must(err)

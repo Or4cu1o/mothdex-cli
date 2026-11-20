@@ -19,6 +19,17 @@ func TestResolvesPublicNameToLoopback(t *testing.T) {
 	}
 }
 
+func TestSequenceModelsDNSRebinding(t *testing.T) {
+	r := fakeresolver.NewSequence(map[string][][]string{"cdn.test": {{"93.184.216.34"}, {"127.0.0.1"}}})
+	want := []string{"93.184.216.34", "127.0.0.1", "127.0.0.1"} // the last answer repeats
+	for i, w := range want {
+		addrs, err := r.LookupNetIP(t.Context(), "ip", "cdn.test")
+		if err != nil || len(addrs) != 1 || addrs[0].String() != w {
+			t.Fatalf("lookup %d = %v, %v; want %s", i+1, addrs, err, w)
+		}
+	}
+}
+
 func TestUnknownHostFailsLikeNXDOMAIN(t *testing.T) {
 	_, err := fakeresolver.New(nil).LookupIP(t.Context(), "nope.test")
 	var dnsErr *net.DNSError

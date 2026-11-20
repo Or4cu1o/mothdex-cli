@@ -34,6 +34,30 @@ func TestValidReadsClean(t *testing.T) {
 	}
 }
 
+func TestValidIsStoredAndDeterministic(t *testing.T) {
+	in := map[string][]byte{"b.bin": []byte("22"), "a.bin": []byte("1"), "c.bin": []byte("333")}
+	first := zipfix.Valid(in)
+	for range 5 {
+		if !bytes.Equal(first, zipfix.Valid(in)) {
+			t.Fatal("Valid is not deterministic")
+		}
+	}
+	for i, f := range open(t, first).File {
+		if f.Method != zip.Store || f.Name != string('a'+rune(i))+".bin" {
+			t.Fatalf("member %d = %q method %d", i, f.Name, f.Method)
+		}
+	}
+}
+
+func TestOverlapRejectsFieldOverflow(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Overlap accepted more members than the zip header can count")
+		}
+	}()
+	zipfix.Overlap(70000, 1<<20)
+}
+
 func TestManyEmptyExceedsMemberCap(t *testing.T) {
 	if got := len(open(t, zipfix.ManyEmpty(70000)).File); got != 70000 {
 		t.Fatalf("members = %d, want 70000", got)

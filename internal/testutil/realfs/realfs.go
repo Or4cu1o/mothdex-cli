@@ -87,6 +87,14 @@ func Snapshot(t testing.TB, dir string) map[string]string {
 				return err
 			}
 			out[rel] = fmt.Sprintf("file %x", sha256.Sum256(data))
+		case info.Mode()&fs.ModeIrregular != 0:
+			// A Windows junction is irregular, not a symlink: record where it
+			// points so a swapped target shows up in the diff.
+			target, err := os.Readlink(p)
+			if err != nil {
+				target = "?"
+			}
+			out[rel] = "reparse -> " + filepath.ToSlash(target)
 		default:
 			out[rel] = "other " + info.Mode().String()
 		}
