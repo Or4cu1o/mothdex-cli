@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"io/fs"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -330,5 +331,32 @@ func TestEnvNamesFoldCaseOnWindows(t *testing.T) {
 	}
 	if v, _ := envLayer(env, false); len(v) != 0 {
 		t.Fatalf("case-sensitive hosts must ignore lower-case names: %v", v)
+	}
+}
+
+// secretFree fails when err or anything it wraps mentions a secret.
+func secretFree(t *testing.T, err error, secrets ...string) {
+	t.Helper()
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		for _, secret := range secrets {
+			if strings.Contains(e.Error(), secret) {
+				t.Errorf("secret %q leaked in %q", secret, e.Error())
+			}
+		}
+	}
+}
+
+func TestBaseURLSecretsNeverReachErrors(t *testing.T) {
+	bad := []string{"https://TOKEN@host/v1", "https://user:pw@exa mple/v1", "https://user:pw@host/v1", "https://TOKEN@%zz/v1"}
+	for _, raw := range bad {
+		_, loadErr := Load(Options{Environ: []string{"MOTHDEX_API_BASE_URL=" + raw}})
+		setErr := Set(filepath.Join(t.TempDir(), "c.yaml"), "api.base_url", raw)
+		for name, err := range map[string]error{"load": loadErr, "set": setErr} {
+			if err == nil {
+				t.Errorf("%s accepted %q", name, raw)
+				continue
+			}
+			secretFree(t, err, "TOKEN", "pw")
+		}
 	}
 }

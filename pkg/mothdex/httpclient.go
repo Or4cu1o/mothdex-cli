@@ -22,6 +22,11 @@ func ValidateBaseURL(raw string) error {
 func parseBaseURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
+		// url.Error embeds the whole input, which may carry credentials: keep only the cause.
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
 		return nil, fmt.Errorf("mothdex: invalid base URL: %w", err)
 	}
 	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {

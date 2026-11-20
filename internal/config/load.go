@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
-	"net/url"
 	"os"
 	"runtime"
 	"slices"
@@ -83,7 +82,7 @@ func (st *state) apply(src Source, vals map[string]any) error {
 		}
 		v, err := s.parse(vals[key])
 		if err != nil {
-			return &Error{Kind: KindInvalidValue, Key: key, Value: displayValue(key, vals[key]), Source: src, Reason: err.Error(), Err: err}
+			return valueError(key, vals[key], src, err)
 		}
 		if w := clampWarning(key, vals[key], v); w != "" {
 			st.warnings = append(st.warnings, w)
@@ -91,18 +90,6 @@ func (st *state) apply(src Source, vals map[string]any) error {
 		st.vals[key], st.src[key] = v, src
 	}
 	return nil
-}
-
-// displayValue renders a rejected value for an error message; URL userinfo is dropped.
-func displayValue(key string, raw any) string {
-	text := fmt.Sprint(raw)
-	if key == "api.base_url" {
-		if u, err := url.Parse(text); err == nil && u.User != nil {
-			u.User = nil // drop the whole userinfo: a bare token is as secret as a password
-			return u.String()
-		}
-	}
-	return text
 }
 
 // clampWarning reports a value that parse silently moved into range (api.rate_limit only).

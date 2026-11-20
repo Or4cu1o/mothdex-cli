@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 // ErrorKind classifies a configuration failure; every kind maps to exit code 2.
 type ErrorKind int
@@ -51,3 +54,27 @@ func (e *Error) Error() string {
 
 // Unwrap exposes the wrapped cause.
 func (e *Error) Unwrap() error { return e.Err }
+
+// valueError builds the error for a rejected value. It is the single place that does so, for
+// Load and Set alike, so that the redaction below cannot be skipped by one path.
+func valueError(key string, raw any, src Source, cause error) *Error {
+	return &Error{Kind: KindInvalidValue, Key: key, Value: displayValue(key, raw), Source: src, Reason: cause.Error(), Err: cause}
+}
+
+const unparseableURL = "<unparseable URL>"
+
+// displayValue renders a rejected value for an error message. A base URL may carry a token
+// or password in its userinfo, so it is never echoed as given: the userinfo is dropped, and a
+// URL that does not parse is replaced by a placeholder.
+func displayValue(key string, raw any) string {
+	text := fmt.Sprint(raw)
+	if key != "api.base_url" {
+		return text
+	}
+	u, err := url.Parse(text)
+	if err != nil {
+		return unparseableURL
+	}
+	u.User = nil
+	return u.String()
+}
