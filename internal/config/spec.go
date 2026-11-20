@@ -2,11 +2,14 @@ package config
 
 import (
 	"fmt"
-	"net/url"
+	"net"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 // setting is one schema key. parse turns a raw layer value into the canonical Go value;
@@ -162,13 +165,7 @@ func pathLike(s string) error {
 	return nil
 }
 
-func httpURL(s string) error {
-	u, err := url.Parse(s)
-	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return fmt.Errorf("must be an http(s) URL with a host")
-	}
-	return nil
-}
+func httpURL(s string) error { return mothdex.ValidateBaseURL(s) }
 
 var languagePattern = regexp.MustCompile(`^[a-z]{2,3}(_[a-z]{2})?$`)
 
@@ -179,12 +176,27 @@ func languageCheck(s string) error {
 	return fmt.Errorf("must be auto or a locale such as pt_BR")
 }
 
-var hostPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$`)
+var labelPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
+// hostItem accepts a lower-cased bare host name with an optional port 1..65535. This list
+// is the downloader's host allowlist, so the check is strict.
 func hostItem(s string) (string, error) {
 	h := strings.ToLower(s)
-	if !hostPattern.MatchString(h) {
-		return "", fmt.Errorf("must be a bare host name (no scheme or path)")
+	name := h
+	if strings.Contains(h, ":") {
+		var port string
+		var err error
+		if name, port, err = net.SplitHostPort(h); err != nil {
+			return "", fmt.Errorf("must be a bare host name with an optional port")
+		}
+		if n, perr := strconv.Atoi(port); perr != nil || n < 1 || n > 65535 {
+			return "", fmt.Errorf("port must be between 1 and 65535")
+		}
+	}
+	for _, label := range strings.Split(name, ".") {
+		if !labelPattern.MatchString(label) {
+			return "", fmt.Errorf("must be a bare host name (no scheme, path or empty labels)")
+		}
 	}
 	return h, nil
 }
@@ -202,13 +214,26 @@ var platformIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 // launcherFolders are frontend script folders a download must never land in (profiles.md CR-3).
 var launcherFolders = []string{"ports", "ports_scripts", "windows"}
 
-// folderName accepts a single local path component that is not a launcher folder.
+// folderPattern is an allowlist: letters, digits and a few separators. It excludes path
+// separators, ":" (drive and stream syntax) and control characters.
+var folderPattern = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} _+().-]*$`)
+
+var deviceName = regexp.MustCompile(`^(con|prn|aux|nul|(com|lpt)[1-9])$`)
+
+// folderName accepts a single plain folder name that is not a launcher folder (profiles.md
+// CR-2, CR-3). A trailing dot or space is rejected because Windows drops it, which would turn
+// "ports." into the launcher folder "ports".
 func folderName(s string) error {
-	if s == "" || strings.ContainsAny(s, `/\`) || !filepath.IsLocal(s) || s == "." || s == ".." {
-		return fmt.Errorf("must be a single local folder name")
+	if !folderPattern.MatchString(s) || strings.HasSuffix(s, ".") || strings.HasSuffix(s, " ") || len(s) > 255 || !filepath.IsLocal(s) {
+		return fmt.Errorf("must be a single plain folder name (letters, digits, space, _ + ( ) . -; no trailing dot or space)")
+	}
+	lower := strings.ToLower(s)
+	base, _, _ := strings.Cut(lower, ".")
+	if deviceName.MatchString(strings.TrimSpace(base)) {
+		return fmt.Errorf("%q is a reserved device name", s)
 	}
 	for _, l := range launcherFolders {
-		if strings.EqualFold(s, l) {
+		if lower == l {
 			return fmt.Errorf("%q is a launcher folder and cannot receive downloads", s)
 		}
 	}

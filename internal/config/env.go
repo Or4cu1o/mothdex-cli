@@ -29,11 +29,14 @@ var envKeys = func() map[string]string {
 }()
 
 // envLayer extracts the MOTHDEX_* variables from an environ slice (KEY=VALUE entries).
-// Unknown MOTHDEX_* variables become warnings; MOTHDEX_CONFIG is reserved and skipped.
-func envLayer(environ []string) (values map[string]any, warnings []string) {
+// foldCase upper-cases names first (Windows variable names ignore case). Unknown MOTHDEX_* variables become warnings; MOTHDEX_CONFIG is reserved and skipped.
+func envLayer(environ []string, foldCase bool) (values map[string]any, warnings []string) {
 	values = map[string]any{}
 	for _, kv := range environ {
 		name, val, ok := strings.Cut(kv, "=")
+		if foldCase {
+			name = strings.ToUpper(name)
+		}
 		if !ok || !strings.HasPrefix(name, envPrefix) || name == EnvConfig {
 			continue
 		}

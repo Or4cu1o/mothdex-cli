@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"net/url"
 	"os"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -39,7 +41,7 @@ func Load(o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	envVals, envWarnings := envLayer(o.Environ)
+	envVals, envWarnings := envLayer(o.Environ, runtime.GOOS == "windows")
 	flagVals := make(map[string]any, len(o.Flags))
 	for k, v := range o.Flags {
 		flagVals[k] = v
@@ -53,13 +55,14 @@ func Load(o Options) (Result, error) {
 			return Result{}, err
 		}
 	}
-	return st.result(append(warnings, envWarnings...)), nil
+	return st.result(slices.Concat(warnings, envWarnings, st.warnings)), nil
 }
 
 // state accumulates the effective value and source per key.
 type state struct {
-	vals map[string]any
-	src  map[string]Source
+	vals     map[string]any
+	src      map[string]Source
+	warnings []string
 }
 
 func newState() *state {
@@ -80,11 +83,36 @@ func (st *state) apply(src Source, vals map[string]any) error {
 		}
 		v, err := s.parse(vals[key])
 		if err != nil {
-			return &Error{Kind: KindInvalidValue, Key: key, Value: fmt.Sprint(vals[key]), Source: src, Reason: err.Error(), Err: err}
+			return &Error{Kind: KindInvalidValue, Key: key, Value: displayValue(key, vals[key]), Source: src, Reason: err.Error(), Err: err}
+		}
+		if w := clampWarning(key, vals[key], v); w != "" {
+			st.warnings = append(st.warnings, w)
 		}
 		st.vals[key], st.src[key] = v, src
 	}
 	return nil
+}
+
+// displayValue renders a rejected value for an error message; URL credentials are redacted.
+func displayValue(key string, raw any) string {
+	text := fmt.Sprint(raw)
+	if key == "api.base_url" {
+		if u, err := url.Parse(text); err == nil {
+			return u.Redacted()
+		}
+	}
+	return text
+}
+
+// clampWarning reports a value that parse silently moved into range (api.rate_limit only).
+func clampWarning(key string, raw, parsed any) string {
+	if key != "api.rate_limit" {
+		return ""
+	}
+	if f, err := asFloat(raw); err == nil && f != parsed.(float64) {
+		return fmt.Sprintf("api.rate_limit %v is outside 1..10 and was clamped to %v", f, parsed)
+	}
+	return ""
 }
 
 func (st *state) result(warnings []string) Result {
@@ -207,10 +235,13 @@ func (r Result) Settings() []Setting {
 
 // Get returns one effective value; an unknown key is a KindUnknownKey error.
 func (r Result) Get(key string) (Setting, error) {
-	if _, ok := r.vals[key]; !ok {
-		return Setting{}, &Error{Kind: KindUnknownKey, Key: key, Reason: "unknown configuration key"}
+	if _, ok := r.vals[key]; ok {
+		return r.setting(key), nil
 	}
-	return r.setting(key), nil
+	if s, ok := lookup(key); ok { // a valid key nobody set, such as a profile.folders.<id> entry
+		return Setting{Key: key, Value: s.out(s.defaultValue()), Source: SourceDefault}, nil
+	}
+	return Setting{}, &Error{Kind: KindUnknownKey, Key: key, Reason: "unknown configuration key"}
 }
 
 func (r Result) setting(key string) Setting {

@@ -257,3 +257,77 @@ func TestSizeParsingAndFormatting(t *testing.T) {
 		}
 	}
 }
+
+func TestFolderNameRegression(t *testing.T) {
+	bad := []string{"ports", "Ports", "ports.", "windows.", "ports_scripts.", "ports:x", "ports ", "a/b", `a\b`, "..", ".", "",
+		"nul", "NUL.txt", "com1", "-x", "a\x00b", "C:"}
+	for _, s := range bad {
+		if folderName(s) == nil {
+			t.Errorf("folderName(%q) must fail", s)
+		}
+	}
+	for _, s := range []string{"megadrive", "Sega Genesis", "psx", "snes (usa)", "gba_2", "日本"} {
+		if err := folderName(s); err != nil {
+			t.Errorf("folderName(%q): %v", s, err)
+		}
+	}
+}
+
+func TestBaseURLMatchesClientRule(t *testing.T) {
+	for _, bad := range []string{"https://user:pw@host/v1", "https://host/v1?x=1", "https://host/v1#f", "http://evil.example/v1", "ftp://host"} {
+		_, err := Load(Options{Environ: []string{"MOTHDEX_API_BASE_URL=" + bad}})
+		var e *Error
+		if !errors.As(err, &e) || e.Key != "api.base_url" {
+			t.Errorf("%q accepted: %v", bad, err)
+		} else if strings.Contains(e.Value, "pw") {
+			t.Errorf("credential leaked in %q", e.Value)
+		}
+	}
+	if _, err := Load(Options{Environ: []string{"MOTHDEX_API_BASE_URL=http://127.0.0.1:8080/v1"}}); err != nil {
+		t.Errorf("loopback http must be accepted: %v", err)
+	}
+}
+
+func TestAllowedHostsAreStrict(t *testing.T) {
+	good := []string{"proxy.mothdex.net", "a.b-c.example:8443", "localhost"}
+	bad := []string{"a..b", "host:99999", "host:0", "host:x", "-bad.example", "bad-.example", "ho st", "host/path", ".example"}
+	for _, h := range good {
+		if _, err := hostItem(h); err != nil {
+			t.Errorf("%q: %v", h, err)
+		}
+	}
+	for _, h := range bad {
+		if _, err := hostItem(h); err == nil {
+			t.Errorf("%q must fail", h)
+		}
+	}
+}
+
+func TestGetValidButUnsetFolder(t *testing.T) {
+	s, err := mustLoad(t, Options{}).Get("profile.folders.md")
+	if err != nil || s.Value != "" || s.Source != SourceDefault {
+		t.Fatalf("got %+v, %v", s, err)
+	}
+	if _, err := mustLoad(t, Options{}).Get("profile.folders.BAD ID"); err == nil {
+		t.Fatal("invalid platform id must stay an error")
+	}
+}
+
+func TestRateLimitClampWarns(t *testing.T) {
+	for in, want := range map[string]bool{"0.2": true, "50": true, "7": false} {
+		r := mustLoad(t, Options{Environ: []string{"MOTHDEX_API_RATE_LIMIT=" + in}})
+		if got := len(r.Warnings) == 1 && strings.Contains(r.Warnings[0], "clamped"); got != want || (!want && len(r.Warnings) != 0) {
+			t.Errorf("rate %s: warnings %v", in, r.Warnings)
+		}
+	}
+}
+
+func TestEnvNamesFoldCaseOnWindows(t *testing.T) {
+	env := []string{"mothdex_api_timeout=30s"}
+	if v, w := envLayer(env, true); v["api.timeout"] != "30s" || len(w) != 0 {
+		t.Fatalf("folded: %v %v", v, w)
+	}
+	if v, _ := envLayer(env, false); len(v) != 0 {
+		t.Fatalf("case-sensitive hosts must ignore lower-case names: %v", v)
+	}
+}

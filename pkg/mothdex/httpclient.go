@@ -11,6 +11,13 @@ import (
 
 const maxRedirects = 3
 
+// ValidateBaseURL reports whether raw is an acceptable API base URL: https, or http for loopback
+// hosts only, without credentials, query or fragment. New applies the same rule.
+func ValidateBaseURL(raw string) error {
+	_, err := parseBaseURL(raw)
+	return err
+}
+
 // parseBaseURL enforces https, with http allowed only for loopback hosts (tests).
 func parseBaseURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)

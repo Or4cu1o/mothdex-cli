@@ -22,7 +22,9 @@ const (
 )
 
 // Set validates key=raw against the schema and rewrites the YAML file atomically. Comments
-// in an existing file are not preserved. The file is created when missing.
+// in an existing file are not preserved, there is no lock between concurrent writers (the last
+// one wins) and the rename replaces a symlinked file with a regular one. The file is created
+// when missing.
 func Set(path, key, raw string) error {
 	s, ok := lookup(key)
 	if !ok {
