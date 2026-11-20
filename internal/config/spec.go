@@ -218,7 +218,8 @@ var launcherFolders = []string{"ports", "ports_scripts", "windows"}
 // separators, ":" (drive and stream syntax) and control characters.
 var folderPattern = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} _+().-]*$`)
 
-var deviceName = regexp.MustCompile(`^(con|prn|aux|nul|(com|lpt)[1-9])$`)
+// deviceName covers the Windows device names, including COM0/LPT0 and the superscript digits.
+var deviceName = regexp.MustCompile(`^(con|prn|aux|nul|(com|lpt)[0-9¹²³])$`)
 
 // folderName accepts a single plain folder name that is not a launcher folder (profiles.md
 // CR-2, CR-3). A trailing dot or space is rejected because Windows drops it, which would turn
@@ -232,8 +233,10 @@ func folderName(s string) error {
 	if deviceName.MatchString(strings.TrimSpace(base)) {
 		return fmt.Errorf("%q is a reserved device name", s)
 	}
+	upper := strings.ToUpper(s)
 	for _, l := range launcherFolders {
-		if lower == l {
+		// EqualFold and ToUpper both catch look-alikes such as portſ (long s) and wındows (dotless i).
+		if lower == l || strings.EqualFold(s, l) || upper == strings.ToUpper(l) {
 			return fmt.Errorf("%q is a launcher folder and cannot receive downloads", s)
 		}
 	}

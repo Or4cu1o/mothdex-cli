@@ -255,7 +255,7 @@ func TestBaseURLValidation(t *testing.T) {
 	cases := map[string]bool{
 		"https://api.mothdex.net/v1":  true,
 		"http://127.0.0.1:8080/v1":    true,
-		"http://localhost:9/v1":       true,
+		"http://localhost:9/v1":       false,
 		"http://[::1]:9/v1":           true,
 		"http://api.mothdex.net/v1":   false,
 		"ftp://127.0.0.1/v1":          false,

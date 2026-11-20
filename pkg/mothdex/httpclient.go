@@ -40,10 +40,8 @@ func parseBaseURL(raw string) (*url.URL, error) {
 	}
 }
 
+// isLoopback accepts loopback IP literals only; names such as "localhost" can be repointed.
 func isLoopback(host string) bool {
-	if host == "localhost" {
-		return true
-	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }

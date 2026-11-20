@@ -93,12 +93,13 @@ func (st *state) apply(src Source, vals map[string]any) error {
 	return nil
 }
 
-// displayValue renders a rejected value for an error message; URL credentials are redacted.
+// displayValue renders a rejected value for an error message; URL userinfo is dropped.
 func displayValue(key string, raw any) string {
 	text := fmt.Sprint(raw)
 	if key == "api.base_url" {
-		if u, err := url.Parse(text); err == nil {
-			return u.Redacted()
+		if u, err := url.Parse(text); err == nil && u.User != nil {
+			u.User = nil // drop the whole userinfo: a bare token is as secret as a password
+			return u.String()
 		}
 	}
 	return text

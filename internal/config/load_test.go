@@ -260,7 +260,8 @@ func TestSizeParsingAndFormatting(t *testing.T) {
 
 func TestFolderNameRegression(t *testing.T) {
 	bad := []string{"ports", "Ports", "ports.", "windows.", "ports_scripts.", "ports:x", "ports ", "a/b", `a\b`, "..", ".", "",
-		"nul", "NUL.txt", "com1", "-x", "a\x00b", "C:"}
+		"nul", "NUL.txt", "com1", "-x", "a\x00b", "C:",
+		"portſ", "wındows", "com0", "COM¹", "LPT²", "lpt0", "PORTS_SCRIPTS"}
 	for _, s := range bad {
 		if folderName(s) == nil {
 			t.Errorf("folderName(%q) must fail", s)
@@ -274,12 +275,12 @@ func TestFolderNameRegression(t *testing.T) {
 }
 
 func TestBaseURLMatchesClientRule(t *testing.T) {
-	for _, bad := range []string{"https://user:pw@host/v1", "https://host/v1?x=1", "https://host/v1#f", "http://evil.example/v1", "ftp://host"} {
+	for _, bad := range []string{"https://user:pw@host/v1", "https://TOKEN@host/v1", "https://host/v1?x=1", "https://host/v1#f", "http://evil.example/v1", "http://localhost/v1", "ftp://host"} {
 		_, err := Load(Options{Environ: []string{"MOTHDEX_API_BASE_URL=" + bad}})
 		var e *Error
 		if !errors.As(err, &e) || e.Key != "api.base_url" {
 			t.Errorf("%q accepted: %v", bad, err)
-		} else if strings.Contains(e.Value, "pw") {
+		} else if strings.Contains(e.Value, "pw") || strings.Contains(e.Value, "TOKEN") {
 			t.Errorf("credential leaked in %q", e.Value)
 		}
 	}
