@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Cache contract documents the `AllowStale` and `WithTTL` options and the best-effort rename retry on Windows.
+- API client and config contracts: `http` base URLs are accepted only for loopback IP literals, not `localhost`.
 - Contracts: `version` output shape (`version`, `commit`, commit `date`, `go`, `os`, `arch`; empty in dev builds)
   and the release-artifact contract for `install.sh` (archive names, 9 targets including armv6, `uname` mapping,
   checksum and optional cosign verification).

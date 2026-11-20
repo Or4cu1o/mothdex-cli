@@ -41,10 +41,10 @@ TTL overrides: `cache.ttl.<ns>` (config.md). TTL `0` disables caching for that n
 type Clock interface{ Now() time.Time }
 
 type Store interface {
-    GetJSON(ns, key string, v any) (Entry, error)            // Entry{Hit, Stale bool; Meta}
-    PutJSON(ns, key string, v any) error
-    GetBlob(ns, key string) (io.ReadCloser, Entry, error)
-    PutBlob(ns, key string, r io.Reader, contentType string, maxBytes int64) error
+    GetJSON(ns, key string, v any, opts ...GetOption) (Entry, error)   // Entry{Hit, Stale bool; Meta}
+    PutJSON(ns, key string, v any, opts ...PutOption) error
+    GetBlob(ns, key string, opts ...GetOption) (io.ReadCloser, Entry, error)
+    PutBlob(ns, key string, r io.Reader, contentType string, maxBytes int64, opts ...PutOption) error
     Delete(ns, key string) error
     Clear(ns ...string) error                                 // none = all evictable namespaces
     Stats() (Stats, error)                                    // per ns: items, bytes, expired
@@ -52,10 +52,21 @@ type Store interface {
 }
 
 func Open(root string, cfg Config, clock Clock, log *slog.Logger) (Store, error)
+
+func AllowStale(maxAge time.Duration) GetOption // read option
+func WithTTL(d time.Duration) PutOption         // write option
 ```
 
-`GetJSON` returns expired items only when asked: `GetJSON(..., AllowStale(maxAge))` (functional option) for the
-app service's stale fallback (≤ 7 d). Otherwise an expired item is a miss.
+Options are variadic, so a plain call takes the defaults (T-12, Crivo suggestion 5):
+
+- **`AllowStale(maxAge)`** (`GetJSON`, `GetBlob`): an expired item is returned with `Entry.Stale = true` if it expired
+  no more than `maxAge` ago; older items, and every expired item without the option, are a miss. The app service uses
+  it for the stale fallback (≤ 7 d). `maxAge ≤ 0` means no stale reads.
+- **`WithTTL(d)`** (`PutJSON`, `PutBlob`): sets the lifetime of that one item; `d ≤ 0` is ignored.
+  - `session` and `state` have no expiry by default, and `WithTTL` is the only way to give an item one (for
+    example the 429 cooldown in `state`).
+  - In evictable namespaces it overrides the namespace TTL for that item. When the namespace TTL is `0`, or the
+    cache is disabled, the namespace is off: nothing is stored, even with `WithTTL`.
 
 ## 4. Size cap and eviction
 
@@ -74,6 +85,12 @@ app service's stale fallback (≤ 7 d). Otherwise an expired item is a miss.
 Several processes (for example CLI and TUI) may share the cache. There are no locks: atomic renames keep files whole,
 and the worst outcome is a duplicate fetch or a slightly wrong in-memory size, corrected by the next `Prune`.
 Inside a process, the `Store` is safe for concurrent use.
+
+**Windows rename retry (best effort).** Windows refuses to replace a file that another handle (a reader) has open,
+and `os.Rename` fails with "access denied" for a moment. On Windows only, the replace is retried up to 8 times with a
+linearly growing pause (5 ms, 10 ms, …; well under 200 ms in total). If it still fails, the `Put` returns the error,
+which callers treat as non-fatal: the cache is best effort and the next fetch rewrites the item. Other OSes do not
+retry.
 
 ## 6. Switches
 
