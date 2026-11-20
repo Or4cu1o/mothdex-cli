@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pkg/mothdex`: client for the Mothdex API v1 (search, entry, random, platforms, regions, info) with typed
+  errors (HTTP 200 `info.error` included), client-side rate limit (5 req/s), 429 handling, a breach circuit,
+  bounded retries with backoff, per-attempt timeouts and context cancellation. Recorded API fixtures live in
+  `pkg/mothdex/testdata/api-v1/`; `tools/record-fixtures` re-records them (developer tool, not shipped).
 - Design documentation in `docs/`: contracts for the API client, app service, downloader, cache, config,
   system profiles and machine output; ADR-0001 (stack) and ADR-0002 (downloader without `Range`); UX
   conventions (Shell, TUI, `--prefer`); research notes. Adds the config key `download.prefer.size`.
