@@ -118,6 +118,7 @@ type Error struct {
 | HTTP 404 (route missing: wrong base URL or API version) | `KindIncompatible` | no |
 | HTTP 429 | `KindRateLimited` | §4 |
 | HTTP 5xx, other unexpected statuses | `KindUpstream` | yes |
+| Redirect refused (§5.1): other origin, scheme change, or more than 3 hops | `KindUntrustedRedirect` | no |
 | DNS, connect, TLS, reset, timeout | `KindNetwork` | yes |
 | `ctx` cancelled or deadline exceeded | `KindCanceled` (wraps `ctx.Err()`) | no |
 
@@ -152,6 +153,20 @@ jitter, capped at 8 s. Every attempt takes a rate token. Backoff sleeps go throu
 
 TLS (T-16 CR-12): system roots, with `golang.org/x/crypto/x509roots/fallback` embedded for systems without a CA
 bundle (some emulation distros). There is **no** option, flag or env var that disables certificate verification.
+
+### 5.1 Redirects (T-30-S2)
+
+The client follows at most **3** redirects (301, 302, 303, 307, 308), and only when the target keeps the same
+**origin** as the original request: the same scheme, host (case-insensitive) and effective port. Anything else is
+refused **before** a request is sent to the target: another host, a scheme change (`https` → `http` downgrade, or
+`http` → `https` on loopback), another port, a missing or unparsable `Location`, or a 4th hop.
+
+A refused redirect is **`KindUntrustedRedirect`** (TS `"untrusted_redirect"`; CLI error code `untrusted_redirect`,
+exit 4). It is **not retryable**: the server answered on purpose, so another attempt would get the same redirect. It
+does not open the 429 circuit and is never classified as `KindNetwork`. In Go, `CheckRedirect` returns a sentinel
+(`errRedirectRefused`) that the classifier checks with `errors.Is` **before** the transport-error branch, because
+`net/http` wraps it in a `*url.Error`. `Message` names the refused target host only (not the full URL). A 303, or
+a 301/302 after a POST, follows as a body-less `GET` with no `Content-Type`.
 
 ## 6. Options (defaults)
 
