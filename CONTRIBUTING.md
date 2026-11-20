@@ -33,6 +33,19 @@ govulncheck ./...
 gitleaks git --pre-commit --staged --redact
 ```
 
+## Release dry run
+
+Changes to `.goreleaser.yaml` or the release workflows are checked by CI with a
+snapshot build. To run it locally, install the pinned tools (goreleaser, cosign,
+syft; versions in `tools/*/go.mod`) and run:
+
+```sh
+for tool in goreleaser cosign syft; do GOBIN="$PWD/.bin" go -C "tools/$tool" install tool; done
+PATH="$PWD/.bin:$PATH" goreleaser release --snapshot --clean --skip=sign
+```
+
+Releases are cut by pushing a `v*` tag from `main`, which needs the owner's approval.
+
 ## Tests
 
 Test behavior that matters: security-sensitive paths, file writes, contracts

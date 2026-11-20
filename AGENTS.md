@@ -18,6 +18,7 @@ go vet -tags gui ./cmd/mothdex-gui              # the gui build tag is skipped b
 go test -race ./...                             # tests
 govulncheck ./...                               # known vulnerabilities (CI pins v1.10.0; golangci-lint v2.15.0)
 gitleaks git --pre-commit --staged --redact     # secrets scan before every commit
+goreleaser check && goreleaser release --snapshot --clean --skip=sign   # release dry run (tools pinned in tools/*/go.mod)
 ```
 
 ## Rules

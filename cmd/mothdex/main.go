@@ -10,8 +10,12 @@ import (
 	_ "golang.org/x/crypto/x509roots/fallback"
 )
 
-// version is overridden at build time with -ldflags "-X main.version=...".
-var version = "dev"
+// Overridden at build time with -ldflags "-X main.version=..." (see .goreleaser.yaml).
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
 	if err := run(os.Stdout); err != nil {
@@ -21,6 +25,6 @@ func main() {
 }
 
 func run(w io.Writer) error {
-	_, err := fmt.Fprintf(w, "mothdex %s\n", version)
+	_, err := fmt.Fprintf(w, "mothdex %s (commit %s, built %s)\n", version, commit, date)
 	return err
 }

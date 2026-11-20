@@ -1,0 +1,49 @@
+name: Release check
+
+# Dry run of the release pipeline on pull requests that touch it. No signing
+# (no OIDC token on PRs), no publishing, no secrets.
+on:
+  pull_request:
+    paths:
+      - .goreleaser.yaml
+      - .github/workflows/release.yml
+      - .github/workflows/release-check.yml
+      - tools/**
+      - cmd/**
+      - go.mod
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    name: goreleaser snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install pinned release tools (goreleaser, cosign, syft)
+        run: |
+          for tool in goreleaser cosign syft; do
+            GOBIN="$RUNNER_TEMP/bin" go -C "tools/$tool" install tool
+          done
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: goreleaser check
+      - run: goreleaser release --snapshot --clean --skip=sign
+      - name: Check the snapshot output
+        run: |
+          test "$(ls dist/*.tar.gz dist/*.zip | wc -l)" -eq 8
+          test "$(ls dist/*.sbom.json | wc -l)" -eq 8
+          (cd dist && sha256sum --check checksums.txt)
+          ./dist/mothdex_linux_amd64_v1/mothdex
