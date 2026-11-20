@@ -49,7 +49,7 @@ func TestCloseReleasesStalledHandler(t *testing.T) {
 	case <-time.After(10 * time.Second): // real-time guard, fires only on failure
 		t.Fatal("Close hung on a stalled handler")
 	}
-	_ = <-errc
+	t.Logf("stalled request ended: %v", <-errc)
 	srv.Close() // second call is a no-op
 }
 
