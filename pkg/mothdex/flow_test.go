@@ -291,12 +291,12 @@ func TestDefaultHTTPClientTLSPolicy(t *testing.T) {
 }
 
 func TestBaseURLErrorsDoNotEchoCredentials(t *testing.T) {
-	for _, raw := range []string{"https://TOKEN@exa mple/v1", "https://user:pw@host/v1", "https://TOKEN@%zz/v1"} {
+	for _, raw := range []string{"https://TOKEN@exa mple/v1", "https://user:pw@host/v1", "https://TOKEN@%zz/v1", "https://user:S3cret", "https://h:80S3cret/v1"} {
 		err := ValidateBaseURL(raw)
 		if err == nil {
 			t.Fatalf("%q accepted", raw)
 		}
-		if strings.Contains(err.Error(), "TOKEN") || strings.Contains(err.Error(), "pw") {
+		if strings.Contains(err.Error(), "TOKEN") || strings.Contains(err.Error(), "pw") || strings.Contains(err.Error(), "S3cret") {
 			t.Errorf("credential echoed: %v", err)
 		}
 	}

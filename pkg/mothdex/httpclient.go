@@ -22,12 +22,9 @@ func ValidateBaseURL(raw string) error {
 func parseBaseURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		// url.Error embeds the whole input, which may carry credentials: keep only the cause.
-		var uerr *url.Error
-		if errors.As(err, &uerr) {
-			err = uerr.Err
-		}
-		return nil, fmt.Errorf("mothdex: invalid base URL: %w", err)
+		// The text of a url.Parse failure quotes parts of the input (a bad port, a host), which
+		// may be a credential, so the message is fixed and the cause is dropped.
+		return nil, errors.New("mothdex: invalid base URL: not a valid URL")
 	}
 	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("mothdex: base URL must be scheme://host[/path] without credentials, query or fragment")
