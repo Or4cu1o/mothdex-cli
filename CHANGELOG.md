@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `mothdex` binary embeds fallback CA roots (`x509roots/fallback`) for systems without a CA bundle; `pkg/mothdex` has
   no option to disable certificate verification, and `WithHTTPClient` callers own their TLS policy.
+  `info.error` messages lose Unicode control and format characters at parse time (defense in depth).
 - `pkg/mothdex`: client for the Mothdex API v1 (search, entry, random, platforms, regions, info) with typed
   errors (HTTP 200 `info.error` included), client-side rate limit (5 req/s), 429 handling, a breach circuit,
   bounded retries with backoff, per-attempt timeouts and context cancellation. Recorded API fixtures live in
