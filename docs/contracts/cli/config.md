@@ -105,7 +105,8 @@ confirmations) and `--allow-executable` (downloader §6.1). They apply to one ru
 - Type and range errors give exit code 2 with `key`, the bad value and its source (`default`, `file`, `env` or
   `flag`). They carry **no `file:line`**: koanf does not keep YAML positions (T-11 decision 2).
 - `api.base_url` has a single URL rule, `mothdex.ValidateBaseURL` (used by both the config loader and the client):
-  `https` only, `http` only for loopback hosts, and no userinfo, query or fragment.
+  `https` only, `http` only for loopback IP literals (`127.0.0.0/8`, `::1`; not `localhost`), and no userinfo, query
+  or fragment.
 - Unknown keys in the file are a warning, not an error (forward compatibility).
 - `config set <key> <value>` validates against the schema, then rewrites the YAML file atomically. Comments are **not**
   preserved; this is documented in `config --help`. `config reset <key|all>` removes the key from the file;

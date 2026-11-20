@@ -157,7 +157,7 @@ bundle (some emulation distros). There is **no** option, flag or env var that di
 
 | Option | Default | Notes |
 |---|---|---|
-| `WithBaseURL(string)` | `https://api.mothdex.net/v1` | `https` required; `http` only for loopback hosts (tests) |
+| `WithBaseURL(string)` | `https://api.mothdex.net/v1` | `https` required; `http` only for loopback **IP literals** (`127.0.0.0/8`, `::1`; tests), never names such as `localhost`, which can be repointed. Rule: `ValidateBaseURL` |
 | `WithHTTPClient(*http.Client)` | own client, TLS ≥ 1.2, max 3 redirects within the same host | |
 | `WithTimeout(time.Duration)` | 15 s per attempt | |
 | `WithRateLimit(rps float64, burst int)` | 5, 5 | clamped 1..10 |
