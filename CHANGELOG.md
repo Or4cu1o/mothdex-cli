@@ -49,4 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows and macOS, govulncheck, gitleaks) with actions pinned by commit SHA.
 - Dependabot for Go modules and GitHub Actions.
 
+### Fixed
+
+- Config `profile.folders` values reject launcher-folder look-alikes (`portſ`, `wındows`) and the full set of Windows
+  device names (`COM0`, `LPT0`, superscript digits); `api.base_url` rejection messages (load and `set`, client validation) never echo the URL userinfo, and a URL that does not parse is
+  replaced by a placeholder; the API client
+  accepts `http` only for loopback IP literals, not `localhost`.
+
 [Unreleased]: https://github.com/Or4cu1o/mothdex-cli/commits/main

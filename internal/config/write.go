@@ -32,7 +32,7 @@ func Set(path, key, raw string) error {
 	}
 	v, err := s.parse(raw)
 	if err != nil {
-		return &Error{Kind: KindInvalidValue, Key: key, Value: raw, Reason: err.Error(), Err: err}
+		return valueError(key, raw, "", err)
 	}
 	flat, err := readFlat(path)
 	if err != nil {

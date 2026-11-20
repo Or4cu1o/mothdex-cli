@@ -22,7 +22,9 @@ func ValidateBaseURL(raw string) error {
 func parseBaseURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("mothdex: invalid base URL: %w", err)
+		// The text of a url.Parse failure quotes parts of the input (a bad port, a host), which
+		// may be a credential, so the message is fixed and the cause is dropped.
+		return nil, errors.New("mothdex: invalid base URL: not a valid URL")
 	}
 	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("mothdex: base URL must be scheme://host[/path] without credentials, query or fragment")
@@ -40,10 +42,8 @@ func parseBaseURL(raw string) (*url.URL, error) {
 	}
 }
 
+// isLoopback accepts loopback IP literals only; names such as "localhost" can be repointed.
 func isLoopback(host string) bool {
-	if host == "localhost" {
-		return true
-	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }

@@ -255,7 +255,7 @@ func TestBaseURLValidation(t *testing.T) {
 	cases := map[string]bool{
 		"https://api.mothdex.net/v1":  true,
 		"http://127.0.0.1:8080/v1":    true,
-		"http://localhost:9/v1":       true,
+		"http://localhost:9/v1":       false,
 		"http://[::1]:9/v1":           true,
 		"http://api.mothdex.net/v1":   false,
 		"ftp://127.0.0.1/v1":          false,
@@ -287,5 +287,17 @@ func TestDefaultHTTPClientTLSPolicy(t *testing.T) {
 	}
 	if tr.TLSClientConfig.MinVersion != tls.VersionTLS12 || tr.TLSClientConfig.InsecureSkipVerify {
 		t.Fatalf("TLS policy: %+v", tr.TLSClientConfig)
+	}
+}
+
+func TestBaseURLErrorsDoNotEchoCredentials(t *testing.T) {
+	for _, raw := range []string{"https://TOKEN@exa mple/v1", "https://user:pw@host/v1", "https://TOKEN@%zz/v1", "https://user:S3cret", "https://h:80S3cret/v1"} {
+		err := ValidateBaseURL(raw)
+		if err == nil {
+			t.Fatalf("%q accepted", raw)
+		}
+		if strings.Contains(err.Error(), "TOKEN") || strings.Contains(err.Error(), "pw") || strings.Contains(err.Error(), "S3cret") {
+			t.Errorf("credential echoed: %v", err)
+		}
 	}
 }

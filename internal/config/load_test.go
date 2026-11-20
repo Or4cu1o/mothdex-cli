@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"io/fs"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -260,7 +261,8 @@ func TestSizeParsingAndFormatting(t *testing.T) {
 
 func TestFolderNameRegression(t *testing.T) {
 	bad := []string{"ports", "Ports", "ports.", "windows.", "ports_scripts.", "ports:x", "ports ", "a/b", `a\b`, "..", ".", "",
-		"nul", "NUL.txt", "com1", "-x", "a\x00b", "C:"}
+		"nul", "NUL.txt", "com1", "-x", "a\x00b", "C:",
+		"portſ", "wındows", "com0", "COM¹", "LPT²", "lpt0", "PORTS_SCRIPTS"}
 	for _, s := range bad {
 		if folderName(s) == nil {
 			t.Errorf("folderName(%q) must fail", s)
@@ -274,12 +276,12 @@ func TestFolderNameRegression(t *testing.T) {
 }
 
 func TestBaseURLMatchesClientRule(t *testing.T) {
-	for _, bad := range []string{"https://user:pw@host/v1", "https://host/v1?x=1", "https://host/v1#f", "http://evil.example/v1", "ftp://host"} {
+	for _, bad := range []string{"https://user:pw@host/v1", "https://TOKEN@host/v1", "https://host/v1?x=1", "https://host/v1#f", "http://evil.example/v1", "http://localhost/v1", "ftp://host"} {
 		_, err := Load(Options{Environ: []string{"MOTHDEX_API_BASE_URL=" + bad}})
 		var e *Error
 		if !errors.As(err, &e) || e.Key != "api.base_url" {
 			t.Errorf("%q accepted: %v", bad, err)
-		} else if strings.Contains(e.Value, "pw") {
+		} else if strings.Contains(e.Value, "pw") || strings.Contains(e.Value, "TOKEN") {
 			t.Errorf("credential leaked in %q", e.Value)
 		}
 	}
@@ -329,5 +331,34 @@ func TestEnvNamesFoldCaseOnWindows(t *testing.T) {
 	}
 	if v, _ := envLayer(env, false); len(v) != 0 {
 		t.Fatalf("case-sensitive hosts must ignore lower-case names: %v", v)
+	}
+}
+
+// secretFree fails when err or anything it wraps mentions a secret.
+func secretFree(t *testing.T, err error, secrets ...string) {
+	t.Helper()
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		for _, secret := range secrets {
+			if strings.Contains(e.Error(), secret) {
+				t.Errorf("secret %q leaked in %q", secret, e.Error())
+			}
+		}
+	}
+}
+
+func TestBaseURLSecretsNeverReachErrors(t *testing.T) {
+	bad := []string{"https://TOKEN@host/v1", "https://user:pw@exa mple/v1", "https://user:pw@host/v1", "https://TOKEN@%zz/v1",
+		"https://host/v1?api_key=SECRET", "https://host/v1#SECRET", "https:SECRET@host/v1", "SECRET@api.example/v1",
+		"https://user:SECRET", "https://tok:SECRET/v1", "https://h:80SECRET/v1"}
+	for _, raw := range bad {
+		_, loadErr := Load(Options{Environ: []string{"MOTHDEX_API_BASE_URL=" + raw}})
+		setErr := Set(filepath.Join(t.TempDir(), "c.yaml"), "api.base_url", raw)
+		for name, err := range map[string]error{"load": loadErr, "set": setErr} {
+			if err == nil {
+				t.Errorf("%s accepted %q", name, raw)
+				continue
+			}
+			secretFree(t, err, "TOKEN", "pw", "SECRET")
+		}
 	}
 }
