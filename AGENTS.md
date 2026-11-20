@@ -14,8 +14,9 @@ layer over a single app service; no business logic lives in the UI.
 go build ./...                                  # build
 go run ./cmd/mothdex                            # run (prints version)
 golangci-lint run                               # lint (config: .golangci.yml, v2)
+go vet -tags gui ./cmd/mothdex-gui              # the gui build tag is skipped by default builds
 go test -race ./...                             # tests
-govulncheck ./...                               # known vulnerabilities
+govulncheck ./...                               # known vulnerabilities (CI pins v1.10.0; golangci-lint v2.15.0)
 gitleaks git --pre-commit --staged --redact     # secrets scan before every commit
 ```
 
@@ -37,5 +38,5 @@ The riskiest file in a change sets the level of the whole change.
 | Docs, locales, styles, README | Low |
 | Commands, cache, i18n, TUI/GUI | Medium |
 | File writes with a name coming from the server or an LLM (downloader) | **High** |
-| Release CI, signing, publishing to package managers, tokens | **High** (supply chain and secrets) |
+| CI workflows (`.github/workflows`), Dependabot, release, signing, publishing to package managers, tokens | **High** (supply chain and secrets) |
 | Archiving repositories, merges, releases, publications | external action: needs owner approval |

@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Project skeleton: Go module, package layout with placeholders, minimal
+- Project skeleton: Go module, package layout with placeholders (including `internal/app`), minimal
   `mothdex` binary that prints its version.
 - GPL-3.0 license, governance documents, issue and pull request templates.
 - CI for pull requests and `main` (golangci-lint, `go test -race` on Linux,
   Windows and macOS, govulncheck, gitleaks) with actions pinned by commit SHA.
 - Dependabot for Go modules and GitHub Actions.
+
+[Unreleased]: https://github.com/Or4cu1o/mothdex-cli/commits/main

@@ -21,12 +21,13 @@ anything large.
 
 ## Local checks
 
-Install Go (version in `go.mod`), [golangci-lint](https://golangci-lint.run/) v2,
-[govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) and
-[gitleaks](https://github.com/gitleaks/gitleaks), then run:
+Install Go (version in `go.mod`), [golangci-lint](https://golangci-lint.run/) v2.15.0,
+[govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) v1.10.0 (the
+versions CI uses) and [gitleaks](https://github.com/gitleaks/gitleaks), then run:
 
 ```sh
 golangci-lint run
+go vet -tags gui ./cmd/mothdex-gui
 go test -race ./...
 govulncheck ./...
 gitleaks git --pre-commit --staged --redact
