@@ -2,7 +2,7 @@
 
 Status: draft v2 (T-2 + T-16 change requests) · Owner: Alicerce · Implementer: Forja (T-17) · Risk: **High** (writes files named by the server)
 Sources: [`mothdex-proxy/src/main.cpp`](https://github.com/cavv-dev/mothdex-proxy/blob/main/src/main.cpp) (`streamFile`, `getFileDetails`, `pieceWaitTimeout`) · Covers A1–A4. See [ADR-0002](../../adr/ADR-0002-downloader-without-range.md).
-Threat model: Sentinela, T-16 (`docs/security/T-16-threat-model-downloader.md`; TH-nn and CR-n ids below). Every
+Threat model: Sentinela, T-16 ([`T-16-threat-model-downloader.md`](../../security/T-16-threat-model-downloader.md); TH-nn and CR-n ids below). Every
 **MUST** here maps to at least one Ensaio test (T-18).
 
 Everything the API returns about a link (`url`, `filename`, `size`, `format`) and about its entry (`slug`, `platform`,
@@ -148,6 +148,14 @@ Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name
   `filepath.IsLocal` and contain no separator.
 - **Confinement applies to the final dir in every layout:** the resolved destdir must be inside the configured root,
   and all file operations go through an `os.Root` opened on that root (no `..`, no symlink escape).
+- **"Inside the root" is a per-component check** (T-16 G4), never a string prefix (`C:\roms` vs `C:\roms2`,
+  `/userdata/roms` vs `/userdata/roms-old`): `rel, err := filepath.Rel(root, dest)` must succeed, `filepath.IsLocal(rel)`
+  must hold (or `rel == "."`), and no element of `rel` may be `..`. On Windows the comparison is case-insensitive and
+  both paths must be on the same volume (`filepath.VolumeName`).
+- **Never into a launcher folder** (T-16 G3, TH-06): the final destdir (from `-o`, `download.dir`, `profile.rom_root`
+  or the profile map) must not be equal to, or inside, the active profile's `launcher.dir` or any folder named
+  `ports`, `ports_scripts` or `windows` directly under the ROM root; otherwise `Failed(path_rejected)`, unless the run
+  has `--allow-executable`.
 - **Windows** (CR-13): Go ≥ 1.23 `EvalSymlinks` does not resolve junctions, so confinement is verified with
   `GetFinalPathNameByHandle` on the opened destdir handle, compared against the same call on the root handle.
 - On POSIX systems, directories the downloader creates get mode `0700` and files `0600` (umask may only reduce them) (CR-7).
@@ -168,7 +176,9 @@ Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name
   - `EEXIST` at finalize → apply `on_exists` again (`skip` → `Skipped`, staging removed).
 - `download.on_exists`: `skip` (default), `rename` (`name (1).ext` … `name (99).ext`; past 99 → `Failed(exists)`),
   `overwrite`: only with the `--force` flag, never from config or env; it is the one case that uses a replacing rename,
-  for that single file.
+  for that single file. Before replacing, `Lstat` the target through the `os.Root`: anything that is not a regular
+  file (symlink, directory, device, FIFO, socket, Windows reparse point) → `Failed(path_rejected)`, and the target is
+  left untouched (T-16 G2, TH-10).
 
 ### 6.4 Cleanup (CR-7; TH-15)
 
@@ -192,7 +202,7 @@ Journal entries whose job files are gone are pruned. The downloader never delete
 `Downloader` takes `HTTPDoer`, `Clock`, `Sleeper`, `Rand`, an `os.Root`-based FS and a per-OS `Finalizer` (no-replace
 move) interface. The fake proxy covers: stall before the first byte, stall mid-stream, truncation, transient 404, 429,
 any 3xx, `Content-Length` mismatch, extra bytes, `Content-Encoding: gzip`, malicious filenames, off-policy URLs (http,
-userinfo, port, IP literal, IDN, trailing dot) and zip bombs. T-16 §8 lists the full test set.
+userinfo, port, IP literal, IDN, trailing dot) and zip bombs. [T-16 §8](../../security/T-16-threat-model-downloader.md) lists the full test set.
 
 ## Resolved questions (Regente, T-2 phase 1)
 

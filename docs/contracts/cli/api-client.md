@@ -124,7 +124,8 @@ type Error struct {
 The known-message table lives in one place (`errors.go`) and has a parametrized test against the fixtures.
 A6 rule: **every** response checks the HTTP status **and** `info.error`, in that order.
 Forward compatibility: if `info.code` appears (requested upstream in proposal U2), it takes
-precedence over message matching; unknown codes map to `KindAPI`.
+precedence over message matching; unknown codes map to `KindAPI`. The code-to-kind mapping is **provisional** until
+the maintainers answer U2, since the code names are only our proposal (accepted deviation 2 from T-10).
 
 ## 4. Rate limiting and 429 (A5)
 
@@ -134,6 +135,8 @@ absent** (not verified against production).
 
 - Client-side token bucket (`golang.org/x/time/rate`): default **5 req/s, burst 5**; `WithRateLimit` clamps to 1..10 req/s.
 - On 429: honor `Retry-After` (seconds or HTTP date) when present, else wait **2 s**; at most **1** automatic retry per call.
+  Automatic waits are capped at `maxAutoWait` = **30 s**: a longer `Retry-After` is not slept; the call fails at once
+  with `KindRateLimited` and `RetryAfter` set, and the caller decides (accepted deviation 1 from T-10).
 - **Breach circuit:** the client counts 429s. On the 3rd within 10 minutes it opens a cooldown of 10 minutes;
   every call fails fast with `KindRateLimited` and `RetryAfter` set, with no network I/O. This keeps one
   process well under the 15/hour meta-limit.

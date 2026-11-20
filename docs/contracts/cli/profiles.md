@@ -107,7 +107,8 @@ func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error     // never fat
   Arcade ids (`mame`, `fbn`, `naomi`…) are deliberately **unmapped** on systems that split arcade by emulator, so the
   user chooses (T1e §4).
 - **Refresh** runs **once per batch** after `Wait` returns with at least one `Done` job, never per file. `http_get`
-  (T-16 CR-10) accepts only the IP literals `127.0.0.1` or `[::1]` as host (the loader rejects anything else, including
+  (T-16 CR-10) accepts only the URL `http://127.0.0.1:1234/reloadgames` or `http://[::1]:1234/reloadgames` (scheme
+  `http`, fixed path `/reloadgames`, no query; host only the IP literals `127.0.0.1` or `[::1]`; the loader rejects anything else, including
   `localhost`), uses a client with `Proxy: nil`, no redirects, a 3 s timeout, and reads at most 64 KiB of body. The ES reply arrives before the
   reload finishes, and a failure becomes a warning. `manual` prints the localized hint `profile.refresh_manual`.
 - **Installer contract (T-21):** `install.sh` uses the same detection rules, read from `mothdex profile show --json`
