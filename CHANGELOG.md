@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/cache`: on-disk cache (search, entry, meta, info, covers, session, state) with canonical request keys,
+  per-namespace TTL, sidecar metadata, stale reads, a 200 MB cap with expiry-first then LRU eviction, atomic writes,
+  an injected clock and private file modes (0700/0600).
 - `internal/testutil/fakeproxy` and `internal/testutil/fakeclock`: scripted TLS fake of the download proxy (truncate,
   stalls, transient 404, 429, Content-Length mismatch, gzip, redirects, malicious Content-Disposition, oversized body)
   driven by a fake clock, plus a catalog of the 52 downloader test cases from the T-16 threat model, all pending until
