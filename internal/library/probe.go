@@ -18,6 +18,9 @@ func (p Profile) validateProbes() error {
 	return nil
 }
 
+// yieldsPath reports whether the probe can supply a path for ${MATCH}.
+func (pr Probe) yieldsPath() bool { return len(pr.OSRelease) == 0 }
+
 func (pr Probe) validate() error {
 	kinds := 0
 	for _, set := range []bool{pr.File != "", len(pr.Files) > 0, pr.Dir != "", pr.Glob != "", len(pr.OSRelease) > 0, pr.Config != ""} {
@@ -97,8 +100,9 @@ func fsPath(p string) string {
 
 // match is the outcome of a probe.
 type match struct {
-	ok   bool
-	path string // directory or glob match found, for ${MATCH}
+	ok     bool
+	path   string   // directory or glob match found, for ${MATCH}
+	others []string // further glob hits that were not used
 }
 
 // run evaluates a probe against the environment. A probe that errors counts as not matched.
@@ -159,7 +163,11 @@ func globMatch(env Env, v values, raw string) match {
 		return match{}
 	}
 	sort.Strings(hits)
-	return match{ok: true, path: "/" + hits[0]}
+	others := make([]string, 0, len(hits)-1)
+	for _, h := range hits[1:] {
+		others = append(others, "/"+h)
+	}
+	return match{ok: true, path: "/" + hits[0], others: others}
 }
 
 // configMatch passes when the config value is non-empty and the path exists.
@@ -167,6 +175,9 @@ func configMatch(env Env, v values, key string) match {
 	val := v.config[key]
 	if val == "" || (!isDir(env.FS, val) && !isFile(env.FS, val)) {
 		return match{}
+	}
+	if isFile(env.FS, val) {
+		return match{ok: true, path: dirOf(val)} // a configured file stands for its directory
 	}
 	return match{ok: true, path: val}
 }

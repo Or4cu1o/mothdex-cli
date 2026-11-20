@@ -153,8 +153,9 @@ func osMatches(profileOS, goos string) bool { return profileOS == "any" || profi
 // probeResult is what the probes of one profile found.
 type probeResult struct {
 	ok      bool
-	match   string  // value of ${MATCH}
-	matched []Probe // probes that passed, for the unverified list
+	match   string   // value of ${MATCH}
+	matched []Probe  // probes that passed, for the unverified list
+	notes   []string // warnings from probing, such as unused glob hits
 }
 
 // probe runs the probes of p: every "all" probe, plus at least one "any" probe when present.
@@ -164,6 +165,9 @@ func (d detector) probe(p Profile) probeResult {
 		res.matched = append(res.matched, pr)
 		if res.match == "" {
 			res.match = m.path
+			if len(m.others) > 0 {
+				res.notes = append(res.notes, fmt.Sprintf("%s matched several places: using %s, ignoring %s", pr.describe(), m.path, strings.Join(m.others, ", ")))
+			}
 		}
 	}
 	for _, pr := range p.Detect.All {
@@ -239,6 +243,7 @@ func (d detector) rootUsable(root string) bool {
 func (d detector) build(p Profile, source string, res probeResult, warns []string) ProfileInfo {
 	v := d.withMatch(res)
 	resolved := p
+	warns = append(warns, res.notes...)
 	var rootWarn string
 	resolved.Roms.Root, rootWarn = d.rootAndWarning(p, res)
 	if rootWarn != "" {

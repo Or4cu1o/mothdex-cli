@@ -319,3 +319,24 @@ func TestUnknownForcedProfileKeepsItsSource(t *testing.T) {
 		t.Fatalf("%s/%s", info.ID, info.Source)
 	}
 }
+
+func TestConfiguredFileStandsForItsDirectory(t *testing.T) {
+	env := testEnv(map[string]string{"D:/Games/RB/RetroBat.exe": ""})
+	// A config probe whose value is a file yields its directory, never "RetroBat.exe/roms".
+	m := configMatch(env, values{config: map[string]string{"profile.retrobat_path": "D:/Games/RB/RetroBat.exe"}}, "profile.retrobat_path")
+	if !m.ok || m.path != "D:/Games/RB" {
+		t.Fatalf("configMatch on a file gave %+v", m)
+	}
+	dir := configMatch(env, values{config: map[string]string{"profile.retrobat_path": "D:/Games/RB"}}, "profile.retrobat_path")
+	if !dir.ok || dir.path != "D:/Games/RB" {
+		t.Fatalf("configMatch on a directory gave %+v", dir)
+	}
+}
+
+func TestSeveralGlobHitsWarn(t *testing.T) {
+	info := detect(t, testEnv(map[string]string{"run/media/a/Emulation/roms/.keep": "", "run/media/b/Emulation/roms/.keep": ""}), Config{})
+	joined := strings.Join(info.Warnings, "|")
+	if info.RomRoot != "/run/media/a/Emulation/roms" || !strings.Contains(joined, "ignoring /run/media/b/Emulation/roms") {
+		t.Fatalf("root %q warnings %v", info.RomRoot, info.Warnings)
+	}
+}

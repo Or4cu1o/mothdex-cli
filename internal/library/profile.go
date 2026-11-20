@@ -180,6 +180,9 @@ func (p Profile) validatePaths() error {
 			return err
 		}
 	}
+	if err := p.checkMatchUse(); err != nil {
+		return err
+	}
 	if p.Launcher.Kind != "none" && p.Launcher.Kind != "" && p.Launcher.Dir == "" {
 		return errors.New("launcher.dir is required for sh and bat launchers")
 	}
@@ -305,4 +308,22 @@ func within(target, dir []string) bool {
 		}
 	}
 	return true
+}
+
+// checkMatchUse rejects ${MATCH} in a path when no probe of the profile can yield one (for
+// example only os_release), which would otherwise fall back to generic silently at runtime.
+func (p Profile) checkMatchUse() error {
+	usesMatch := false
+	for _, path := range []string{p.Roms.Root, p.BinDir.Path, p.Launcher.Dir} {
+		usesMatch = usesMatch || strings.Contains(path, "${MATCH}")
+	}
+	if !usesMatch {
+		return nil
+	}
+	for _, pr := range append(append([]Probe{}, p.Detect.All...), p.Detect.Any...) {
+		if pr.yieldsPath() {
+			return nil
+		}
+	}
+	return errors.New("${MATCH} is used but no probe can yield a path")
 }
