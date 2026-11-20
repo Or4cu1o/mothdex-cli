@@ -18,3 +18,11 @@ reporter and disclosed within 90 days of the report at the latest.
 Of particular interest: writing files with server-provided names (path
 traversal, reserved names, symlinks, overwriting), handling of downloaded
 content, and the integrity of release artifacts and the CI pipeline.
+
+## Verifying releases
+
+Release files are listed in `checksums.txt`, signed with cosign (keyless) and
+attested by GitHub. The exact signer identity and the verification commands are in
+[docs/release.md](docs/release.md#verifying-a-download): the certificate identity
+is the `release.yml` workflow at `refs/tags/vX.Y.Z` of this repository, with issuer
+`https://token.actions.githubusercontent.com`.

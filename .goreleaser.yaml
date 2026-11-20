@@ -1,0 +1,90 @@
+# GoReleaser OSS configuration. Validated with `goreleaser check` and
+# `goreleaser release --snapshot --clean --skip=sign` (see docs in CONTRIBUTING.md).
+# Publishing is NOT done by GoReleaser: the release workflow uploads the
+# artifacts with `gh` after signing and attestation. No package manager is
+# published to (decision D3).
+version: 2
+
+project_name: mothdex
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: mothdex
+    main: ./cmd/mothdex
+    binary: mothdex
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64, arm, "386"]
+    goarm: ["6", "7"]
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: "386"
+      - goos: windows
+        goarch: arm
+
+archives:
+  - id: mothdex
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
+    # Fixed mtimes keep the archives reproducible (binaries use mod_timestamp).
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: CHANGELOG.md
+        info:
+          mtime: "{{ .CommitDate }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archive-sboms
+    artifacts: archive
+
+# Keyless signature of checksums.txt through GitHub OIDC (workflow needs id-token: write).
+signs:
+  - id: cosign-checksums
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --yes
+      - --bundle=${signature}
+      - ${artifact}
+    output: true
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  disable: true
+
+# The release workflow creates the GitHub release itself.
+release:
+  disable: true

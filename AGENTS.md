@@ -18,6 +18,8 @@ go vet -tags gui ./cmd/mothdex-gui              # the gui build tag is skipped b
 go test -race ./...                             # tests
 govulncheck ./...                               # known vulnerabilities (CI pins v1.10.0; golangci-lint v2.15.0)
 gitleaks git --pre-commit --staged --redact     # secrets scan before every commit
+goreleaser check && goreleaser release --snapshot --clean --skip=sign   # release dry run (tools pinned in tools/*/go.mod)
+scripts/verify-dist.sh dist                     # checks the 9 archives, SBOMs, checksums, binaries
 ```
 
 ## Rules
@@ -27,6 +29,7 @@ gitleaks git --pre-commit --staged --redact     # secrets scan before every comm
 - CHANGELOG entry under `Unreleased` in every PR; update README when structure changes.
 - GitHub Actions are pinned by full commit SHA with a version comment; the
   workflow `GITHUB_TOKEN` stays read-only unless a job needs more.
+- Release archive names and the `uname -m` mapping are a contract: see docs/release.md.
 - Tests: see CONTRIBUTING.md. Never call the real API from tests.
 
 ## Risk map
