@@ -70,7 +70,7 @@ type NSStats struct {
 	Name    string
 	Items   int
 	Bytes   int64
-	Expired int
+	Expired int // expired or corrupt (both are removed by Prune)
 }
 
 // Stats is the result of Store.Stats.

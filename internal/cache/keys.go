@@ -85,8 +85,11 @@ func hashKey(fields map[string]any) string {
 // keyPattern is the allowlist for keys used as file names: no separators, dots or upper case.
 var keyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,127}$`)
 
+// deviceKey rejects Windows device names, which would be devices as file names (con.json).
+var deviceKey = regexp.MustCompile(`^(con|prn|aux|nul|(com|lpt)[0-9])$`)
+
 func validKey(key string) error {
-	if !keyPattern.MatchString(key) {
+	if !keyPattern.MatchString(key) || deviceKey.MatchString(key) {
 		return ErrInvalidKey
 	}
 	return nil

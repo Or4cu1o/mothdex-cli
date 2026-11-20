@@ -72,7 +72,7 @@ func TestValidKey(t *testing.T) {
 			t.Errorf("%q should be valid", ok)
 		}
 	}
-	for _, bad := range []string{"", "../x", "a/b", `a\b`, "A", "a.b", ".hidden", "a b", "a\x00"} {
+	for _, bad := range []string{"", "../x", "a/b", `a\b`, "A", "a.b", ".hidden", "a b", "a\x00", "con", "nul", "com1", "lpt9", "aux"} {
 		if validKey(bad) == nil {
 			t.Errorf("%q should be rejected", bad)
 		}

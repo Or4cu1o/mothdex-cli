@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -455,4 +456,85 @@ func TestOverwriteKeepsTotalAccurate(t *testing.T) {
 	} else {
 		_ = rc.Close()
 	}
+}
+
+// Regression: a reader that sees a half-written item must not delete the fresh one.
+func TestConcurrentGetAndPutKeepTheLatestItem(t *testing.T) {
+	s, _, _ := open(t, testConfig())
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var d doc
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = s.GetJSON(NSSearch, "k", &d)
+			}
+		}
+	}()
+	for round := 0; round < 40; round++ {
+		for i := 0; i < 100; i++ {
+			if err := s.PutJSON(NSSearch, "k", doc{"x", i}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var d doc
+		if e, _ := s.GetJSON(NSSearch, "k", &d); !e.Hit || d.N != 99 {
+			close(stop)
+			wg.Wait()
+			t.Fatalf("round %d: the last Put was lost (%+v, %+v)", round, e, d)
+		}
+	}
+	close(stop)
+	wg.Wait()
+}
+
+func TestWithTTLCannotEnableADisabledNamespace(t *testing.T) {
+	cfg := testConfig()
+	cfg.TTL.Info = 0
+	s, _, root := open(t, cfg)
+	if err := s.PutJSON(NSInfo, "k", doc{}, WithTTL(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, NSInfo)); err == nil {
+		t.Fatal("TTL 0 must hold even for items that ask for a TTL")
+	}
+}
+
+func TestSlowBodyDoesNotBlockOtherWrites(t *testing.T) {
+	s, _, _ := open(t, testConfig())
+	started, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- s.PutBlob(NSCovers, "slow", &gatedReader{started: started, release: release}, "image/png", 1<<20)
+	}()
+	<-started // the first Put is now inside its copy, holding no lock
+	if err := s.PutJSON(NSEntry, "fast", doc{}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// gatedReader signals when first read, then blocks until released.
+type gatedReader struct {
+	started, release chan struct{}
+	once             sync.Once
+	done             bool
+}
+
+func (g *gatedReader) Read(p []byte) (int, error) {
+	g.once.Do(func() { close(g.started) })
+	<-g.release
+	if g.done {
+		return 0, io.EOF
+	}
+	g.done = true
+	return copy(p, "data"), nil
 }
