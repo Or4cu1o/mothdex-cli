@@ -347,7 +347,8 @@ func secretFree(t *testing.T, err error, secrets ...string) {
 }
 
 func TestBaseURLSecretsNeverReachErrors(t *testing.T) {
-	bad := []string{"https://TOKEN@host/v1", "https://user:pw@exa mple/v1", "https://user:pw@host/v1", "https://TOKEN@%zz/v1"}
+	bad := []string{"https://TOKEN@host/v1", "https://user:pw@exa mple/v1", "https://user:pw@host/v1", "https://TOKEN@%zz/v1",
+		"https://host/v1?api_key=SECRET", "https://host/v1#SECRET", "https:SECRET@host/v1", "SECRET@api.example/v1"}
 	for _, raw := range bad {
 		_, loadErr := Load(Options{Environ: []string{"MOTHDEX_API_BASE_URL=" + raw}})
 		setErr := Set(filepath.Join(t.TempDir(), "c.yaml"), "api.base_url", raw)
@@ -356,7 +357,7 @@ func TestBaseURLSecretsNeverReachErrors(t *testing.T) {
 				t.Errorf("%s accepted %q", name, raw)
 				continue
 			}
-			secretFree(t, err, "TOKEN", "pw")
+			secretFree(t, err, "TOKEN", "pw", "SECRET")
 		}
 	}
 }

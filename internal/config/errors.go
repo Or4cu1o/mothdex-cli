@@ -63,18 +63,17 @@ func valueError(key string, raw any, src Source, cause error) *Error {
 
 const unparseableURL = "<unparseable URL>"
 
-// displayValue renders a rejected value for an error message. A base URL may carry a token
-// or password in its userinfo, so it is never echoed as given: the userinfo is dropped, and a
-// URL that does not parse is replaced by a placeholder.
+// displayValue renders a rejected value for an error message. A base URL may carry a secret in
+// its userinfo, query, fragment, opaque part or even its path, so it is never echoed as given:
+// only scheme://host[:port] is shown, and anything without both becomes a placeholder.
 func displayValue(key string, raw any) string {
 	text := fmt.Sprint(raw)
 	if key != "api.base_url" {
 		return text
 	}
 	u, err := url.Parse(text)
-	if err != nil {
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return unparseableURL
 	}
-	u.User = nil
-	return u.String()
+	return u.Scheme + "://" + u.Host
 }
