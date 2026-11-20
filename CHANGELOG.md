@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Config contract records the T-11 decisions: portable paths apply with any config file, config errors carry no
+  `file:line`, `config reset` on a missing file writes only `version: 1`, and `mothdex.ValidateBaseURL` is the only
+  rule for `api.base_url`.
 - Downloader and related contracts updated with the 14 change requests from the T-16 threat model: proxy-only URL
   policy, `Sanitize` spec and executable deny-list, no-replace finalize, space reservation ledger, zip caps, cover fetch
   SSRF guard, refresh URL policy, platform-id and folder validation, Windows junction-safe confinement. New config key
