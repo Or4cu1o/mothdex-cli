@@ -264,13 +264,13 @@ func TestFolderNameRegression(t *testing.T) {
 		"nul", "NUL.txt", "com1", "-x", "a\x00b", "C:",
 		"portſ", "wındows", "com0", "COM¹", "LPT²", "lpt0", "PORTS_SCRIPTS"}
 	for _, s := range bad {
-		if folderName(s) == nil {
-			t.Errorf("folderName(%q) must fail", s)
+		if ValidateFolderName(s) == nil {
+			t.Errorf("ValidateFolderName(%q) must fail", s)
 		}
 	}
 	for _, s := range []string{"megadrive", "Sega Genesis", "psx", "snes (usa)", "gba_2", "日本"} {
-		if err := folderName(s); err != nil {
-			t.Errorf("folderName(%q): %v", s, err)
+		if err := ValidateFolderName(s); err != nil {
+			t.Errorf("ValidateFolderName(%q): %v", s, err)
 		}
 	}
 }
