@@ -24,6 +24,14 @@ linters:
         - name: error-naming
         - name: unused-parameter
 
+  exclusions:
+    rules:
+      # Test-support packages build hostile fixtures on purpose (decompression
+      # bombs, narrowing conversions into zip headers, paths from t.TempDir).
+      - path: internal/testutil/
+        linters:
+          - gosec
+
 formatters:
   enable:
     - gofmt
