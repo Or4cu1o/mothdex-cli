@@ -44,7 +44,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Install verification tools
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user-static file jq unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user file jq unzip
       - name: Install pinned release tools (goreleaser, cosign, syft)
         run: |
           for tool in goreleaser cosign syft; do

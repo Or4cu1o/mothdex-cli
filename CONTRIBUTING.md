@@ -42,7 +42,7 @@ syft; versions in `tools/*/go.mod`) and run:
 ```sh
 for tool in goreleaser cosign syft; do GOBIN="$PWD/.bin" go -C "tools/$tool" install tool; done
 PATH="$PWD/.bin:$PATH" goreleaser release --snapshot --clean --skip=sign
-PATH="$PWD/.bin:$PATH" scripts/verify-dist.sh dist   # needs jq, file, unzip, qemu-user-static
+PATH="$PWD/.bin:$PATH" scripts/verify-dist.sh dist   # needs jq, file, unzip, qemu-user
 ```
 
 Releases are cut by pushing a `vX.Y.Z` tag from `main`, which needs the owner's approval.

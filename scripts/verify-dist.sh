@@ -14,7 +14,17 @@ want_date="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:
 
 fail() { echo "verify-dist: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "missing tool: $1"; }
-for tool in jq file unzip tar go sha256sum qemu-aarch64-static qemu-arm-static; do need "$tool"; done
+for tool in jq file unzip tar go sha256sum; do need "$tool"; done
+
+# qemu user-mode emulators: "-static" suffix on Debian packages, plain names elsewhere.
+find_qemu() {
+  for c in "qemu-$1-static" "qemu-$1"; do
+    if command -v "$c" >/dev/null 2>&1; then echo "$c"; return; fi
+  done
+  fail "missing tool: qemu-$1 (package qemu-user or qemu-user-static)"
+}
+qemu_aarch64="$(find_qemu aarch64)"
+qemu_arm="$(find_qemu arm)"
 
 [ -f "$dist/metadata.json" ] || fail "$dist/metadata.json not found"
 version="$(jq -r .version "$dist/metadata.json")"
@@ -86,8 +96,8 @@ for entry in "${targets[@]}"; do
   runner=""
   case "$suffix" in
     linux_amd64*|linux_386*) runner="" ;;
-    linux_arm64*) runner="qemu-aarch64-static" ;;
-    linux_armv6*|linux_armv7*) runner="qemu-arm-static" ;;
+    linux_arm64*) runner="$qemu_aarch64" ;;
+    linux_armv6*|linux_armv7*) runner="$qemu_arm" ;;
     *) continue ;;
   esac
   out="$($runner "$dir/$bin")"
