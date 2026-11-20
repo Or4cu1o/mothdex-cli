@@ -274,7 +274,7 @@ func (s *store) put(ns, key string, info nsInfo, r io.Reader, contentType string
 	defer s.mu.Unlock()
 	prev := s.itemBytes(ns, key, info)
 	dataPath, metaPath := s.paths(ns, key, info)
-	if err := os.Rename(tmp, dataPath); err != nil {
+	if err := replaceFile(tmp, dataPath); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("cache: store data: %w", err)
 	}
@@ -311,7 +311,7 @@ func (s *store) writeMeta(path, ns string, now time.Time, ttl time.Duration, siz
 		_ = os.Remove(tmp)
 		return 0, fmt.Errorf("cache: sidecar mode: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := replaceFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return 0, fmt.Errorf("cache: store sidecar: %w", err)
 	}

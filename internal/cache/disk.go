@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -106,6 +107,25 @@ func writeTemp(dir string, r io.Reader, limit int64, mtime time.Time) (path stri
 		return "", 0, err
 	}
 	return path, n, nil
+}
+
+const (
+	renameAttempts = 8
+	renameBackoff  = 5 * time.Millisecond
+)
+
+// replaceFile renames src over dst. On Windows a file that a reader has open cannot be
+// replaced and the rename fails with "access denied" for a moment, so it is retried briefly
+// (a few milliseconds of real time; the cache is best effort and a failed Put is not fatal).
+func replaceFile(src, dst string) error {
+	var err error
+	for attempt := 0; attempt < renameAttempts; attempt++ {
+		if err = os.Rename(src, dst); err == nil || runtime.GOOS != "windows" {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * renameBackoff)
+	}
+	return err
 }
 
 // itemInfo is what a directory scan learns about one cached item.
