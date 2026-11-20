@@ -293,7 +293,9 @@ func TestIsLauncherPathIsPerComponent(t *testing.T) {
 	for path, want := range map[string]bool{
 		"/userdata/roms/ports": true, "/userdata/roms/ports/snes": true, "/userdata/roms/PORTS": true,
 		"/userdata/roms/ports_scripts": true, "/userdata/roms/windows/a": true, "/userdata/roms/portſ": true,
-		"/userdata/roms/ports2": false, "/userdata/roms/portsx/a": false, "/userdata/roms/snes": false,
+		"/userdata/roms/ports2": false, "/home/u/windows": false, "/home/u/games/ports": false,
+		"/userdata/roms/./ports/x": true, "/userdata/roms/snes/../ports/x": true, "/userdata/roms/ports./x": true, "/userdata/roms/ports /x": true,
+		"/userdata/roms/./snes": false, "/userdata/roms/ports/../snes": false, "/userdata/roms/portsx/a": false, "/userdata/roms/snes": false,
 		"/userdata/roms": false, "/mnt/usb/roms": false, "": false,
 	} {
 		if got := p.IsLauncherPath(path); got != want {
@@ -338,5 +340,29 @@ func TestSeveralGlobHitsWarn(t *testing.T) {
 	joined := strings.Join(info.Warnings, "|")
 	if info.RomRoot != "/run/media/a/Emulation/roms" || !strings.Contains(joined, "ignoring /run/media/b/Emulation/roms") {
 		t.Fatalf("root %q warnings %v", info.RomRoot, info.Warnings)
+	}
+}
+
+func TestIsLauncherPathSeesThroughWindowsSpellings(t *testing.T) {
+	env := testEnv(map[string]string{"C:/RetroBat/RetroBat.exe": "", "C:/RetroBat/roms/.keep": ""})
+	env.GOOS = "windows"
+	p := detect(t, env, Config{}).Profile
+	for path, want := range map[string]bool{
+		`C:\RetroBat\roms\windows\x`: true, `C:/RetroBat/roms/windows/x`: true, `c:\retrobat\ROMS\Windows`: true,
+		`C:\RetroBat\roms\windows.\x`: true, `C:\RetroBat\roms\windows \x`: true, `\\?\C:\RetroBat\roms\windows\x`: true,
+		`C:\RetroBat\roms\.\windows\x`: true, `C:\RetroBat\roms\snes\..\windows\x`: true,
+		`C:\RetroBat\roms\ports\x`: true, `C:\RetroBat\roms\snes`: false, `D:\RetroBat\roms\windows`: false,
+		`C:\RetroBat\roms\windows2`: false,
+	} {
+		if got := p.IsLauncherPath(path); got != want {
+			t.Errorf("IsLauncherPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestPlainUserFoldersAreNotLauncherFolders(t *testing.T) {
+	info := detect(t, testEnv(nil), Config{ROMRoot: "/home/u/windows"}) // generic has no launcher
+	if info.RomRoot != "/home/u/windows" {
+		t.Fatalf("a PC games folder named windows must be accepted on generic: %q %v", info.RomRoot, info.Warnings)
 	}
 }

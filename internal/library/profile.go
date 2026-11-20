@@ -258,8 +258,9 @@ var driveRooted = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 
 // IsLauncherPath reports whether path is, or lies inside, a place where the frontend runs
 // scripts: the profile's launcher directory, or a folder named ports, ports_scripts or windows
-// directly under the profile's own default ROM root; a path whose last component is such a
-// name is refused as well. Comparison is per component (never a string prefix) and ignores
+// directly under the profile's own default ROM root. Paths are normalized first (. and .. are
+// resolved, the \\?\ prefix is dropped, trailing dots and spaces are cut as Windows does), so
+// equivalent spellings give the same answer. Comparison is per component (never a string prefix) and ignores
 // case and look-alike letters (portſ). The preflight applies it to -o and profile.rom_root,
 // and DestDir to every result (T-16 case 15, downloader 6.2 G3). Use it on the resolved
 // profile from ProfileInfo.
@@ -278,21 +279,31 @@ func (p Profile) IsLauncherPath(path string) bool {
 			}
 		}
 	}
-	last := target[len(target)-1]
-	for _, l := range launcherNames(p.Launcher.Dir) {
-		if last == strings.ToUpper(l) {
-			return true
-		}
-	}
 	return false
 }
 
-// components splits a path written with either separator into upper-cased components, so that
-// comparison ignores case and folds look-alikes the way config.ValidateFolderName does.
+// components normalizes a path written with either separator into upper-cased components,
+// so that comparison ignores case, folds look-alikes the way config.ValidateFolderName does,
+// and sees through spellings the OS treats as the same folder: "." and ".." components, the
+// Windows \\?\ and \\.\ prefixes, and trailing dots or spaces on a component.
 func components(p string) []string {
+	for _, prefix := range []string{`\\?\`, `\\.\`, `//?/`, `//./`} {
+		p = strings.TrimPrefix(p, prefix)
+	}
 	var out []string
 	for _, c := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
-		out = append(out, strings.ToUpper(c))
+		switch c {
+		case ".":
+			continue
+		case "..":
+			if len(out) > 0 {
+				out = out[:len(out)-1]
+			}
+			continue
+		}
+		if c = strings.TrimRight(c, ". "); c != "" {
+			out = append(out, strings.ToUpper(c))
+		}
 	}
 	return out
 }
