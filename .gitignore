@@ -1,0 +1,21 @@
+# Build output
+/bin/
+/dist/
+/mothdex
+/mothdex-gui
+*.exe
+*.test
+*.out
+coverage.*
+
+# Local state and configuration
+.env
+.env.*
+!.env.example
+*.part
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

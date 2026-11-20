@@ -1,0 +1,32 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - noctx
+    - revive
+  settings:
+    revive:
+      rules:
+        - name: package-comments
+        - name: exported
+        - name: error-return
+        - name: error-naming
+        - name: unused-parameter
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Or4cu1o/mothdex-cli
