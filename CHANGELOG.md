@@ -17,7 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pinned SHA-256 (`scripts/sdl2-windows.pin`); `readelf` per Linux target, the isolation check and a size report. The arm64, armv7 and armv6 legs (qemu-user, pinned
   Debian images) are in `gui-spike-qemu.yml` (qemu-user from the runner's apt and the pinned Debian images through docker, because the
   repository does not allow `docker/setup-qemu-action`; if binfmt does not work in containers it falls back to `qemu-<arch>`
-  with a sysroot). New
+  with a sysroot). The spike CI also runs negative library-planting tests (a garbage `libSDL2-2.0.so.0` or `SDL2.dll` in the
+  working directory, next to the probe or on `PATH` must not load), requires a program interpreter and no RPATH or RUNPATH
+  on every Linux probe, and reports the ARMv6 CPU-model run (attempted, exit code, `/bin/true` and ld.so control runs) in the job
+  summary and as a warning. The result of the spike is recorded in `docs/qa/T-52-gui-spike-report.md`. New
   `scripts/check-sdl-constants.sh` compiles a C program against the libsdl2-dev headers and fails when a binding constant
   or struct layout differs.
 - `internal/ui/gui/sdl` and `cmd/mothdex-gui` (T-52, spike): our own thin purego binding of 23 SDL2 functions (video, renderer,
@@ -29,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SDL2 is missing, too old or has no display, or 3 for a failed check. `scripts/gui-probe.sh` builds and inspects it for one
   target (ELF interpreter and `NEEDED`, the armhf `-I` flag) and runs it on the host; `scripts/check-gui-isolation.sh` fails
   if `mothdex` ever depends on purego or a GUI package. `purego` v0.11.3 is pinned in `go.mod`; `mothdex` does not contain it. `ReadPixels` and `UpdateTexture` check that the buffer holds every byte SDL will touch (pitch*(h-1)+w*bytes) before the call and refuse a shorter one; SDL2 is opened with `RTLD_LOCAL`.
+- T-53 (E-M3 service items, gui.md section 8): `internal/compose` is the composition root both binaries build the service with (`compose.Open(ctx, Options) (*Session, error)`; a session's stored `on_exists=overwrite` is reported at start-up; `cmd/mothdex` wraps it in `cli.Session`). `app.DecodeCover` decodes a cover with the fetch limits (5 MiB, type allowlist agreeing with the content type, 4096 pixels per side checked from the header, the first GIF frame checked too), one frame, scaled down to `maxSide` (4 megapixel budget from the header, no full copy while scaling, a decoder panic becomes an error); WebP through `golang.org/x/image` v0.48.0 (BSD-3, Go team). Config keys `gui.confirm_button` (`south|east`), `gui.text_size` (`normal|large`) and `gui.safe_area` (`auto` or 0..10) with their `ConfigSchema` metadata. A regression test covers G3 (`Wait` on idle returns at once and refreshes only after a download).
 - E-M2 polish (T-44), from the UX review: a Shell `download` of several entries prints `Link n chosen` for every entry with more
   than one link, with or without a preference (one entry still gets the chooser); the Shell no longer exits on a second Ctrl+C,
   only `exit`, `quit` and Ctrl+D leave; the TUI Entry screen shows the platform id with its name from the cached platform list

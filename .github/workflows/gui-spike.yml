@@ -77,6 +77,20 @@ jobs:
           SDL_VIDEODRIVER: dummy
           GUI_REQUIRE_SDL: "1" # a broken libsdl2 install fails here instead of skipping the smoke test
         run: go test -tags gui -count=1 -v ./internal/ui/gui/sdl
+      - name: Library planting is ignored (a garbage libSDL2-2.0.so.0 in the cwd and next to the probe)
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          # The real distro SDL2 is installed. The probe loads it by soname, so a file of that name in the working
+          # directory or in the probe's own directory must not be picked up (no RPATH, no LD_LIBRARY_PATH).
+          plant=$(mktemp -d)
+          mkdir "$plant/cwd" "$plant/exe"
+          printf 'not an ELF file\n' > "$plant/cwd/libSDL2-2.0.so.0"
+          printf 'not an ELF file\n' > "$plant/exe/libSDL2-2.0.so.0"
+          cp dist-gui/linux_amd64/mothdex-gui-probe "$plant/exe/"
+          out=$(cd "$plant/cwd" && "$plant/exe/mothdex-gui-probe")
+          echo "$out"
+          echo "$out" | grep -q 'probe ok'
       - name: Cross-build and readelf linux/386 (optional target, not run)
         continue-on-error: true
         env:
@@ -130,6 +144,39 @@ jobs:
         env:
           SDL_VIDEODRIVER: dummy
         run: scripts/gui-probe.sh windows/amd64
+      - name: Library planting is ignored (garbage SDL2.dll on PATH and in the cwd; real DLL only beside the exe)
+        shell: pwsh
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $dist = (Resolve-Path 'dist-gui/windows_amd64').Path
+          $exe = Join-Path $dist 'mothdex-gui-probe.exe'
+          $tmp = Join-Path $env:RUNNER_TEMP 'plant'
+          $cwd = Join-Path $tmp 'cwd'; $pathdir = Join-Path $tmp 'pathdir'; $a = Join-Path $tmp 'A'; $b = Join-Path $tmp 'B'
+          New-Item -ItemType Directory -Force -Path $cwd, $pathdir, $a, $b | Out-Null
+          Set-Content -Path (Join-Path $cwd 'SDL2.dll') -Value 'not a PE file'
+          Set-Content -Path (Join-Path $pathdir 'SDL2.dll') -Value 'not a PE file'
+          $savedPath = $env:PATH
+          # 1. The real DLL sits beside the exe; a garbage SDL2.dll is in the working directory and first on PATH.
+          #    The loader must take the one beside the exe.
+          Push-Location $cwd
+          $env:PATH = "$pathdir;$savedPath"
+          $out = (& $exe 2>&1 | Out-String); $code = $LASTEXITCODE
+          $env:PATH = $savedPath; Pop-Location
+          Write-Host $out
+          if ($code -ne 0 -or $out -notmatch 'probe ok') { throw "case 1: exit $code, the DLL beside the exe was not used" }
+          # 2. The exe has no DLL beside it; the real one is in the working directory and on PATH. LOAD_LIBRARY_SEARCH_
+          #    APPLICATION_DIR|SYSTEM32 must not look there: the probe has to report SDL2 not found (exit 1).
+          Copy-Item $exe $a
+          Copy-Item (Join-Path $dist 'SDL2.dll') $b
+          Push-Location $b
+          $env:PATH = "$b;$savedPath"
+          $out = (& (Join-Path $a 'mothdex-gui-probe.exe') 2>&1 | Out-String); $code = $LASTEXITCODE
+          $env:PATH = $savedPath; Pop-Location
+          Write-Host $out
+          if ($code -ne 1) { throw "case 2: expected exit 1 (SDL2 not found), got ${code}: a DLL outside the application and system folders was loaded" }
       - name: go test -tags gui, run from the folder that holds SDL2.dll
         shell: bash
         env:

@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"image"
 	"io"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
+	"github.com/Or4cu1o/mothdex-cli/internal/cover"
 )
 
 // Cover returns the cover image of an entry from the covers cache, fetching it on a miss with
@@ -33,6 +35,18 @@ func (s *Service) Cover(ctx context.Context, ref Ref) (io.ReadCloser, string, er
 		return nil, "", nil // the cache is off or full: no cover, not an error
 	}
 	return rc, e.Meta.ContentType, nil
+}
+
+// DecodeCover decodes a cover returned by Cover into one image, scaled down to maxSide pixels on its
+// longer side when maxSide is above zero. It applies the same limits as the fetch (5 MiB, a known
+// type matching contentType, at most 4096 pixels per side checked from the header first) and takes the
+// first frame of an animated image, so a front end never decodes an image the fetcher would refuse.
+func DecodeCover(r io.Reader, contentType string, maxSide int) (image.Image, error) {
+	img, err := cover.Decode(r, contentType, maxSide)
+	if err != nil {
+		return nil, &Error{Code: CodeNotFound, Message: "the cover cannot be decoded", Cause: err}
+	}
+	return img, nil
 }
 
 // fetchCover is a singleflight per URL with a per-session negative cache.
