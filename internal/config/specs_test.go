@@ -56,3 +56,18 @@ func TestSpecsAgreeWithTheParsers(t *testing.T) {
 		t.Fatal("Specs must return a copy")
 	}
 }
+
+// gui.safe_area is auto or 0..10, written as a number or as text in the file.
+func TestGUISafeArea(t *testing.T) {
+	s, _ := lookup("gui.safe_area")
+	for in, want := range map[any]string{"auto": "auto", 5: "5", "10": "10", 0: "0"} {
+		if got, err := s.parse(in); err != nil || got != want {
+			t.Errorf("%v: %v %v", in, got, err)
+		}
+	}
+	for _, bad := range []any{11, -1, "11", "wide", 2.5, true} {
+		if _, err := s.parse(bad); err == nil {
+			t.Errorf("%v accepted", bad)
+		}
+	}
+}
