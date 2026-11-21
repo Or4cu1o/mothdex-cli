@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/qa/T-43-shell-acceptance.md` (T-43): Shell acceptance at `b45d433` against shell.md and ui.md with a snapshot binary and a
+  local fixture API (banner, paging, ranges and overflow inputs, link chooser, per-line flags, Tab, history mode, Ctrl+C and Ctrl+D,
+  script mode and SIGINT), the findings S1 to S5 and the list of what was not verified.
 - `docs/qa/T-22-m1-acceptance.md` (T-22): M1 acceptance run at `ebe6a54` with evidence per item (installer against the
   snapshot archive, mcp slug charset sample, command section C through the real binary and the package tests), the open
   items, the live download check, and findings F3 (`/dev/null` stdin is treated as a terminal), F4 and F5.
