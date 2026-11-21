@@ -1,0 +1,48 @@
+# zh_cn: keys missing here fall back to en_us.
+locale:
+  name: '简体中文'
+  iso_code: 'zh-CN'
+  status: 'best effort: only the keys below are translated; the rest falls back to en_us'
+ui:
+  messages:
+    yes: '是'
+    no: '否'
+    ok: '确定'
+    cancel: '取消'
+    done: '完成'
+    loading: '加载中...'
+    confirm: '确定吗？(y/N)'
+    goodbye: '再见！'
+  status:
+    idle: '空闲'
+    queued: '排队中'
+    downloading: '下载中'
+    verifying: '校验中'
+    done: '已完成'
+    skipped: '已跳过'
+    failed: '失败'
+    canceled: '已取消'
+  units:
+    b: 'B'
+    kb: 'KB'
+    mb: 'MB'
+    gb: 'GB'
+    tb: 'TB'
+  labels:
+    title: '标题'
+    platform: '平台'
+    region: '地区'
+    size: '大小'
+    links: '链接'
+  search:
+    searching: '搜索中...'
+    no_results: '未找到结果'
+    found:
+      other: '找到 {count} 个结果'
+  download:
+    starting: '开始下载...'
+    completed: '下载完成'
+    speed: '速度：{speed}'
+    eta: '剩余：{eta}'
+    files:
+      other: '{count} 个文件'

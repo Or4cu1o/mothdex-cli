@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/i18n` and `locales/`: embedded locales plus an optional external folder (per-key override), automatic
+  detection (`LC_ALL`, `LC_MESSAGES`, `LANG`; the Windows preferred UI languages), `interface.language` resolution
+  (exact, same language, en_us), named `{placeholders}`, CLDR plural forms, and a per-key fallback to en_us. `en_us`,
+  `pt_br`, `es_es` and `ru_ru` are complete (the `errors.<code>.message` and `.hint` table of cli-output section 4 and
+  the UI basics); `zh_cn`, `ja_jp` and `hi_in` translate the UI basics and fall back for the rest. A test fails when a
+  locale lacks keys it promises, defines keys en_us lacks, or changes placeholders.
 - `internal/log`: the slog logger (T-14). A size-rotated file `mothdex.log` under `paths.logs` (`log.max_size_mb`,
   `log.max_files` in total, created with mode 0700/0600) and an optional stderr copy (`log.console`), from the `log.*`
   settings. Standard library only. A log file that cannot be opened never stops the program: `log.New` returns a
