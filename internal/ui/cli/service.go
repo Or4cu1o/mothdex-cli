@@ -5,6 +5,8 @@ package cli
 import (
 	"context"
 	"io"
+	"log/slog"
+	"os"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
@@ -52,6 +54,7 @@ type Globals struct {
 	Output                                 string // -o on download and boxart
 	Command                                string // top-level command being run
 	Downloads                              bool   // the command needs the Downloads capability
+	Shell                                  bool   // the interactive Shell opens the service (ui.md section 2.1)
 }
 
 // Session is what Open returns: the service plus the settings the commands read.
@@ -66,6 +69,12 @@ type Session struct {
 	Warnings []string
 	LogPath  string // the log file, for the internal error hint
 	Close    func() // releases the service; may be nil
+
+	// What the interactive UIs need (ui.md section 1).
+	DataDir string       // resolved paths.data, home of the UI-owned files
+	NoColor bool         // the final color decision of cli-conventions section 4
+	UTF8    bool         // glyphs, or their ASCII fallbacks
+	Log     *slog.Logger // may be nil
 }
 
 // Deps are the things the commands need from the outside: tests replace all of them.
@@ -83,4 +92,22 @@ type Deps struct {
 	IsTerminal func(any) bool
 	Width      func() int
 	Getenv     func(string) string
+
+	// Shell runs the interactive Shell (internal/ui/shell); nil in tests that do not need it. The
+	// composition root injects it so that cli never imports the UI packages (ui.md section 1).
+	Shell func(ctx context.Context, env ShellEnv) int
+	// Interrupts hands SIGINT to the caller until release runs; meanwhile the root context is not
+	// canceled by it. SIGTERM keeps canceling the root. Nil means there is nothing to hand over.
+	Interrupts func() (sig <-chan os.Signal, release func())
+}
+
+// ShellEnv is what the Shell launcher receives.
+type ShellEnv struct {
+	Runner     *Runner
+	Session    *Session
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
+	IsTerminal bool // stdin and stdout are terminals
+	Interrupts func() (sig <-chan os.Signal, release func())
 }

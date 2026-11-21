@@ -16,28 +16,27 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/shell"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 )
-
-// secondInterrupt is the window in which a second Ctrl+C ends the process at once.
-const secondInterrupt = 2 * time.Second
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	go func() { // the first signal cancels the context; a second one within 2 s exits at once
-		<-ctx.Done()
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-		select {
-		case <-sig:
-			os.Exit(130)
-		case <-time.After(secondInterrupt):
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigs := make(chan os.Signal, 4)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	router := newSignalRouter(cancel, os.Exit, time.Now)
+	go func() {
+		for sig := range sigs {
+			router.handle(sig)
 		}
 	}()
-	return cli.Execute(ctx, deps(stdin, stdout, stderr), args)
+	d := deps(stdin, stdout, stderr)
+	d.Interrupts = router.interrupts
+	return cli.Execute(ctx, d, args)
 }
 
 func deps(stdin io.Reader, stdout, stderr io.Writer) cli.Deps {
@@ -49,6 +48,7 @@ func deps(stdin io.Reader, stdout, stderr io.Writer) cli.Deps {
 		IsTerminal: isTerminal,
 		Width:      terminalWidth,
 		Getenv:     os.Getenv,
+		Shell:      shell.Run,
 	}
 }
 

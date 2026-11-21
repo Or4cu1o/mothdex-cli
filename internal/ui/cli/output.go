@@ -71,20 +71,22 @@ func (p *printer) setColor(mode string) {
 	}
 }
 
-// sym is a status symbol with its ASCII fallback when the locale is not UTF-8 or TERM=linux.
-func (p *printer) sym(name string) string {
-	utf8 := false
-	if p.d.Getenv != nil {
-		for _, k := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
-			if v := p.d.Getenv(k); v != "" {
-				utf8 = strings.Contains(strings.ToLower(v), "utf-8") || strings.Contains(strings.ToLower(v), "utf8")
-				break
-			}
-		}
-		if p.d.Getenv("TERM") == "linux" {
-			utf8 = false
+// IsUTF8 reports whether the locale is UTF-8 and the terminal can show the glyphs (not TERM=linux).
+func IsUTF8(getenv func(string) string) bool {
+	if getenv == nil || getenv("TERM") == "linux" {
+		return false
+	}
+	for _, k := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		if v := strings.ToLower(getenv(k)); v != "" {
+			return strings.Contains(v, "utf-8") || strings.Contains(v, "utf8")
 		}
 	}
+	return false
+}
+
+// sym is a status symbol with its ASCII fallback when the locale is not UTF-8 or TERM=linux.
+func (p *printer) sym(name string) string {
+	utf8 := IsUTF8(p.d.Getenv)
 	switch {
 	case name == "ok" && utf8:
 		return "\u2714"
@@ -282,6 +284,7 @@ type column struct {
 	right bool
 	drop  int // dropped below this width (0 = never)
 	title bool
+	blank bool // an empty cell stays empty instead of showing "-"
 }
 
 // cells is the display width of s in terminal cells: wide East Asian runes count 2, combining
@@ -334,7 +337,10 @@ func padTo(s string, n int, right bool) string {
 
 // table writes aligned columns separated by two spaces. On a terminal only the Title column shrinks
 // and columns drop below 80 and 60 columns; piped output is never truncated. Empty cells show "-".
-func (p *printer) table(cols []column, rows [][]string) {
+func (p *printer) table(cols []column, rows [][]string) { p.renderTable(cols, rows, true) }
+
+// renderTable is table with the header row optional (the link chooser has none).
+func (p *printer) renderTable(cols []column, rows [][]string, header bool) {
 	keep := make([]int, 0, len(cols))
 	for i, c := range cols {
 		if p.tty && c.drop > 0 && p.width < c.drop {
@@ -346,7 +352,7 @@ func (p *printer) table(cols []column, rows [][]string) {
 		out := make([]string, len(keep))
 		for j, i := range keep {
 			v := clean(row[i])
-			if v == "" {
+			if v == "" && !cols[i].blank {
 				v = "-"
 			}
 			out[j] = v
@@ -357,7 +363,10 @@ func (p *printer) table(cols []column, rows [][]string) {
 	for i, c := range cols {
 		head[i] = c.head
 	}
-	all := [][]string{clamp(head)}
+	var all [][]string
+	if header {
+		all = append(all, clamp(head))
+	}
 	for _, r := range rows {
 		all = append(all, clamp(r))
 	}
@@ -379,7 +388,7 @@ func (p *printer) table(cols []column, rows [][]string) {
 			parts[j] = padTo(v, widths[j], cols[keep[j]].right)
 		}
 		line := strings.TrimRight(strings.Join(parts, "  "), " ")
-		if ri == 0 {
+		if ri == 0 && header {
 			line = p.bold(line)
 		}
 		_, _ = fmt.Fprintln(p.out, line)
