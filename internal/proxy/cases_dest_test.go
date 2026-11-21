@@ -100,12 +100,12 @@ func TestCase16SymlinkedDestination(t *testing.T) { linkedDestination(t, realfs.
 // Case 17: the same with a directory junction (a symlink on Unix; a real junction on Windows).
 func TestCase17JunctionDestination(t *testing.T) { linkedDestination(t, realfs.DirLink) }
 
-// Case 15 (downloader side): a launcher folder is never a destination, however it is spelled.
-// The Confiner is wired to the real library.Profile.IsLauncherPath, with the spellings T-15
-// normalizes (dot segments, dot-dot, trailing dot and space, case, look-alike letters).
-func TestCase15LauncherFolderAsDestination(t *testing.T) {
-	// A detected Batocera profile owns /userdata/roms. The test destination lives in a temp
-	// directory, so the adapter maps it onto that root before asking the real IsLauncherPath.
+// launcherLayout wires the Confiner to the real library.Profile.IsLauncherPath. A detected
+// Batocera profile owns /userdata/roms; the test destination lives in a temp directory, so an
+// adapter maps it onto that root before asking the real check (which gets the resolved path
+// too, after the OS followed every link).
+func launcherLayout(t *testing.T) (*rig, string) {
+	t.Helper()
 	files := fstest.MapFS{
 		"usr/share/batocera/batocera.version": {Data: []byte("40")},
 		"userdata/roms/.keep":                 {},
@@ -128,6 +128,45 @@ func TestCase15LauncherFolderAsDestination(t *testing.T) {
 		}
 	})
 	tmpRoot = root
+	return r, root
+}
+
+// M1 (Sentinela, T-17 audit): the launcher check runs again on the path the OS resolved. A
+// folder inside the root that is a link to the launcher folder, or whose ancestor is, passes the
+// lexical check and must still be refused after the real path is known. A check that is disabled
+// or only lexical lets these downloads land in ports/.
+func TestLauncherFolderBehindALinkIsRefused(t *testing.T) {
+	r, root := launcherLayout(t)
+	body := fakeproxy.Pattern(500)
+	r.srv.Script("/f/a", fakeproxy.OK(body))
+	ports := filepath.Join(root, "ports")
+	if err := os.MkdirAll(ports, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	realfs.Symlink(t, ports, filepath.Join(root, "snes"))       // snes is ports
+	realfs.Symlink(t, ports, filepath.Join(root, "shortcut"))   // an ancestor is ports
+	realfs.Symlink(t, "ports", filepath.Join(root, "relative")) // the same, as a relative link
+	before := realfs.Snapshot(t, ports)
+
+	for _, dir := range []string{"snes", "shortcut/sub", "relative", "relative/a/b"} {
+		res := r.download(job(r, filepath.Join(root, dir), body))
+		if res.State != proxy.StateFailed || res.Err == nil || res.Err.Code != proxy.CodePathRejected {
+			t.Errorf("%q: state %s err %v, want path_rejected", dir, res.State, res.Err)
+		}
+	}
+	if d := realfs.DiffSnapshots(before, realfs.Snapshot(t, ports)); len(d) != 0 {
+		t.Fatalf("something was written into the launcher folder: %v", d)
+	}
+	if r.srv.Connections() != 0 {
+		t.Fatal("a refused destination must not cost a download")
+	}
+}
+
+// Case 15 (downloader side): a launcher folder is never a destination, however it is spelled.
+// The Confiner is wired to the real library.Profile.IsLauncherPath, with the spellings T-15
+// normalizes (dot segments, dot-dot, trailing dot and space, case, look-alike letters).
+func TestCase15LauncherFolderAsDestination(t *testing.T) {
+	r, root := launcherLayout(t)
 	body := fakeproxy.Pattern(500)
 	r.srv.Script("/f/a", fakeproxy.OK(body))
 	for _, dir := range []string{"ports", "ports_scripts", "windows", "ports/sub", "PORTS", "Windows", "./ports",
