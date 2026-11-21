@@ -1,6 +1,8 @@
 package mothdex
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -234,5 +236,20 @@ func TestValidSlug(t *testing.T) {
 		if got := ValidSlug(s); got != want {
 			t.Errorf("ValidSlug(%q) = %v, want %v", s, got, want)
 		}
+	}
+}
+
+// api-client section 2: Entry refuses an unsafe slug before any request.
+func TestEntryRefusesAnUnsafeSlugBeforeAnyRequest(t *testing.T) {
+	h := newHarness(t, serveFixture(t, "entry-not-found", nil))
+	for _, slug := range []string{"../x", "Caps", "a b", "-a"} {
+		_, err := h.client.Entry(context.Background(), slug)
+		var e *Error
+		if !errors.As(err, &e) || e.Kind != KindInvalidRequest {
+			t.Errorf("Entry(%q) = %v, want KindInvalidRequest", slug, err)
+		}
+	}
+	if h.hits.Load() != 0 {
+		t.Fatalf("an unsafe slug reached the server: %d requests", h.hits.Load())
 	}
 }

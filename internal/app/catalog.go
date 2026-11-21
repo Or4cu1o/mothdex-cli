@@ -93,6 +93,9 @@ func (s *Service) Entry(ctx context.Context, ref Ref) (Result[mothdex.Entry], er
 		}
 		return e, err
 	})
+	if err == nil && !mothdex.ValidSlug(res.Value.Slug) { // an entry cached by an older build
+		return Result[mothdex.Entry]{}, errUnsafeSlug()
+	}
 	var ae *Error
 	if errors.As(err, &ae) && ae.Code == CodeNotFound && ae.Args == nil {
 		ae.Args = map[string]any{"ref": slug} // fills "No entry found for {ref}."
