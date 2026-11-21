@@ -15,6 +15,7 @@ errors:
   confirmation_required:
     message: 'Эта команда требует подтверждения.'
     hint: 'Добавьте --force, чтобы пропустить вопрос.'
+    size_hint: 'Размер файла {size}, намного больше, чем указано в каталоге. Добавьте -f, чтобы всё равно скачать.'
   unmapped_platform:
     message: 'Для платформы {platform} не задана папка.'
     hint: 'Укажите -o <папка> или задайте profile.folders.{platform} в настройках.'

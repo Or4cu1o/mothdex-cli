@@ -122,12 +122,21 @@ func (r *runtime) runDownload(ctx context.Context, s *Session, args []string, f 
 			batchInShell := r.run != nil && len(refs) > 1 && len(choices) > 1
 			r.announceLink(p, choices, preferActive(pref) || f.link != 0 || batchInShell)
 		}
-		reqs[i] = app.DownloadRequest{Ref: ref, Link: rsel, DestDir: r.g.Output}
+		reqs[i] = app.DownloadRequest{Ref: ref, Link: rsel, DestDir: r.g.Output, SizeConsent: sizeConsent(r.g.Force)}
 	}
 	if err := r.confirm(p, s, len(reqs), total); err != nil {
 		return outcome{}, err
 	}
 	return r.transfer(ctx, s, reqs, f)
+}
+
+// sizeConsent turns the -f of this command into the consent for the real size (downloader.md 3.2
+// step 6). It reads the flag of the command being run, never a start-up flag of a session.
+func sizeConsent(force bool) int64 {
+	if force {
+		return app.ConsentAny
+	}
+	return 0
 }
 
 // linkSize is the size of the link the download will use: the one asked for by number, otherwise
@@ -259,7 +268,14 @@ func (r *runtime) transfer(ctx context.Context, s *Session, reqs []app.DownloadR
 		p.warning(res.RefreshWarning)
 	}
 	recs := r.recordsFor(ctx, s, res.Jobs)
-	out := outcome{data: map[string]any{"jobs": jobsJSON(res.Jobs, recs)}, human: func(p *printer) { r.downloadHuman(p, res, time.Since(started)) }}
+	out := outcome{data: map[string]any{"jobs": jobsJSON(res.Jobs, recs)}, human: func(p *printer) { r.downloadHuman(p, res, time.Since(started)) },
+		warn: func(p *printer) { // the size drift notes (3.2 step 7), in both modes
+			for _, j := range res.Jobs {
+				for _, w := range j.Warnings {
+					p.warning(clean(firstNonEmpty(j.Title, j.Slug)) + ": " + w)
+				}
+			}
+		}}
 	return out, batchError(res)
 }
 
@@ -321,7 +337,7 @@ func jobsJSON(jobs []app.JobSnapshot, recs map[string]app.HistoryRecord) []map[s
 		}
 		out = append(out, map[string]any{
 			"slug": j.Slug, "link_index": j.LinkIndex, "filename": j.Name, "raw_filename": rec.RawName, "path": j.Path,
-			"state": string(j.State), "bytes": j.Bytes, "expected_bytes": j.Expected, "sha256": j.SHA256,
+			"state": string(j.State), "bytes": j.Bytes, "expected_bytes": j.Expected, "catalog_size": j.CatalogSize, "sha256": j.SHA256,
 			"crc": checkState(rec.CRC), "hash": checkState(rec.Hash), "attempts": j.Attempt, "duration_ms": j.Finished.Sub(j.Started).Milliseconds(), "error": e,
 		})
 	}

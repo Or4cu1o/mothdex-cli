@@ -15,6 +15,7 @@ errors:
   confirmation_required:
     message: 'This command needs confirmation.'
     hint: 'Add --force to skip the prompt.'
+    size_hint: 'The file is {size}, much larger than the catalog said. Add -f to download it anyway.'
   unmapped_platform:
     message: 'No folder is set for platform {platform}.'
     hint: 'Pass -o <dir>, or set profile.folders.{platform} in the configuration.'

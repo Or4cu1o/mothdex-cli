@@ -15,6 +15,7 @@ errors:
   confirmation_required:
     message: 'Este comando necesita confirmación.'
     hint: 'Añade --force para omitir la pregunta.'
+    size_hint: 'El archivo pesa {size}, mucho más de lo que indicaba el catálogo. Usa -f para descargarlo de todos modos.'
   unmapped_platform:
     message: 'No hay carpeta definida para la plataforma {platform}.'
     hint: 'Pasa -o <carpeta>, o define profile.folders.{platform} en la configuración.'

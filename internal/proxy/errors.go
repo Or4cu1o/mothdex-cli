@@ -22,6 +22,9 @@ const (
 	CodeUpstream     Code = "upstream"
 	CodeCanceled     Code = "canceled"
 	CodeInternal     Code = "internal"
+	// CodeConfirmationRequired: the real size (Content-Length) crossed the confirmation threshold and
+	// the job carried no consent for it (downloader.md 3.2 step 6).
+	CodeConfirmationRequired Code = "confirmation_required"
 )
 
 // Error is the typed error of the downloader. Use errors.As and compare Code.

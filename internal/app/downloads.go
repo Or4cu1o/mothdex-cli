@@ -28,7 +28,16 @@ type DownloadRequest struct {
 	Ref     Ref
 	Link    LinkSelector
 	DestDir string // "" = download.dir if set, else the active profile's folder for the platform
+	// SizeConsent is the consent for the real size (downloader.md 3.2 step 6): 0 is the default rule
+	// (a download whose Content-Length alone crosses 500 MiB fails with confirmation_required), ConsentAny
+	// is -f/--force of that command, a value above 0 is the exact Content-Length accepted through
+	// "Download anyway". A UI sets ConsentAny only from a flag of the command being run, never from a
+	// start-up flag of a session (the startupGrants rule of ui.md 2.1).
+	SizeConsent int64
 }
+
+// ConsentAny skips the confirmation at the real size (DownloadRequest.SizeConsent).
+const ConsentAny = proxy.ConsentAny
 
 // JobSnapshot is the state of a job at one moment.
 type JobSnapshot struct {
@@ -40,7 +49,7 @@ type JobSnapshot struct {
 	State     State
 	Attempt   int
 	Bytes     int64
-	Expected  int64
+	Expected  int64 // the Content-Length once the headers are in, else the catalog size
 	RateBps   int64
 	Name      string // sanitized file name, once known
 	Path      string // final absolute path of a finished job
@@ -48,6 +57,9 @@ type JobSnapshot struct {
 	Err       *Error
 	Started   time.Time
 	Finished  time.Time
+	// CatalogSize is link.size, a rough estimate; Warnings holds the size drift note (3.2 step 7).
+	CatalogSize int64
+	Warnings    []string
 }
 
 // Terminal reports whether the job reached a final state.
@@ -78,6 +90,8 @@ type DownloadConfig struct {
 	AllowExecutable bool   // --allow-executable
 	Force           bool   // --force
 	Dir             string // download.dir
+	Confirm         bool   // interface.confirm_downloads: the size confirmation of downloader.md 3.2 step 6
+	ConfirmBytes    int64  // the threshold of that confirmation; 0 is 500 MiB
 }
 
 // Env holds what the downloader needs from the machine.
@@ -226,7 +240,7 @@ func (s *Service) planFor(ctx context.Context, r DownloadRequest, known map[stri
 		return plan{}, err
 	}
 	return plan{
-		job:    proxy.Job{Link: c.Link, Slug: e.Slug, Platform: e.Platform, DestDir: dest},
+		job:    proxy.Job{Link: c.Link, Slug: e.Slug, Platform: e.Platform, DestDir: dest, SizeConsent: r.SizeConsent},
 		root:   root,
 		mkRoot: mk,
 		entry:  e,
@@ -252,6 +266,13 @@ func (d *downloads) destination(explicit, platform string) (root, dest string, m
 		return "", "", false, &Error{Code: CodeUnmappedPlatform, Message: "no folder is set for the platform", Cause: derr}
 	}
 	return p.RomRoot, dest, false, nil
+}
+
+func firstPositive(a, b int64) int64 {
+	if a > 0 {
+		return a
+	}
+	return b
 }
 
 func firstNonEmpty(a, b string) string {
@@ -344,7 +365,7 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 		DestRoot: root, OnEvent: d.onEvent,
 		Config: proxy.Config{
 			AllowedHosts: cfg.AllowedHosts, Concurrency: cfg.Concurrency, OnExists: proxy.OnExists(cfg.OnExists), SkipVerify: cfg.SkipVerify,
-			Platforms: known, AllowExecutable: cfg.AllowExecutable, Force: cfg.Force, NotFoundRetries: -1,
+			Platforms: known, AllowExecutable: cfg.AllowExecutable, Force: cfg.Force, NotFoundRetries: -1, ConfirmDownloads: cfg.Confirm, ConfirmBytes: cfg.ConfirmBytes,
 		},
 	})
 	if err != nil {
@@ -432,6 +453,10 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 			if errors.As(wrap(res.Err), &ae) {
 				j.Err = d.withJobArgs(ae, d.meta[id], res)
 			}
+		}
+		j.CatalogSize = d.meta[id].expected
+		if res.SizeDrift {
+			j.Warnings = append(j.Warnings, fmt.Sprintf("the proxy reports %d bytes but the catalog said %d; the catalog size is only an estimate", res.ContentLength, j.CatalogSize))
 		}
 		if res.State == proxy.StateDone {
 			d.doneSinceWait++
@@ -676,7 +701,7 @@ func (h historyAdapter) Append(r proxy.Record) error {
 	h.d.mu.Unlock()
 	rec := history.Record{
 		ID: r.JobID, StartedAt: r.Started, FinishedAt: r.Finished, State: string(r.State), Slug: r.Slug, Title: m.title, Platform: r.Platform,
-		SourceName: m.sourceName, LinkIndex: m.linkIndex, Filename: r.Name, RawName: r.RawName, Path: r.Path, Bytes: r.Bytes, Expected: m.expected,
+		SourceName: m.sourceName, LinkIndex: m.linkIndex, Filename: r.Name, RawName: r.RawName, Path: r.Path, Bytes: r.Bytes, Expected: firstPositive(r.ContentLength, m.expected), CatalogSize: r.CatalogSize, ContentLength: r.ContentLength,
 		SHA256: r.SHA256, CRC: r.CRC, Hash: r.Hash, Attempts: r.Attempts,
 	}
 	if r.Code != "" {
@@ -772,5 +797,9 @@ func (d *downloads) withJobArgs(e *Error, m jobMeta, res proxy.Result) *Error {
 	set("got", res.Bytes)
 	set("expected", m.expected)
 	set("needed", m.expected)
+	if e.Code == string(proxy.CodeConfirmationRequired) { // the real size and the way out (downloader.md 3.2 step 6)
+		set("size", res.ContentLength)
+		set("hint_key", "errors.confirmation_required.size_hint")
+	}
 	return e
 }

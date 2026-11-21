@@ -34,26 +34,28 @@ const (
 
 // Record is one history entry; the JSON names are the stable field names of cli-output.md.
 type Record struct {
-	ID         string    `json:"id"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	State      string    `json:"state"`
-	Slug       string    `json:"slug"`
-	Title      string    `json:"title"`
-	Platform   string    `json:"platform"`
-	SourceName string    `json:"source_name"`
-	LinkIndex  int       `json:"link_index"`
-	Filename   string    `json:"filename"`
-	RawName    string    `json:"raw_filename"`
-	Path       string    `json:"path"`
-	Bytes      int64     `json:"bytes"`
-	Expected   int64     `json:"expected_bytes"`
-	SHA256     string    `json:"sha256"`
-	CRC        string    `json:"crc"`
-	Hash       string    `json:"hash"`
-	Attempts   int       `json:"attempts"`
-	DurationMS int64     `json:"duration_ms"`
-	Error      *Failure  `json:"error"`
+	ID            string    `json:"id"`
+	StartedAt     time.Time `json:"started_at"`
+	FinishedAt    time.Time `json:"finished_at"`
+	State         string    `json:"state"`
+	Slug          string    `json:"slug"`
+	Title         string    `json:"title"`
+	Platform      string    `json:"platform"`
+	SourceName    string    `json:"source_name"`
+	LinkIndex     int       `json:"link_index"`
+	Filename      string    `json:"filename"`
+	RawName       string    `json:"raw_filename"`
+	Path          string    `json:"path"`
+	Bytes         int64     `json:"bytes"`
+	Expected      int64     `json:"expected_bytes"` // the size the transfer was held to: content_length once known, else catalog_size
+	CatalogSize   int64     `json:"catalog_size"`   // link.size, a rough estimate
+	ContentLength int64     `json:"content_length"` // the proxy's Content-Length, 0 if no attempt got that far
+	SHA256        string    `json:"sha256"`
+	CRC           string    `json:"crc"`
+	Hash          string    `json:"hash"`
+	Attempts      int       `json:"attempts"`
+	DurationMS    int64     `json:"duration_ms"`
+	Error         *Failure  `json:"error"`
 }
 
 // Failure is the error object of a failed job: {code, message} (cli-output.md section 3), null

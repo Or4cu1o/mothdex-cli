@@ -274,7 +274,7 @@ func errorArgs(e *app.Error) i18n.Args {
 	for k, v := range e.Args {
 		a[k] = v
 	}
-	for _, k := range []string{"got", "expected", "needed"} { // byte counts read as sizes
+	for _, k := range []string{"got", "expected", "needed", "size"} { // byte counts read as sizes
 		if n, ok := byteCount(e.Args[k]); ok {
 			a[k] = humanSize(n)
 		}
