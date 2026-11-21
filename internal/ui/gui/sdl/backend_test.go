@@ -197,9 +197,11 @@ func TestASmallDisplayIsLetterboxedNotCropped(t *testing.T) {
 	if err := be.Draw(layoutOf(m), &list); err != nil {
 		t.Fatal(err)
 	}
-	expectPixel(t, be, 1, 160, colorBG, "the left bar") // 640x480 in 480x320 leaves bars of about 26 px at each side
+	// 640x480 in 480x320 leaves bars of about 26 px at each side; Clear paints them with the background, but
+	// SDL_RenderReadPixels only reads inside the viewport, so the check is on the scaled layout itself: the
+	// top bar spans its whole width.
 	expectPixel(t, be, 240, 3, colorSurface, "the top bar, scaled")
-	expectPixel(t, be, 478, 160, colorBG, "the right bar")
+	expectPixel(t, be, 440, 3, colorSurface, "the top bar, near its right end")
 }
 
 // Events pushed into SDL come back through Wait and Poll as the loop's events, and Wake ends a Wait.
@@ -312,7 +314,9 @@ func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
 		case <-done:
 		case <-time.After(60 * time.Second):
 			t.Error("the loop did not end in 60 s")
-			be.Wake()
+			quit := NewEvent()
+			quit.SetType(EventQuit) // makes the loop leave through the exit sequence instead of waiting for ever
+			_ = be.lib.PushEvent(quit)
 		}
 	}()
 	final, err := loop.Run(context.Background(), loop.Config{Model: m, Cmds: cmds, Backend: p, Clock: p.Clock})
