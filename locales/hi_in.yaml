@@ -1,0 +1,50 @@
+# hi_in: keys missing here fall back to en_us.
+locale:
+  name: 'हिन्दी'
+  iso_code: 'hi-IN'
+  status: 'best effort: only the keys below are translated; the rest falls back to en_us'
+ui:
+  messages:
+    yes: 'हाँ'
+    no: 'नहीं'
+    ok: 'ठीक है'
+    cancel: 'रद्द करें'
+    done: 'पूर्ण'
+    loading: 'लोड हो रहा है...'
+    confirm: 'क्या आप निश्चित हैं? (y/N)'
+    goodbye: 'अलविदा!'
+  status:
+    idle: 'निष्क्रिय'
+    queued: 'कतार में'
+    downloading: 'डाउनलोड हो रहा है'
+    verifying: 'जाँच हो रही है'
+    done: 'पूर्ण'
+    skipped: 'छोड़ा गया'
+    failed: 'विफल'
+    canceled: 'रद्द'
+  units:
+    b: 'B'
+    kb: 'KB'
+    mb: 'MB'
+    gb: 'GB'
+    tb: 'TB'
+  labels:
+    title: 'शीर्षक'
+    platform: 'प्लेटफ़ॉर्म'
+    region: 'क्षेत्र'
+    size: 'आकार'
+    links: 'लिंक'
+  search:
+    searching: 'खोज रहे हैं...'
+    no_results: 'कोई परिणाम नहीं मिला'
+    found:
+      one: '{count} परिणाम मिला'
+      other: '{count} परिणाम मिले'
+  download:
+    starting: 'डाउनलोड शुरू हो रहा है...'
+    completed: 'डाउनलोड पूरा हुआ'
+    speed: 'गति: {speed}'
+    eta: 'शेष: {eta}'
+    files:
+      one: '{count} फ़ाइल'
+      other: '{count} फ़ाइलें'

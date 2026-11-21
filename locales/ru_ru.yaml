@@ -1,0 +1,124 @@
+# ru_ru: keys missing here fall back to en_us.
+locale:
+  name: 'Русский'
+  iso_code: 'ru-RU'
+errors:
+  usage:
+    message: 'Неверное использование: {detail}'
+    hint: 'Выполните "mothdex {command} --help".'
+  invalid_config:
+    message: 'Неверная настройка {key}={value} (источник: {source}).'
+    hint: 'Выполните "mothdex config reset {key}".'
+  invalid_request:
+    message: 'Некорректный запрос: {detail}.'
+    hint: 'Проверьте slug, фильтры и переданные значения.'
+  confirmation_required:
+    message: 'Эта команда требует подтверждения.'
+    hint: 'Добавьте --force, чтобы пропустить вопрос.'
+  unmapped_platform:
+    message: 'Для платформы {platform} не задана папка.'
+    hint: 'Укажите -o <папка> или задайте profile.folders.{platform} в настройках.'
+  no_session:
+    message: 'Нет предыдущего поиска, на который можно сослаться.'
+    hint: 'Сначала выполните "mothdex search <текст>" или используйте --slug.'
+  index_out_of_range:
+    message: 'Результата №{index} нет (в последнем поиске их {count}).'
+    hint: 'Выберите число от 1 до {count}.'
+  not_found:
+    message: 'Запись для {ref} не найдена.'
+    hint: 'Проверьте написание или используйте меньше слов.'
+  network:
+    message: 'Не удаётся связаться с сервером Mothdex.'
+    hint: 'Проверьте подключение.'
+  rate_limited:
+    message: 'Сервер просит снизить частоту запросов.'
+    hint: 'Подождите {retry_after} и повторите.'
+  upstream:
+    message: 'На сервере возникла проблема (HTTP {status}).'
+    hint: 'Повторите через несколько минут.'
+  api_incompatible:
+    message: 'Сервер ответил в формате, который эта версия не понимает.'
+    hint: 'Обновите mothdex.'
+  untrusted_url:
+    message: 'Загрузка с {host} отклонена.'
+    hint: 'Доверенным считается только {allowed}.'
+  untrusted_redirect:
+    message: 'Сервер перенаправил на {host}, которому нет доверия.'
+    hint: 'Туда ничего не отправлено. Повторите позже; если ошибка повторяется, сообщите о ней.'
+  size_mismatch:
+    message: 'Скачанный файл имеет неверный размер ({got} из {expected}).'
+    hint: 'Повторите или выберите другую ссылку через --link.'
+  integrity:
+    message: 'Скачанный файл повреждён (проверка архива не пройдена).'
+    hint: 'Повторите или выберите другую ссылку через --link.'
+  permission_denied:
+    message: 'Не удаётся записать в {path}.'
+    hint: 'Выберите другую папку через -o или исправьте права доступа.'
+  disk_full:
+    message: 'Недостаточно свободного места в {path} (нужно {needed}).'
+    hint: 'Освободите место или выберите другую папку через -o.'
+  exists:
+    message: '{path} уже существует.'
+    hint: 'Задайте download.on_exists равным rename или overwrite.'
+  path_rejected:
+    message: 'Запись в {path} отклонена.'
+    hint: 'Ничего не записано. Выберите другую папку через -o или проверьте profile.folders.'
+  unsafe_name:
+    message: 'Отказ сохранить {name}: этот тип файла может выполнять код.'
+    hint: 'Ничего не записано. Выберите другую ссылку через --link или укажите --allow-executable, если доверяете файлу.'
+  canceled:
+    message: 'Отменено.'
+    hint: ''
+  internal:
+    message: 'Непредвиденная ошибка.'
+    hint: 'Подробности в {log_path}. Пожалуйста, сообщите об ошибке.'
+ui:
+  messages:
+    yes: 'Да'
+    no: 'Нет'
+    ok: 'ОК'
+    cancel: 'Отмена'
+    done: 'Готово'
+    loading: 'Загрузка...'
+    confirm: 'Вы уверены? (д/Н)'
+    goodbye: 'До свидания!'
+  status:
+    idle: 'Простаивает'
+    queued: 'В очереди'
+    downloading: 'Загрузка'
+    verifying: 'Проверка'
+    done: 'Завершено'
+    skipped: 'Пропущено'
+    failed: 'Ошибка'
+    canceled: 'Отменено'
+  units:
+    b: 'Б'
+    kb: 'КБ'
+    mb: 'МБ'
+    gb: 'ГБ'
+    tb: 'ТБ'
+  labels:
+    title: 'Название'
+    platform: 'Платформа'
+    region: 'Регион'
+    size: 'Размер'
+    links: 'Ссылки'
+  search:
+    searching: 'Поиск...'
+    no_results: 'Ничего не найдено'
+    found:
+      one: 'Найден {count} результат'
+      few: 'Найдено {count} результата'
+      many: 'Найдено {count} результатов'
+      other: 'Найдено {count} результата'
+  download:
+    starting: 'Начало загрузки...'
+    completed: 'Загрузка завершена'
+    summary: 'Загружено: {done}, пропущено: {skipped}, ошибок: {failed}, за {elapsed}'
+    speed: 'Скорость: {speed}'
+    eta: 'Осталось: {eta}'
+    files:
+      one: '{count} файл'
+      few: '{count} файла'
+      many: '{count} файлов'
+      other: '{count} файла'
