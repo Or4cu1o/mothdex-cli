@@ -292,6 +292,37 @@ func TestLauncherFoldersAreRefusedThroughTheConfiner(t *testing.T) {
 	}
 }
 
+// Sentinela m1: when the profile spells its root through a link (EmuELEC /roms -> /storage/roms)
+// and -o uses the real spelling, only the Confiner's LauncherPaths (resolved) refuse the folder;
+// the lexical IsLauncherPath check does not see it.
+func TestLauncherFolderReachedThroughALinkedProfileRootIsRefused(t *testing.T) {
+	base := t.TempDir()
+	realRoot := filepath.Join(base, "storage", "roms")
+	if err := os.MkdirAll(filepath.Join(realRoot, "ports"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "roms")
+	if err := os.Symlink(realRoot, link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	prof := ProfileInfo{ID: "emuelec-like", RomRoot: link}
+	prof.Profile.Roms.Root = link
+	prof.Profile.Launcher.Dir = filepath.Join(link, "ports")
+	r := newDLRigEnv(t, DownloadConfig{}, func(e *Env) { e.Profile = prof })
+	dir := filepath.Join(realRoot, "ports")
+	ctx := context.Background()
+	if _, err := r.svc.Enqueue(ctx, []DownloadRequest{{Ref: Ref{Slug: "game"}, DestDir: dir}}); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := r.svc.Wait(ctx)
+	if res.Failed != 1 || res.Jobs[0].Err == nil || res.Jobs[0].Err.Code != "path_rejected" {
+		t.Fatalf("the real spelling of the launcher folder must be refused: %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "game.zip")); err == nil {
+		t.Fatal("a file was written into the launcher folder")
+	}
+}
+
 // Sentinela m2: the startup Cleanup runs on the first use of a root, and a Downloader leaves the
 // journal entries of another root alone (Sentinela s1).
 func TestStartupCleanupRemovesOldOrphansAndKeepsOtherRoots(t *testing.T) {
