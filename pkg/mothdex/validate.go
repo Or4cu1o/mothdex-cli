@@ -1,6 +1,9 @@
 package mothdex
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+)
 
 // Local limits from the contract (section 2).
 const (
@@ -13,12 +16,22 @@ func invalid(op, msg string) *Error {
 	return &Error{Kind: KindInvalidRequest, Op: op, Message: msg}
 }
 
+// slugRule is the one slug shape both clients pass on (api-client section 2).
+var slugRule = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,255}$`)
+
+// ValidSlug reports whether s is a safe slug: ASCII lowercase letters, digits and "-", starting with a
+// letter or digit, 1 to 256 bytes. Slugs end up in command lines, file names, CSV cells and terminals.
+func ValidSlug(s string) bool { return slugRule.MatchString(s) }
+
 func validateSlug(op, slug string) *Error {
 	if slug == "" {
 		return invalid(op, "slug is required")
 	}
 	if len(slug) > maxSlugBytes {
 		return invalid(op, fmt.Sprintf("slug longer than %d bytes", maxSlugBytes))
+	}
+	if !ValidSlug(slug) {
+		return invalid(op, "slug must be lowercase letters, digits and '-', starting with a letter or digit")
 	}
 	return nil
 }

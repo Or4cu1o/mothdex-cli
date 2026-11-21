@@ -372,6 +372,9 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 	if p.g.Quiet && res.Failed == 0 {
 		return
 	}
+	if len(res.Jobs) == 1 && res.Jobs[0].State == app.StateCanceled {
+		return // Ctrl+C on a single download: the exit code says it, nothing else is printed
+	}
 	p.info("%s", p.T("ui.download.summary", i18n.Args{"done": res.Done, "skipped": res.Skipped, "failed": res.Failed + res.Cancel, "elapsed": humanDuration(elapsed)}))
 }
 

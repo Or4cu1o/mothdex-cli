@@ -52,7 +52,19 @@ func Execute(ctx context.Context, d Deps, args []string) int {
 	if err == nil {
 		return 0
 	}
+	r.noteCommand(root, args)
 	return r.fail(err)
+}
+
+// noteCommand names the command that failed argument validation, which cobra reports before any hook
+// runs, so that the usage hint points at "mothdex <command> --help" rather than the root.
+func (r *runtime) noteCommand(root *cobra.Command, args []string) {
+	if r.cmd != "" {
+		return
+	}
+	if c, _, err := root.Find(args); err == nil && c != root {
+		r.cmd = commandName(c)
+	}
 }
 
 // fail prints err and returns its exit code. Errors are never silenced, not even by -q.
