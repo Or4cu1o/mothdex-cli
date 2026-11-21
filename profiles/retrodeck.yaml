@@ -13,7 +13,7 @@ detect:
 roms:
   root: '${MATCH}'
   root_verified: true
-  folders_verified: true
+  folders_verified: false   # ES-DE names; RetroDECK's ROM layout not checked in its repo (T15b)
   layout: per_system
   unmapped: error
   folders:

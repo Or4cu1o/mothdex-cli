@@ -144,14 +144,14 @@ func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error     // never fat
 
 The maps live in `profiles/*.yaml` (data). Source: [T15b research](../../research/T15b-platform-folders.md) (Sonda,
 2026-11-20), which reads each frontend's own system definition for all 67 Mothdex ids. Applied in T-15c with
-Regente decision D18:
+Regente decisions D18 (`pc` → `windows`, `tg16`/`tgcd` names, arcade unmapped) and D19 (`pc` unmapped in v0.1):
 
 | Profile | Mapped ids | `folders_verified` | Basis |
 |---|---|---|---|
 | `batocera` | 48 | true | `es_systems.yml` keys (Confirmed) |
 | `emuelec` | 41 | true | basename of `path` in `es_systems.json`, not the system `name` (e.g. `dos` → `pc`, `ngcd` → `neocd`) |
 | `retrobat` | 47 | true | `path` in `es_systems.cfg` |
-| `retrodeck` | 48 | true | ES-DE `es_systems.xml` (RetroDECK ships ES-DE) |
+| `retrodeck` | 48 | false | ES-DE names; RetroDECK's own layout not checked in its repository |
 | `emudeck` | 48 | false | ES-DE names; EmuDeck's layout is Inferred |
 | `recalbox` | 40 | false | `system.ini` names: 51 of 146 read, the rest Inferred from directory names |
 | `lakka`, `generic` | — | — | `per_platform_id` layout (folder = Mothdex id) |
@@ -159,12 +159,12 @@ Regente decision D18:
 Rules for the map (D18):
 
 - **Same name everywhere** where the frontend has it; region variants (`genesis`, `megadrivejp`, `tg16`, `tg-cd`, …)
-  are not used. `md` → `megadrive` (OQ-PRO-2), `tg16`/`tgcd` → `pcengine`/`pcenginecd` (the only names present in all
+  are not used. `md` → `megadrive` (OQ-PRO-2), `tg16`/`tgcd` → `pcengine`/`pcenginecd` (D18; the only names present in all
   five frontends; EmuELEC and ES-DE users who keep `tg16` override per folder).
 - `3ds` and `n3ds` share one folder (`3ds`, or `n3ds` on ES-DE): no frontend separates them.
 - **No system in that frontend → unmapped** (for example `ps2` on EmuELEC, `wiiu` on Recalbox, `dsi` everywhere, since
   DSi titles usually share `nds` and that is not confirmed).
-- **Arcade ids stay unmapped on purpose** (`mame`, `hbmame`, `fbn`, `naomi`, `naomi2`, `chih`, `tri`, `lind`, `s246`,
+- **Arcade ids stay unmapped on purpose** (D18; `mame`, `hbmame`, `fbn`, `naomi`, `naomi2`, `chih`, `tri`, `lind`, `s246`,
   `ring`, `ring2`, `m2`, `sgv`, `s573`, `fbeat`, `eamu`). These frontends split arcade games by **emulator and romset
   version** (`mame`, `fbneo`, `neogeo`, `cps1`–`3`, `atomiswave`, `namco2x6`, …), and a set only runs in the folder
   whose emulator matches its romset. The platform id alone cannot pick that folder, so a wrong guess would put games

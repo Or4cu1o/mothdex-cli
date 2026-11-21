@@ -83,7 +83,10 @@ func TestEmbeddedFolderMaps(t *testing.T) {
 func TestEmbeddedFoldersAvoidLauncherDirs(t *testing.T) {
 	unmapped := []string{"mame", "hbmame", "fbn", "naomi", "naomi2", "chih", "tri", "lind", "s246", "pc"}
 	for _, p := range loadEmbedded(t) {
-		sep, root := "/", "/roms" // a stand-in root: the rule under test is root + folder
+		// A stand-in root: this exercises ValidateFolderName and the launcher-folders-under-the-root
+		// rule. launcher.dir itself may still contain ${MATCH} here; its last component is checked
+		// by the loader (launcherNames in validateFolders), which loadEmbedded already ran.
+		sep, root := "/", "/roms"
 		if p.OS == "windows" {
 			sep, root = `\`, `C:\RetroBat\roms`
 		}
