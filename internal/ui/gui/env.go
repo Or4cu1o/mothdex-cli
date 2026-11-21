@@ -35,7 +35,14 @@ type Cmd func() Msg
 // Messages from the run loop.
 type (
 	// InputMsg is one action of the input layer.
-	InputMsg struct{ Action input.Action }
+	InputMsg struct {
+		Action input.Action
+		// Repeat is true for an action the input layer repeated because the button is held, so a screen can
+		// ignore it where one more press would do something else (B at an empty field goes back).
+		Repeat bool
+	}
+	// TextMsg is text typed on a physical keyboard while the model asked for text input.
+	TextMsg struct{ Text string }
 	// TickMsg says time has passed: timers are checked against the time given to Update.
 	TickMsg struct{}
 	// ResizeMsg is a new display size in pixels (a window event, an HDMI change).

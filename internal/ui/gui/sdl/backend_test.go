@@ -4,6 +4,8 @@ package sdl
 
 import (
 	"context"
+	"image"
+	"image/color"
 	"runtime"
 	"slices"
 	"strconv"
@@ -222,6 +224,10 @@ func TestEventsRoundTripThroughSDL(t *testing.T) {
 		*e.ControllerAxis() = ControllerAxisEvent{Type: EventControllerAxisMotion, Axis: ControllerAxisLeftX, Value: 20000}
 	})
 	push(func(e *Event) { e.SetControllerButton(EventControllerButtonDown, 0, 8, 1) }) // a stick click: not used
+	push(func(e *Event) {
+		*e.TextInput() = TextInputEvent{Type: EventTextInput}
+		copy(e.TextInput().Text[:], "ñ")
+	})
 	push(func(e *Event) { e.SetType(EventQuit) })
 
 	want := []input.Incoming{
@@ -229,6 +235,7 @@ func TestEventsRoundTripThroughSDL(t *testing.T) {
 		{Kind: input.IncomingInput, Input: input.Event{Kind: input.KeyRelease, Key: input.KeyRune, Rune: 'x'}},
 		{Kind: input.IncomingInput, Input: input.Event{Kind: input.ButtonPress, Button: input.South}},
 		{Kind: input.IncomingInput, Input: input.Event{Kind: input.AxisMotion, Axis: input.LeftX, Value: 20000}},
+		{Kind: input.IncomingText, Text: "ñ"},
 		{Kind: input.IncomingQuit},
 	}
 	first, ok := be.Wait(2 * time.Second)
@@ -333,4 +340,38 @@ func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
 	if len(p.steps) != 0 {
 		t.Fatalf("keys never pushed: %+v", p.steps)
 	}
+}
+
+// A cover is a texture uploaded once per id and drawn scaled into its rectangle; the cache keeps at most 48.
+func TestImagesAreDrawnScaledAndTheTextureCacheIsBounded(t *testing.T) {
+	be, _ := headless(t, 640, 480)
+	solid := func(c color.RGBA) *image.RGBA {
+		img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+		for y := 0; y < 4; y++ {
+			for x := 0; x < 4; x++ {
+				img.SetRGBA(x, y, c)
+			}
+		}
+		return img
+	}
+	var list gdraw.List
+	list.Reset(640, 480)
+	list.Fill(gdraw.Rect{W: 640, H: 480}, 0, gdraw.Color{R: 0x0F, G: 0x13, B: 0x17, A: 0xff})
+	for i := 0; i < 50; i++ {
+		list.Image(gdraw.Rect{X: 10, Y: 10, W: 100, H: 80}, uint64(i), solid(color.RGBA{R: 200, G: uint8(i), B: 50, A: 255}))
+	}
+	if err := be.Draw(gdraw.Layout{W: 640, H: 480, Scale: 1}, &list); err != nil {
+		t.Fatal(err)
+	}
+	if be.images.len() != maxImageTextures {
+		t.Fatalf("%d textures held, want %d", be.images.len(), maxImageTextures)
+	}
+	r, g, b, _, err := be.Pixel(60, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != 200 || g != 49 || b != 50 { // the last image drawn wins, scaled from 4x4 to 100x80
+		t.Errorf("pixel inside the image is %d,%d,%d", r, g, b)
+	}
+	expectPixel(t, be, 300, 300, colorBG, "outside the image")
 }

@@ -38,6 +38,7 @@ const (
 	EventWindow               = 0x200 // SDL_WINDOWEVENT
 	EventKeyDown              = 0x300
 	EventKeyUp                = 0x301
+	EventTextInput            = 0x303
 	EventControllerAxisMotion = 0x650
 	// EventControllerButtonDown is SDL_CONTROLLERBUTTONDOWN: SDL_CONTROLLERAXISMOTION is 0x650, then
 	// BUTTONDOWN, BUTTONUP, DEVICEADDED and DEVICEREMOVED follow in that order.
@@ -203,4 +204,30 @@ func (e *Event) ControllerDevice() *ControllerDeviceEvent {
 func (e *Event) SetType(typ uint32) {
 	*e = Event{}
 	*(*uint32)(unsafe.Pointer(&e.raw[0])) = typ //nolint:gosec // raw is 56 bytes and its first four are the type
+}
+
+// textInputSize is the size of the Text field of SDL_TextInputEvent: SDL_TEXTINPUTEVENT_TEXT_SIZE.
+const textInputSize = 32
+
+// TextInputEvent is SDL_TextInputEvent: the UTF-8 text typed, ended by a zero byte.
+type TextInputEvent struct {
+	Type      uint32
+	Timestamp uint32
+	WindowID  uint32
+	Text      [textInputSize]byte
+}
+
+// TextInput views the event as a text input event. The caller checks Type first.
+func (e *Event) TextInput() *TextInputEvent {
+	return (*TextInputEvent)(unsafe.Pointer(e)) //nolint:gosec // 44 bytes at the start of a 56-byte event, same layout (abi_test.go)
+}
+
+// String is the text of the event, up to its first zero byte.
+func (t *TextInputEvent) String() string {
+	for i, b := range t.Text {
+		if b == 0 {
+			return string(t.Text[:i])
+		}
+	}
+	return string(t.Text[:])
 }

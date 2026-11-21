@@ -45,6 +45,7 @@ type Backend struct {
 	atlas    *text.Atlas
 	atlasTex Texture
 	upload   []byte
+	images   *lru[uint64, Texture]
 	placed   []text.Placed
 
 	wakeType   uint32
@@ -71,6 +72,7 @@ func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, e
 		atlas: text.NewAtlas(atlasSide, atlasSide),
 		pads:  map[int32]Controller{}, padType: map[int32]input.ControllerType{},
 	}
+	b.images = newLRU(maxImageTextures, func(_ uint64, t Texture) { b.lib.DestroyTexture(t) })
 	defer func() {
 		if err != nil {
 			b.Close()
@@ -216,6 +218,9 @@ func (b *Backend) Close() {
 		b.lib.CloseController(c)
 		delete(b.pads, id)
 	}
+	if b.images != nil {
+		b.images.clear()
+	}
 	if b.atlasTex.handle != 0 {
 		b.lib.DestroyTexture(b.atlasTex)
 		b.atlasTex = Texture{}
@@ -243,6 +248,9 @@ func (b *Backend) Size() (w, h int) {
 	}
 	return int(rw), int(rh)
 }
+
+// SetTextInput turns the delivery of typed text on or off.
+func (b *Backend) SetTextInput(on bool) { b.lib.SetTextInput(on) }
 
 // Driver is the video driver in use.
 func (b *Backend) Driver() string { return b.lib.CurrentVideoDriver() }
@@ -294,6 +302,8 @@ func (b *Backend) Draw(layout gdraw.Layout, l *gdraw.List) error {
 			err = b.drawText(op)
 		case gdraw.KindSpinner:
 			err = b.drawSpinner(op)
+		case gdraw.KindImage:
+			err = b.drawImage(op)
 		}
 		if err != nil {
 			return err
@@ -505,6 +515,10 @@ func (b *Backend) translate(e *Event) {
 		}
 	case EventKeyDown, EventKeyUp:
 		b.translateKey(e)
+	case EventTextInput:
+		if txt := e.TextInput().String(); txt != "" {
+			b.pending = append(b.pending, input.Incoming{Kind: input.IncomingText, Text: txt})
+		}
 	case EventControllerButtonDown, EventControllerButtonUp:
 		b.translateButton(e)
 	case EventControllerAxisMotion:

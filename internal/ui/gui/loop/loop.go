@@ -29,6 +29,8 @@ type Backend interface {
 	Poll() (ev input.Incoming, ok bool)
 	// Wake makes a Wait that is blocked return.
 	Wake()
+	// SetTextInput turns on or off the delivery of typed text (IncomingText), which the keyboard screen needs.
+	SetTextInput(on bool)
 }
 
 // EventSource is where job events come from: the app service.
@@ -73,7 +75,7 @@ func Run(ctx context.Context, c Config) (gui.Model, error) {
 	for !l.model.Done() {
 		now := c.Clock()
 		for _, a := range l.mapper.Tick(now) {
-			l.apply(gui.InputMsg{Action: a})
+			l.apply(gui.InputMsg{Action: a, Repeat: true})
 		}
 		l.apply(gui.TickMsg{})
 		l.drain()
@@ -98,6 +100,7 @@ type loopState struct {
 	mapper *input.Mapper
 	msgs   chan gui.Msg
 	epoch  int
+	text   bool // text input is on
 	list   draw.List
 	dirty  bool // something changed since the last frame: a message, a repeat or a timer
 }
@@ -176,6 +179,11 @@ func (l *loopState) drain() {
 // closed, so a held direction does not carry on into a dialog.
 func (l *loopState) sync() {
 	l.mapper.SetConfig(l.model.InputConfig())
+	if text := l.model.TextMode(); text != l.text {
+		l.text = text
+		l.mapper.TextMode, l.mapper.RepeatBack = text, text // B repeats as delete on the keyboard screen
+		l.Backend.SetTextInput(text)
+	}
 	if e := l.model.OverlayEpoch(); e != l.epoch {
 		l.epoch = e
 		l.mapper.Release()
@@ -226,5 +234,7 @@ func (l *loopState) handle(ev input.Incoming) {
 		l.apply(gui.ControllerMsg{Type: ev.Pad})
 	case input.IncomingQuit:
 		l.apply(gui.SignalMsg{})
+	case input.IncomingText:
+		l.apply(gui.TextMsg{Text: ev.Text})
 	}
 }

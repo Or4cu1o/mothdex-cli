@@ -231,7 +231,7 @@ func TestKeyboardFallback(t *testing.T) {
 		{"another letter does nothing", letter('z'), false, nil},
 		{"letters are text on the keyboard screen", letter('x'), true, nil},
 		{"q too", letter('q'), true, nil},
-		{"Enter still confirms there", key(KeyEnter), true, acts(Confirm)},
+		{"Enter runs the search there, like Start", key(KeyEnter), true, acts(Menu)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

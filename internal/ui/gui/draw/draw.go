@@ -3,6 +3,8 @@
 // Coordinates are logical pixels; the backend applies the render scale or the logical size.
 package draw
 
+import "image"
+
 // Rect is a rectangle in logical pixels.
 type Rect struct{ X, Y, W, H int }
 
@@ -40,6 +42,7 @@ const (
 	KindRect    Kind = iota // a filled rectangle, with rounded corners when Radius > 0
 	KindText                // one line of text
 	KindSpinner             // a ring, one turn per second
+	KindImage               // a picture (a cover) scaled to fill Rect
 )
 
 // Op is one drawing operation. Only the fields of its Kind are used.
@@ -59,6 +62,11 @@ type Op struct {
 	// 0..1 (the backend draws the bright arc from there).
 	CX, CY, R, Thick int
 	Turn             float64
+
+	// KindImage: Rect is where the picture goes. ImageID names the picture for the backend's texture cache
+	// (the same id is the same pixels); Pixels is the picture, not modified after it was made.
+	ImageID uint64
+	Pixels  *image.RGBA
 }
 
 // Layout says how the logical coordinates of a List map to the display: a render scale for sizes above
@@ -97,6 +105,14 @@ func (l *List) Text(x, base, size int, c Color, s string) {
 // Spinner appends a spinner.
 func (l *List) Spinner(cx, cy, r, thick int, turn float64, c Color) {
 	l.Ops = append(l.Ops, Op{Kind: KindSpinner, CX: cx, CY: cy, R: r, Thick: thick, Turn: turn, Color: c})
+}
+
+// Image appends a picture to be scaled into r.
+func (l *List) Image(r Rect, id uint64, pixels *image.RGBA) {
+	if r.Empty() || pixels == nil {
+		return
+	}
+	l.Ops = append(l.Ops, Op{Kind: KindImage, Rect: r, ImageID: id, Pixels: pixels})
 }
 
 // Texts returns the text of every text op, in drawing order, for tests that assert on content.

@@ -169,6 +169,10 @@ func New(o Options, now time.Time) (Model, []Cmd) {
 // Metrics is the layout in use, for the run loop (render scale, logical size).
 func (m Model) Metrics() Metrics { return m.metrics }
 
+// TextMode says whether the screen takes typed text: the loop turns SDL text input on and switches the input
+// layer to its text rules.
+func (m Model) TextMode() bool { return false }
+
 // InputConfig is what the input layer must follow: the confirm button.
 func (m Model) InputConfig() input.Config { return input.Config{ConfirmEast: m.cfg.confirmEast} }
 

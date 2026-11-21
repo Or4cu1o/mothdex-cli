@@ -31,6 +31,7 @@ EventQuit SDL_QUIT
 EventWindow SDL_WINDOWEVENT
 EventKeyDown SDL_KEYDOWN
 EventKeyUp SDL_KEYUP
+EventTextInput SDL_TEXTINPUT
 EventControllerAxisMotion SDL_CONTROLLERAXISMOTION
 EventControllerButtonDown SDL_CONTROLLERBUTTONDOWN
 EventControllerButtonUp SDL_CONTROLLERBUTTONUP
@@ -111,6 +112,10 @@ _Static_assert(offsetof(SDL_Keysym, scancode) == 0, "keysym.scancode");
 _Static_assert(offsetof(SDL_Keysym, sym) == 4, "keysym.sym");
 _Static_assert(offsetof(SDL_Keysym, mod) == 8, "keysym.mod");
 _Static_assert(offsetof(SDL_Keysym, unused) == 12, "keysym.unused");
+_Static_assert(sizeof(SDL_TextInputEvent) == 44, "sizeof(SDL_TextInputEvent)");
+_Static_assert(offsetof(SDL_TextInputEvent, windowID) == 8, "text.windowID");
+_Static_assert(offsetof(SDL_TextInputEvent, text) == 12, "text.text");
+_Static_assert(sizeof(((SDL_TextInputEvent*)0)->text) == 32, "text size");
 _Static_assert(sizeof(SDL_ControllerAxisEvent) == 20, "sizeof(SDL_ControllerAxisEvent)");
 _Static_assert(offsetof(SDL_ControllerAxisEvent, which) == 8, "caxis.which");
 _Static_assert(offsetof(SDL_ControllerAxisEvent, axis) == 12, "caxis.axis");

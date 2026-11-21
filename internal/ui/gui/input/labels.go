@@ -129,6 +129,7 @@ const (
 	IncomingResize                     // the display changed size
 	IncomingPad                        // the pad in hand changed type, for the hint labels
 	IncomingQuit                       // the window was asked to close
+	IncomingText                       // typed text, while text input is on
 )
 
 // Incoming is one thing a backend tells the run loop. It carries no SDL types, so the loop and its tests
@@ -138,4 +139,5 @@ type Incoming struct {
 	Input Event          // IncomingInput
 	W, H  int            // IncomingResize: the new size in pixels
 	Pad   ControllerType // IncomingPad
+	Text  string         // IncomingText: what the keyboard typed, as UTF-8
 }

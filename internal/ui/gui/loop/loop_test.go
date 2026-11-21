@@ -117,6 +117,8 @@ func (b *scriptedBackend) Poll() (input.Incoming, bool) {
 
 func (b *scriptedBackend) Wake() {}
 
+func (b *scriptedBackend) SetTextInput(bool) {}
+
 func btn(kind input.Kind, b input.Button) input.Incoming {
 	return input.Incoming{Kind: input.IncomingInput, Input: input.Event{Kind: kind, Button: b}}
 }
@@ -296,6 +298,7 @@ type blockingBackend struct{ wake chan struct{} }
 func (b *blockingBackend) Size() (int, int)                      { return 1280, 720 }
 func (b *blockingBackend) Present(draw.Layout, *draw.List) error { return nil }
 func (b *blockingBackend) Poll() (input.Incoming, bool)          { return input.Incoming{}, false }
+func (b *blockingBackend) SetTextInput(bool)                     {}
 func (b *blockingBackend) Wake() {
 	select {
 	case b.wake <- struct{}{}:
