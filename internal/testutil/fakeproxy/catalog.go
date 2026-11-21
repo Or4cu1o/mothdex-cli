@@ -102,7 +102,7 @@ func Catalog() []Case {
 		{ID: 49, Group: grpOutput, Title: "Terminal escapes", Needs: "none", Assert: "title/filename with OSC 52 and ESC[2J: human output has no ESC byte; --json escapes it", Status: Pending},
 		{ID: 50, Group: grpOutput, Title: "CSV formula guard", Needs: "none", Assert: "filename =HYPERLINK(...) exported cell begins with a quote", Status: Covered, Test: "TestCase50CSVFormulaGuard"},
 
-		{ID: 51, Group: grpInstall, Title: "Launcher path injection (T-21)", Needs: "none", Assert: "bin_dir with a space and with $(id): refused or quoted so that sh -n passes and the literal path runs", Status: Pending},
-		{ID: 52, Group: grpInstall, Title: "Launcher permissions (T-21)", Needs: "realfs", Assert: "launcher mode 0755, owned by installer user, dir not world-writable; reinstall keeps a user-modified launcher without the marker", Status: Pending, Provider: "realfs: plain t.TempDir, no extra double"},
+		{ID: 51, Group: grpInstall, Title: "Launcher path injection (T-21)", Needs: "none", Assert: "bin_dir with a space and with $(id): refused or quoted so that sh -n passes and the literal path runs", Status: Covered, Test: "tests/installer/cases.sh (case51 block: eight hostile bin_dir values, HOME with a space, safe odd path) + install.Tests.ps1 (TH-30 launcher quoting)"},
+		{ID: 52, Group: grpInstall, Title: "Launcher permissions (T-21)", Needs: "realfs", Assert: "launcher mode 0755, owned by installer user, dir not world-writable; reinstall keeps a user-modified launcher without the marker", Status: Covered, Test: "tests/installer/cases.sh (case52 blocks: bin_dir modes 0777, 1777, 0702, foreign owner, symlinked launcher, launcher dir, kept user launcher, 0755 refresh) + nonroot.sh + install.Tests.ps1 (TH-31, TH-32)", Provider: "realfs: plain t.TempDir, no extra double"},
 	}
 }
