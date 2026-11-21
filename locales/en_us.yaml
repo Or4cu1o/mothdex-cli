@@ -327,6 +327,7 @@ ui:
         one: '{filter} · {count} record'
         other: '{filter} · {count} records'
       only_failed: 'Only failed downloads can be queued again.'
+      already_queued: 'Already queued again.'
       overwrite: 'Overwrite? [y/N]'
       export_to: 'Export to:'
       detail_help: 'd queue again (failed)  esc close'

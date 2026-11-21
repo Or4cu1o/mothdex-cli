@@ -59,6 +59,7 @@ type historyScreen struct {
 	detail     bool
 	export     *textinput.Model
 	over       *overwriteAsk
+	queued     map[string]bool // records queued again this run: d twice would queue the file twice
 }
 
 func newHistory() historyScreen {
@@ -148,6 +149,11 @@ func (s historyScreen) update(msg tea.Msg, rt *shared) (screen, tea.Cmd) {
 		return s, nil
 	case exportDoneMsg:
 		return s.onExported(msg, rt)
+	case retriedMsg: // a failed Enqueue gives the records back (the record id is the job id)
+		if msg.enq.err != nil {
+			s.queued = without(s.queued, msg.ids)
+		}
+		return s, nil
 	case keyEv:
 		return s.onKey(msg, rt)
 	}
@@ -289,8 +295,37 @@ func (s historyScreen) requeue(vis []app.HistoryRecord, i int, rt *shared) (scre
 	if r.Error == nil {
 		return s, toastCmd(rt.T("ui.tui.history.only_failed", nil), toastWarn)
 	}
+	if s.queued[r.ID] {
+		return s, toastCmd(rt.T("ui.tui.history.already_queued", nil), toastWarn)
+	}
+	s.queued = withID(s.queued, r.ID)
 	req := app.DownloadRequest{Ref: app.Ref{Slug: r.Slug}, Link: app.LinkSelector{Index: r.LinkIndex, Prefer: rt.prefs}}
-	return s, enqueueCmd(rt.env, []app.DownloadRequest{req})
+	enqueue := enqueueCmd(rt.env, []app.DownloadRequest{req})
+	ids := []app.JobID{app.JobID(r.ID)}
+	return s, func() tea.Msg {
+		enq, _ := enqueue().(enqueuedMsg)
+		return retriedMsg{enq: enq, ids: ids}
+	}
+}
+
+func withID(m map[string]bool, id string) map[string]bool {
+	out := make(map[string]bool, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	out[id] = true
+	return out
+}
+
+func without(m map[string]bool, ids []app.JobID) map[string]bool {
+	out := make(map[string]bool, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	for _, id := range ids {
+		delete(out, string(id))
+	}
+	return out
 }
 
 func (s historyScreen) onExportKey(ev keyEv, rt *shared) (screen, tea.Cmd) {
@@ -304,7 +339,7 @@ func (s historyScreen) onExportKey(ev keyEv, rt *shared) (screen, tea.Cmd) {
 		path := strings.TrimSpace(s.export.Value())
 		s.export = nil
 		if path != "" {
-			return s, exportCmd(rt, s.recs, path, false)
+			return s, exportCmd(rt, s.visible(), path, false)
 		}
 	}
 	return s, nil
@@ -314,7 +349,7 @@ func (s historyScreen) answerOverwrite(a action, rt *shared) (screen, tea.Cmd) {
 	path := s.over.path
 	s.over = nil
 	if a == actYes {
-		return s, exportCmd(rt, s.recs, path, true)
+		return s, exportCmd(rt, s.visible(), path, true)
 	}
 	return s, nil
 }

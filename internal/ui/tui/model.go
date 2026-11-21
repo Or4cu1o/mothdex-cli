@@ -2,6 +2,7 @@ package tui
 
 import (
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -144,6 +145,7 @@ type model struct {
 	confirm  bool
 	boxart   bool
 	names    map[string]string // platform id to name, for the Entry screen
+	cfgPrefs map[string]any    // download.prefer.* as last read, to see which one changed
 	spin     int
 	spinning bool
 	warming  bool
@@ -479,26 +481,38 @@ func (m model) apply(list []app.Setting) model {
 	if v, ok := by["download.boxart"].(bool); ok {
 		m.boxart = v
 	}
-	m.prefs = preferenceFrom(by, m.prefs)
+	m.prefs, m.cfgPrefs = preferenceFrom(by, m.cfgPrefs, m.prefs)
 	return m
 }
 
-// preferenceFrom reads download.prefer.* from the effective settings; a key that is missing keeps
-// what the baseline had.
-func preferenceFrom(by map[string]any, base app.Preference) app.Preference {
-	if v, ok := by["download.prefer.languages"].([]string); ok {
+// preferKeys are the settings that make up the link preference.
+var preferKeys = []string{"download.prefer.languages", "download.prefer.formats", "download.prefer.sources", "download.prefer.size"}
+
+// preferenceFrom takes download.prefer.* from the effective settings, but only the keys whose value
+// changed since the last read: the P overlay of the Entry screen ("for this run only") must survive
+// opening Settings or changing something else. It returns the new preference and the values it saw.
+func preferenceFrom(by, prev map[string]any, base app.Preference) (app.Preference, map[string]any) {
+	seen := make(map[string]any, len(preferKeys))
+	for _, k := range preferKeys {
+		seen[k] = by[k]
+	}
+	if prev == nil { // the first read only records what the configuration says
+		return base, seen
+	}
+	changed := func(k string) bool { return !reflect.DeepEqual(prev[k], seen[k]) }
+	if v, ok := by[preferKeys[0]].([]string); ok && changed(preferKeys[0]) {
 		base.Languages = v
 	}
-	if v, ok := by["download.prefer.formats"].([]string); ok {
+	if v, ok := by[preferKeys[1]].([]string); ok && changed(preferKeys[1]) {
 		base.Formats = v
 	}
-	if v, ok := by["download.prefer.sources"].([]string); ok {
+	if v, ok := by[preferKeys[2]].([]string); ok && changed(preferKeys[2]) {
 		base.Sources = v
 	}
-	if v, ok := by["download.prefer.size"].(string); ok {
+	if v, ok := by[preferKeys[3]].(string); ok && changed(preferKeys[3]) {
 		base.Size = app.SizePref(v)
 	}
-	return base
+	return base, seen
 }
 
 // quitNeedsAsk is the quit rule of tui.md section 1: ask only when downloads are in progress.

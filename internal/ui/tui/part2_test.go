@@ -389,3 +389,85 @@ func TestEntryShowsThePlatformNameFromTheCachedList(t *testing.T) {
 		t.Fatalf("with no list the id stands alone:\n%s", v)
 	}
 }
+
+func TestTheEntryPreferenceOverlaySurvivesSettings(t *testing.T) {
+	svc := settingsSvc()
+	h := newHarness(t, svc)
+	h.search("zelda")
+	h.keys("enter", "P")
+	h.typeText("En")
+	h.keys("enter") // this run only
+	if got := h.m.prefs.Languages; len(got) != 1 || got[0] != "En" {
+		t.Fatalf("overlay not applied: %+v", h.m.prefs)
+	}
+	h.keys("S") // opening Settings reads the configuration, which has no language preference
+	if got := h.m.prefs.Languages; len(got) != 1 || got[0] != "En" {
+		t.Fatalf("opening Settings lost the overlay: %+v", h.m.prefs)
+	}
+	h.keys("down", "enter", "ctrl+u") // an unrelated setting changes, and every change reloads
+	h.typeText("3")
+	h.keys("enter")
+	if got := h.m.prefs.Languages; len(got) != 1 || got[0] != "En" {
+		t.Fatalf("changing another setting lost the overlay: %+v", h.m.prefs)
+	}
+	h.keys("up", "G")
+	for i := 0; i < 8; i++ { // to Preferred languages, the 5th row
+		h.keys("k")
+	}
+	h.keys("enter", "ctrl+u")
+	h.typeText("Pt")
+	h.keys("enter")
+	if got := h.m.prefs.Languages; len(got) != 1 || got[0] != "Pt" {
+		t.Fatalf("a changed preference setting must apply: %+v", h.m.prefs)
+	}
+}
+
+func TestHistoryRequeuesARecordOnlyOnce(t *testing.T) {
+	svc := historySvc()
+	h := newHarness(t, svc)
+	h.leaveSearchField()
+	h.keys("H", "d", "d") // the cursor is on the failed Contra
+	if len(svc.enqueued) != 1 {
+		t.Fatalf("d twice queued %d requests, want 1", len(svc.enqueued))
+	}
+	if !strings.Contains(h.view(), "Already queued again.") {
+		t.Fatalf("the second d says so:\n%s", h.view())
+	}
+
+	failing := historySvc()
+	failing.enqueueErr = &app.Error{Code: app.CodeNetwork, Message: "down"}
+	h = newHarness(t, failing)
+	h.leaveSearchField()
+	h.keys("H", "d")
+	failing.enqueueErr = nil
+	h.keys("d")
+	if len(failing.enqueued) != 1 {
+		t.Fatalf("after a failed Enqueue the record is free again: %d", len(failing.enqueued))
+	}
+}
+
+func TestHistoryExportsWhatTheFilterShows(t *testing.T) {
+	svc := historySvc()
+	h := newHarness(t, svc)
+	h.leaveSearchField()
+	h.keys("H", "/")
+	h.typeText("metr")
+	h.keys("enter", "e", "ctrl+u")
+	target := filepath.Join(t.TempDir(), "filtered.csv")
+	h.typeText(target)
+	h.keys("enter")
+	data, err := os.ReadFile(target) //nolint:gosec // a path inside t.TempDir()
+	if err != nil || !strings.Contains(string(data), "Metroid") || strings.Contains(string(data), "Contra") {
+		t.Fatalf("export of the filtered rows: %q, %v", data, err)
+	}
+}
+
+func TestSettingsDoNotOfferOverwriteAsADefault(t *testing.T) {
+	h := newHarness(t, settingsSvc())
+	h.openSettings()
+	h.keys("down", "down", "enter") // When file exists
+	v := h.view()
+	if !strings.Contains(v, "skip") || !strings.Contains(v, "rename") || strings.Contains(v, "overwrite") {
+		t.Fatalf("the service refuses overwrite as a setting, so it is not listed:\n%s", v)
+	}
+}
