@@ -52,6 +52,11 @@ if [ "$goos" = linux ]; then
 	readelf -h "$bin" | grep -E "Class|Machine"
 	interp=$(readelf -l "$bin" | sed -n 's/.*Requesting program interpreter: \(.*\)\]/\1/p')
 	echo "interpreter: ${interp:-none}"
+	# purego needs the dynamic loader to dlopen SDL2: a static probe would only fail at run time.
+	if [ -z "$interp" ]; then
+		echo "the probe has no program interpreter (it must be a dynamic executable)" >&2
+		exit 2
+	fi
 	readelf -d "$bin" | grep NEEDED || echo "NEEDED: none"
 	if [ "$goarch" = arm ] && [ "$interp" != "/lib/ld-linux-armhf.so.3" ]; then
 		echo "the arm interpreter must be /lib/ld-linux-armhf.so.3, got ${interp:-none}" >&2

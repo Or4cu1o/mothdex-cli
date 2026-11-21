@@ -108,7 +108,7 @@ jobs:
           DIR: ${{ matrix.dir }}
         run: |
           docker run --rm --platform "$PLATFORM" \
-            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
+            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e GUI_REQUIRE_SDL=1 -e DEBIAN_FRONTEND=noninteractive \
             "$DEBIAN_IMAGE" sh -ec '
               uname -m
               apt-get update -qq
@@ -145,10 +145,12 @@ jobs:
           QEMU_BIN: ${{ matrix.qemu_bin }}
           DIR: ${{ matrix.dir }}
           SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1"
         run: |
           "$QEMU_BIN" -L sysroot "dist-gui/$DIR/mothdex-gui-probe"
           "$QEMU_BIN" -L sysroot "dist-gui/$DIR/sdl.test" -test.v -test.count=1
-      - name: armv6 CPU model (qemu arm1176) with the armhf libsdl2, best effort
+      - name: armv6 CPU model (qemu arm1176), best effort - the result is reported in the summary and as a warning
+        id: arm1176
         if: matrix.goarm == '6'
         continue-on-error: true
         env:
@@ -158,18 +160,49 @@ jobs:
           QEMU_BIN: ${{ matrix.qemu_bin }}
           SDL_VIDEODRIVER: dummy
         run: |
-          # Only the probe runs on the arm1176 model: apt and the Debian armhf libraries are built for ARMv7, so a
-          # SIGILL inside libsdl2 here is a limit of the technique (Debian armhf is not built for ARMv6).
+          # Debian armhf is built for ARMv7, so its ld.so and libc may not run on an ARMv6 model at all. To tell that
+          # apart from a fault of the probe (Go runtime, purego), three things run on the arm1176 model: a plain
+          # Debian binary (/bin/true), the dynamic loader itself, and the probe.
+          set +e
           if [ "$BINFMT" = success ]; then
             docker run --rm --platform "$PLATFORM" \
               -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
-              "$DEBIAN_IMAGE" sh -ec '
+              "$DEBIAN_IMAGE" sh -c '
                 apt-get update -qq
                 apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
-                QEMU_CPU=arm1176 /gui/mothdex-gui-probe
-              '
+                QEMU_CPU=arm1176 /bin/true;                              echo "true_exit=$?"
+                QEMU_CPU=arm1176 /lib/ld-linux-armhf.so.3 --version >/dev/null; echo "ld_exit=$?"
+                QEMU_CPU=arm1176 /gui/mothdex-gui-probe;                 echo "probe_exit=$?"
+              ' 2>&1 | tee arm1176.log
           else
-            "$QEMU_BIN" -cpu arm1176 -L sysroot "dist-gui/$DIR/mothdex-gui-probe"
+            {
+              "$QEMU_BIN" -cpu arm1176 -L sysroot sysroot/bin/true;                               echo "true_exit=$?"
+              "$QEMU_BIN" -cpu arm1176 -L sysroot sysroot/lib/ld-linux-armhf.so.3 --version >/dev/null; echo "ld_exit=$?"
+              "$QEMU_BIN" -cpu arm1176 -L sysroot "dist-gui/$DIR/mothdex-gui-probe";              echo "probe_exit=$?"
+            } 2>&1 | tee arm1176.log
+          fi
+          set -e
+          t=$(sed -n 's/^true_exit=//p' arm1176.log | tail -1); l=$(sed -n 's/^ld_exit=//p' arm1176.log | tail -1)
+          p=$(sed -n 's/^probe_exit=//p' arm1176.log | tail -1)
+          t=${t:-unknown}; l=${l:-unknown}; p=${p:-unknown}
+          if [ "$p" = 0 ]; then verdict="the probe ran on the arm1176 model"
+          elif [ "$t" != 0 ] || [ "$l" != 0 ]; then verdict="a plain Debian armhf binary or ld.so already fails on this model: the Debian userland is built for ARMv7, so this run says nothing about the probe, Go or purego"
+          else verdict="/bin/true and ld.so run but the probe fails: cause unknown, to be investigated"
+          fi
+          {
+            echo "### armv6 on the arm1176 CPU model (qemu-user)"
+            echo
+            echo "| step | exit code |"
+            echo "|---|---|"
+            echo "| Debian armhf /bin/true | $t |"
+            echo "| Debian armhf ld.so --version | $l |"
+            echo "| the probe | $p (139 = SIGSEGV) |"
+            echo
+            echo "$verdict. Real ARMv6 hardware and real ARMv6 libraries (Batocera, Recalbox, Raspbian): not verified."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$p" != 0 ]; then
+            echo "::warning title=ARMv6 CPU model not verified::attempted on the arm1176 model: probe exit $p, /bin/true exit $t, ld.so exit $l. $verdict."
+            exit 1
           fi
       - name: Size report
         if: always()
