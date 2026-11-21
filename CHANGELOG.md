@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/qa/T-22-m1-acceptance.md`: the M1 acceptance checklist (T-22) with the evidence source per item, what waits for
+  T-20b, and the plan for the mcp slug charset sample.
 - `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
   platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
   the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`
@@ -43,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Contracts: one slug rule for both repos (`^[a-z0-9][a-z0-9-]{0,255}$`, `mothdex.ValidSlug`). `Entry` refuses other
   slugs locally, search drops entries with an unsafe slug before numbering (`dropped` in `search` JSON, a warning), and a
   single-entry answer with one is `api_incompatible`.
+- T-16 catalog: cases 51 and 52 (installer launcher path injection and permissions) are now Covered by
+  `tests/installer/cases.sh`, `nonroot.sh` and `install.Tests.ps1`; 51 of 52 cases are Covered, only 49 (terminal
+  escapes in the UI output) is Pending.
 - Contracts follow the T-20a fixes and the T-21 installer: `Events` is never lossy (per-subscriber queue), the
   journal entry carries its destination root and cleanup is per root, a failed session save deletes the stored
   session, and the installer launcher is opt-in (D22) with the root-only FAT share exception (TH-31).
