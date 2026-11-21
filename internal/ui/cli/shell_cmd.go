@@ -56,11 +56,13 @@ func (r *runtime) runShell() error {
 	if err != nil {
 		return err
 	}
-	stdin := r.isTTY(r.d.Stdin)
-	runner := NewRunner(r.d, s, stdin)
+	// Both streams must be terminals: the line editor writes to stdout, so with stdout redirected a
+	// prompt could not be seen. The Runner then fails with confirmation_required instead of hanging.
+	terminal := r.isTTY(r.d.Stdin) && r.isTTY(r.d.Stdout)
+	runner := NewRunner(r.d, s, terminal)
 	code := r.d.Shell(r.ctx, ShellEnv{
 		Runner: runner, Session: s, Stdin: r.d.Stdin, Stdout: r.d.Stdout, Stderr: r.d.Stderr,
-		IsTerminal: stdin && r.isTTY(r.d.Stdout), Interrupts: r.d.Interrupts,
+		IsTerminal: terminal, Interrupts: r.d.Interrupts,
 	})
 	if code == 0 {
 		return nil

@@ -125,7 +125,9 @@ func New(o Options) *Shell {
 
 // Loop reads and runs lines until the user leaves, and returns the exit code (ui.md section 2.5).
 func (s *Shell) Loop(ctx context.Context) int {
-	if s.o.Interrupts != nil {
+	// Only a person at a terminal takes SIGINT over. A piped script keeps the default: the first
+	// SIGINT cancels the root context, and the loop below ends instead of running the next line.
+	if s.o.Interactive && s.o.Interrupts != nil {
 		sig, release := s.o.Interrupts()
 		s.sig = sig
 		defer release()
@@ -141,6 +143,9 @@ func (s *Shell) Loop(ctx context.Context) int {
 	}
 	s.o.Editor.SetCompleter(s.completer(ctx))
 	for {
+		if ctx.Err() != nil {
+			return exitInterrupted
+		}
 		line, err := s.readLine(ctx)
 		switch {
 		case err == nil:
@@ -171,7 +176,9 @@ func (s *Shell) Loop(ctx context.Context) int {
 }
 
 // readLine prompts in the background so that SIGTERM (a canceled context) ends the Shell even
-// while it waits for a key.
+// while it waits for a key. When that happens the abandoned Prompt still holds the line editor while
+// the deferred Close restores the terminal; this only happens as the process ends (review PR-53 s4,
+// backlog).
 func (s *Shell) readLine(ctx context.Context) (string, error) {
 	page, ok := s.o.Runner.LastPage()
 	label := promptText(page, ok)

@@ -312,7 +312,7 @@ func TestCtrlCAtThePrompt(t *testing.T) {
 }
 
 func TestCtrlCStopsTheRunningCommandButNotTheShell(t *testing.T) {
-	r := newRig(t, false, lines("download 1", "version")...)
+	r := newRig(t, true, lines("download 1", "version")...)
 	started := make(chan struct{})
 	r.run.run = func(ctx context.Context, args []string) int {
 		if args[0] != "download" {
@@ -335,7 +335,7 @@ func TestCtrlCStopsTheRunningCommandButNotTheShell(t *testing.T) {
 }
 
 func TestACtrlCThatArrivedWhileIdleDoesNotCancelTheNextCommand(t *testing.T) {
-	r := newRig(t, false, lines("version")...)
+	r := newRig(t, true, lines("version")...)
 	r.signal <- os.Interrupt // stale: nobody was running
 	var canceled bool
 	r.run.run = func(ctx context.Context, _ []string) int {
@@ -493,5 +493,35 @@ func TestShellKeysFallBackToEnglish(t *testing.T) {
 		if got := tr.N("ui.shell.chooser.title", 3, i18n.Args{"title": "Zelda"}); got != "Zelda · 3 links" {
 			t.Errorf("%s plural: %q", id, got)
 		}
+	}
+}
+
+func TestAScriptDoesNotTakeSIGINTOverAndStopsWhenItIsCanceled(t *testing.T) {
+	r := newRig(t, false, lines("download 1", "version")...)
+	taken := 0
+	r.sh.o.Interrupts = func() (<-chan os.Signal, func()) { taken++; return r.signal, func() {} }
+	ctx, cancel := context.WithCancel(context.Background())
+	r.run.run = func(context.Context, []string) int {
+		cancel() // the first SIGINT cancels the root context (the default when nobody takes it over)
+		return exitInterrupted
+	}
+	if code := r.sh.Loop(ctx); code != exitInterrupted {
+		t.Fatalf("exit %d, want 130", code)
+	}
+	if taken != 0 {
+		t.Fatal("a piped script must keep the default SIGINT handling")
+	}
+	if len(r.run.runs) != 1 {
+		t.Fatalf("runs %q: the line after the canceled command must not run", r.run.runs)
+	}
+}
+
+func TestAPersonAtATerminalDoesTakeSIGINTOver(t *testing.T) {
+	r := newRig(t, true, lines("version")...)
+	taken := 0
+	r.sh.o.Interrupts = func() (<-chan os.Signal, func()) { taken++; return r.signal, func() {} }
+	r.sh.Loop(context.Background())
+	if taken != 1 {
+		t.Fatalf("Interrupts taken %d times, want 1", taken)
 	}
 }

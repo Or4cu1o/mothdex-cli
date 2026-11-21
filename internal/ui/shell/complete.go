@@ -238,7 +238,8 @@ func finish(all []string, word string, keepOrder bool) []string {
 }
 
 // completePaths lists the files and folders that start with prefix, folders with a trailing
-// separator. It is the file source of `-e/--export`.
+// separator. It is the file source of `-e/--export`. Names that cannot be typed as one word, or
+// carry a control character, are left out (review PR-53 s3).
 func completePaths(prefix string) []string {
 	dir, base := filepath.Split(prefix)
 	scan := dir
@@ -251,8 +252,8 @@ func completePaths(prefix string) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), base) {
-			continue
+		if !strings.HasPrefix(e.Name(), base) || !typableAsIs(e.Name()) {
+			continue // a name with a control character or a space cannot be offered safely
 		}
 		name := dir + e.Name()
 		if e.IsDir() {
