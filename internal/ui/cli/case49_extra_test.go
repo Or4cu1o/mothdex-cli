@@ -13,11 +13,11 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
-const hostile = "Ev\x1b]52;c;ZXZpbA==\x07il\x1b[2J‮​X"
+const hostile = "Ev\x1b]52;c;ZXZpbA==\x07il\x1b[2J\u202e\u200bX"
 
 func noCtl(t *testing.T, what string, r *result) {
 	t.Helper()
-	for _, bad := range []string{"\x1b", "\x07", "‮", "​"} {
+	for _, bad := range []string{"\x1b", "\x07", "\u202e", "\u200b"} {
 		if strings.Contains(r.out.String()+r.err.String(), bad) {
 			t.Fatalf("%s: %q reached the terminal: out=%q err=%q", what, bad, r.out.String(), r.err.String())
 		}
