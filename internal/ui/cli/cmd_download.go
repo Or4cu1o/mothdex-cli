@@ -14,7 +14,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 )
 
-const confirmBytes = 500 << 20 // confirm_downloads asks above this size or for more than one file
+const confirmBytes = app.ConfirmBytes // confirm_downloads asks above this size or for more than one file
 
 type downloadFlags struct {
 	search           string

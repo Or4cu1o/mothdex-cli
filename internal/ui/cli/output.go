@@ -231,6 +231,9 @@ func (p *printer) renderError(err error) {
 	if k, ok := ae.Args["hint_key"].(string); ok {
 		hintKey = k
 	}
+	if hintKey == "errors.confirmation_required.size_hint" {
+		hintKey += "_cli" // only the command line and the Shell have -f; other UIs use the neutral text
+	}
 	if ae.Code == app.CodeUsage && ae.Args["command"] == "" {
 		hintKey = "ui.cli.usage_root_hint"
 	}

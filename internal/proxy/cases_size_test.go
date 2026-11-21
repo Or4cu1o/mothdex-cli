@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -275,5 +276,29 @@ func TestCase36SplitReachedThroughContentLength(t *testing.T) {
 	wantFailed(t, res, proxy.CodeDiskFull)
 	if res.Bytes != 0 {
 		t.Fatalf("%d body bytes written", res.Bytes)
+	}
+}
+
+// Sentinela S2: netFailure recognises a malformed length by the wording of Go's transport error. This
+// pins that wording against the Go version of go.mod: if a Go release changes it, this fails instead of
+// the downloader silently retrying malformed lengths as network errors.
+func TestGoTransportWordingForAMalformedContentLength(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, buf, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: +5\r\n\r\n12345")
+		_ = buf.Flush()
+	}))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL) //nolint:gosec,noctx // a local test server
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("Go accepted a Content-Length of +5")
+	}
+	if !strings.Contains(err.Error(), "Content-Length") {
+		t.Fatalf("the transport error no longer names Content-Length: %v", err)
 	}
 }

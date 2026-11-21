@@ -275,7 +275,9 @@ func (d *Downloader) netFailure(ctx, actx context.Context, err error) *attemptEr
 	if ctx.Err() != nil {
 		return &attemptErr{kind: kindFatal, err: canceled(ctx)}
 	}
-	if strings.Contains(err.Error(), "Content-Length") { // the transport itself refused a malformed length (3.2 step 2)
+	// The transport itself refused a malformed length (3.2 step 2). Go words these as `bad Content-Length` and
+	// `multiple Content-Length headers`; TestGoTransportWordingForAMalformedContentLength pins the wording.
+	if strings.Contains(err.Error(), "Content-Length") {
 		return fatal(CodeSizeMismatch, "the response has no usable Content-Length", err)
 	}
 	msg := "network error"

@@ -36,6 +36,10 @@ type DownloadRequest struct {
 	SizeConsent int64
 }
 
+// ConfirmBytes is the size above which a download needs confirmation (500 MiB). The prompt of a UI and
+// the downloader's check at the real size use this one constant, so the two gates cannot drift apart.
+const ConfirmBytes = proxy.DefaultConfirmBytes
+
 // ConsentAny skips the confirmation at the real size (DownloadRequest.SizeConsent).
 const ConsentAny = proxy.ConsentAny
 
