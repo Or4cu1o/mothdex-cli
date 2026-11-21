@@ -135,6 +135,8 @@ ui:
       none: 'Nenhum resultado para "{text}". Use menos palavras ou tire -p/-r.'
       past_last: 'A página {asked} não existe; mostrando a página {shown}.'
       dropped: '{n} resultados foram ocultados porque o slug tem um formato inesperado.'
+      session_stale: 'A busca não pôde ser salva, então os números dos resultados ainda podem se referir a uma busca anterior. Use slugs.'
+      all_dropped: 'Todos os {n} resultados desta página foram ocultados. Tente a próxima página.'
     info:
       slug: 'Slug'
       platform: 'Plataforma'

@@ -135,6 +135,8 @@ ui:
       none: 'No results for "{text}". Try fewer words, or remove -p/-r.'
       past_last: 'Page {asked} does not exist; showing page {shown}.'
       dropped: '{n} results were hidden because their slug has an unexpected form.'
+      session_stale: 'The search could not be saved, so result numbers may still refer to an earlier search. Use slugs.'
+      all_dropped: 'All {n} results on this page were hidden. Try the next page.'
     info:
       slug: 'Slug'
       platform: 'Platform'
