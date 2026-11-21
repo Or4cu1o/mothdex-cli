@@ -107,7 +107,7 @@ func (m Model) requestDownload(d download, now time.Time) (Model, []Cmd) {
 			},
 		}, now), nil
 	}
-	return m.enqueue(d, now)
+	return m.enqueue(d)
 }
 
 // destination is where a platform's downloads go, for the confirmation text.
@@ -120,7 +120,7 @@ func (m Model) destination(platform string) string {
 
 // enqueue sends the request to the service off the render thread. It runs on its own context: leaving a screen
 // never cancels a download.
-func (m Model) enqueue(d download, now time.Time) (Model, []Cmd) {
+func (m Model) enqueue(d download) (Model, []Cmd) {
 	svc, req := m.o.Service, d.request(m.o.Prefer)
 	return m, []Cmd{func() Msg {
 		ids, err := svc.Enqueue(context.Background(), []app.DownloadRequest{req})

@@ -56,7 +56,7 @@ func (m Model) loadEntry(slug, title string, now time.Time) (Model, []Cmd) {
 	}}
 }
 
-func (m Model) onEntry(msg entryMsg, now time.Time) Model {
+func (m Model) onEntry(msg entryMsg) Model {
 	s := m.entry
 	if msg.seq != s.seq || !m.onStack(screenEntry) {
 		return m
@@ -220,7 +220,12 @@ func (m Model) drawEntry(p painter, now time.Time) {
 		p.text(right.X, y, met.Title, colText, line)
 		y += LineHeight(met.Title)
 	}
-	meta := strings.Join(nonEmpty(app.SanitizeText(s.entry.Platform), m.platformName(s.entry.Platform), app.SanitizeText(strings.Join(s.entry.Regions, ",")), serialText(s.entry.Serial)), " · ")
+	platform := app.SanitizeText(s.entry.Platform)
+	name := m.platformName(s.entry.Platform)
+	if name == platform { // the platform list is not loaded: the id says it all
+		name = ""
+	}
+	meta := strings.Join(nonEmpty(platform, name, app.SanitizeText(strings.Join(s.entry.Regions, ",")), serialText(s.entry.Serial)), " · ")
 	p.text(right.X, y, met.Secondary, colDim, p.fit(met.Secondary, meta, right.W))
 	y += LineHeight(met.Secondary) + u
 

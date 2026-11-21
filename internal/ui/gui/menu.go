@@ -124,7 +124,7 @@ func (m Model) activateMenu(id string, now time.Time) (Model, []Cmd) {
 	case menuHome:
 		return m.toHome(), nil
 	case menuQueue:
-		return m.openQueue(now), nil
+		return m.openQueue(), nil
 	case itemCancelAll:
 		n := m.jobs.unfinished()
 		if n == 0 {

@@ -38,14 +38,15 @@ type step struct {
 
 // scriptedBackend gives the loop its events from a script, one step for each Wait.
 type scriptedBackend struct {
-	t        *testing.T
-	clock    *testClock
-	steps    []step
-	next     int
-	queue    []input.Incoming
-	w, h     int
-	timeouts []time.Duration
-	frames   []frame
+	t         *testing.T
+	clock     *testClock
+	steps     []step
+	next      int
+	queue     []input.Incoming
+	w, h      int
+	timeouts  []time.Duration
+	frames    []frame
+	textInput []bool // every SetTextInput call, in order
 }
 
 type frame struct {
@@ -87,7 +88,7 @@ func (b *scriptedBackend) Poll() (input.Incoming, bool) {
 
 func (b *scriptedBackend) Wake() {}
 
-func (b *scriptedBackend) SetTextInput(bool) {}
+func (b *scriptedBackend) SetTextInput(on bool) { b.textInput = append(b.textInput, on) }
 
 func btn(kind input.Kind, b input.Button) input.Incoming {
 	return input.Incoming{Kind: input.IncomingInput, Input: input.Event{Kind: kind, Button: b}}
@@ -304,5 +305,35 @@ func TestEventsThatChangeNothingDoNotRedraw(t *testing.T) {
 	f.run(t)
 	if framesAfterNoise != 1 {
 		t.Errorf("only the first frame was expected before the noise, got %d", framesAfterNoise)
+	}
+}
+
+// The keyboard screen turns text input on, typed text reaches the field, a held B deletes without leaving, and
+// leaving turns text input off again.
+func TestTheKeyboardScreenTurnsTextInputOnAndTypedTextReachesTheField(t *testing.T) {
+	text := func(s string) input.Incoming { return input.Incoming{Kind: input.IncomingText, Text: s} }
+	f := newFixture(t, 1280, 720,
+		step{events: []input.Incoming{press(input.South), release(input.South)}}, // Search tile: A opens Search
+		step{events: []input.Incoming{text("Ab")}},
+		step{events: []input.Incoming{press(input.East)}}, // B deletes b; held
+		step{advance: 400 * time.Millisecond},             // the repeat deletes a; the field is empty
+		step{advance: 80 * time.Millisecond},              // a repeat at an empty field must not leave
+		step{events: []input.Incoming{release(input.East)}},
+		step{events: []input.Incoming{press(input.East), release(input.East)}}, // a fresh B leaves
+		step{events: []input.Incoming{{Kind: input.IncomingQuit}}},
+		step{advance: 5 * time.Second},
+	)
+	f.run(t)
+	if !slices.Equal(f.backend.textInput, []bool{true, false}) {
+		t.Fatalf("SetTextInput calls %v: on for Search, off when leaving", f.backend.textInput)
+	}
+	var typed, emptied, left bool
+	for _, fr := range f.backend.frames {
+		typed = typed || (slices.Contains(fr.texts, "ab") && slices.Contains(fr.texts, "2/80"))
+		emptied = emptied || (!slices.Contains(fr.texts, "ab") && slices.Contains(fr.texts, "0/80") && slices.Contains(fr.texts, "mothdex › Search"))
+		left = left || slices.Contains(fr.texts, "Search") && !slices.Contains(fr.texts, "mothdex › Search") && slices.Contains(fr.texts, "Platforms")
+	}
+	if !typed || !emptied || !left {
+		t.Fatalf("typed %v emptied %v left %v", typed, emptied, left)
 	}
 }

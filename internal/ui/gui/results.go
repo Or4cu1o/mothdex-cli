@@ -459,15 +459,15 @@ func (m Model) drawResults(p painter, now time.Time) {
 // drawResultRow draws one two-line row: the title, then the platform, regions and size, and the downloaded mark.
 func (m Model) drawResultRow(p painter, r draw.Rect, row resultRow, focused bool) {
 	met := m.metrics
-	box := r.Inset(met.Ring)
+	box := r.Inset(1) // the two lines fill the row: the ring is drawn just outside this box
 	if focused {
 		p.box(box, true)
 	}
 	x := box.X + met.Unit
 	inner := box.W - 2*met.Unit
-	p.text(x, box.Y+met.Unit/2, met.Body, colText, p.fit(met.Body, row.title, inner))
+	p.text(x, box.Y+1, met.Body, colText, p.fit(met.Body, row.title, inner))
 	meta := strings.Join(nonEmpty(row.platform, row.regions, row.sizeStr), " · ")
-	top := box.Y + met.Unit/2 + LineHeight(met.Body)
+	top := box.Y + 1 + LineHeight(met.Body)
 	markW := 0
 	if m.slugDownloaded(row.slug) {
 		word := m.tr("ui.gui.results.downloaded", nil)

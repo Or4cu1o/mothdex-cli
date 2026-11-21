@@ -21,6 +21,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/loop"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
 	"github.com/Or4cu1o/mothdex-cli/locales"
+	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 // These tests need a system SDL2 and run on the dummy video driver with the software renderer: no display and
@@ -345,4 +346,54 @@ func TestImagesAreDrawnScaledAndTheTextureCacheIsBounded(t *testing.T) {
 		t.Errorf("pixel inside the image is %d,%d,%d", r, g, b)
 	}
 	expectPixel(t, be, 300, 300, colorBG, "outside the image")
+}
+
+// A cover goes the whole way through real SDL: the service serves a PNG, the model decodes it with
+// app.DecodeCover, the draw list carries the picture and the renderer shows it in the cover panel.
+func TestACoverIsDecodedDrawnAndVisibleInTheCoverPanel(t *testing.T) {
+	be, font := headless(t, 1280, 720)
+	svc := guitest.New()
+	svc.Catalog = []mothdex.Entry{guitest.Game("zelda-1", "Zelda One", "snes", "us")}
+	svc.Covers = map[string]bool{"zelda-1": true}
+	now := testEpoch
+	m, cmds := gui.New(guiOptions(t, font, svc, 1280, 720), now)
+	run := func(cmds []gui.Cmd) {
+		for len(cmds) > 0 {
+			next := cmds[0]
+			cmds = cmds[1:]
+			var more []gui.Cmd
+			m, more = m.Update(next(), now)
+			cmds = append(cmds, more...)
+		}
+	}
+	run(cmds)
+	send := func(msg gui.Msg) { var c []gui.Cmd; m, c = m.Update(msg, now); run(c) }
+	send(gui.InputMsg{Action: input.Confirm}) // Search
+	send(gui.TextMsg{Text: "zelda"})
+	send(gui.InputMsg{Action: input.Menu}) // run it
+	now = now.Add(400 * time.Millisecond)
+	send(gui.TickMsg{}) // the focus settled: the cover is asked, decoded and cached
+
+	var list gdraw.List
+	m.Render(now, &list)
+	var img *gdraw.Op
+	for i := range list.Ops {
+		if list.Ops[i].Kind == gdraw.KindImage {
+			img = &list.Ops[i]
+		}
+	}
+	if img == nil {
+		t.Fatal("no image op in the Results frame")
+	}
+	if err := be.Draw(layoutOf(m), &list); err != nil {
+		t.Fatal(err)
+	}
+	cx, cy := img.Rect.X+img.Rect.W/2, img.Rect.Y+img.Rect.H/2
+	r, g, b, _, err := be.Pixel(cx, cy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != 200 || g != 80 || b != 40 { // the solid color guitest.PNG makes
+		t.Errorf("the cover pixel at %d,%d is %d,%d,%d", cx, cy, r, g, b)
+	}
 }

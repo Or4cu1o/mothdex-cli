@@ -123,7 +123,7 @@ func (m Model) queueItems() []queueItem {
 	return items
 }
 
-func (m Model) openQueue(now time.Time) Model {
+func (m Model) openQueue() Model {
 	if m.screen == screenQueue {
 		return m
 	}
@@ -163,10 +163,45 @@ func (m Model) followFocus() Model {
 	return m
 }
 
-func (m Model) queueRowH() int { return m.metrics.Row2 + LineHeight(m.metrics.Secondary) }
+// itemHeight is how tall a Queue row is: a header is one line, a queued or finished job two lines (name and
+// state), and an active job three, since the Warming notice adds a line after 30 s.
+func (m Model) itemHeight(it queueItem) int {
+	met := m.metrics
+	switch {
+	case it.header != "":
+		return LineHeight(met.Secondary) + met.Unit
+	case isActive(it.job):
+		return LineHeight(met.Body) + 2*LineHeight(met.Secondary) + met.Unit
+	}
+	return LineHeight(met.Body) + LineHeight(met.Secondary) + met.Unit
+}
 
-func (m Model) queueVisible() int {
-	return max(m.metrics.ContentRect().H/m.queueRowH(), 1)
+// queueWindow scrolls the list by item heights so that the focused row is fully visible, and returns the first
+// row shown and the one after the last.
+func (m Model) queueWindow(items []queueItem) (top, to int) {
+	avail := m.metrics.ContentRect().H
+	top = min(max(m.queue.list.top, 0), max(len(items)-1, 0))
+	focus := clampFocus(m.queue.list.focus, len(items))
+	if focus < top {
+		top = focus
+	}
+	for top < focus {
+		used := 0
+		for i := top; i <= focus; i++ {
+			used += m.itemHeight(items[i])
+		}
+		if used <= avail {
+			break
+		}
+		top++
+	}
+	used := 0
+	to = top
+	for to < len(items) && used+m.itemHeight(items[to]) <= avail {
+		used += m.itemHeight(items[to])
+		to++
+	}
+	return top, max(to, min(top+1, len(items)))
 }
 
 func (m Model) focusedJob() (app.JobSnapshot, bool) {
@@ -190,7 +225,6 @@ func (m Model) onQueueAction(a input.Action, now time.Time) (Model, []Cmd) {
 		return m.onSheetAction(a, now)
 	}
 	items := m.queueItems()
-	vis := m.queueVisible()
 	switch a {
 	case input.Up, input.Down:
 		dir := 1
@@ -202,8 +236,9 @@ func (m Model) onQueueAction(a input.Action, now time.Time) (Model, []Cmd) {
 			rows[i] = pickRow{header: it.header != ""}
 		}
 		to := moveChoice(rows, q.list.focus, dir)
-		q.list = q.list.moved(to-q.list.focus, vis, len(items))
+		q.list.focus = to
 		m.queue = q
+		m.queue.list.top, _ = m.queueWindow(items)
 		if to < len(items) && items[to].header == "" {
 			m.queue.focusJob = items[to].job.ID
 		}
@@ -247,20 +282,20 @@ func (m Model) onSheetAction(a input.Action, now time.Time) (Model, []Cmd) {
 		m.queue.sheet = nil
 		return m, nil
 	case input.Confirm:
-		return m.runSheet(q.sheetFocus, q.sheetJob, now)
+		return m.runSheet(q.sheetFocus, q.sheetJob)
 	}
 	m.queue.sheetFocus = q.sheet[max(idx, 0)].id
 	return m, nil
 }
 
-func (m Model) runSheet(id string, job app.JobID, now time.Time) (Model, []Cmd) {
+func (m Model) runSheet(id string, job app.JobID) (Model, []Cmd) {
 	m.queue.sheet = nil
 	j := m.book.snaps[job]
 	switch id {
 	case sheetCancel:
 		return m, []Cmd{cancelCmd(m.o.Service, []app.JobSnapshot{j})}
 	case sheetRetry:
-		return m.enqueue(download{slug: j.Slug, title: j.Title, link: max(j.LinkIndex, 1)}, now)
+		return m.enqueue(download{slug: j.Slug, title: j.Title, link: max(j.LinkIndex, 1)})
 	case sheetDetails:
 		m.queue.details = job
 	case sheetHide:
@@ -371,18 +406,19 @@ func (m Model) drawQueue(p painter, now time.Time) {
 		p.text(c.X+met.Unit, c.Y+met.Unit, met.Body, colDim, m.tr("ui.gui.queue.empty", nil))
 		return
 	}
-	rowH := m.queueRowH()
-	vis := m.queueVisible()
-	l, from, to := m.queue.list.shown(vis, len(items))
+	from, to := m.queueWindow(items)
+	y := c.Y
 	for i := from; i < to; i++ {
-		r := draw.Rect{X: c.X, Y: c.Y + (i-from)*rowH, W: c.W, H: rowH}
+		h := m.itemHeight(items[i])
+		r := draw.Rect{X: c.X, Y: y, W: c.W, H: h}
+		y += h
 		it := items[i]
 		if it.header != "" {
 			p.text(r.X+met.Unit, r.Y+(r.H-LineHeight(met.Secondary))/2, met.Secondary, colDim, it.header)
 			continue
 		}
-		box := r.Inset(met.Ring)
-		if i == l.focus {
+		box := r.Inset(1)
+		if i == clampFocus(m.queue.list.focus, len(items)) {
 			p.box(box, true)
 		}
 		m.drawJobRow(p, box, it.job, now)

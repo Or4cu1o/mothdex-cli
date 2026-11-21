@@ -223,7 +223,7 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 	case randomMsg:
 		return m.onRandom(msg, now), nil
 	case entryMsg:
-		return m.onEntry(msg, now), nil
+		return m.onEntry(msg), nil
 	case coverMsg:
 		return m.onCover(msg, now)
 	case historyMsg:
@@ -307,7 +307,7 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 		return m.openMenu(), nil
 	}
 	if a == input.Queue && m.screen != screenQueue { // Select opens the Queue from any screen
-		return m.openQueue(now), nil
+		return m.openQueue(), nil
 	}
 	switch m.screen {
 	case screenSearch:

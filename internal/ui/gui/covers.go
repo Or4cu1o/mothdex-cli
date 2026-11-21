@@ -87,6 +87,9 @@ func fetchCoverCmd(svc Service, slug string) Cmd {
 
 // coverWanted is the slug whose cover the current screen shows.
 func (m Model) coverWanted() string {
+	if m.metrics.Tier == Compact || m.metrics.Narrow { // no cover panel there: no request either
+		return ""
+	}
 	switch m.screen {
 	case screenResults:
 		return m.results.focusedSlug()

@@ -106,7 +106,7 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 	switch d.kind {
 	case dialogConfirmDownload, dialogDownloadAgain:
 		if id == btnDownload || id == btnAgain {
-			return m.enqueue(d.pending, now)
+			return m.enqueue(d.pending)
 		}
 		return m, nil
 	case dialogCancelAll:
@@ -123,7 +123,7 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 			return m.startExit(false, false, now)
 		}
 		m.quitPending = true
-		return m.openQueue(now), nil // the Queue opens so the person sees what is being waited for
+		return m.openQueue(), nil // the Queue opens so the person sees what is being waited for
 	case btnCancelQuit:
 		return m.startExit(false, true, now)
 	}

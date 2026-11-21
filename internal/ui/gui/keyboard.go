@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -82,7 +83,7 @@ const (
 )
 
 func gridKeyID(row, col int) string {
-	return "k:" + string(rune('0'+row)) + ":" + string(rune('0'+col))
+	return "k:" + strconv.Itoa(row) + ":" + strconv.Itoa(col)
 }
 
 // gridKeyAt parses the id of a grid key.
