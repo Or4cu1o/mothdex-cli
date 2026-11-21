@@ -2,6 +2,7 @@ package i18n
 
 import (
 	"strings"
+	"unicode"
 
 	"golang.org/x/text/feature/plural"
 	"golang.org/x/text/language"
@@ -76,6 +77,21 @@ func absInt(n int) int {
 	return n
 }
 
+// stripArgument cleans a substituted value: every Cc and Cf rune goes (a newline or tab becomes a
+// space), so server data cannot add lines to the error block or hide text from the terminal. Only
+// the locale template may carry a newline.
+func stripArgument(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\t' || r == '\r':
+			return ' '
+		case unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r):
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // format replaces {name} with the matching argument. Arguments are stripped of control and
 // format characters. A single pass, so a value that contains "{other}" is never expanded again.
 func format(s string, args Args) string {
@@ -98,7 +114,7 @@ func format(s string, args Args) string {
 		}
 		name := s[1:end]
 		if v, ok := args[name]; ok && keyPattern.MatchString(name) {
-			b.WriteString(stripControls(toString(v)))
+			b.WriteString(stripArgument(toString(v)))
 		} else {
 			b.WriteString(s[:end+1])
 		}

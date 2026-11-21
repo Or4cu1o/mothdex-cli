@@ -36,13 +36,15 @@ func Normalize(name string) string {
 	return lang + "_" + region
 }
 
-// Detect returns the locale name the environment asks for. On every OS the POSIX variables win
-// in the order LC_ALL, LC_MESSAGES, LANG; on Windows, when none is set, system supplies the user
-// preferred UI language (nil system means none).
+// Detect returns the locale name the environment asks for. The first non-empty variable of
+// LC_ALL, LC_MESSAGES, LANG decides (POSIX): if it is C or POSIX (or unusable) the answer is "",
+// which Resolve turns into en_us, so LC_ALL=C gives stable English output whatever LANG says.
+// Only when none is set does system supply the user preferred UI languages (Windows). GNU
+// LANGUAGE is deliberately not read.
 func Detect(env func(string) string, system func() []string) string {
 	for _, v := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
-		if n := Normalize(env(v)); n != "" {
-			return n
+		if strings.TrimSpace(env(v)) != "" {
+			return Normalize(env(v))
 		}
 	}
 	if system != nil {

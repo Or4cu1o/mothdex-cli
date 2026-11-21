@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"regexp"
 	"slices"
@@ -129,6 +130,8 @@ func flatten(prefix string, node map[string]any, out Catalog) error {
 			out[key] = stripControls(t)
 		case nil:
 			out[key] = "" // an explicit empty value, e.g. errors.canceled.hint
+		case int, int64, uint64, float64, bool:
+			out[key] = fmt.Sprint(t) // an unquoted scalar is text for an author who forgot the quotes
 		default:
 			return fmt.Errorf("value of %q must be text", key)
 		}
@@ -150,6 +153,25 @@ func stripControls(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// LoadDir is Load with an optional external folder opened through os.Root, so a symlink inside
+// the folder cannot point at a file outside it. A missing folder means no external locales.
+// This is the only supported way to load a folder.
+func LoadDir(embedded fs.FS, dir string) (*Bundle, error) {
+	if dir == "" {
+		return Load(embedded)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		b, lerr := Load(embedded)
+		if b != nil && !errors.Is(err, fs.ErrNotExist) {
+			b.warnings = append(b.warnings, fmt.Sprintf("locale folder unreadable: %v", err))
+		}
+		return b, lerr
+	}
+	defer func() { _ = root.Close() }()
+	return Load(embedded, root.FS())
 }
 
 // Locales lists the loaded locale ids, sorted.

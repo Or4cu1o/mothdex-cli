@@ -1,6 +1,8 @@
 package i18n
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -152,6 +154,42 @@ func TestHostileLocaleFilesAreSkippedOrNeutralised(t *testing.T) {
 	}
 }
 
+func TestArgumentsCannotAddLines(t *testing.T) {
+	b, _ := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("m: \"error: {h}\\ncode: x\"\n")}})
+	got := b.New("en_us").T("m", Args{"h": "evil\n  code: internal\tx\r\x1b]52;c;AAAA\x07"})
+	if strings.Count(got, "\n") != 1 || strings.ContainsAny(got, "\t\r\x1b\x07") {
+		t.Fatalf("an argument must not add lines or controls: %q", got)
+	}
+}
+
+func TestExternalFolderCannotFollowSymlinksOutside(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret.yaml")
+	if err := os.WriteFile(outside, []byte("a: 'stolen'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "pt_br.yaml")); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	b, err := LoadDir(fstest.MapFS{"en_us.yaml": {Data: []byte("a: 'A'\n")}}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := b.New("pt_br").T("a", nil); got != "A" || len(b.Warnings()) == 0 {
+		t.Fatalf("a symlink out of the folder was read: %q %v", got, b.Warnings())
+	}
+	if b2, err := LoadDir(fstest.MapFS{"en_us.yaml": {Data: []byte("a: 'A'\n")}}, filepath.Join(dir, "absent")); err != nil || len(b2.Warnings()) != 0 {
+		t.Fatalf("a missing folder means no external locales: %v %v", err, b2)
+	}
+}
+
+func TestUnquotedScalarsAreText(t *testing.T) {
+	b, _ := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("n: 5\nflag: true\n")}})
+	if tr := b.New("en_us"); tr.T("n", nil) != "5" || tr.T("flag", nil) != "true" {
+		t.Fatal("scalars must become text")
+	}
+}
+
 func TestArgumentsAreSanitisedAndNotReExpanded(t *testing.T) {
 	b, _ := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("m: 'file {name} of {other}'\n")}})
 	got := b.New("en_us").T("m", Args{"name": "\x1b[2J{other}" + bidi, "other": "O"})
@@ -202,7 +240,11 @@ func TestNormalizeAndDetect(t *testing.T) {
 		{"LC_ALL wins", map[string]string{"LC_ALL": "es_ES.UTF-8", "LC_MESSAGES": "ru_RU", "LANG": "pt_BR"}, nil, "es_es"},
 		{"LC_MESSAGES over LANG", map[string]string{"LC_MESSAGES": "ru_RU.UTF-8", "LANG": "pt_BR"}, nil, "ru_ru"},
 		{"LANG", map[string]string{"LANG": "pt_BR.UTF-8"}, nil, "pt_br"},
-		{"C locale is skipped", map[string]string{"LC_ALL": "C", "LANG": "pt_BR"}, nil, "pt_br"},
+		{"LC_ALL=C decides: stable English", map[string]string{"LC_ALL": "C", "LANG": "pt_BR"}, nil, ""},
+		{"LC_MESSAGES=POSIX decides", map[string]string{"LC_MESSAGES": "POSIX", "LANG": "ru_RU"}, nil, ""},
+		{"C.UTF-8 in LANG", map[string]string{"LANG": "C.UTF-8"}, nil, ""},
+		{"C does not fall to Windows", map[string]string{"LANG": "C"}, []string{"ja-JP"}, ""},
+		{"empty variables are unset", map[string]string{"LC_ALL": "", "LANG": "pt_BR"}, nil, "pt_br"},
 		{"Windows UI language", nil, []string{"ja-JP", "en-US"}, "ja_jp"},
 		{"environment before Windows", map[string]string{"LANG": "ru_RU"}, []string{"ja-JP"}, "ru_ru"},
 		{"nothing", nil, nil, ""},
@@ -235,6 +277,7 @@ func TestResolve(t *testing.T) {
 		{"auto", lang("de_DE"), "en_us"}, // not available
 		{"auto", none, "en_us"},
 		{"auto", lang("C"), "en_us"},
+		{"auto", func(k string) string { return map[string]string{"LC_ALL": "C", "LANG": "pt_BR"}[k] }, "en_us"},
 		{"PT_BR", none, "pt_br"}, // explicit, case-insensitive
 		{"ru-RU", none, "ru_ru"},
 		{"fr_FR", lang("pt_BR"), "en_us"}, // an explicit unknown language does not fall to the environment
