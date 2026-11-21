@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Contracts: `Service.Cover` returns the cached reader and content type (not a path), `internal/cover` owns the
+  cover DNS port (the downloader `Resolver` port is dropped from downloader §8), and cache §4 says how T-20 wires it.
 - `internal/proxy`: `finalize` and `Cleanup` split into smaller steps, `FS.Open` returns a `ReadFile` with `Stat`
   (no type assertion), `Result.Path` documented as absolute; test helpers use `bytes.Reader`, the memory-backed
   directory test asserts on `/dev/shm` when it is tmpfs, and stale `dest_outside_root` wording is gone.
