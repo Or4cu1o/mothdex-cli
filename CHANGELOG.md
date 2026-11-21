@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `internal/config`: `download.on_exists=overwrite` from the config file or `MOTHDEX_DOWNLOAD_ON_EXISTS` is rejected
+  (exit 2) unless `Options.Force` (`--force`) is set; case 22 is covered.
+
 - `internal/proxy`: `finalize` and `Cleanup` split into smaller steps, `FS.Open` returns a `ReadFile` with `Stat`
   (no type assertion), `Result.Path` documented as absolute; test helpers use `bytes.Reader`, the memory-backed
   directory test asserts on `/dev/shm` when it is tmpfs, and stale `dest_outside_root` wording is gone.
