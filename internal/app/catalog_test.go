@@ -440,3 +440,41 @@ func TestProfileIsRaceFreeAndDeadlineIsCanceled(t *testing.T) {
 		t.Fatal("a deadline maps to canceled")
 	}
 }
+
+// failingSession is a cache whose session namespace cannot be written (read-only folder).
+type failingSession struct{ cache.Store }
+
+func (f failingSession) PutJSON(ns, key string, v any, opts ...cache.PutOption) error {
+	if ns == cache.NSSession {
+		return errors.New("read-only")
+	}
+	return f.Store.PutJSON(ns, key, v, opts...)
+}
+
+// Crivo m3: a session that cannot be saved degrades; the search still answers.
+func TestSearchSurvivesAnUnwritableSession(t *testing.T) {
+	c := &fakeClient{search: mothdex.SearchResponse{Results: entries("a"), CurrentPage: 1, TotalPages: 1, TotalResults: 1}}
+	s := newSvc(t, c, func(o *Options) { o.Cache = failingSession{o.Cache} })
+	if p, err := s.Search(context.Background(), SearchQuery{Text: "x"}); err != nil || len(p.Results) != 1 {
+		t.Fatalf("%v %v", p, err)
+	}
+	if _, err := s.Entry(context.Background(), Ref{Index: 1}); code(err) != CodeNoSession {
+		t.Fatalf("a later index reports no_session: %v", err)
+	}
+}
+
+func TestConfigRefusesToStoreOverwriteAndSanitisesUnicodeLineSeparators(t *testing.T) {
+	s := newSvc(t, &fakeClient{}, func(o *Options) { o.Config = ConfigSource{File: filepath.Join(t.TempDir(), "c.yaml")} })
+	if err := s.ConfigSet("download.on_exists", " Overwrite "); code(err) != CodeInvalidConfig {
+		t.Fatalf("overwrite must not be stored: %v", err)
+	}
+	if SanitizeText("a\u2028b\u2029c") != "abc" {
+		t.Fatal("U+2028 and U+2029 are removed")
+	}
+	r := rankLinks([]mothdex.Link{link("Game", "z\x1bip", "S\x07rc", goodURL, 1, "E\x1bn")}, Preference{Languages: []string{"en"}, Formats: []string{"zip"}, Sources: []string{"src"}}, []string{"proxy.mothdex.net"})
+	for _, reason := range r[0].Reasons {
+		if strings.ContainsAny(reason, "\x1b\x07") {
+			t.Fatalf("reasons carry API text: %q", reason)
+		}
+	}
+}

@@ -76,6 +76,9 @@ func (d *Downloader) cleanJournaled(ctx context.Context, now time.Time) ([]error
 		if !jobIDRe.MatchString(je.JobID) || d.isLive(je.JobID) {
 			continue // a malformed entry is never trusted; a live job keeps its entry
 		}
+		if je.Root != "" && je.Root != d.o.DestRoot {
+			continue // another destination root: its own Downloader cleans it (an entry without a root is old)
+		}
 		stagingGone, err1 := removeIfOld(d.o.Staging, stagingDir+"/"+je.JobID+".part", now)
 		destGone, err2 := d.cleanDestLeftovers(je, now)
 		errs = append(errs, err1, err2)

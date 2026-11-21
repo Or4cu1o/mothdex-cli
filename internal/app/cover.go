@@ -55,10 +55,15 @@ func (s *Service) fetchCover(ctx context.Context, url string) bool {
 	s.coverFlight[url] = call
 	s.coverMu.Unlock()
 
+	defer func() { // also runs if Fetch panics, so waiters never hang
+		s.coverMu.Lock()
+		delete(s.coverFlight, url)
+		s.coverMu.Unlock()
+		close(call.done)
+	}()
 	call.ok = s.o.Covers.Fetch(ctx, url)
 
 	s.coverMu.Lock()
-	delete(s.coverFlight, url)
 	if !call.ok && ctx.Err() == nil { // a canceled fetch says nothing about the URL
 		if len(s.coverFailed) >= maxCoverFailed {
 			clear(s.coverFailed)
@@ -66,6 +71,5 @@ func (s *Service) fetchCover(ctx context.Context, url string) bool {
 		s.coverFailed[url] = true
 	}
 	s.coverMu.Unlock()
-	close(call.done)
 	return call.ok
 }

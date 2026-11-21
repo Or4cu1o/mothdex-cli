@@ -92,7 +92,7 @@ func ExitCodeFor(code string) int {
 // text that may carry server data before it reaches a terminal, and bounds its length.
 func SanitizeText(s string) string {
 	clean := strings.Map(func(r rune) rune {
-		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' {
 			return -1
 		}
 		return r
@@ -118,7 +118,7 @@ func wrap(err error) error {
 	}
 	var pe *proxy.Error
 	if errors.As(err, &pe) {
-		return &Error{Code: string(pe.Code), Message: pe.Message, Cause: err}
+		return &Error{Code: string(pe.Code), Message: SanitizeText(pe.Message), Cause: err}
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Code: CodeCanceled, Cause: err}

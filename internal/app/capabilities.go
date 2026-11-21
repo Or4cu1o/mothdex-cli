@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/config"
 )
@@ -70,6 +71,9 @@ func (s *Service) ConfigList() ([]Setting, error) {
 func (s *Service) ConfigSet(key, value string) error {
 	if s.cfg.File == "" {
 		return newError(CodeInvalidConfig, "there is no config file path")
+	}
+	if key == "download.on_exists" && strings.EqualFold(strings.TrimSpace(value), "overwrite") {
+		return newError(CodeInvalidConfig, "download.on_exists=overwrite cannot be stored: it is only honored with --force on the command line")
 	}
 	return configError(config.Set(s.cfg.File, key, value))
 }

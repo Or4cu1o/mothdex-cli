@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -102,14 +103,13 @@ type jobMeta struct {
 
 // downloads is the Downloads capability state of a Service.
 type downloads struct {
-	env     Env
-	mu      sync.Mutex
-	dls     map[string]*proxy.Downloader // by absolute destination root
-	closers []io.Closer                  // the os.Root handles the downloaders hold
-	jobs    map[JobID]*JobSnapshot
-	meta    map[JobID]jobMeta
-	subs    map[int]chan Event
-	next    int
+	env   Env
+	mu    sync.Mutex
+	roots map[string]*rootEntry // by absolute destination root
+	jobs  map[JobID]*JobSnapshot
+	meta  map[JobID]jobMeta
+	subs  map[int]*subscriber
+	next  int
 
 	doneSinceWait int
 	active        int           // jobs queued or running
@@ -125,18 +125,21 @@ func (s *Service) EnableDownloads(env Env) error {
 		return errors.New("app: TempDir, DataDir and History are required for downloads")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.dl = &downloads{env: env, dls: map[string]*proxy.Downloader{}, jobs: map[JobID]*JobSnapshot{}, meta: map[JobID]jobMeta{}, subs: map[int]chan Event{}, ctx: ctx, cancel: cancel}
+	s.dl = &downloads{env: env, roots: map[string]*rootEntry{}, jobs: map[JobID]*JobSnapshot{}, meta: map[JobID]jobMeta{}, subs: map[int]*subscriber{}, ctx: ctx, cancel: cancel}
 	return nil
 }
 
 type plan struct {
-	job   proxy.Job
-	root  string
-	meta  jobMeta
-	entry mothdex.Entry
+	job    proxy.Job
+	root   string
+	mkRoot bool // -o or download.dir: the directory is created once the whole batch is valid
+	meta   jobMeta
+	entry  mothdex.Entry
 }
 
-// Enqueue validates every request, then queues them all; nothing is queued if one is invalid.
+// Enqueue validates every request, opens every destination, and only then queues the jobs: a bad
+// request, an unusable root or a failed Downloader build leaves nothing queued and creates no
+// directory (the -o directory is created after the whole batch validated).
 func (s *Service) Enqueue(ctx context.Context, reqs []DownloadRequest) ([]JobID, error) {
 	d := s.dl
 	if d == nil {
@@ -161,32 +164,37 @@ func (s *Service) Enqueue(ctx context.Context, reqs []DownloadRequest) ([]JobID,
 		}
 		plans = append(plans, p)
 	}
-	ids := make([]JobID, 0, len(plans))
-	for _, p := range plans {
+	dls := make([]*proxy.Downloader, len(plans))
+	for i, p := range plans { // phase 2: every root opens before any job starts
+		if p.mkRoot {
+			if merr := os.MkdirAll(p.root, 0o700); merr != nil {
+				return nil, &Error{Code: string(proxy.CodePathRejected), Message: "the output directory cannot be created", Cause: merr}
+			}
+		}
 		dl, err := d.downloaderFor(p.root, known)
 		if err != nil {
-			s.cancelAll(ids)
 			return nil, err
 		}
-		jobID, err := dl.NewJobID()
+		dls[i] = dl
+	}
+	ids := make([]JobID, 0, len(plans))
+	for i, p := range plans { // phase 3: queue
+		jobID, err := dls[i].NewJobID()
 		if err != nil {
 			s.cancelAll(ids)
 			return nil, wrap(err)
 		}
 		p.job.ID = jobID
 		id := JobID(jobID)
-		d.register(id, p)
-		_, results, err := dl.Submit(d.ctx, p.job)
-		if err != nil {
-			d.forget(id)
+		d.register(id, p) // counts the job as active before it can finish
+		if _, results, err := dls[i].Submit(d.ctx, p.job); err != nil {
+			d.unregister(id)
 			s.cancelAll(ids)
 			return nil, wrap(err)
+		} else {
+			go d.collect(id, results)
 		}
 		ids = append(ids, id)
-		d.mu.Lock()
-		d.active++
-		d.mu.Unlock()
-		go d.collect(id, results)
 	}
 	return ids, nil
 }
@@ -210,38 +218,37 @@ func (s *Service) planFor(ctx context.Context, r DownloadRequest, known map[stri
 	if !known[e.Platform] {
 		return plan{}, newError(string(proxy.CodePathRejected), "the platform is not in the platform list") // downloader 6.2
 	}
-	root, dest, err := s.dl.destination(r.DestDir, e.Platform)
+	root, dest, mk, err := s.dl.destination(r.DestDir, e.Platform)
 	if err != nil {
 		return plan{}, err
 	}
 	return plan{
-		job:   proxy.Job{Link: c.Link, Slug: e.Slug, Platform: e.Platform, DestDir: dest},
-		root:  root,
-		entry: e,
-		meta:  jobMeta{title: e.Title, linkIndex: c.Index, expected: c.Link.Size, sourceName: c.Link.SourceName, raw: c.Link.Filename},
+		job:    proxy.Job{Link: c.Link, Slug: e.Slug, Platform: e.Platform, DestDir: dest},
+		root:   root,
+		mkRoot: mk,
+		entry:  e,
+		meta:   jobMeta{title: e.Title, linkIndex: c.Index, expected: c.Link.Size, sourceName: c.Link.SourceName, raw: c.Link.Filename},
 	}, nil
 }
 
 // destination decides the root the downloader is confined to and the directory inside it:
 // -o (or download.dir) becomes the absolute root and the files go straight into it; otherwise
-// the root is the profile's ROM root and the directory is its folder for the platform.
-func (d *downloads) destination(explicit, platform string) (root, dest string, err error) {
+// the root is the profile's ROM root and the directory is its folder for the platform. It has no
+// side effects: the caller creates an explicit root after the batch validated.
+func (d *downloads) destination(explicit, platform string) (root, dest string, mkRoot bool, err error) {
 	if dir := firstNonEmpty(explicit, d.env.Download.Dir); dir != "" {
 		abs, aerr := filepath.Abs(dir)
 		if aerr != nil {
-			return "", "", &Error{Code: CodeInvalidRequest, Message: "the output directory is not usable", Cause: aerr}
+			return "", "", false, &Error{Code: CodeInvalidRequest, Message: "the output directory is not usable", Cause: aerr}
 		}
-		if merr := os.MkdirAll(abs, 0o700); merr != nil {
-			return "", "", &Error{Code: string(proxy.CodePathRejected), Message: "the output directory cannot be created", Cause: merr}
-		}
-		return abs, abs, nil
+		return abs, abs, true, nil
 	}
 	p := d.env.Profile
 	dest, derr := p.Profile.DestDir(platform)
 	if derr != nil {
-		return "", "", &Error{Code: CodeUnmappedPlatform, Message: "no folder is set for the platform", Cause: derr}
+		return "", "", false, &Error{Code: CodeUnmappedPlatform, Message: "no folder is set for the platform", Cause: derr}
 	}
-	return p.RomRoot, dest, nil
+	return p.RomRoot, dest, false, nil
 }
 
 func firstNonEmpty(a, b string) string {
@@ -251,21 +258,38 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// rootEntry builds the Downloader of one root once, outside d.mu, so a slow first use of a root
+// (opening it, the startup Cleanup) never blocks the events of running jobs.
+type rootEntry struct {
+	once    sync.Once
+	dl      *proxy.Downloader
+	closers []io.Closer
+	err     error
+}
+
 // downloaderFor returns the Downloader confined to root, building it (and running its startup
 // Cleanup) the first time.
 func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Downloader, error) {
 	d.mu.Lock()
+	e, ok := d.roots[root]
+	if !ok {
+		e = &rootEntry{}
+		d.roots[root] = e
+	}
+	d.mu.Unlock()
+	e.once.Do(func() {
+		dl, closers, err := d.build(root, known)
+		d.mu.Lock()
+		e.dl, e.closers, e.err = dl, closers, err
+		d.mu.Unlock()
+	})
+	d.mu.Lock()
 	defer d.mu.Unlock()
-	if dl, ok := d.dls[root]; ok {
-		return dl, nil
+	if e.err != nil {
+		delete(d.roots, root) // a failed build is retried on the next use
+		return nil, e.err
 	}
-	dl, closers, err := d.build(root, known)
-	if err != nil {
-		return nil, err
-	}
-	d.dls[root] = dl
-	d.closers = append(d.closers, closers...)
-	return dl, nil
+	return e.dl, nil
 }
 
 func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader, []io.Closer, error) {
@@ -334,14 +358,26 @@ func (d *downloads) register(id JobID, p plan) {
 	defer d.mu.Unlock()
 	p.meta.started = time.Now()
 	d.meta[id] = p.meta
-	d.jobs[id] = &JobSnapshot{ID: id, Slug: p.entry.Slug, Title: p.entry.Title, Platform: p.entry.Platform, LinkIndex: p.meta.linkIndex, State: proxy.StateQueued, Expected: p.meta.expected, Started: p.meta.started}
+	d.jobs[id] = &JobSnapshot{ID: id, Slug: p.entry.Slug, Title: p.entry.Title, Platform: p.entry.Platform, LinkIndex: p.meta.linkIndex, State: StateQueued, Expected: p.meta.expected, Started: p.meta.started}
+	d.active++
 }
 
-func (d *downloads) forget(id JobID) {
+// unregister undoes register for a job whose Submit failed.
+func (d *downloads) unregister(id JobID) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	delete(d.jobs, id)
 	delete(d.meta, id)
+	d.finishLocked()
+}
+
+// finishLocked counts one job out and wakes waiters when none is left; the caller holds d.mu.
+func (d *downloads) finishLocked() {
+	d.active--
+	if d.active == 0 && d.idle != nil {
+		close(d.idle)
+		d.idle = nil
+	}
 }
 
 func (s *Service) cancelAll(ids []JobID) {
@@ -354,7 +390,7 @@ func (s *Service) cancelAll(ids []JobID) {
 func (d *downloads) onEvent(e proxy.Event) {
 	d.mu.Lock()
 	j, ok := d.jobs[JobID(e.JobID)]
-	if !ok {
+	if !ok || j.Terminal() { // an unknown job, or a late event after the terminal state
 		d.mu.Unlock()
 		return
 	}
@@ -387,21 +423,92 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 	if d.jobs[id] != nil {
 		d.publish(snap)
 	}
-	d.active--
-	if d.active == 0 && d.idle != nil {
-		close(d.idle)
-		d.idle = nil
-	}
+	d.finishLocked()
 	d.mu.Unlock()
 }
 
-// publish sends a snapshot to every subscriber. The caller holds d.mu, so a channel cannot be
-// closed under the send; the sends never block (a slow UI loses a tick).
+// publish queues a snapshot for every subscriber; it never blocks. The caller holds d.mu.
 func (d *downloads) publish(snap JobSnapshot) {
-	for _, c := range d.subs {
+	for _, sb := range d.subs {
+		sb.push(Event{Job: snap})
+	}
+}
+
+// subscriber delivers events to one reader without ever blocking the transfer and without losing
+// a state change: progress ticks of a job coalesce into the latest one, everything else is queued
+// in order. One goroutine owns the output channel, so it is closed exactly once and never sent on
+// after that.
+type subscriber struct {
+	mu     sync.Mutex
+	queue  []Event
+	closed bool
+	notify chan struct{} // capacity 1
+	done   chan struct{} // closed by close
+	out    chan Event
+}
+
+func newSubscriber() *subscriber {
+	return &subscriber{notify: make(chan struct{}, 1), done: make(chan struct{}), out: make(chan Event, 64)}
+}
+
+func (sb *subscriber) push(ev Event) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	if sb.closed {
+		return
+	}
+	for i := len(sb.queue) - 1; i >= 0; i-- { // coalesce with the newest queued event of the same job
+		q := sb.queue[i]
+		if q.Job.ID != ev.Job.ID {
+			continue
+		}
+		if q.Job.State == ev.Job.State {
+			sb.queue[i] = ev // same state: a progress tick, or a richer final snapshot
+			ev.Job.ID = ""   // consumed
+		}
+		break
+	}
+	if ev.Job.ID != "" {
+		sb.queue = append(sb.queue, ev)
+	}
+	select {
+	case sb.notify <- struct{}{}:
+	default:
+	}
+}
+
+func (sb *subscriber) close() {
+	sb.mu.Lock()
+	if !sb.closed {
+		sb.closed = true
+		close(sb.done)
+	}
+	sb.mu.Unlock()
+}
+
+func (sb *subscriber) run() {
+	defer close(sb.out)
+	for {
+		sb.mu.Lock()
+		var ev Event
+		have := len(sb.queue) > 0
+		if have {
+			ev = sb.queue[0]
+			sb.queue = sb.queue[1:]
+		}
+		sb.mu.Unlock()
+		if have {
+			select {
+			case sb.out <- ev:
+			case <-sb.done:
+				return
+			}
+			continue
+		}
 		select {
-		case c <- Event{Job: snap}:
-		default:
+		case <-sb.notify:
+		case <-sb.done:
+			return
 		}
 	}
 }
@@ -442,29 +549,34 @@ func (s *Service) Jobs() []JobSnapshot {
 	return out
 }
 
-// Events streams job changes until ctx ends. The channel is buffered and lossy under a slow reader.
+// Events streams job changes until ctx ends or the service closes, then closes the channel. State
+// changes are never dropped; progress ticks of a job coalesce when the reader is slow. Jobs and
+// Wait are the authoritative final picture.
 func (s *Service) Events(ctx context.Context) <-chan Event {
-	out := make(chan Event, 64)
 	d := s.dl
 	if d == nil {
+		out := make(chan Event)
 		close(out)
 		return out
 	}
+	sb := newSubscriber()
 	d.mu.Lock()
 	id := d.next
 	d.next++
-	d.subs[id] = out
+	d.subs[id] = sb
 	d.mu.Unlock()
+	go sb.run()
 	go func() {
-		<-ctx.Done()
-		d.mu.Lock()
-		if c, ok := d.subs[id]; ok { // Close may have closed it already
-			delete(d.subs, id)
-			close(c)
+		select {
+		case <-ctx.Done():
+		case <-sb.done:
 		}
+		d.mu.Lock()
+		delete(d.subs, id)
 		d.mu.Unlock()
+		sb.close()
 	}()
-	return out
+	return sb.out
 }
 
 // Cancel stops one job (queued or running).
@@ -474,9 +586,11 @@ func (s *Service) Cancel(id JobID) error {
 		return newError(CodeNotFound, "no such job")
 	}
 	d.mu.Lock()
-	dls := make([]*proxy.Downloader, 0, len(d.dls))
-	for _, dl := range d.dls {
-		dls = append(dls, dl)
+	var dls []*proxy.Downloader
+	for _, e := range d.roots {
+		if e.dl != nil {
+			dls = append(dls, e.dl)
+		}
 	}
 	d.mu.Unlock()
 	for _, dl := range dls {
@@ -526,16 +640,12 @@ func (s *Service) Wait(ctx context.Context) (BatchResult, error) {
 			res.RefreshWarning = SanitizeText(fmt.Sprint(err))
 		}
 	}
-	slicesSortJobs(res.Jobs)
+	sortJobs(res.Jobs)
 	return res, nil
 }
 
-func slicesSortJobs(js []JobSnapshot) {
-	for i := 1; i < len(js); i++ {
-		for j := i; j > 0 && js[j].Started.Before(js[j-1].Started); j-- {
-			js[j], js[j-1] = js[j-1], js[j]
-		}
-	}
+func sortJobs(js []JobSnapshot) {
+	slices.SortStableFunc(js, func(a, b JobSnapshot) int { return a.Started.Compare(b.Started) })
 }
 
 // historyAdapter turns the downloader record into the history record, adding what only the
@@ -586,21 +696,31 @@ func codeMessage(code string) string {
 	return "download failed"
 }
 
-// Close cancels running jobs and waits for them to settle.
+// Close cancels running jobs, waits for them to settle, closes the Events channels and releases
+// the root handles of the downloaders.
 func (s *Service) closeDownloads() {
-	if d := s.dl; d != nil {
-		d.cancel()
-		_ = d.waitIdle(context.Background())
-		d.mu.Lock()
-		for id, c := range d.subs {
-			delete(d.subs, id)
-			close(c)
-		}
-		closers := d.closers
-		d.closers = nil
-		d.mu.Unlock()
-		for _, c := range closers {
-			_ = c.Close()
-		}
+	d := s.dl
+	if d == nil {
+		return
+	}
+	d.cancel()
+	_ = d.waitIdle(context.Background())
+	d.mu.Lock()
+	subs := make([]*subscriber, 0, len(d.subs))
+	for id, sb := range d.subs {
+		delete(d.subs, id)
+		subs = append(subs, sb)
+	}
+	var closers []io.Closer
+	for root, e := range d.roots {
+		closers = append(closers, e.closers...)
+		delete(d.roots, root)
+	}
+	d.mu.Unlock()
+	for _, sb := range subs {
+		sb.close()
+	}
+	for _, c := range closers {
+		_ = c.Close()
 	}
 }
