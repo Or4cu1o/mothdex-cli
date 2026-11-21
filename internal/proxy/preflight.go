@@ -33,7 +33,7 @@ func (d *Downloader) preflight(ctx context.Context, j *jobState) (State, *Error)
 	if perr := d.reserveSpace(j); perr != nil {
 		return StateFailed, perr
 	}
-	if jerr := d.o.Journal.Add(JournalEntry{JobID: j.id, Staging: j.staging, DestDir: j.destRel, Started: j.started}); jerr != nil {
+	if jerr := d.o.Journal.Add(JournalEntry{JobID: j.id, Staging: j.staging, DestDir: j.destRel, Root: d.o.DestRoot, Started: j.started}); jerr != nil {
 		return StateFailed, &Error{Code: CodeInternal, Message: "cannot write the in-flight journal", Err: jerr}
 	}
 	j.journaled = true

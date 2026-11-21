@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
+  platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
+  the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`
+  validates every request before queueing any, a Downloader per destination root (`-o` or `download.dir` becomes the
+  absolute root; otherwise the profile ROM root), startup `Cleanup`, journal, `Confiner` with the profile launcher
+  paths, `Jobs`/`Events`/`Cancel`/`Wait`, the frontend refresh once per batch and only after a Done job (case 46),
+  and the history record with title, link index, expected size and error object. Config read path that works on a
+  file holding `on_exists=overwrite`; the overwrite-without-force refusal is `invalid_config` (exit 2). `*app.Error`
+  has its whole text cleaned of terminal escapes and maps to the exit codes (case 49, service half).
 - `internal/i18n` and `locales/`: embedded locales plus an optional external folder (per-key override), automatic
   detection (`LC_ALL`, `LC_MESSAGES`, `LANG`; the Windows preferred UI languages), `interface.language` resolution
   (exact, same language, en_us), named `{placeholders}`, CLDR plural forms, and a per-key fallback to en_us. `en_us`,
