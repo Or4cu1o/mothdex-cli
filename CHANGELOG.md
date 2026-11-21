@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/ui/cli` and `cmd/mothdex` (T-20b): the command line. cobra commands `search`, `info`, `random`, `download`,
+  `boxart`, `platforms`, `regions`, `db-info`, `history`, `cache stats|clear`, `config list|get|set|reset`,
+  `profile show|detect` and `version` (`shell`, `tui`, `gui` print "not available yet"). Human tables with the 80/60
+  column rules, the `--json` envelope v1 (partial data on a batch), the localized error block from
+  `errors.<code>.message|hint` (a placeholder with no value falls back to the service text), the exit codes of
+  cli-output section 4 (7 for a partial batch, 130 for Ctrl+C; a second Ctrl+C within 2 s exits at once), `--prefer`,
+  `--link`, `-o` (becomes the absolute root), `-e/--export` with the CSV formula guard, and the confirmation prompt rules
+  (never with `--json`, `-q` or a piped stdin). Every API string passes `SanitizeText` before a terminal (case 49);
+  `--json` keeps raw values. `cmd/mothdex/compose.go` is the composition root (config, log, i18n with `LoadDir`, cache,
+  API client with the persisted 429 cooldown, cover fetcher, history, profile, app). `app.Service.SaveBoxart` writes
+  covers through the confined destination root (O_EXCL, launcher folders refused, an existing file is kept). Progress is
+  one line per state change on stderr; a live redrawn bar is not done yet. Review round: `--json` escapes C1 controls
+  (CSI/OSC), `error.exit_code` is the process code and `warnings[]` is filled, failure messages carry their named values
+  (`path`, `name`, `host`, ...) and never show a raw `{placeholder}`, export write failures are exit 6 with a `--force`
+  hint, the cover of a downloaded file is named after the file (`SaveJobBoxart`) and is staged then published, a new
+  cover fetch leader re-checks the cache, the persisted 429 cooldown seed is clamped to 10 minutes, `CSVCell` also strips
+  U+2028/2029, and the UI imports only `app` (export writers and type aliases moved behind it). Catalog case 49 is
+  now covered.
+- `docs/contracts/cli/ui.md` (T-40): the E-M2 Shell and TUI contract: packages and imports, `cli.Runner` for the Shell, launchers and an interrupt hand-off in `cli.Deps`, service calls per screen, pinned liner v1.2.3 and Charm v2 versions, test plan, and the app gaps for Forja.
+- CI job `release tools build` compiles the pinned release tools (goreleaser, cosign, syft) from `tools/*` on every PR, the
+  way `release.yml` installs them, so a dependabot bump there that no longer builds is caught before a tag (PR-31-sec).
+- T-21c: installer hardening from the #31 reviews. `install.sh`: no `latest` through wget (a redirect could roll it back; pass `--version`), `dir_safe` also refuses a bin_dir with a world-writable non-sticky ancestor (physical path), the FAT exception resolves symlinked parents and stays inside the profile tree. `install.ps1`: a download whose final address is not https is refused (PowerShell 5.1 follows https to http). Tests: parent, sticky, symlinked parent and wget-latest cases; Pester cases for an inherit-only generic ACE and a real http response.
 - `docs/qa/T-22-m1-acceptance.md`: the M1 acceptance checklist (T-22) with the evidence source per item, what waits for
   T-20b, and the plan for the mcp slug charset sample.
 - `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
@@ -45,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App service contract (T-20b): `SaveJobBoxart` (cover named after the downloaded file) and `SaveBoxart` (`boxart`
   command) replace `DownloadRequest.Boxart`; exports go through `app`; UIs may also import `internal/i18n` and
   `internal/buildinfo`.
+- Contracts: one slug rule for both repos (`^[a-z0-9][a-z0-9-]{0,255}$`, `mothdex.ValidSlug`). `Entry` refuses other
+  slugs locally, search drops entries with an unsafe slug before numbering (`dropped` in `search` JSON, a warning), and a
+  single-entry answer with one is `api_incompatible`.
 - T-16 catalog: cases 51 and 52 (installer launcher path injection and permissions) are now Covered by
   `tests/installer/cases.sh`, `nonroot.sh` and `install.Tests.ps1`; 51 of 52 cases are Covered, only 49 (terminal
   escapes in the UI output) is Pending.
@@ -174,6 +199,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `internal/cache` on Windows: readers open cache files with `FILE_SHARE_DELETE`, and the replace uses `FileRenameInfoEx` with `FILE_RENAME_POSIX_SEMANTICS` (Windows 10 1809, NTFS; `os.Rename` falls back where unsupported), because `MoveFileEx` still refuses a target with an open handle. A `Put` renaming a new version over an item that a reader holds open no longer fails with "Access is denied". The bounded rename retry could not beat a busy reader (`TestConcurrentGetAndPutKeepTheLatestItem` failed after 59 s on windows-latest); the retry stays as a second line of defence. Regression test `TestPutReplacesAnItemThatAReaderHoldsOpen` holds a reader open across the Put, with no waits.
+- `internal/app` test `TestCoverFromCacheThenFetchSingleflightAndNegativeCache` no longer fails about 1 run in 40 under `-race`: the gate opens only after all five callers joined the single fetch (a join counter on the in-flight call replaces the sleep polling).
 - Config `profile.folders` values reject launcher-folder look-alikes (`portſ`, `wındows`) and the full set of Windows
   device names (`COM0`, `LPT0`, superscript digits); `api.base_url` rejection messages (load and `set`, client validation) never echo the URL userinfo, and a URL that does not parse is
   replaced by a placeholder; the API client

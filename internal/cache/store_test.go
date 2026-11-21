@@ -538,3 +538,31 @@ func (g *gatedReader) Read(p []byte) (int, error) {
 	g.done = true
 	return copy(p, "data"), nil
 }
+
+// A reader that holds a cache file open must never block a Put that replaces it (Windows: the
+// readers open with FILE_SHARE_DELETE). Deterministic: the reader stays open across the Put.
+func TestPutReplacesAnItemThatAReaderHoldsOpen(t *testing.T) {
+	s, _, _ := open(t, testConfig())
+	if err := s.PutBlob(NSCovers, "k", strings.NewReader("old"), "image/png", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+	r, e, err := s.GetBlob(NSCovers, "k")
+	if err != nil || !e.Hit {
+		t.Fatalf("%v %+v", err, e)
+	}
+	defer func() { _ = r.Close() }()
+	if err := s.PutBlob(NSCovers, "k", strings.NewReader("new"), "image/png", 1<<20); err != nil {
+		t.Fatalf("a Put over an item held open by a reader must succeed: %v", err)
+	}
+	if b, _ := io.ReadAll(r); string(b) != "old" {
+		t.Fatalf("the open reader keeps the version it opened, got %q", b)
+	}
+	r2, _, err := s.GetBlob(NSCovers, "k")
+	if err != nil || r2 == nil {
+		t.Fatalf("%v", err)
+	}
+	defer func() { _ = r2.Close() }()
+	if b, _ := io.ReadAll(r2); string(b) != "new" {
+		t.Fatalf("a new reader sees the new version, got %q", b)
+	}
+}

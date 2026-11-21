@@ -74,6 +74,7 @@ errors:
     hint: 'Los detalles están en {log_path}. Por favor, infórmalo.'
 ui:
   messages:
+    error: 'error'
     yes: 'Sí'
     no: 'No'
     ok: 'OK'
@@ -118,3 +119,72 @@ ui:
     files:
       one: '{count} archivo'
       other: '{count} archivos'
+  cli:
+    warning: 'aviso'
+    usage_root_hint: 'Ejecuta "mothdex --help".'
+    name: 'Nombre'
+    brand: 'Marca'
+    db_info: '{count} entradas en el catálogo'
+    soon: '{name} aún no está disponible.'
+    search:
+      footer: 'Página {page}/{pages} · {total} resultados · {size} por página'
+      cached: 'en caché hace {age}'
+      stale: 'desactualizado: servido desde la caché'
+      hint: 'Siguiente: mothdex search "{text}" --page {next}  |  download <#>  |  info <#>'
+      hint_last: 'download <#>  |  info <#>'
+      none: 'Sin resultados para "{text}". Prueba con menos palabras o quita -p/-r.'
+      past_last: 'La página {asked} no existe; se muestra la página {shown}.'
+    info:
+      slug: 'Slug'
+      platform: 'Plataforma'
+      regions: 'Regiones'
+      serial: 'Serie'
+      links: 'Enlaces'
+      type: 'Tipo'
+      format: 'Formato'
+      extras: 'Extras'
+      source: 'Fuente'
+      why: 'Motivo'
+    download:
+      start:
+        one: 'Descargando {count} archivo'
+        other: 'Descargando {count} archivos'
+      link_chosen: 'Enlace {index} elegido ({why}, 1 de {count}).'
+      confirm: '¿Descargar {count} archivos ({size}) en {dest}?  [s/N]'
+      dest_default: 'la carpeta de la biblioteca'
+      connecting: 'Conectando...'
+      warming: 'Calentando el servidor...'
+      retry: 'Reintentando (intento {attempt})'
+      verifying: 'Verificando...'
+      saving: 'Guardando...'
+      saved: 'Guardado en {path} ({size}) en {time}'
+      skipped: 'Omitido: ya existe ({path})'
+    boxart:
+      failed: 'No se pudo guardar la carátula de {title} [{code}]'
+    export:
+      exists_hint: 'Usa --force para reemplazarlo, o elige otro nombre.'
+      write_hint: 'No se escribió nada. Revisa la carpeta y sus permisos.'
+      saved: 'Guardado {path}'
+    history:
+      date: 'Fecha'
+      state: 'Estado'
+      time: 'Tiempo'
+      tries: 'Intentos'
+    cache:
+      namespace: 'Espacio'
+      items: 'Elementos'
+      expired: 'Caducados'
+      total: 'Usando {used} de {max}'
+      cleared: 'Caché borrada'
+    config:
+      key: 'Clave'
+      value: 'Valor'
+      source: 'Fuente'
+    profile:
+      id: 'Id'
+      name: 'Nombre'
+      host: 'Host'
+      source: 'Fuente'
+      rom_root: 'Raíz de ROMs'
+      verified: 'Verificado'
+      unverified: 'Por confirmar: {item}'

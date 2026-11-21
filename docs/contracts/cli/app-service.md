@@ -31,6 +31,7 @@ type Catalog interface {
     DBInfo(ctx context.Context) (Result[mothdex.DBInfo], error)
     Links(ctx context.Context, ref Ref, sel LinkSelector) ([]LinkChoice, error) // ranked, pure rule after fetch
     Cover(ctx context.Context, ref Ref) (img io.ReadCloser, contentType string, err error) // covers cache; nil img = no cover
+    SaveBoxart(ctx context.Context, ref Ref, destDir string) (path string, err error)       // standalone `boxart`: <title>.<ext>
 }
 
 type Downloads interface {
@@ -39,8 +40,7 @@ type Downloads interface {
     Events(ctx context.Context) <-chan Event // state changes + throttled progress (≤ 4/s per job); never lossy
     Cancel(id JobID) error
     Wait(ctx context.Context) (BatchResult, error) // returns when the queue is empty
-    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a Done job
-    SaveBoxart(ctx context.Context, ref Ref, destDir string) (path string, err error)          // `boxart` command
+    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a Done job, named <stem of its file>.<ext>
 }
 
 // Method names carry the capability (one type implements all, so `List`/`Get` cannot repeat; T-20a).
@@ -81,6 +81,7 @@ type SearchPage struct {
     Query SearchQuery; Results []IndexedEntry
     Page, TotalPages, TotalResults int // normalized: no results => Page=1, TotalPages=0
     PastLastPage bool                  // API clamped the requested page
+    Dropped int                        // results hidden by the slug rule (§3)
     Meta ResultMeta
 }
 type Result[T any] struct { Value T; Meta ResultMeta }
@@ -109,6 +110,12 @@ type DownloadRequest struct {
 - **UI-owned state.** The Shell command history (`<paths.data>/shell_history`) and similar UI conveniences belong to
   the UI that uses them, not to the service.
 
+- **Unsafe slugs (api-client §2, slug rule).** `Search` drops results whose slug fails `mothdex.ValidSlug`
+  **before** numbering and before the session is saved, so `<index>` always matches what was shown and the session
+  only holds valid slugs. `SearchPage.Dropped` (int, additive) counts them, and the CLI adds the warning
+  `"{n} results were hidden because their slug has an unexpected form."` to `warnings[]` (and stderr). `Entry`
+  returns `api_incompatible` when the answered slug fails the rule. `Random` counts such an answer as a failed
+  attempt (within its 2N budget), and returns `api_incompatible` only when no valid entry was found.
 - **Session.** `Search` saves `{query, page, slugs}` in cache namespace `session`. `Ref{Index}` resolves against it;
   no session or an index out of range gives `KindNotFound` with code `no_session` / `index_out_of_range`.
   The session is a convenience: a failed save does not fail `Search`, but the service then deletes the stored
@@ -133,16 +140,17 @@ type DownloadRequest struct {
 - **Downloaders.** The service builds one downloader per destination root (downloader §6.2 confines each to its
   root). `download.concurrency`, the space ledger and the batch name set therefore apply per root. The CLI uses one
   root per batch; long-lived UIs (E-M3) that mix roots need a shared limiter first.
-- **Boxart** (T-20b). The UI decides **when** (after `Wait`, for `Done` jobs, when `download.boxart` or `--boxart`
-  is on, and never after an interrupt); the service decides **how**. `SaveJobBoxart` names the cover after the job's
-  file, `<stem of the final name>.<ext from the stored type>`, in the job's directory, so frontends pair them by stem.
-  `SaveBoxart` (standalone `boxart` command) names it `<title>.<ext>` in the download destination. Both:
-  - write through their own confined root FS with the downloader's Confiner (launcher folders refused) and a
-    `proxy.Sanitize`d name, with the extension taken from an allowlist of content types;
-  - stage `.<name>.part` and publish with a no-replace link (an `O_EXCL` copy where links are not supported), and
-    never replace an existing file (its path is returned);
-  - return `not_found` when the entry has no usable cover.
-  A boxart failure is a warning, and it never fails the job or the batch.
+- **Boxart** (`SaveBoxart`, `SaveJobBoxart`): the service, not the UI, writes covers, so every UI shares the rule. The
+  cover comes from the covers cache (validated fetcher, cache §4); the extension comes from the stored content type
+  (png, jpg, gif, webp); the name goes through `proxy.Sanitize`. `SaveJobBoxart` names it `<stem of the final file
+  name>.<ext>` in the file's folder (a frontend pairs them by stem); `SaveBoxart` (the standalone command) names it
+  `<title>.<ext>` in the destination `Enqueue` would use. The write goes through the confined destination root: staged
+  and published without replacing (O_EXCL, link or copy), an existing file is kept and its path returned, launcher
+  folders are refused (`path_rejected`). An entry without a usable cover is `not_found`. Whether to call it after a
+  download (`download.boxart`, `--boxart`, `Done` jobs only, never after an interrupt) is the UI's choice; a failure is a warning and never fails the job.
+- **Export** (`ExportTarget`, `WriteExport`, `ExportHistory`, `CSVCell`): the txt/json/csv writers of cli-output §5 live
+  in the service so Shell and TUI share one path. A write failure is `exists`, `path_rejected`, `permission_denied` or
+  `disk_full` (exit 6) with the target path, never the temporary name.
 - **Stale fallback.** On `KindNetwork` or `KindRateLimited`, catalog reads may serve an expired cache entry
   (≤ 7 days old) with `Meta.Stale = true`. Never for `Random`.
 - **429 cooldown** is persisted in namespace `state` (see api-client §4) and restored on start.
