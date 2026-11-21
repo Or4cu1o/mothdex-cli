@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-16 catalog: cases 51 and 52 (installer launcher path injection and permissions) are now Covered by
+  `tests/installer/cases.sh`, `nonroot.sh` and `install.Tests.ps1`; 51 of 52 cases are Covered, only 49 (terminal
+  escapes in the UI output) is Pending.
 - Contracts follow the T-20a fixes and the T-21 installer: `Events` is never lossy (per-subscriber queue), the
   journal entry carries its destination root and cleanup is per root, a failed session save deletes the stored
   session, and the installer launcher is opt-in (D22) with the root-only FAT share exception (TH-31).
