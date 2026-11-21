@@ -27,6 +27,7 @@ type Service interface {
 	SaveBoxart(ctx context.Context, ref app.Ref, destDir string) (string, error)
 	SaveJobBoxart(ctx context.Context, job app.JobSnapshot, destDir string) (string, error)
 	Enqueue(ctx context.Context, reqs []app.DownloadRequest) ([]app.JobID, error)
+	Jobs() []app.JobSnapshot
 	Events(ctx context.Context) <-chan app.Event
 	Cancel(id app.JobID) error
 	Wait(ctx context.Context) (app.BatchResult, error)

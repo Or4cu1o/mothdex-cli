@@ -98,6 +98,8 @@ func (f *fake) Events(ctx context.Context) <-chan app.Event {
 	return ch
 }
 
+func (f *fake) Jobs() []app.JobSnapshot { return nil }
+
 func (f *fake) Cancel(app.JobID) error { return nil }
 
 func (f *fake) Wait(context.Context) (app.BatchResult, error) { return f.wait() }
