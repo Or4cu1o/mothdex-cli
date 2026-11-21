@@ -22,7 +22,7 @@ type Confiner struct {
 
 // Resolve checks destdir and returns it as a slash-separated name inside FS ("." for the root
 // itself), creating the directory (0700) through the confined root if needed. Errors are
-// *Error: dest_outside_root, or path_rejected for a launcher location.
+// *Error with code path_rejected (outside the root, or a launcher location).
 func (c *Confiner) Resolve(destdir string) (string, error) {
 	abs, err := filepath.Abs(destdir)
 	if err != nil || destdir == "" {
@@ -49,7 +49,7 @@ func (c *Confiner) Resolve(destdir string) (string, error) {
 }
 
 // resolveExisting resolves the longest existing ancestor of dir through the operating system,
-// requires it to be inside the resolved root (dest_outside_root semantics, code path_rejected),
+// requires it to be inside the resolved root (code path_rejected),
 // and returns the resolved path with the not yet existing remainder appended.
 func (c *Confiner) resolveExisting(dir string) (string, error) {
 	realRoot, err := finalPath(c.FS.Dir())
