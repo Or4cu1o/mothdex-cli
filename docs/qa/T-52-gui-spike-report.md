@@ -48,10 +48,11 @@ Decision rule (gui.md): no Tier 1 target failed, so no escalation. arm32 passes 
 
 ## Unverified (open)
 
-- **ARMv6 CPU model.** The probe on the `arm1176` model under qemu-user crashed with SIGSEGV (exit 139) at the run recorded in
-  the PR. A pure Go `GOARM=6` binary runs fine on that model, and the CI step now also runs `/bin/true` and the dynamic loader
-  of the Debian armhf userland on it, so the summary says whether the Debian userland (built for ARMv7) fails by itself.
-  Honest status: attempted, crashed, cause not yet pinned, real ARMv6 hardware unknown.
+- **ARMv6 CPU model.** The probe on the `arm1176` model under qemu-user crashed with SIGSEGV (exit 139). The control runs in
+  the same CI step answer why: the Debian armhf `/bin/true` and its dynamic loader (`ld.so`) also exit 139 on that model
+  (run 44924149487), so the Debian armhf userland, built for ARMv7, cannot run on an ARMv6 CPU model at all, and this emulation
+  says nothing about the probe, Go or purego (a pure Go `GOARM=6` binary runs fine on that model). Still needed: real ARMv6
+  libraries (Batocera, Recalbox, Raspbian) or hardware. The step stays in CI, with its summary and warning, as a record.
 - Real video drivers (KMSDRM, fbdev, Wayland), real game pads, real Batocera, Recalbox, EmuELEC and RetroBat images.
 - Any SDL2 other than 2.32.x: no leg runs near the 2.0.18 target, so the refusal of an old SDL (`ErrTooOld`) is not run end to
   end, and the since-version of each function is checked by hand only.
