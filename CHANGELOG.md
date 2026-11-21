@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
+  and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does.
+
 ### Added
 
 - `docs/release-v0.1.0-checklist.md` (T-23): the ordered owner steps for the first release (open gates A2 and D1 to D3,

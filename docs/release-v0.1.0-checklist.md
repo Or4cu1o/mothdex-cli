@@ -50,7 +50,8 @@ What was and was not checked while preparing this page is at the end.
      18 files in `checksums.txt`).
    - `attest`: GitHub build provenance for every file in `checksums.txt` and for `checksums.txt` itself.
    - `publish` (**waits for the `release` environment: the owner approves it in the Actions run**): re-checks the
-     checksums, runs `gh attestation verify` on every file (signer workflow, `refs/tags/v0.1.0`), then
+     checksums, checks that `v0.1.0` still resolves to the built commit, runs `gh attestation verify` on every file (signer workflow,
+     `refs/tags/v0.1.0`, `--source-digest` of the commit, no self-hosted runner), then
      `gh release create v0.1.0 --verify-tag --generate-notes` with the 18 archives and SBOMs, `checksums.txt` and
      `checksums.txt.sigstore.json`. A tag with `-` becomes a pre-release.
 8. **Approve** the `release` environment only after `build` and `attest` are green and you have read the `build` log
@@ -118,8 +119,6 @@ here; the CI jobs `release-check` and `goreleaser snapshot` are the evidence); `
 `verify-blob`, `gh attestation verify`, the `environment` approval flow and `--verify-tag` against a real release; the
 installer against a real release, macOS, and real Batocera, Recalbox and RetroBat hardware.
 
-**Gap found, not changed here (High, CI, separate PR with Sentinela):** `release.yml` `publish` verifies attestations by
-signer workflow and tag only. mothdex-mcp's workflow also checks that the tag still resolves to the commit that was built
-(annotated tags followed) and passes `--source-digest "$GITHUB_SHA" --deny-self-hosted-runners`. Porting those two steps
-closes the window between `build` and `gh release create`; the tag ruleset closes it too, so the port is recommended
-before the tag but not blocking when the ruleset is on.
+**Gap closed by T-24:** `publish` used to verify attestations by signer workflow and tag only; it now also checks that the
+tag still resolves to the built commit and passes `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does.
+Not verified until the first tag run.
