@@ -240,9 +240,16 @@ func TestCase23RenameExhaustsAt99(t *testing.T) {
 func TestCase24BatchNameCollisions(t *testing.T) {
 	pairs := map[string][2]string{"colon": {"A:B.zip", "A_B.zip"}, "case": {"Game.zip", "game.zip"}, "same": {"x.zip", "x.zip"}}
 	for name, names := range pairs {
-		for _, policy := range []proxy.OnExists{proxy.OnExistsSkip, proxy.OnExistsRename} {
-			t.Run(name+"/"+string(policy), func(t *testing.T) {
-				r := newRig(t, proxy.Config{OnExists: policy, Concurrency: 2})
+		for _, c := range []struct {
+			policy      proxy.OnExists
+			concurrency int
+		}{{proxy.OnExistsSkip, 1}, {proxy.OnExistsSkip, 2}, {proxy.OnExistsRename, 1}, {proxy.OnExistsRename, 2}} {
+			policy := c.policy
+			t.Run(fmt.Sprintf("%s/%s/%d", name, policy, c.concurrency), func(t *testing.T) {
+				// concurrency 1 runs the jobs one after the other: the first has finished and
+				// released its name before the second starts, which is the case a plain
+				// "name is held" check misses.
+				r := newRig(t, proxy.Config{OnExists: policy, Concurrency: c.concurrency})
 				bodies := [2][]byte{bytes.Repeat([]byte("a"), 400), bytes.Repeat([]byte("b"), 400)}
 				r.srv.Script("/f/a", fakeproxy.OK(bodies[0]))
 				r.srv.Script("/f/b", fakeproxy.OK(bodies[1]))
@@ -268,7 +275,7 @@ func TestCase24BatchNameCollisions(t *testing.T) {
 				if policy == proxy.OnExistsSkip && done < 1 {
 					t.Fatalf("skip: %d jobs done, at least one must write its file", done)
 				}
-				if policy == proxy.OnExistsSkip && name != "case" && done != 1 {
+				if policy == proxy.OnExistsSkip && done != 1 { // "Game.zip" and "game.zip" collide on every file system
 					t.Fatalf("skip: %d jobs done, want exactly one (the names collide)", done)
 				}
 				if len(r.history.recs) != 2 {
@@ -480,6 +487,7 @@ func TestCase39StartupCleanup(t *testing.T) {
 	}
 	victim := filepath.Join(realfs.Dir(t), "victim")
 	realfs.WriteFile(t, victim, []byte("precious"))
+	age(victim, 48) // a cleanup that follows the link would see an old regular file and delete it
 	old := plant(t, r, "downloads/"+id("a")+".part", "x")
 	young := plant(t, r, "downloads/"+id("b")+".part", "x")
 	notes := plant(t, r, "downloads/notes.part", "x")
@@ -514,8 +522,8 @@ func TestCase39StartupCleanup(t *testing.T) {
 			t.Errorf("%s exists = %v, want %v", filepath.Base(p), exists(p), want)
 		}
 	}
-	if got, _ := os.ReadFile(victim); string(got) != "precious" { //nolint:gosec // test path
-		t.Fatal("a symlink was followed")
+	if got, err := os.ReadFile(victim); err != nil || string(got) != "precious" { //nolint:gosec // test path
+		t.Fatalf("a symlink was followed and its target removed or changed: %q %v", got, err)
 	}
 	left, _ := r.journal.Entries()
 	if len(left) != 1 || left[0].JobID != id("f") {
@@ -583,4 +591,92 @@ func TestCase40RetryNeverWritesThroughASwappedPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The finalize fallback chain (downloader.md 6.3): no-replace rename, then a hard link, then an
+// O_EXCL placeholder replaced by the final rename. Each step must place the file and must never
+// replace a file that a second writer created in the meantime.
+func TestFinalizeFallbackChain(t *testing.T) {
+	body := fakeproxy.Pattern(2000)
+	setup := func(t *testing.T, cfg proxy.Config, linkUnsupported bool) *rig {
+		t.Helper()
+		r := newRig(t, cfg)
+		r.srv.Script("/f/a", fakeproxy.OK(body))
+		r.fs.Fail(fakefs.OpRename, "*", fakefs.ErrNoReplaceUnsupported, 1)
+		if linkUnsupported {
+			r.fs.Fail(fakefs.OpLink, "*", fakefs.ErrHardLinkUnsupported, 1)
+		}
+		return r
+	}
+	called := func(r *rig, op, name string) bool {
+		for _, c := range r.fs.Calls() {
+			if c.Op == op && (name == "" || c.Name == name || c.To == name) {
+				return true
+			}
+		}
+		return false
+	}
+	const final = "roms/snes/a.zip"
+
+	t.Run("hard link when no-replace rename is unsupported", func(t *testing.T) {
+		r := setup(t, proxy.Config{}, false)
+		if res := r.download(r.job("/f/a", "a.zip", len(body))); res.State != proxy.StateDone {
+			t.Fatalf("state %s err %v", res.State, res.Err)
+		}
+		if !called(r, fakefs.OpLink, final) {
+			t.Fatal("the hard link step was not used")
+		}
+		if got, _ := os.ReadFile(r.fs.Path(final)); !bytes.Equal(got, body) {
+			t.Fatal("final content differs")
+		}
+		stagingEmpty(t, r)
+	})
+	t.Run("placeholder when links are unsupported too", func(t *testing.T) {
+		r := setup(t, proxy.Config{}, true)
+		if res := r.download(r.job("/f/a", "a.zip", len(body))); res.State != proxy.StateDone {
+			t.Fatalf("state %s err %v", res.State, res.Err)
+		}
+		if !called(r, fakefs.OpOpenExcl, final) {
+			t.Fatal("the O_EXCL placeholder step was not used")
+		}
+		if got, _ := os.ReadFile(r.fs.Path(final)); !bytes.Equal(got, body) {
+			t.Fatal("final content differs")
+		}
+		stagingEmpty(t, r)
+	})
+	t.Run("a second writer wins against the hard link step", func(t *testing.T) {
+		r := setup(t, proxy.Config{}, false)
+		r.fs.Before(fakefs.OpLink, final, func() { plant(t, r, final, "second writer") })
+		if res := r.download(r.job("/f/a", "a.zip", len(body))); res.State != proxy.StateSkipped {
+			t.Fatalf("state %s err %v, want skipped", res.State, res.Err)
+		}
+		if got, _ := os.ReadFile(r.fs.Path(final)); string(got) != "second writer" {
+			t.Fatalf("the second writer's file was replaced: %q", got)
+		}
+		stagingEmpty(t, r)
+	})
+	t.Run("a second writer wins against the placeholder step", func(t *testing.T) {
+		r := setup(t, proxy.Config{}, true)
+		r.fs.Before(fakefs.OpOpenExcl, final, func() { plant(t, r, final, "second writer") })
+		if res := r.download(r.job("/f/a", "a.zip", len(body))); res.State != proxy.StateSkipped {
+			t.Fatalf("state %s err %v, want skipped", res.State, res.Err)
+		}
+		if got, _ := os.ReadFile(r.fs.Path(final)); string(got) != "second writer" {
+			t.Fatalf("the second writer's file was replaced: %q", got)
+		}
+		stagingEmpty(t, r)
+	})
+	t.Run("rename policy moves on to the next name in every step", func(t *testing.T) {
+		r := setup(t, proxy.Config{OnExists: proxy.OnExistsRename}, true)
+		r.fs.Before(fakefs.OpOpenExcl, final, func() { plant(t, r, final, "second writer") })
+		if res := r.download(r.job("/f/a", "a.zip", len(body))); res.State != proxy.StateDone {
+			t.Fatalf("state %s err %v", res.State, res.Err)
+		}
+		if got, _ := os.ReadFile(r.fs.Path(final)); string(got) != "second writer" {
+			t.Fatalf("the second writer's file was replaced: %q", got)
+		}
+		if got, _ := os.ReadFile(r.fs.Path("roms/snes/a (1).zip")); !bytes.Equal(got, body) {
+			t.Fatal("our file must land under the next free name")
+		}
+	})
 }
