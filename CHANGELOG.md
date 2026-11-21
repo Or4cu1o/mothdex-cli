@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/history`: JSONL transfer history (`Append`, `List` newest first with a `--failed` filter, damaged lines
+  skipped) and export to txt (120 columns), json (the `--json` envelope) and csv (RFC 4180, control and format
+  characters stripped, formula guard); `ExportTarget` and `WriteExport` give directory naming, format inference and an
+  atomic no-overwrite write. `internal/session`: the last search in the `session` namespace, `Resolve(index)` with
+  `no_session` and `index_out_of_range`. Case 50 covered.
+
 - `pkg/mothdex`: `KindUntrustedRedirect` (`untrusted_redirect`, exit 4) and `IsUntrustedRedirect`. A redirect to another
   origin (host, scheme or effective port), a fourth hop, or a 3xx without a usable `Location` is refused, not retried,
   does not open the rate-limit circuit and is never `KindNetwork`; the message names the target host only (T-10c).
