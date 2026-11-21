@@ -29,7 +29,7 @@ Download, read, then run. The installer is never piped to a shell, and it
 downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https.
 
 ```sh
-curl -fsSLO https://github.com/Or4cu1o/mothdex-cli/raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
 less install.sh
 sh install.sh --dry-run          # downloads and verifies in a temp dir, installs nothing
 sh install.sh                    # or: --version v0.1.0, --profile, --bin-dir, --no-launcher, --uninstall
