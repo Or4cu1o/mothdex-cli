@@ -12,8 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - T-52b: CI for the GUI spike (`.github/workflows/gui-spike.yml`, read-only, actions pinned by SHA): the probe and `go test -tags gui`
   on linux amd64 with the distro libsdl2 (dummy driver), on windows amd64 with `SDL2.dll` 2.32.10 fetched by the exact release URL and verified against a
   pinned SHA-256 (`scripts/sdl2-windows.pin`); `readelf` per Linux target, the isolation check and a size report. The arm64, armv7 and armv6 legs (qemu-user, pinned
-  Debian images) are in `gui-spike-qemu.yml` (qemu-user-static and binfmt-support from apt, because the repository does not allow
-  `docker/setup-qemu-action`). New
+  Debian images) are in `gui-spike-qemu.yml` (qemu-user from the runner's apt and the pinned Debian images through docker, because the
+  repository does not allow `docker/setup-qemu-action`; if binfmt does not work in containers it falls back to `qemu-<arch>`
+  with a sysroot). New
   `scripts/check-sdl-constants.sh` compiles a C program against the libsdl2-dev headers and fails when a binding constant
   or struct layout differs.
 - `internal/ui/gui/sdl` and `cmd/mothdex-gui` (T-52, spike): our own thin purego binding of 23 SDL2 functions (video, renderer,
