@@ -29,6 +29,7 @@ const (
 	CodeConfirmationNeeded  = "confirmation_required"
 	CodeInvalidConfig       = "invalid_config"
 	CodeUnmappedPlatform    = "unmapped_platform"
+	CodePermissionDenied    = "permission_denied"
 	exitInternal            = 1
 	exitUsage               = 2
 	exitNotFound            = 3
@@ -47,6 +48,7 @@ type Error struct {
 	Kind      mothdex.Kind // zero unless the failure came from the API client
 	Message   string
 	Retryable bool
+	Args      map[string]any // named values for the localized message (index, count, host, ...)
 	Cause     error
 }
 

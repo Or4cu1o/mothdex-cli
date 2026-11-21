@@ -74,6 +74,7 @@ errors:
     hint: 'Details are in {log_path}. Please report it.'
 ui:
   messages:
+    error: 'error'
     yes: 'Yes'
     no: 'No'
     ok: 'OK'
@@ -118,3 +119,72 @@ ui:
     files:
       one: '{count} file'
       other: '{count} files'
+  cli:
+    warning: 'warning'
+    usage_root_hint: 'Run "mothdex --help".'
+    name: 'Name'
+    brand: 'Brand'
+    db_info: '{count} entries in the catalog'
+    soon: '{name} is not available yet.'
+    search:
+      footer: 'Page {page}/{pages} · {total} results · {size} per page'
+      cached: 'cached {age} ago'
+      stale: 'stale: served from cache'
+      hint: 'Next: mothdex search "{text}" --page {next}  |  download <#>  |  info <#>'
+      hint_last: 'download <#>  |  info <#>'
+      none: 'No results for "{text}". Try fewer words, or remove -p/-r.'
+      past_last: 'Page {asked} does not exist; showing page {shown}.'
+    info:
+      slug: 'Slug'
+      platform: 'Platform'
+      regions: 'Regions'
+      serial: 'Serial'
+      links: 'Links'
+      type: 'Type'
+      format: 'Format'
+      extras: 'Extras'
+      source: 'Source'
+      why: 'Why'
+    download:
+      start:
+        one: 'Downloading {count} file'
+        other: 'Downloading {count} files'
+      link_chosen: 'Link {index} chosen ({why}, 1 of {count}).'
+      confirm: 'Download {count} files ({size}) to {dest} ?  [y/N]'
+      dest_default: 'the library folder'
+      connecting: 'Connecting...'
+      warming: 'Warming up the server...'
+      retry: 'Retrying (attempt {attempt})'
+      verifying: 'Verifying...'
+      saving: 'Saving...'
+      saved: 'Saved to {path} ({size}) in {time}'
+      skipped: 'Skipped: already exists ({path})'
+    boxart:
+      failed: 'Cannot save the cover of {title} [{code}]'
+    export:
+      exists_hint: 'Pass --force to replace it, or choose another name.'
+      write_hint: 'Nothing was written. Check the folder and its permissions.'
+      saved: 'Saved {path}'
+    history:
+      date: 'Date'
+      state: 'State'
+      time: 'Time'
+      tries: 'Tries'
+    cache:
+      namespace: 'Namespace'
+      items: 'Items'
+      expired: 'Expired'
+      total: 'Using {used} of {max}'
+      cleared: 'Cache cleared'
+    config:
+      key: 'Key'
+      value: 'Value'
+      source: 'Source'
+    profile:
+      id: 'Id'
+      name: 'Name'
+      host: 'Host'
+      source: 'Source'
+      rom_root: 'ROM root'
+      verified: 'Verified'
+      unverified: 'To confirm: {item}'

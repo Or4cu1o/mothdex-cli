@@ -85,7 +85,11 @@ The values live in `internal/buildinfo` (set with `-X` ldflags), so every packag
 | 5 | integrity | `size_mismatch`, `integrity` |
 | 6 | local filesystem | `permission_denied`, `disk_full`, `exists`, `path_rejected`, `unsafe_name` |
 | 7 | partial: batch with some jobs failed | the first failure code, plus all of them in `data.jobs[].error` |
-| 130 | interrupted (SIGINT/SIGTERM, `canceled`) | `canceled` |
+| 130 | interrupted (SIGINT/SIGTERM, `canceled`); wins over 7 when a batch is both interrupted and has failures | `canceled` |
+
+`error.exit_code` in the `--json` envelope is the process exit code (7 for a partial batch, whatever the first failure's own
+code maps to). `warnings[]` carries every warning also printed on stderr. `--json` escapes the C1 controls U+0080 to
+U+009F as `\u00XX` besides what the encoder already escapes.
 
 Error codes are lowercase snake_case, stable, and are also the i18n keys under `errors.<code>`.
 

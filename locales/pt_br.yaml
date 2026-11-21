@@ -74,6 +74,7 @@ errors:
     hint: 'Os detalhes estão em {log_path}. Por favor, relate o problema.'
 ui:
   messages:
+    error: 'erro'
     yes: 'Sim'
     no: 'Não'
     ok: 'OK'
@@ -118,3 +119,72 @@ ui:
     files:
       one: '{count} arquivo'
       other: '{count} arquivos'
+  cli:
+    warning: 'aviso'
+    usage_root_hint: 'Execute "mothdex --help".'
+    name: 'Nome'
+    brand: 'Marca'
+    db_info: '{count} entradas no catálogo'
+    soon: '{name} ainda não está disponível.'
+    search:
+      footer: 'Página {page}/{pages} · {total} resultados · {size} por página'
+      cached: 'em cache há {age}'
+      stale: 'desatualizado: servido do cache'
+      hint: 'Próxima: mothdex search "{text}" --page {next}  |  download <#>  |  info <#>'
+      hint_last: 'download <#>  |  info <#>'
+      none: 'Nenhum resultado para "{text}". Use menos palavras ou tire -p/-r.'
+      past_last: 'A página {asked} não existe; mostrando a página {shown}.'
+    info:
+      slug: 'Slug'
+      platform: 'Plataforma'
+      regions: 'Regiões'
+      serial: 'Serial'
+      links: 'Links'
+      type: 'Tipo'
+      format: 'Formato'
+      extras: 'Extras'
+      source: 'Fonte'
+      why: 'Motivo'
+    download:
+      start:
+        one: 'Baixando {count} arquivo'
+        other: 'Baixando {count} arquivos'
+      link_chosen: 'Link {index} escolhido ({why}, 1 de {count}).'
+      confirm: 'Baixar {count} arquivos ({size}) para {dest} ?  [s/N]'
+      dest_default: 'a pasta da biblioteca'
+      connecting: 'Conectando...'
+      warming: 'Aquecendo o servidor...'
+      retry: 'Tentando de novo (tentativa {attempt})'
+      verifying: 'Verificando...'
+      saving: 'Salvando...'
+      saved: 'Salvo em {path} ({size}) em {time}'
+      skipped: 'Ignorado: já existe ({path})'
+    boxart:
+      failed: 'Não foi possível salvar a capa de {title} [{code}]'
+    export:
+      exists_hint: 'Use --force para substituir, ou escolha outro nome.'
+      write_hint: 'Nada foi gravado. Confira a pasta e as permissões.'
+      saved: 'Salvo {path}'
+    history:
+      date: 'Data'
+      state: 'Estado'
+      time: 'Tempo'
+      tries: 'Tentativas'
+    cache:
+      namespace: 'Espaço'
+      items: 'Itens'
+      expired: 'Expirados'
+      total: 'Usando {used} de {max}'
+      cleared: 'Cache limpo'
+    config:
+      key: 'Chave'
+      value: 'Valor'
+      source: 'Fonte'
+    profile:
+      id: 'Id'
+      name: 'Nome'
+      host: 'Host'
+      source: 'Fonte'
+      rom_root: 'Raiz das ROMs'
+      verified: 'Verificado'
+      unverified: 'A confirmar: {item}'

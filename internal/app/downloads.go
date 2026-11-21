@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +28,6 @@ type DownloadRequest struct {
 	Ref     Ref
 	Link    LinkSelector
 	DestDir string // "" = download.dir if set, else the active profile's folder for the platform
-	Boxart  *bool  // nil = download.boxart; the CLI saves the cover (not done by the service)
 }
 
 // JobSnapshot is the state of a job at one moment.
@@ -99,6 +100,7 @@ type jobMeta struct {
 	expected        int64
 	sourceName, raw string
 	started         time.Time
+	dest, host      string // destination directory and link host, for the named values of failure messages
 }
 
 // downloads is the Downloads capability state of a Service.
@@ -228,7 +230,7 @@ func (s *Service) planFor(ctx context.Context, r DownloadRequest, known map[stri
 		root:   root,
 		mkRoot: mk,
 		entry:  e,
-		meta:   jobMeta{title: e.Title, linkIndex: c.Index, expected: c.Link.Size, sourceName: c.Link.SourceName, raw: c.Link.Filename},
+		meta:   jobMeta{title: e.Title, linkIndex: c.Index, expected: c.Link.Size, sourceName: c.Link.SourceName, raw: c.Link.Filename, dest: dest, host: linkHost(c.Link.URL)},
 	}, nil
 }
 
@@ -268,10 +270,9 @@ type rootEntry struct {
 	err     error
 }
 
-// Journal entries of a root that is not used again in this run are pruned only when that root
-// is used again (a Downloader cleans its own root only).
 // downloaderFor returns the Downloader confined to root, building it (and running its startup
-// Cleanup) the first time.
+// Cleanup) the first time. Journal entries of a root that is not used again in this run are
+// pruned only when that root is used again (a Downloader cleans its own root only).
 func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Downloader, error) {
 	d.mu.Lock()
 	e, ok := d.roots[root]
@@ -303,16 +304,9 @@ func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Do
 	return e.dl, nil
 }
 
-func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader, []io.Closer, error) {
-	staging, err := proxy.OpenStagingFS(d.env.TempDir)
-	if err != nil {
-		return nil, nil, &Error{Code: CodeInternal, Message: "cannot open the staging directory", Cause: err}
-	}
-	dest, err := proxy.OpenRootFS(root)
-	if err != nil {
-		_ = staging.Close()
-		return nil, nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
-	}
+// confiner confines destination directories to dest and refuses the profile's launcher folders,
+// through the links of either side (see proxy.Confiner).
+func (d *downloads) confiner(dest *proxy.RootFS) *proxy.Confiner {
 	prof := d.env.Profile
 	var launchers []string
 	if prof.Profile.Launcher.Dir != "" {
@@ -323,7 +317,20 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 			launchers = append(launchers, filepath.Join(prof.RomRoot, f))
 		}
 	}
-	conf := &proxy.Confiner{FS: dest, IsLauncher: prof.Profile.IsLauncherPath, LauncherPaths: launchers, AllowExecutable: d.env.Download.AllowExecutable}
+	return &proxy.Confiner{FS: dest, IsLauncher: prof.Profile.IsLauncherPath, LauncherPaths: launchers, AllowExecutable: d.env.Download.AllowExecutable}
+}
+
+func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader, []io.Closer, error) {
+	staging, err := proxy.OpenStagingFS(d.env.TempDir)
+	if err != nil {
+		return nil, nil, &Error{Code: CodeInternal, Message: "cannot open the staging directory", Cause: err}
+	}
+	dest, err := proxy.OpenRootFS(root)
+	if err != nil {
+		_ = staging.Close()
+		return nil, nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
+	}
+	conf := d.confiner(dest)
 	cfg := d.env.Download
 	if cfg.OnExists == string(proxy.OnExistsOverwrite) && !cfg.Force {
 		_ = staging.Close()
@@ -423,7 +430,7 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 		if res.Err != nil {
 			var ae *Error
 			if errors.As(wrap(res.Err), &ae) {
-				j.Err = ae
+				j.Err = d.withJobArgs(ae, d.meta[id], res)
 			}
 		}
 		if res.State == proxy.StateDone {
@@ -735,4 +742,35 @@ func (s *Service) closeDownloads() {
 	for _, c := range closers {
 		_ = c.Close()
 	}
+}
+
+// linkHost is the host of a link URL ("" when it does not parse).
+func linkHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// withJobArgs fills the named values the localized failure messages use (path, name, host,
+// allowed, got, expected, needed) from what the service knows about the job, so a UI never shows a
+// raw {placeholder}. The values are cleaned: they come from the API or the file system.
+func (d *downloads) withJobArgs(e *Error, m jobMeta, res proxy.Result) *Error {
+	if e.Args == nil {
+		e.Args = map[string]any{}
+	}
+	set := func(k string, v any) {
+		if _, ok := e.Args[k]; !ok {
+			e.Args[k] = v
+		}
+	}
+	set("path", SanitizeText(m.dest))
+	set("name", SanitizeText(firstNonEmpty(res.Name, m.raw)))
+	set("host", SanitizeText(m.host))
+	set("allowed", SanitizeText(strings.Join(d.env.Download.AllowedHosts, ", ")))
+	set("got", res.Bytes)
+	set("expected", m.expected)
+	set("needed", m.expected)
+	return e
 }
