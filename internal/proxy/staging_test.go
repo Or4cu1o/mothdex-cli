@@ -36,10 +36,10 @@ func TestOpenStagingFSRefusesSharedDirectories(t *testing.T) {
 		t.Fatalf("a sticky shared directory (like /tmp) is fine: %v", err)
 	}
 	loose := filepath.Join(base, "loose")
-	if err := os.MkdirAll(filepath.Join(loose, stagingDir), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(loose, stagingDir), 0o755); err != nil { //nolint:gosec // the test needs a directory that is open to others
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Join(loose, stagingDir), 0o755); err != nil {
+	if err := os.Chmod(filepath.Join(loose, stagingDir), 0o755); err != nil { //nolint:gosec // the test needs a directory that is open to others
 		t.Fatal(err)
 	}
 	if r, err := OpenStagingFS(loose); err == nil {
