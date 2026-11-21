@@ -9,7 +9,7 @@ before it lands, and code that deviates from one is a bug in either the code or 
 | [`adr/`](adr/) | [ADR-0001 stack](adr/ADR-0001-stack.md), [ADR-0002 downloader without `Range`](adr/ADR-0002-downloader-without-range.md) |
 | [`security/`](security/) | [T-16 downloader threat model](security/T-16-threat-model-downloader.md) (Sentinela) |
 | [`ux/`](ux/) | human output conventions, `--prefer` syntax, Shell and TUI flows |
-| [`research/`](research/) | T1a Go libraries, T1b SDL2/purego, T1e emulation systems, T1f GoReleaser |
+| [`research/`](research/) | T1a Go libraries, T1b SDL2/purego, T1e emulation systems, T1f GoReleaser, T15b platform folders per frontend |
 
 The MCP server contracts live in [mothdex-mcp](https://github.com/Or4cu1o/mothdex-mcp/tree/main/docs).
 

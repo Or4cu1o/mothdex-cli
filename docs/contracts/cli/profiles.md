@@ -140,29 +140,40 @@ func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error     // never fat
   supports the exec bit (NTFS/exFAT do not, per T1e) and fall back to another directory with a warning. The launcher
   file runs `<bin_dir>/mothdex-gui` (or `mothdex tui` until E-M3).
 
-## 5. Seed folder map (Mothdex id → frontend folder)
+## 5. Folder map (Mothdex id → frontend folder)
 
-Folder names from T1e §4 (Confirmed per frontend, except where noted). This is data; the full 67-id map is filled in T-15
-and each row cites its source.
+The maps live in `profiles/*.yaml` (data). Source: [T15b research](../../research/T15b-platform-folders.md) (Sonda,
+2026-11-20), which reads each frontend's own system definition for all 67 Mothdex ids. Applied in T-15c with
+Regente decision D18:
 
-| Mothdex id | batocera | recalbox | emuelec | retrobat | emudeck / retrodeck (ES-DE) |
-|---|---|---|---|---|---|
-| `nes` | nes | nes | nes | nes | nes |
-| `snes` | snes | snes | snes | snes | snes |
-| `md` | megadrive | megadrive | megadrive | megadrive | megadrive (ES-DE also has `genesis`) |
-| `sms` | mastersystem | mastersystem | mastersystem | mastersystem | mastersystem |
-| `scd` | **megacd** | segacd | segacd | **megacd** | segacd |
-| `32x` | sega32x | sega32x | sega32x | sega32x | sega32x |
-| `gg` | gamegear | gamegear | gamegear | gamegear | gamegear |
-| `sat` | saturn | saturn | saturn | saturn | saturn |
-| `dc` | dreamcast | dreamcast | dreamcast | dreamcast | dreamcast |
-| `gb` / `gbc` / `gba` | gb / gbc / gba | same | same | same | same |
-| `n64` | n64 | n64 | n64 | n64 | n64 |
-| `ps1` | psx | psx | psx | psx | psx |
-| `tg16` | pcengine | pcengine | pcengine | pcengine | pcengine |
-| `mame`, `fbn`, `naomi`, … | unmapped (user choice) | unmapped | unmapped | unmapped | unmapped |
+| Profile | Mapped ids | `folders_verified` | Basis |
+|---|---|---|---|
+| `batocera` | 48 | true | `es_systems.yml` keys (Confirmed) |
+| `emuelec` | 41 | true | basename of `path` in `es_systems.json`, not the system `name` (e.g. `dos` → `pc`, `ngcd` → `neocd`) |
+| `retrobat` | 47 | true | `path` in `es_systems.cfg` |
+| `retrodeck` | 48 | true | ES-DE `es_systems.xml` (RetroDECK ships ES-DE) |
+| `emudeck` | 48 | false | ES-DE names; EmuDeck's layout is Inferred |
+| `recalbox` | 40 | false | `system.ini` names: 51 of 146 read, the rest Inferred from directory names |
+| `lakka`, `generic` | — | — | `per_platform_id` layout (folder = Mothdex id) |
 
-Recalbox "folder = system name" and EmuDeck "= ES-DE names" are **Inferred** (T1e §4).
+Rules for the map (D18):
+
+- **Same name everywhere** where the frontend has it; region variants (`genesis`, `megadrivejp`, `tg16`, `tg-cd`, …)
+  are not used. `md` → `megadrive` (OQ-PRO-2), `tg16`/`tgcd` → `pcengine`/`pcenginecd` (the only names present in all
+  five frontends; EmuELEC and ES-DE users who keep `tg16` override per folder).
+- `3ds` and `n3ds` share one folder (`3ds`, or `n3ds` on ES-DE): no frontend separates them.
+- **No system in that frontend → unmapped** (for example `ps2` on EmuELEC, `wiiu` on Recalbox, `dsi` everywhere, since
+  DSi titles usually share `nds` and that is not confirmed).
+- **Arcade ids stay unmapped on purpose** (`mame`, `hbmame`, `fbn`, `naomi`, `naomi2`, `chih`, `tri`, `lind`, `s246`,
+  `ring`, `ring2`, `m2`, `sgv`, `s573`, `fbeat`, `eamu`). These frontends split arcade games by **emulator and romset
+  version** (`mame`, `fbneo`, `neogeo`, `cps1`–`3`, `atomiswave`, `namco2x6`, …), and a set only runs in the folder
+  whose emulator matches its romset. The platform id alone cannot pick that folder, so a wrong guess would put games
+  where they never start. The user chooses with `-o <dir>` or `profile.folders.<id>`, and `unmapped: error`
+  explains this.
+- **`pc` is unmapped for now** (pending decision, OQ-PRO-4). D18 says `pc` → `windows` where it exists (Batocera,
+  RetroBat, ES-DE), but `windows` is a launcher folder (T-16 CR-3: RetroBat runs `.exe`/`.bat`/`.lnk` from
+  `roms\windows`), so the loader rejects that value and downloads into it need `--allow-executable` (downloader §6.2).
+  EmuELEC and Recalbox have no Windows system (D18: none).
 
 ## 6. Config additions (config.md §2)
 
@@ -182,3 +193,7 @@ Env: `MOTHDEX_PROFILE_ID`, `MOTHDEX_PROFILE_ROM_ROOT`, … (config.md §4 rule).
 - OQ-PRO-1: moved to Risks & Backlog (device verification by the community beta, D4).
 - OQ-PRO-2: accepted. ES-DE maps `md` to `megadrive`; users can override per folder.
 - OQ-PRO-3: moved to Risks & Backlog (ROCKNIX and muOS, post-1.0 with PortMaster).
+
+## Open questions
+
+- OQ-PRO-4 (T-15c, Regente/Sentinela): `pc` → `windows` (D18) conflicts with the launcher-folder rule (CR-3). Options: keep `pc` unmapped (current); or allow a mapped folder that is a launcher folder only for archive formats (`zip`, `7z`) with `--allow-executable` still required; or an explicit per-profile exception. Proposed: keep unmapped for v0.1.

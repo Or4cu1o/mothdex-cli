@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Or4cu1o/mothdex-cli/internal/config"
 	"github.com/Or4cu1o/mothdex-cli/profiles"
 )
 
@@ -73,6 +74,56 @@ func TestEmbeddedFolderMaps(t *testing.T) {
 	}
 	if byID["lakka"].Roms.Layout != LayoutPerPlatformID || byID["generic"].Roms.Layout != LayoutPerPlatformID {
 		t.Error("lakka and generic use per_platform_id")
+	}
+}
+
+// TestEmbeddedFoldersAvoidLauncherDirs checks every mapped folder of every embedded profile
+// (T-15c, T15b research): it is a valid folder name, its destination is not a launcher path,
+// and arcade ids and pc stay unmapped (profiles.md section 5).
+func TestEmbeddedFoldersAvoidLauncherDirs(t *testing.T) {
+	unmapped := []string{"mame", "hbmame", "fbn", "naomi", "naomi2", "chih", "tri", "lind", "s246", "pc"}
+	for _, p := range loadEmbedded(t) {
+		sep, root := "/", "/roms" // a stand-in root: the rule under test is root + folder
+		if p.OS == "windows" {
+			sep, root = `\`, `C:\RetroBat\roms`
+		}
+		p.ownRoot = root
+		for id, folder := range p.Roms.Folders {
+			if err := config.ValidateFolderName(folder); err != nil {
+				t.Errorf("%s: %s -> %q: %v", p.ID, id, folder, err)
+			}
+			if p.IsLauncherPath(root + sep + folder) {
+				t.Errorf("%s: %s -> %q lands in a launcher folder", p.ID, id, folder)
+			}
+		}
+		for _, id := range unmapped {
+			if f, ok := p.Roms.Folders[id]; ok {
+				t.Errorf("%s: %s must stay unmapped, got %q", p.ID, id, f)
+			}
+		}
+	}
+}
+
+// TestEmbeddedFolderNamesFromT15b spot-checks names that differ per frontend (T15b table).
+func TestEmbeddedFolderNamesFromT15b(t *testing.T) {
+	byID := map[string]Profile{}
+	for _, p := range loadEmbedded(t) {
+		byID[p.ID] = p
+	}
+	for _, tt := range []struct{ profile, id, want string }{
+		{"emuelec", "dos", "pc"}, {"emuelec", "jag", "atarijaguar"}, {"emuelec", "ngcd", "neocd"},
+		{"emudeck", "gc", "gc"}, {"retrodeck", "cdi", "cdimono1"}, {"emudeck", "3ds", "n3ds"},
+		{"batocera", "gc", "gamecube"}, {"batocera", "n3ds", "3ds"}, {"retrobat", "64dd", "n64dd"},
+		{"recalbox", "64dd", "64dd"}, {"batocera", "tgcd", "pcenginecd"}, {"emuelec", "tg16", "pcengine"},
+	} {
+		if got := byID[tt.profile].Roms.Folders[tt.id]; got != tt.want {
+			t.Errorf("%s: %s -> %q, want %q", tt.profile, tt.id, got, tt.want)
+		}
+	}
+	for _, missing := range []struct{ profile, id string }{{"emuelec", "ps2"}, {"recalbox", "wiiu"}, {"batocera", "dsi"}} {
+		if _, ok := byID[missing.profile].Roms.Folders[missing.id]; ok {
+			t.Errorf("%s: %s has no system in that frontend and must be unmapped", missing.profile, missing.id)
+		}
 	}
 }
 
