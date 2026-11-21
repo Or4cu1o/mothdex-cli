@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/ux/gui.md` (T-50): UX of the gamepad GUI (`mothdex-gui`, E-M3): size tiers from 640x480 to 1080p (scaled
+  below and above), TV safe area with a calibration view, type scale, spacing and color tokens with measured contrast,
+  positional buttons with an A/B swap and per-controller labels, focus model, every screen with its button map
+  (Home, Search with the virtual keyboard, pickers, Results with covers, Entry and link chooser, Queue, History,
+  Settings, Start menu), errors and empty states, quit and the return to the frontend, the Port behavior, the
+  service calls used, the gaps agreed with the T-51 contract, and a three-PR plan.
 - `docs/qa/T-22-m1-acceptance.md` (T-22): M1 acceptance run at `ebe6a54` with evidence per item (installer against the
   snapshot archive, mcp slug charset sample, command section C through the real binary and the package tests), the open
   items, the live download check, and findings F3 (`/dev/null` stdin is treated as a terminal), F4 and F5.
