@@ -279,6 +279,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `download` with no `-o` and no `download.dir`, when the profile's default ROM folder does not exist, now fails with `path_rejected` (exit 6) and a hint that names the folder and the two ways out (`-o <folder>` or `mothdex config set download.dir <folder>`), instead of a generic `invalid_request` with an unrelated hint (T-26, from Ensaio's T-43 S5). The folder is not created for the user.
 - Shell (T-41-fix, from the T-43 acceptance, S1): `info` and `boxart` with a list or a range (`info 2-3`, `boxart 1-2`) now run once for each entry with the same flags,
   as shell.md section 4 always said, instead of failing with "accepts 1 arg(s)"; the exit code is the first failure and the later
   entries still run. shell.md also records that Ctrl+D with stdout redirected ends with the last command's code (S4) and the 0-column
