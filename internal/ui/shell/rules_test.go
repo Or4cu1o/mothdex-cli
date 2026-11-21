@@ -3,7 +3,10 @@ package shell
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -65,6 +68,9 @@ func TestExpandIndexes(t *testing.T) {
 		{"a range past the page is the service's to judge", []string{"1-9"}, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}, ""},
 		{"a flag value that looks like a range is not one", []string{"1", "-o", "2020-21"}, []string{"1", "-o", "2020-21"}, ""},
 		{"over the cap", []string{"1-101"}, nil, "ui.shell.range_too_big"},
+		{"a number that overflows is no range", []string{"99999999999999999999-99999999999999999999"}, nil, "ui.shell.bad_range"},
+		{"the largest int cannot wrap the cap", []string{"x", "1-9223372036854775807"}, nil, "ui.shell.range_too_big"},
+		{"a range at the largest int", []string{"9223372036854775806-9223372036854775807"}, []string{"9223372036854775806", "9223372036854775807"}, ""},
 		{"the cap counts the whole line", []string{"1-60", "61-120"}, nil, "ui.shell.range_too_big"},
 	}
 	for _, tc := range tests {
@@ -107,6 +113,11 @@ func TestRecordable(t *testing.T) {
 		{"config set api.token abc", false},
 		{"config set API.KEY abc", false},
 		{"config get api.token", true},
+		{"config set api.base_url https://example.test", false},
+		{"config set API.BASE_URL x", false},
+		{"config set download.dir https://user:pass@example.test/p", false},
+		{"config set download.dir /tmp/roms", true},
+		{"search https://user:pass@example.test/x", true}, // only config set is judged
 	}
 	for _, tc := range tests {
 		if got := recordable(tc.line); got != tc.want {
@@ -313,4 +324,22 @@ func (hostileService) Platforms(context.Context, app.PlatformFilter) (app.Result
 
 func (hostileService) Regions(context.Context) (app.Result[[]mothdex.Region], error) {
 	return app.Result[[]mothdex.Region]{Value: []mothdex.Region{{ID: "snes"}, {ID: "n\x1b]0;es"}, {ID: "a,b"}, {ID: "\x07"}}}, nil
+}
+
+func TestCompletePathsLeaveOutNamesThatCannotBeTyped(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"out.csv", "my file.csv", "out\x1b[2J.csv"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+			t.Skipf("the file system refuses the name %q: %v", name, err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "outdir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	got := completePaths(filepath.Join(dir, "out"))
+	want := []string{filepath.Join(dir, "out.csv"), filepath.Join(dir, "outdir") + string(filepath.Separator)}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
 }

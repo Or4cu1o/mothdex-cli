@@ -83,16 +83,18 @@ func expandIndexes(args []string, takesValue func(flag string) bool) ([]string, 
 			named++
 			continue
 		}
-		lo, _ := strconv.Atoi(m[1])
-		hi, _ := strconv.Atoi(m[2])
-		if lo < 1 || lo > hi {
+		lo, loErr := strconv.Atoi(m[1])
+		hi, hiErr := strconv.Atoi(m[2])
+		if loErr != nil || hiErr != nil || lo < 1 || lo > hi { // an overflowing number is no range
 			return nil, &keyError{key: "ui.shell.bad_range", args: i18n.Args{"range": a}}
 		}
-		if named += hi - lo + 1; named > maxIndexes {
+		// Compare before adding: hi-lo cannot overflow (lo >= 1), and named never passes the cap.
+		if hi-lo >= maxIndexes-named {
 			return nil, &keyError{key: "ui.shell.range_too_big", args: i18n.Args{"max": maxIndexes}}
 		}
-		for n := lo; n <= hi; n++ {
-			out = append(out, strconv.Itoa(n))
+		named += hi - lo + 1
+		for i := 0; i <= hi-lo; i++ { // counting from lo, not up to hi: hi may be the largest int
+			out = append(out, strconv.Itoa(lo+i))
 		}
 	}
 	return out, nil

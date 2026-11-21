@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -13,8 +14,16 @@ const (
 	historyMax  = 1000 // lines kept
 )
 
+// secretKeySuffixes end the config keys whose values may be secrets: tokens and keys, and URLs,
+// which can carry credentials (config.md, api.base_url).
+var secretKeySuffixes = []string{"token", "key", "url"}
+
+// userinfo matches `scheme://user:pass@host`: credentials in an address, whatever the key.
+var userinfo = regexp.MustCompile(`://[^/\s@]*@`)
+
 // recordable reports whether a line may go into the history (shell.md section 5): not when it
-// starts with a space, and not a `config set` of a key that ends in token or key.
+// starts with a space, not a `config set` of a key that may hold a secret, and not a `config set`
+// whose value has credentials in an address.
 func recordable(line string) bool {
 	if strings.TrimSpace(line) == "" || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
 		return false
@@ -22,7 +31,12 @@ func recordable(line string) bool {
 	f := strings.Fields(line)
 	if len(f) >= 3 && f[0] == "config" && f[1] == "set" {
 		key := strings.ToLower(f[2])
-		return !strings.HasSuffix(key, "token") && !strings.HasSuffix(key, "key")
+		for _, suffix := range secretKeySuffixes {
+			if strings.HasSuffix(key, suffix) {
+				return false
+			}
+		}
+		return !userinfo.MatchString(line)
 	}
 	return true
 }
@@ -47,6 +61,8 @@ func repeats(lines []string, line string) bool {
 
 // historyStore is the history file of the Shell, `<paths.data>/shell_history`: one command per
 // line. It never fails the Shell: a problem is logged at warn and the history stays in memory.
+// Two Shells open at once do not merge: the last one to exit writes the file and the other's new
+// lines are lost (last writer wins; review PR-53 s2, accepted).
 type historyStore struct {
 	path string // "" keeps the history in memory only
 	log  *slog.Logger

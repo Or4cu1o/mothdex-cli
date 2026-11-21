@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `last` over the last search, a bare number as `info`, `d <#>` as `download`, index ranges (`download 2-4`, at most
   100), `help`, `clear`, `exit`/`quit`, did-you-mean for a mistyped command, Tab completion (commands, flags, platform
   and region ids, `--prefer`, config keys and values, cache namespaces, export paths, entry numbers), a history file
-  `<paths.data>/shell_history` (mode 0600, written atomically, no lines with a leading space or a `config set` of a key
-  ending in `token` or `key`), and an inline link chooser for `download <#>` when an entry has several downloadable
+  `<paths.data>/shell_history` (mode 0600, written atomically, last writer wins when two Shells run at once, no lines with a
+  leading space or a `config set` of a key ending in `token`, `key` or `url`, or whose value has credentials in an address), and an inline link chooser for `download <#>` when an entry has several downloadable
   links. Ctrl+C cancels the running command and not the Shell; two at an empty prompt within 2 s leave with 130.
   `--config`, `--lang`, `--allow-executable` and `-j` are refused inside the Shell, and `mothdex -f shell` opens the
   service with overwrites and executables off. `cmd/mothdex/signals.go` routes SIGINT to the Shell while it runs;

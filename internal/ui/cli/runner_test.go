@@ -337,3 +337,41 @@ func confirmSession(t *testing.T, f *fake) *cli.Session {
 	}
 	return &cli.Session{Svc: f, T: bundle.New("en_us"), PageSize: 10, Color: "never", Confirm: true}
 }
+
+// With stdin on a terminal and stdout redirected, the Runner must not be interactive: no prompt
+// could be seen, so a confirmation fails with confirmation_required instead of waiting (PR-53 m2).
+func TestShellOnATerminalStdinWithRedirectedStdoutNeverPrompts(t *testing.T) {
+	bundle, err := i18n.Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := bundle.New("en_us")
+	f := &fake{wait: noop}
+	stdin := strings.NewReader("")
+	var out, errOut bytes.Buffer
+	var ran int
+	d := cli.Deps{
+		Open: func(context.Context, cli.Globals) (*cli.Session, error) {
+			return &cli.Session{Svc: f, T: tr, PageSize: 10, Color: "never", Confirm: true}, nil
+		},
+		Translator: func(string) *i18n.Translator { return tr },
+		Version:    func() buildinfo.Info { return buildinfo.Info{Version: "1"} },
+		Stdin:      stdin, Stdout: &out, Stderr: &errOut,
+		IsTerminal: func(v any) bool { return v == stdin }, // stdin only
+		Width:      func() int { return 80 }, Getenv: func(string) string { return "" },
+		Shell: func(ctx context.Context, env cli.ShellEnv) int {
+			if env.IsTerminal {
+				t.Error("IsTerminal must need stdout too")
+			}
+			env.Runner.SetPrompt(func(string) (string, error) { t.Error("prompted with stdout redirected"); return "y", nil })
+			ran = env.Runner.Run(ctx, []string{"download", "1", "2"})
+			return 0
+		},
+	}
+	if code := cli.Execute(context.Background(), d, []string{"shell"}); code != 0 {
+		t.Fatalf("shell exit %d: %s", code, errOut.String())
+	}
+	if ran != 2 || !strings.Contains(errOut.String(), "confirmation_required") {
+		t.Fatalf("download exit %d, stderr %q: want confirmation_required (2)", ran, errOut.String())
+	}
+}

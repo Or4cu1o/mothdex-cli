@@ -124,3 +124,10 @@ func typable(values []string) []string {
 	}
 	return out
 }
+
+// typableAsIs reports whether a name is already clean and one word: cleaning it would change what
+// the user sees, so such a name is refused rather than offered in a different form.
+func typableAsIs(v string) bool {
+	clean := typable([]string{v})
+	return len(clean) == 1 && clean[0] == v
+}
