@@ -508,3 +508,22 @@ func TestFailedSessionSaveDropsTheEarlierSession(t *testing.T) {
 		t.Fatalf("the earlier session survived: %v", err)
 	}
 }
+
+// Alicerce (production race): a caller that missed the cache just before the previous leader
+// stored the cover and left the flight becomes the new leader; it must find the stored cover
+// instead of fetching the URL a second time.
+func TestNewCoverLeaderRechecksTheCacheBeforeFetching(t *testing.T) {
+	fc := &fakeCovers{ok: true}
+	s := newSvc(t, &fakeClient{}, func(o *Options) { o.Covers = fc })
+	fc.store = s.o.Cache
+	const url = "https://img.test/late.png"
+	if err := s.o.Cache.PutBlob(cache.NSCovers, cache.KeyCover(url), strings.NewReader("PNGDATA"), "image/png", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+	if !s.fetchCover(context.Background(), url) {
+		t.Fatal("a stored cover counts as fetched")
+	}
+	if fc.calls.Load() != 0 {
+		t.Fatalf("%d fetches although the cover was already stored", fc.calls.Load())
+	}
+}
