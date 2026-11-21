@@ -9,20 +9,18 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/assets"
 	gdraw "github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/guitest"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/loop"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
 	"github.com/Or4cu1o/mothdex-cli/locales"
-	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 // These tests need a system SDL2 and run on the dummy video driver with the software renderer: no display and
@@ -38,33 +36,6 @@ var (
 )
 
 var testEpoch = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
-
-type fakeService struct {
-	mu    sync.Mutex
-	calls []string
-}
-
-func (f *fakeService) record(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
-func (f *fakeService) order() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.calls)
-}
-
-func (f *fakeService) DBInfo(context.Context) (app.Result[mothdex.DBInfo], error) {
-	return app.Result[mothdex.DBInfo]{Value: mothdex.DBInfo{TotalEntries: 1284019}}, nil
-}
-func (f *fakeService) ConfigList() ([]app.Setting, error) { return nil, nil }
-func (f *fakeService) Jobs() []app.JobSnapshot            { return nil }
-func (f *fakeService) Cancel(id app.JobID) error          { f.record("cancel:" + string(id)); return nil }
-func (f *fakeService) Wait(context.Context) (app.BatchResult, error) {
-	f.record("wait")
-	return app.BatchResult{}, nil
-}
-func (f *fakeService) Close() error { f.record("close"); return nil }
-func (f *fakeService) ActiveProfile() app.ProfileInfo {
-	return app.ProfileInfo{ID: "batocera", Name: "Batocera", RomRoot: "/userdata/roms"}
-}
 
 // headless opens a hidden software window of w x h on the dummy driver, or skips the test.
 func headless(t *testing.T, w, h int) (*Backend, *text.Font) {
@@ -136,7 +107,7 @@ func TestHomeRendersAtThreeSizes(t *testing.T) {
 			if gw, gh := be.Size(); gw != w || gh != h {
 				t.Fatalf("window is %dx%d, want %dx%d", gw, gh, w, h)
 			}
-			m := homeModel(t, font, w, h, &fakeService{})
+			m := homeModel(t, font, w, h, guitest.New())
 			var list gdraw.List
 			m.Render(testEpoch, &list)
 			if err := be.Draw(layoutOf(m), &list); err != nil {
@@ -190,7 +161,7 @@ func TestHomeRendersAtThreeSizes(t *testing.T) {
 // is scaled, not cropped.
 func TestASmallDisplayIsLetterboxedNotCropped(t *testing.T) {
 	be, font := headless(t, 480, 320)
-	m := homeModel(t, font, 480, 320, &fakeService{})
+	m := homeModel(t, font, 480, 320, guitest.New())
 	if !m.Metrics().FitLogical || m.Metrics().W != 640 || m.Metrics().H != 480 {
 		t.Fatalf("metrics %+v", m.Metrics())
 	}
@@ -307,7 +278,7 @@ func (p *pushOnFrame) Wait(timeout time.Duration) (input.Incoming, bool) {
 // the exit sequence runs against the fake service and the loop ends.
 func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
 	be, font := headless(t, 1280, 720)
-	svc := &fakeService{}
+	svc := guitest.New()
 	p := &pushOnFrame{Backend: be, now: testEpoch, steps: []pushStep{
 		{afterText: "1,284,019 entries · Batocera · /userdata/roms", sym: KeycodeEscape},
 		{afterText: "Quit and return to Batocera?", sym: KeycodeRight},
@@ -334,7 +305,7 @@ func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
 	if !final.Done() {
 		t.Fatal("the loop ended before the exit screen was done")
 	}
-	if got := svc.order(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("service calls %v", got)
 	}
 	if len(p.steps) != 0 {

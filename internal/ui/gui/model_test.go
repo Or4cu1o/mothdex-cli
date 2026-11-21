@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -15,56 +14,12 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/assets"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/guitest"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
 	"github.com/Or4cu1o/mothdex-cli/locales"
-	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
-// fakeService is the app service of the tests: it answers what the GUI asks and records what it did.
-type fakeService struct {
-	mu       sync.Mutex
-	profile  app.ProfileInfo
-	entries  int64
-	infoErr  error
-	settings []app.Setting
-	jobs     []app.JobSnapshot
-	batch    app.BatchResult
-	calls    []string
-}
-
-func newFakeService() *fakeService {
-	return &fakeService{
-		profile: app.ProfileInfo{ID: "batocera", Name: "Batocera", RomRoot: "/userdata/roms"},
-		entries: 1284019,
-	}
-}
-
-func (f *fakeService) record(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
-
-func (f *fakeService) order() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.calls)
-}
-
-func (f *fakeService) DBInfo(context.Context) (app.Result[mothdex.DBInfo], error) {
-	if f.infoErr != nil {
-		return app.Result[mothdex.DBInfo]{}, f.infoErr
-	}
-	return app.Result[mothdex.DBInfo]{Value: mothdex.DBInfo{TotalEntries: f.entries}}, nil
-}
-func (f *fakeService) ConfigList() ([]app.Setting, error) { return f.settings, nil }
-func (f *fakeService) Jobs() []app.JobSnapshot            { return f.jobs }
-func (f *fakeService) Cancel(id app.JobID) error          { f.record("cancel:" + string(id)); return nil }
-func (f *fakeService) Wait(context.Context) (app.BatchResult, error) {
-	f.record("wait")
-	return f.batch, nil
-}
-func (f *fakeService) Close() error                   { f.record("close"); return nil }
-func (f *fakeService) ActiveProfile() app.ProfileInfo { return f.profile }
-
-// shared holds what is expensive to build and never changes: the catalogs and the parsed font.
 var shared struct {
 	once   sync.Once
 	bundle *i18n.Bundle
@@ -79,13 +34,13 @@ type harness struct {
 	t       *testing.T
 	m       Model
 	now     time.Time
-	svc     *fakeService
+	svc     *guitest.Fake
 	pending []Cmd // what New asked for, until run
 }
 
 type harnessOpt func(*Options)
 
-func newHarness(t *testing.T, svc *fakeService, w, h int, opts ...harnessOpt) *harness {
+func newHarness(t *testing.T, svc *guitest.Fake, w, h int, opts ...harnessOpt) *harness {
 	t.Helper()
 	shared.once.Do(func() {
 		shared.bundle, shared.err = i18n.Load(locales.FS)
@@ -108,7 +63,7 @@ func newHarness(t *testing.T, svc *fakeService, w, h int, opts ...harnessOpt) *h
 }
 
 // started is a harness past the Splash: the service answered and Home is showing.
-func started(t *testing.T, svc *fakeService, w, h int, opts ...harnessOpt) *harness {
+func started(t *testing.T, svc *guitest.Fake, w, h int, opts ...harnessOpt) *harness {
 	t.Helper()
 	hn := newHarness(t, svc, w, h, opts...)
 	hn.run(hn.pending)
@@ -184,7 +139,7 @@ func queuedJob(id string) app.JobSnapshot {
 
 // Splash, then Home when DBInfo answers (docs/ux/gui.md section 5.1 and 5.2).
 func TestSplashShowsNameAndVersionThenHomeWhenDBInfoAnswers(t *testing.T) {
-	h := newHarness(t, newFakeService(), 1280, 720)
+	h := newHarness(t, guitest.New(), 1280, 720)
 	h.mustHave("mothdex", "Starting…", "0.3.0 · Batocera")
 	h.mustNotHave("Search")
 	if h.render().Ops[len(h.render().Ops)-1].Kind == draw.KindSpinner {
@@ -199,7 +154,7 @@ func TestSplashShowsNameAndVersionThenHomeWhenDBInfoAnswers(t *testing.T) {
 }
 
 func TestSplashSpinnerAppearsAfter200ms(t *testing.T) {
-	h := newHarness(t, newFakeService(), 1280, 720)
+	h := newHarness(t, guitest.New(), 1280, 720)
 	spinners := func() int {
 		n := 0
 		for _, op := range h.render().Ops {
@@ -220,7 +175,7 @@ func TestSplashSpinnerAppearsAfter200ms(t *testing.T) {
 
 // Home opens after 3 s even when DBInfo is slow, and a late answer fills the footer.
 func TestHomeOpensAfterThreeSecondsAndALateDBInfoFillsTheFooter(t *testing.T) {
-	h := newHarness(t, newFakeService(), 1280, 720)
+	h := newHarness(t, guitest.New(), 1280, 720)
 	h.advance(2900 * time.Millisecond)
 	if h.m.screen != screenSplash {
 		t.Fatal("Home opened before 3 s")
@@ -235,16 +190,16 @@ func TestHomeOpensAfterThreeSecondsAndALateDBInfoFillsTheFooter(t *testing.T) {
 }
 
 func TestOfflineCatalogShowsOfflineAndTheFooterNotice(t *testing.T) {
-	svc := newFakeService()
-	svc.infoErr = &app.Error{Code: app.CodeNetwork, Message: "no route"}
+	svc := guitest.New()
+	svc.InfoErr = &app.Error{Code: app.CodeNetwork, Message: "no route"}
 	h := started(t, svc, 1280, 720)
 	h.mustHave("Offline", "Catalog unavailable. Cached searches still work.")
 	h.mustNotHave("1,284,019 entries · Batocera · /userdata/roms")
 }
 
 func TestGenericProfileFooterNamesTheFolderInWarnColor(t *testing.T) {
-	svc := newFakeService()
-	svc.profile = app.ProfileInfo{ID: "generic", Name: "Generic", RomRoot: "/home/me/roms"}
+	svc := guitest.New()
+	svc.Profile = app.ProfileInfo{ID: "generic", Name: "Generic", RomRoot: "/home/me/roms"}
 	h := started(t, svc, 1280, 720)
 	h.mustHave("No emulation system detected. Games go to /home/me/roms.")
 	for _, op := range h.render().Ops {
@@ -256,7 +211,7 @@ func TestGenericProfileFooterNamesTheFolderInWarnColor(t *testing.T) {
 
 // Focus moves by geometry: Search, Platforms, Random in a wrapping row, then down to Queue.
 func TestHomeFocusMovesByGeometryAndRowsWrap(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	steps := []struct {
 		a    input.Action
 		want string
@@ -274,7 +229,7 @@ func TestHomeFocusMovesByGeometryAndRowsWrap(t *testing.T) {
 }
 
 func TestNarrowHomeIsTwoByThree(t *testing.T) {
-	h := started(t, newFakeService(), 640, 480)
+	h := started(t, guitest.New(), 640, 480)
 	g := h.m.homeGeometry()
 	col := func(id string) int {
 		for _, tl := range g.tiles {
@@ -296,7 +251,7 @@ func TestNarrowHomeIsTwoByThree(t *testing.T) {
 
 // The screens behind the tiles are in the next pull request: a tile says so, and the toast ends after 3 s.
 func TestATileThatIsNotBuiltYetSaysSoInAToast(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	h.press(input.Confirm)
 	h.mustHave("Search is not available yet.")
 	h.advance(2900 * time.Millisecond)
@@ -311,7 +266,7 @@ func TestRecentSearchesComeFromTheSharedStateFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "tui_state"), body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	h := started(t, newFakeService(), 1280, 720, func(o *Options) { o.DataDir = dir })
+	h := started(t, guitest.New(), 1280, 720, func(o *Options) { o.DataDir = dir })
 	h.mustHave("Recent", "zelda", "metroid", "chrono trigger", "a[31mb")
 	for _, txt := range h.texts() {
 		if strings.ContainsRune(txt, 0x1b) {
@@ -326,13 +281,13 @@ func TestRecentSearchesComeFromTheSharedStateFile(t *testing.T) {
 	h.press(input.Confirm)
 	h.mustHave("Search is not available yet.")
 
-	empty := started(t, newFakeService(), 1280, 720)
+	empty := started(t, guitest.New(), 1280, 720)
 	empty.mustNotHave("Recent")
 }
 
 // The quit table of section 5.13: B on Home asks, Stay is the default and B equals it.
 func TestBackOnHomeAsksAndStayKeepsHome(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	h.press(input.Back)
 	h.mustHave("Quit and return to Batocera?", "Stay", "Quit")
 	if h.m.dlgFocus != btnStay {
@@ -354,13 +309,13 @@ func TestBackOnHomeAsksAndStayKeepsHome(t *testing.T) {
 	if h.m.screen != screenHome || h.m.overlay != overlayNone {
 		t.Fatal("Stay must keep Home")
 	}
-	if len(h.svc.order()) != 0 {
-		t.Fatalf("nothing may be called: %v", h.svc.order())
+	if len(h.svc.Calls()) != 0 {
+		t.Fatalf("nothing may be called: %v", h.svc.Calls())
 	}
 }
 
 func TestQuitFromTheDialogShowsTheExitScreenForAtLeastOneSecond(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	h.press(input.Back)
 	h.advance(200 * time.Millisecond)
 	h.press(input.Right)
@@ -369,7 +324,7 @@ func TestQuitFromTheDialogShowsTheExitScreenForAtLeastOneSecond(t *testing.T) {
 		t.Fatal("Quit must show the exit screen")
 	}
 	h.mustHave("Returning to Batocera")
-	if got := h.svc.order(); len(got) != 2 || got[0] != "wait" || got[1] != "close" {
+	if got := h.svc.Calls(); len(got) != 2 || got[0] != "wait" || got[1] != "close" {
 		t.Fatalf("calls %v, want wait then close", got)
 	}
 	h.advance(900 * time.Millisecond)
@@ -383,7 +338,7 @@ func TestQuitFromTheDialogShowsTheExitScreenForAtLeastOneSecond(t *testing.T) {
 }
 
 func TestStartMenuQuitWithNothingRunningQuitsWithoutADialog(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	h.press(input.Menu)
 	h.mustHave("Home", "Queue", "History", "Settings", "Buttons", "Quit")
 	for i := 0; i < 5; i++ {
@@ -399,7 +354,7 @@ func TestStartMenuQuitWithNothingRunningQuitsWithoutADialog(t *testing.T) {
 }
 
 func TestStartMenuItemsThatAreNotBuiltYetSayso(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	h.press(input.Menu)
 	h.press(input.Down) // Queue
 	h.press(input.Confirm)
@@ -421,8 +376,8 @@ func TestStartMenuItemsThatAreNotBuiltYetSayso(t *testing.T) {
 
 // With downloads running every quit asks, with three buttons and Keep downloading by default.
 func TestQuitWithDownloadsAsksAndQuitWhenFinishedWaitsForTheQueue(t *testing.T) {
-	svc := newFakeService()
-	svc.jobs = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
+	svc := guitest.New()
+	svc.JobList = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
 	h := started(t, svc, 1280, 720)
 	h.mustHave("1 · 1 queued")
 	h.press(input.Back)
@@ -454,14 +409,14 @@ func TestQuitWithDownloadsAsksAndQuitWhenFinishedWaitsForTheQueue(t *testing.T) 
 	if h.m.screen != screenExit {
 		t.Fatal("the exit screen must follow when the queue empties")
 	}
-	if got := h.svc.order(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := h.svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("calls %v: no job is canceled when quitting after the queue", got)
 	}
 }
 
 func TestDontQuitClearsAPendingQuit(t *testing.T) {
-	svc := newFakeService()
-	svc.jobs = []app.JobSnapshot{activeJob("1")}
+	svc := guitest.New()
+	svc.JobList = []app.JobSnapshot{activeJob("1")}
 	h := started(t, svc, 1280, 720)
 	h.press(input.Back)
 	h.advance(200 * time.Millisecond)
@@ -490,8 +445,8 @@ func TestDontQuitClearsAPendingQuit(t *testing.T) {
 }
 
 func TestCancelAndQuitCancelsEveryUnfinishedJobThenWaitsAndCloses(t *testing.T) {
-	svc := newFakeService()
-	svc.jobs = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
+	svc := guitest.New()
+	svc.JobList = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
 	h := started(t, svc, 1280, 720)
 	h.press(input.Menu)
 	for i := 0; i < 5; i++ {
@@ -503,7 +458,7 @@ func TestCancelAndQuitCancelsEveryUnfinishedJobThenWaitsAndCloses(t *testing.T) 
 	h.press(input.Right)
 	h.press(input.Right)
 	h.press(input.Confirm)
-	if got := h.svc.order(); !slices.Equal(got, []string{"cancel:1", "cancel:2", "wait", "close"}) {
+	if got := h.svc.Calls(); !slices.Equal(got, []string{"cancel:1", "cancel:2", "wait", "close"}) {
 		t.Fatalf("calls %v", got)
 	}
 	if h.m.screen != screenExit {
@@ -513,31 +468,31 @@ func TestCancelAndQuitCancelsEveryUnfinishedJobThenWaitsAndCloses(t *testing.T) 
 
 // SIGTERM: no dialog and no minimum time on screen; the exit sequence runs and the loop stops.
 func TestSIGTERMDrivesTheExitSequenceWithoutADialog(t *testing.T) {
-	svc := newFakeService()
-	svc.jobs = []app.JobSnapshot{activeJob("1")}
-	svc.batch = app.BatchResult{Done: 1}
+	svc := guitest.New()
+	svc.JobList = []app.JobSnapshot{activeJob("1")}
+	svc.Batch = app.BatchResult{Done: 1}
 	h := started(t, svc, 1280, 720)
 	h.press(input.Back) // a dialog is open when the signal arrives
 	h.send(SignalMsg{})
 	if h.m.screen != screenExit || h.m.overlay != overlayNone {
 		t.Fatalf("screen %d overlay %d", h.m.screen, h.m.overlay)
 	}
-	if got := h.svc.order(); !slices.Equal(got, []string{"cancel:1", "wait", "close"}) {
+	if got := h.svc.Calls(); !slices.Equal(got, []string{"cancel:1", "wait", "close"}) {
 		t.Fatalf("calls %v", got)
 	}
 	if !h.m.Done() {
 		t.Fatal("SIGTERM leaves at once: no hold on the exit screen")
 	}
-	before := len(h.svc.order())
+	before := len(h.svc.Calls())
 	h.send(SignalMsg{}) // a second signal changes nothing
-	if len(h.svc.order()) != before {
+	if len(h.svc.Calls()) != before {
 		t.Fatal("a second signal ran the sequence again")
 	}
 }
 
 func TestExitScreenSummarizesTheRunAndKeepsARefreshNoticeForFourSeconds(t *testing.T) {
-	svc := newFakeService()
-	svc.batch = app.BatchResult{Done: 3, Failed: 1, RefreshWarning: "Refresh the game list from the frontend menu."}
+	svc := guitest.New()
+	svc.Batch = app.BatchResult{Done: 3, Failed: 1, RefreshWarning: "Refresh the game list from the frontend menu."}
 	h := started(t, svc, 1280, 720)
 	h.press(input.Menu)
 	for i := 0; i < 5; i++ {
@@ -567,8 +522,8 @@ func TestExitScreenSummarizesTheRunAndKeepsARefreshNoticeForFourSeconds(t *testi
 }
 
 func TestExitScreenOmitsTheSummaryWithoutDownloadsAndSaysClosingForGeneric(t *testing.T) {
-	svc := newFakeService()
-	svc.profile = app.ProfileInfo{ID: "generic", Name: "Generic", RomRoot: "/r"}
+	svc := guitest.New()
+	svc.Profile = app.ProfileInfo{ID: "generic", Name: "Generic", RomRoot: "/r"}
 	h := started(t, svc, 1280, 720)
 	h.send(SignalMsg{})
 	h.mustHave("Closing")
@@ -580,7 +535,7 @@ func TestExitScreenOmitsTheSummaryWithoutDownloadsAndSaysClosingForGeneric(t *te
 }
 
 func TestAFailedDownloadMakesOneToast(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	failed := app.JobSnapshot{ID: "9", Title: "Contra (USA)\x1b[31m", State: app.StateFailed}
 	h.send(JobMsg{Job: failed})
 	const toast = "Download failed: Contra (USA)[31m" // the escape character is gone: server text is sanitized
@@ -605,7 +560,7 @@ func TestHintLabelsFollowThePadAndTheConfirmButton(t *testing.T) {
 		}
 		return texts[i-1]
 	}
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	if label(h, "Open") != "A" || label(h, "Quit") != "B" {
 		t.Errorf("an unknown pad shows Xbox letters: %q %q", label(h, "Open"), label(h, "Quit"))
 	}
@@ -618,8 +573,8 @@ func TestHintLabelsFollowThePadAndTheConfirmButton(t *testing.T) {
 		t.Errorf("a PlayStation pad: %q %q", label(h, "Open"), label(h, "Quit"))
 	}
 
-	svc := newFakeService()
-	svc.settings = []app.Setting{{Key: "gui.confirm_button", Value: "east"}}
+	svc := guitest.New()
+	svc.Settings = []app.Setting{{Key: "gui.confirm_button", Value: "east"}}
 	swapped := started(t, svc, 1280, 720)
 	if !swapped.m.InputConfig().ConfirmEast {
 		t.Fatal("gui.confirm_button = east must reach the input layer")
@@ -630,16 +585,16 @@ func TestHintLabelsFollowThePadAndTheConfirmButton(t *testing.T) {
 }
 
 func TestCompactHintBarKeepsTheStartDiscAndDropsItsWord(t *testing.T) {
-	compact := started(t, newFakeService(), 640, 480)
+	compact := started(t, guitest.New(), 640, 480)
 	compact.mustNotHave("Menu")
 	compact.mustHave("Start", "Open", "Quit")
-	standard := started(t, newFakeService(), 1280, 720)
+	standard := started(t, guitest.New(), 1280, 720)
 	standard.mustHave("Start", "Menu")
 }
 
 func TestGuiSettingsFromConfigListChangeTheLayout(t *testing.T) {
-	svc := newFakeService()
-	svc.settings = []app.Setting{
+	svc := guitest.New()
+	svc.Settings = []app.Setting{
 		{Key: "gui.safe_area", Value: "10"},
 		{Key: "gui.text_size", Value: "large"},
 		{Key: "paths.data", Value: "/x"},
@@ -648,8 +603,8 @@ func TestGuiSettingsFromConfigListChangeTheLayout(t *testing.T) {
 	if h.m.Metrics().LargeText != true || h.m.Metrics().Safe.X != 192 {
 		t.Fatalf("metrics %+v", h.m.Metrics())
 	}
-	bad := newFakeService()
-	bad.settings = []app.Setting{{Key: "gui.safe_area", Value: "99"}, {Key: "gui.text_size", Value: "huge"}}
+	bad := guitest.New()
+	bad.Settings = []app.Setting{{Key: "gui.safe_area", Value: "99"}, {Key: "gui.text_size", Value: "huge"}}
 	hb := started(t, bad, 1920, 1080)
 	if hb.m.Metrics().Safe.X != 96 || hb.m.Metrics().LargeText {
 		t.Fatalf("invalid values must keep the defaults: %+v", hb.m.Metrics().Safe)
@@ -657,7 +612,7 @@ func TestGuiSettingsFromConfigListChangeTheLayout(t *testing.T) {
 }
 
 func TestLocaleFallbackNoticeShowsOnceOnHome(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720, func(o *Options) { o.LocaleFallback = true })
+	h := started(t, guitest.New(), 1280, 720, func(o *Options) { o.LocaleFallback = true })
 	const notice = "This language is not available in this screen mode yet. Showing English."
 	h.mustHave(notice)
 	h.advance(3500 * time.Millisecond)
@@ -665,7 +620,7 @@ func TestLocaleFallbackNoticeShowsOnceOnHome(t *testing.T) {
 }
 
 func TestResizeRetiersTheLayoutAndKeepsFocus(t *testing.T) {
-	h := started(t, newFakeService(), 640, 480)
+	h := started(t, guitest.New(), 640, 480)
 	h.press(input.Right)
 	h.press(input.Down)
 	focus := h.m.focus
@@ -676,7 +631,7 @@ func TestResizeRetiersTheLayoutAndKeepsFocus(t *testing.T) {
 }
 
 func TestOverlayEpochChangesWhenAnOverlayOpensOrCloses(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	e0 := h.m.OverlayEpoch()
 	h.press(input.Menu)
 	e1 := h.m.OverlayEpoch()
@@ -687,7 +642,7 @@ func TestOverlayEpochChangesWhenAnOverlayOpensOrCloses(t *testing.T) {
 }
 
 func TestNextWakeIsTheNearestTimer(t *testing.T) {
-	h := newHarness(t, newFakeService(), 1280, 720)
+	h := newHarness(t, guitest.New(), 1280, 720)
 	if wake, ok := h.m.NextWake(h.now); !ok || wake.Sub(h.now) != 200*time.Millisecond {
 		t.Fatalf("on the Splash the spinner is due first: %v %v", wake.Sub(h.now), ok)
 	}
@@ -721,10 +676,10 @@ func TestEverythingIsDrawnInsideTheSafeRectangle(t *testing.T) {
 		for _, safe := range []SafeArea{{Percent: 0}, {Percent: 5}, {Percent: 10}} {
 			for _, large := range []bool{false, true} {
 				for name, setup := range screens {
-					svc := newFakeService()
-					svc.batch = app.BatchResult{Done: 12, Failed: 3, RefreshWarning: "Refresh the game list from the frontend menu to see the new games."}
+					svc := guitest.New()
+					svc.Batch = app.BatchResult{Done: 12, Failed: 3, RefreshWarning: "Refresh the game list from the frontend menu to see the new games."}
 					if name == "busy" {
-						svc.jobs = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
+						svc.JobList = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
 					}
 					dir := t.TempDir()
 					body, _ := json.Marshal(map[string][]string{"recent": {"zelda", "metroid", "chrono trigger", "a very long search text that must be cut"}})
@@ -780,8 +735,8 @@ func TestEverythingIsDrawnInsideTheSafeRectangle(t *testing.T) {
 // Large text at 640x480 must keep the dialog buttons on screen: three long buttons stack when they do not
 // fit in a row.
 func TestDialogButtonsStackWhenTheRowDoesNotFit(t *testing.T) {
-	svc := newFakeService()
-	svc.jobs = []app.JobSnapshot{activeJob("1")}
+	svc := guitest.New()
+	svc.JobList = []app.JobSnapshot{activeJob("1")}
 	row := started(t, svc, 1280, 720)
 	row.press(input.Back)
 	g := row.m.dialogGeometry()

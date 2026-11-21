@@ -9,45 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/assets"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/guitest"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
 	"github.com/Or4cu1o/mothdex-cli/locales"
-	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
-
-// fakeService answers the GUI and records what the exit sequence calls.
-type fakeService struct {
-	mu    sync.Mutex
-	calls []string
-	jobs  []app.JobSnapshot
-}
-
-func (f *fakeService) record(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
-func (f *fakeService) order() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.calls)
-}
-
-func (f *fakeService) DBInfo(context.Context) (app.Result[mothdex.DBInfo], error) {
-	return app.Result[mothdex.DBInfo]{Value: mothdex.DBInfo{TotalEntries: 42}}, nil
-}
-func (f *fakeService) ConfigList() ([]app.Setting, error) { return nil, nil }
-func (f *fakeService) Jobs() []app.JobSnapshot            { return f.jobs }
-func (f *fakeService) Cancel(id app.JobID) error          { f.record("cancel:" + string(id)); return nil }
-func (f *fakeService) Wait(context.Context) (app.BatchResult, error) {
-	f.record("wait")
-	return app.BatchResult{}, nil
-}
-func (f *fakeService) Close() error { f.record("close"); return nil }
-func (f *fakeService) ActiveProfile() app.ProfileInfo {
-	return app.ProfileInfo{ID: "batocera", Name: "Batocera", RomRoot: "/roms"}
-}
 
 // testClock is time the test moves by hand; its timers never fire.
 type testClock struct {
@@ -128,7 +98,7 @@ func release(b input.Button) input.Incoming { return btn(input.ButtonRelease, b)
 var epoch = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
 
 type fixture struct {
-	svc     *fakeService
+	svc     *guitest.Fake
 	clock   *testClock
 	backend *scriptedBackend
 	cfg     Config
@@ -144,7 +114,7 @@ func newFixture(t *testing.T, w, h int, steps ...step) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := &fakeService{}
+	svc := guitest.New()
 	clock := &testClock{now: epoch}
 	m, cmds := gui.New(gui.Options{
 		Service: svc, T: bundle.New("en_us"), Font: font, Clock: clock, DataDir: t.TempDir(),
@@ -185,7 +155,7 @@ func TestTheLoopShowsHomeAndBlocksWhenNothingIsDue(t *testing.T) {
 		step{advance: 5 * time.Second},
 	)
 	f.run(t)
-	if !f.sawText("1,284,019 entries · Batocera · /roms") && !f.sawText("42 entries · Batocera · /roms") {
+	if !f.sawText("1,284,019 entries · Batocera · /roms") && !f.sawText("1,284,019 entries · Batocera · /userdata/roms") {
 		t.Errorf("Home never showed the footer; frames: %v", f.backend.frames[0].texts)
 	}
 	if first := f.backend.timeouts[0]; first != -1 {
@@ -208,7 +178,7 @@ func TestQuitThroughTheDialogRunsTheExitSequenceAndEndsTheLoop(t *testing.T) {
 	if !f.sawText("Quit and return to Batocera?") || !f.sawText("Returning to Batocera") {
 		t.Errorf("the dialog and the exit screen must both have been drawn")
 	}
-	if got := f.svc.order(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := f.svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("service calls %v", got)
 	}
 }
@@ -266,7 +236,7 @@ func TestASignalEndsTheLoopWithTheExitSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := &fakeService{}
+	svc := guitest.New()
 	m, cmds := gui.New(gui.Options{Service: svc, T: bundle.New("en_us"), Font: font, DataDir: t.TempDir(), Width: 1280, Height: 720}, time.Now())
 	be := &blockingBackend{wake: make(chan struct{}, 1)}
 	signals := make(chan struct{})
@@ -287,7 +257,7 @@ func TestASignalEndsTheLoopWithTheExitSequence(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the loop did not end after the signal")
 	}
-	if got := svc.order(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("service calls %v", got)
 	}
 }
