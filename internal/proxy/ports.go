@@ -59,6 +59,10 @@ type FS interface {
 	// Free reports the free bytes of the file system holding name and a device id, for the
 	// space ledger and the EXDEV decision.
 	Free(name string) (free int64, dev uint64, err error)
+	// SyncDir flushes a directory so that a rename or a new name survives power loss (CR-5).
+	// File systems that cannot sync a directory (Windows) report success; MOVEFILE_WRITE_THROUGH
+	// covers the rename there.
+	SyncDir(name string) error
 }
 
 // File is an open staging file. The same descriptor is reused across retries: Truncate(0)
@@ -89,13 +93,40 @@ type Resolver interface {
 	LookupIP(ctx context.Context, host string) ([]net.IP, error)
 }
 
-// Record is the one history entry written for every job.
+// Record is the one history entry written for every job (T-19 reads it).
 type Record struct {
-	JobID string
-	Slug  string
-	State State
-	Code  Code // "" unless the job failed
-	// Further fields (platform, title, path, bytes, hashes) are added with the downloader.
+	JobID    string
+	Slug     string
+	Platform string
+	State    State
+	Code     Code   // "" unless the job failed
+	RawName  string // link.filename as received, for display only: escape before printing
+	Name     string // the sanitized name; "" if the job failed before naming
+	Path     string // final path of a Done job
+	Bytes    int64
+	SHA256   string // of the file as received; proof of what arrived, not of correctness
+	CRC      string // "ok", "skipped" or "failed"
+	Hash     string // upstream hash check: "ok", "skipped" or "failed"
+	Attempts int
+	Started  time.Time
+	Finished time.Time
+}
+
+// JournalEntry names the files an unfinished job may leave behind, so that startup cleanup finds
+// staging copies inside destination directories it would not otherwise know (TH-15).
+type JournalEntry struct {
+	JobID   string    `json:"job_id"`
+	Staging string    `json:"staging"`  // name inside the staging FS
+	DestDir string    `json:"dest_dir"` // directory inside the destination FS
+	Started time.Time `json:"started_at"`
+}
+
+// Journal is the in-flight journal (<paths.data>/inflight.jsonl): an entry is added in
+// Preflight and removed at the terminal state.
+type Journal interface {
+	Add(e JournalEntry) error
+	Remove(jobID string) error
+	Entries() ([]JournalEntry, error)
 }
 
 // History receives one record per job; every job reaches exactly one terminal state.

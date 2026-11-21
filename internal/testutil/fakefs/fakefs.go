@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +29,7 @@ const (
 	OpReadDir  = "ReadDir"
 	OpLink     = "Link"
 	OpFree     = "Free"
+	OpSyncDir  = "SyncDir"
 	OpRename   = "Rename" // proxy.Finalizer
 	OpWrite    = "Write"
 	OpSync     = "Sync"
@@ -305,6 +307,25 @@ func (f *FS) Free(name string) (int64, uint64, error) {
 		}
 	}
 	return best.free, best.dev, nil
+}
+
+// SyncDir implements proxy.FS. It counts as a Sync of the directory name (see Syncs).
+func (f *FS) SyncDir(name string) error {
+	if err := f.enter(OpSyncDir, name, ""); err != nil {
+		return err
+	}
+	d, err := f.root.Open(name)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	f.mu.Lock()
+	f.syncs[path.Clean(name)]++
+	f.mu.Unlock()
+	if runtime.GOOS == "windows" {
+		return nil // a directory cannot be flushed there; the real FS does the same
+	}
+	return d.Sync()
 }
 
 // file wraps an os.File with fault injection and a sync spy.
