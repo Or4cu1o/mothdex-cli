@@ -1,0 +1,11 @@
+#!/bin/sh
+# stat stand-in: "stat -f ..." answers FAKE_FSTYPE (or fails when it is FAIL), anything else goes to the real stat.
+if [ "${1:-}" = "-f" ] && [ -n "${FAKE_FSTYPE:-}" ]; then
+  if [ "$FAKE_FSTYPE" = FAIL ]; then exit 1; fi
+  echo "$FAKE_FSTYPE"
+  exit 0
+fi
+for real in /usr/bin/stat /bin/stat; do
+  if [ -x "$real" ]; then exec "$real" "$@"; fi
+done
+exit 127

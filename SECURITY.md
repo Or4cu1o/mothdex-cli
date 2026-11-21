@@ -32,3 +32,10 @@ only from this repository's GitHub releases, verify the SHA-256 (and the
 signature when cosign or `gh` is present) before installing, and are meant to be
 downloaded and read, never piped to a shell. See
 [docs/release.md](docs/release.md#installing).
+
+One documented exception: on a Batocera or Recalbox share partition formatted
+as exFAT, FAT or NTFS, which has no file permissions, `install.sh` run as root
+accepts a directory that looks world-writable, only inside the profile's own tree
+(`/userdata` or `/recalbox/share`), only when the filesystem type is proven, and
+it prints a warning. On such a partition any process or SMB client that can write
+the folder can replace `mothdex`.

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Installer tests. Run inside a throwaway, network-less container as root (see run.sh): simulated Batocera, EmuELEC,
+# Installer tests. Run inside a throwaway, network-less container as root, plus a second pass as uid 1000 with
+# NONROOT=1 (see run.sh and nonroot.sh): simulated Batocera, EmuELEC,
 # Recalbox, Lakka and generic file systems, a local fake release, and shims for curl, wget, uname, cosign and gh.
 # Covers T-16 cases 51 (launcher path injection) and 52 (launcher permissions).
 set -u
@@ -7,7 +8,8 @@ set -u
 REPO=${REPO:-/repo}
 SHIMS=$REPO/tests/installer/shims
 OPTIONAL=$REPO/tests/installer/optional
-export FAKE_RELEASE=/fake-release
+FAKE_RELEASE=${FAKE_RELEASE:-/fake-release}
+export FAKE_RELEASE
 export FAKE_LOG=/tmp/fake.log
 BASE_PATH=$PATH
 OUT=/tmp/install.out
@@ -67,8 +69,9 @@ make_tag() {
 
 # replace_amd64 <tag>: re-pack the linux_amd64 archive of <tag> from /tmp/build and fix its checksums.txt line.
 replace_amd64() {
+  tag_for_pack=$1
   name=mothdex_${1#v}_linux_amd64.tar.gz
-  (cd /tmp/build && tar -czf "$FAKE_RELEASE/$1/$name" ./*)
+  (cd /tmp/build && set -- * && tar -czf "$FAKE_RELEASE/${tag_for_pack}/$name" "$@")
   sum=$(sha256sum "$FAKE_RELEASE/$1/$name" | cut -d' ' -f1)
   sed "s/.*$name/$sum  $name/" "$FAKE_RELEASE/$1/checksums.txt" >/tmp/c
   mv /tmp/c "$FAKE_RELEASE/$1/checksums.txt"
@@ -83,9 +86,9 @@ setup_release() {
   echo tamper >>"$FAKE_RELEASE/v1.1.0/mothdex_1.1.0_linux_amd64.tar.gz"
   # v1.0.9: checksums.txt has no line for linux_amd64
   grep -v linux_amd64 "$FAKE_RELEASE/v1.0.9/checksums.txt" >/tmp/c && mv /tmp/c "$FAKE_RELEASE/v1.0.9/checksums.txt"
-  # v1.0.8: valid checksum, but `mothdex` is a symlink
+  # v1.0.8: valid checksum, but `mothdex` is a symlink to an executable (only the regular-file guard can stop it)
   clean_build
-  ln -s /etc/passwd /tmp/build/mothdex
+  ln -s /bin/sh /tmp/build/mothdex
   replace_amd64 v1.0.8
   # v1.0.7: valid checksum, but no `mothdex` member
   clean_build
@@ -106,7 +109,7 @@ reset() {
   FAKE_UNAME_M=x86_64
   PATH=$SHIMS:$BASE_PATH
   export HOME FAKE_UNAME_S FAKE_UNAME_M PATH
-  unset COSIGN_RC GH_RC GH_AUTH_RC
+  unset COSIGN_RC GH_RC GH_AUTH_RC FAKE_FSTYPE
 }
 
 fs_batocera() {
@@ -136,14 +139,27 @@ fs_lakka() {
   export HOME
 }
 
+# The launcher is opt-in (D22): tests ask for it unless INST_LAUNCHER=0.
+INST_LAUNCHER=1
 inst() {
-  sh "$REPO/install.sh" "$@" >"$OUT" 2>&1
+  if [ "$INST_LAUNCHER" -eq 1 ]; then
+    sh "$REPO/install.sh" --launcher "$@" >"$OUT" 2>&1
+  else
+    sh "$REPO/install.sh" "$@" >"$OUT" 2>&1
+  fi
   RC=$?
 }
 
 # --- cases ------------------------------------------------------------------------------------------------------
 
 setup_release
+
+if [ "${NONROOT:-0}" = 1 ]; then
+  . "$REPO/tests/installer/nonroot.sh"
+  printf '%s passed, %s failed (non-root)\n' "$PASS" "$FAIL"
+  [ "$FAIL" -eq 0 ]
+  exit
+fi
 
 reset batocera-install
 fs_batocera
@@ -234,6 +250,7 @@ check "nothing installed" absent /home/u/.local/bin/mothdex
 reset archive-symlink-member
 inst --version v1.0.8
 check "symlink member refused" rc_not0
+check "refused by the regular-file guard" out_has "not a regular file"
 check "nothing installed" absent /home/u/.local/bin/mothdex
 reset archive-without-binary
 inst --version v1.0.7
@@ -307,6 +324,77 @@ chown 1234 /userdata/system/bin
 inst --version v1.2.3
 check "bin_dir owned by another user refused" rc_not0
 check "no binary (foreign owner)" absent /userdata/system/bin/mothdex
+reset case52-mode-0702-bin-dir
+fs_batocera
+mkdir -p /userdata/system/bin
+chmod 0702 /userdata/system/bin
+inst --version v1.2.3
+check "mode 0702 (other write only) refused" rc_not0
+reset case52-mode-0775-bin-dir
+fs_batocera
+mkdir -p /userdata/system/bin
+chmod 0775 /userdata/system/bin
+inst --version v1.2.3
+check "mode 0775 (group write) accepted" rc_is 0
+reset case52-symlink-to-marked-file
+fs_batocera
+printf '#!/bin/sh\n# mothdex-launcher v1\necho precious\n' >/tmp/victim
+ln -s /tmp/victim /userdata/roms/ports/Mothdex.sh
+inst --version v1.2.3
+check "symlink to a marked file is not replaced" test -L /userdata/roms/ports/Mothdex.sh
+check "marked target untouched" file_has /tmp/victim "echo precious"
+reset fat-world-writable-batocera-root
+fs_batocera
+mkdir -p /userdata/system/bin
+chmod 0777 /userdata/system/bin /userdata/roms/ports
+FAKE_FSTYPE=exfat inst --version v1.2.3
+check "exFAT bin_dir as root on batocera installs" rc_is 0
+check "binary installed" test -x /userdata/system/bin/mothdex
+check "warns about missing file permissions" out_has "has no file permissions"
+check "launcher dir covered by the same rule" test -x /userdata/roms/ports/Mothdex.sh
+for fst in vfat msdos ntfs ntfs3 fuseblk; do
+  reset "fat-$fst"
+  fs_batocera
+  mkdir -p /userdata/system/bin
+  chmod 0777 /userdata/system/bin
+  FAKE_FSTYPE=$fst inst --version v1.2.3
+  check "$fst accepted" rc_is 0
+done
+reset fat-recalbox
+fs_recalbox
+mkdir -p /recalbox/share/system/bin
+chmod 0777 /recalbox/share/system/bin
+FAKE_FSTYPE=exfat inst --version v1.2.3
+check "recalbox on exFAT installs" rc_is 0
+reset fat-generic-refused
+fs_batocera
+mkdir -p /userdata/system/bin
+chmod 0777 /userdata/system/bin
+FAKE_FSTYPE=exfat inst --profile generic --bin-dir /userdata/system/bin --version v1.2.3
+check "same dir on generic is refused" rc_not0
+check "no binary (generic)" absent /userdata/system/bin/mothdex
+reset fat-other-bin-dir-refused
+fs_batocera
+mkdir -p /opt/bin
+chmod 0777 /opt/bin
+FAKE_FSTYPE=exfat inst --bin-dir /opt/bin --version v1.2.3
+check "a bin_dir outside the profile tree is refused" rc_not0
+reset fat-unknown-fstype
+fs_batocera
+mkdir -p /userdata/system/bin
+chmod 0777 /userdata/system/bin
+FAKE_FSTYPE=ext2/ext3 inst --version v1.2.3
+check "unknown filesystem is refused" rc_not0
+FAKE_FSTYPE=FAIL inst --version v1.2.3
+check "failing detection is refused" rc_not0
+check "no binary (unknown fs)" absent /userdata/system/bin/mothdex
+reset fat-foreign-owner
+fs_batocera
+mkdir -p /userdata/system/bin
+chmod 0777 /userdata/system/bin
+chown 1234 /userdata/system/bin
+FAKE_FSTYPE=exfat inst --version v1.2.3
+check "FAT exception still requires owner root" rc_not0
 reset case52-world-writable-launcher-dir
 fs_batocera
 chmod 0777 /userdata/roms/ports
@@ -422,6 +510,18 @@ reset hyphen-in-prerelease
 make_tag v2.1.0-rc-1
 inst --version 2.1.0-rc-1
 check "hyphen inside a pre-release identifier is accepted" rc_is 0
+
+reset launcher-opt-in
+fs_batocera
+INST_LAUNCHER=0
+inst --version v1.2.3
+check "binary installed" test -x /userdata/system/bin/mothdex
+check "no launcher without --launcher" absent /userdata/roms/ports/Mothdex.sh
+inst --launcher --version v1.2.3
+check "launcher with --launcher" test -x /userdata/roms/ports/Mothdex.sh
+inst --uninstall
+check "uninstall removes the opt-in launcher" absent /userdata/roms/ports/Mothdex.sh
+INST_LAUNCHER=1
 
 reset help-and-bad-options
 inst --help

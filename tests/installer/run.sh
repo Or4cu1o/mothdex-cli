@@ -16,5 +16,9 @@ status=0
 for image in $IMAGES; do
   printf '== %s\n' "$image"
   docker run --rm --network none -v "$repo:/repo:ro" "$image" sh /repo/tests/installer/cases.sh || status=1
+  # second pass as uid 1000: own HOME, and a directory owned by another non-root uid
+  docker run --rm --network none --user 1000:1000 -e NONROOT=1 -e HOME=/tmp/home -e FAKE_RELEASE=/tmp/fake-release \
+    -e OTHER_DIR=/tmp/other --tmpfs /tmp/home:exec,uid=1000,gid=1000,mode=755 \
+    --tmpfs /tmp/other:uid=2000,gid=2000,mode=755 -v "$repo:/repo:ro" "$image" sh /repo/tests/installer/cases.sh || status=1
 done
 exit $status

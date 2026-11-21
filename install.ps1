@@ -20,8 +20,8 @@
 .PARAMETER BinDir
   Install here instead of %LocalAppData%\Programs\mothdex. A folder outside %LocalAppData% gets an explicit ACL
   (current user, SYSTEM and Administrators full control; Users read and execute).
-.PARAMETER NoLauncher
-  Do not create the RetroBat launcher.
+.PARAMETER Launcher
+  Also create the RetroBat launcher (off by default until `mothdex tui` exists).
 .PARAMETER DryRun
   Download and verify, print what would be installed, change nothing.
 .PARAMETER Uninstall
@@ -32,7 +32,7 @@ param(
   [string]$Version = '',
   [string]$RetroBatPath = '',
   [string]$BinDir = '',
-  [switch]$NoLauncher,
+  [switch]$Launcher,
   [switch]$DryRun,
   [switch]$Uninstall
 )
@@ -215,7 +215,7 @@ if ((-not $binInLocalAppData) -and (Test-Path -LiteralPath $BinDir) -and (-not (
 }
 $exe = Join-Path $BinDir 'mothdex.exe'
 $launcherDir = ''
-if ($retrobat -and -not $NoLauncher) { $launcherDir = Join-Path $retrobat 'roms\windows' }
+if ($retrobat -and ($Launcher -or $Uninstall)) { $launcherDir = Join-Path $retrobat 'roms\windows' }
 $profileId = 'generic'
 if ($retrobat) { $profileId = 'retrobat' }
 Write-Output "System: windows_$arch, profile: $profileId"
@@ -237,6 +237,7 @@ if ($Uninstall) {
 }
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ("mothdex-install-" + [Guid]::NewGuid().ToString('N'))
+$new = ''
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
   if (-not $Version) {
@@ -285,5 +286,6 @@ try {
   if ($check.Code -eq 0) { Write-Output $check.Output } else { Write-Warning "$exe --version exited with $($check.Code); the file is installed." }
   Write-Output "Add $BinDir to your PATH to run 'mothdex' directly."
 } finally {
+  if ($new) { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue }
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }

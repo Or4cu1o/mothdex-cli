@@ -30,7 +30,7 @@ PROFILE=""
 BIN_DIR_OPT=""
 DRY_RUN=0
 UNINSTALL=0
-NO_LAUNCHER=0
+WITH_LAUNCHER=0
 TMP=""
 
 say() { printf '%s\n' "$*"; }
@@ -40,7 +40,9 @@ die() {
   exit 1
 }
 
+NEWFILE=""
 cleanup() {
+  if [ -n "$NEWFILE" ]; then rm -f "$NEWFILE"; fi
   if [ -n "$TMP" ] && [ -d "$TMP" ]; then
     rm -rf "$TMP"
   fi
@@ -54,7 +56,7 @@ Usage: sh install.sh [options]
   --profile <id>       batocera | emuelec | recalbox | lakka | emudeck | retrodeck | generic
                        (default: detected from the system)
   --bin-dir <dir>      install the binary here instead of the profile's bin_dir
-  --no-launcher        do not create the Port/launcher
+  --launcher           also create the Port/launcher (off by default until `mothdex tui` exists)
   --dry-run            download and verify, then print what would be installed; change nothing
   --uninstall          remove the binary and the launcher created by this installer
   -h, --help           show this help
@@ -77,7 +79,7 @@ while [ $# -gt 0 ]; do
     --version=*) VERSION=${1#*=}; shift ;;
     --profile=*) PROFILE=${1#*=}; shift ;;
     --bin-dir=*) BIN_DIR_OPT=${1#*=}; shift ;;
-    --no-launcher) NO_LAUNCHER=1; shift ;;
+    --launcher) WITH_LAUNCHER=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h | --help) usage; exit 0 ;;
@@ -162,7 +164,7 @@ resolve_profile_dirs() {
     say "note: bin_dir for the $PROFILE profile is not verified on real hardware yet; override with --bin-dir if needed."
   fi
   [ -n "$BIN_DIR" ] || die "HOME is not set: pass --bin-dir"
-  if [ "$NO_LAUNCHER" -eq 1 ]; then LAUNCHER_DIR=""; fi
+  if [ "$WITH_LAUNCHER" -ne 1 ] && [ "$UNINSTALL" -ne 1 ]; then LAUNCHER_DIR=""; fi
 }
 
 # --- path and directory safety (TH-30, TH-31) -------------------------------------------------------------------
@@ -183,6 +185,39 @@ dir_safe() {
   [ -n "$(find "$1" -maxdepth 0 \( -user "$uid" -o -user 0 \) 2>/dev/null)" ]
 }
 
+# Filesystems without Unix permission bits: every directory looks world-writable there.
+fat_fs() {
+  case $(stat -f -c %T -- "$1" 2>/dev/null) in
+    exfat | vfat | msdos | ntfs | ntfs3 | fuseblk) return 0 ;;
+  esac
+  return 1
+}
+
+# The only exception to the world-writable refusal (TH-31): an appliance (Batocera or Recalbox) share partition,
+# as root, inside the profile's own tree, on a filesystem proven (not guessed from the mode) to have no permission
+# bits. Owner must still be root; symlinks are refused; unknown or failing detection keeps the refusal.
+fat_exception_ok() {
+  [ "$(id -u)" -eq 0 ] || return 1
+  case $PROFILE in
+    batocera) root=/userdata ;;
+    recalbox) root=/recalbox/share ;;
+    *) return 1 ;;
+  esac
+  case "$1/" in "$root"/*) ;; *) return 1 ;; esac
+  [ ! -L "$1" ] || return 1
+  [ -n "$(find "$1" -maxdepth 0 -user 0 2>/dev/null)" ] || return 1
+  fat_fs "$1"
+}
+
+# dir_safe, or the exception above with a warning.
+dir_trusted() {
+  dir_safe "$1" && return 0
+  fat_exception_ok "$1" || return 1
+  fstype=$(stat -f -c %T -- "$1" 2>/dev/null)
+  warn "$1 is on $fstype, which has no file permissions; any process or SMB client that can write $1 can replace mothdex"
+  return 0
+}
+
 # A bin_dir on NTFS/exFAT or a noexec mount cannot run the binary: prove it with a throwaway script.
 can_exec_in() {
   probe="$1/.mothdex-exec-test.$$"
@@ -201,7 +236,7 @@ bin_dir_usable() {
     mkdir -p "$1" || return 1
   fi
   if [ -L "$1" ]; then die "refusing bin_dir '$1': it is a symbolic link"; fi
-  dir_safe "$1" || die "refusing bin_dir '$1': it is world-writable or owned by another user"
+  dir_trusted "$1" || die "refusing bin_dir '$1': it is world-writable or owned by another user"
   if [ "$DRY_RUN" -eq 1 ]; then return 0; fi
   can_exec_in "$1"
 }
@@ -310,6 +345,7 @@ download_and_verify() {
 
 install_binary() {
   new="$BIN_DIR/.mothdex.new.$$"
+  NEWFILE=$new
   cp "$TMP/x/mothdex" "$new"
   chmod 0755 "$new"
   mv -f "$new" "$BIN_DIR/mothdex"
@@ -334,7 +370,7 @@ install_launcher() {
   if [ ! -d "$LAUNCHER_DIR" ]; then
     mkdir -p "$LAUNCHER_DIR" || { warn "cannot create $LAUNCHER_DIR: launcher skipped"; return 0; }
   fi
-  if ! dir_safe "$LAUNCHER_DIR"; then
+  if ! dir_trusted "$LAUNCHER_DIR"; then
     warn "$LAUNCHER_DIR is world-writable or owned by another user: launcher skipped (chmod 755 it to enable)"
     return 0
   fi
