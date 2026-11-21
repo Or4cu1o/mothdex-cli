@@ -63,7 +63,9 @@ mothdex[all:10]> n
 
 `info`, `download`, `boxart` accept `<#>`, several indexes (`download 1 3 5`), and ranges (`download 2-4`). `download` gets
 the whole list in one call; `info` and `boxart` take one entry, so the Shell runs them once for each entry with the same
-flags (`info 2-3` is `info 2` then `info 3`; the exit code is the first failure, and the later entries still run). They
+flags (`info 2-3` is `info 2` then `info 3`; the exit code is the first failure, and the later entries still run; Ctrl+C
+drops the rest and the command ends with 130; with `--json` each entry prints its own document, one after the other,
+not one array). They
 resolve through `Ref{Index}` against the session. Errors: `no_session`, `index_out_of_range` with the CLI messages.
 Because the Shell persists the session (service saves it), indexes also work after restarting the Shell and in the CLI
 (`mothdex download 1`), until the next search.
@@ -93,9 +95,10 @@ editor writes to stdout); otherwise the default is used, as in scripted input (D
 
 **Ctrl+C never exits the Shell** (D24-review). At the prompt it clears the typed line and shows
 `Type exit or press Ctrl+D to leave.` Only `exit`, `quit` and Ctrl+D leave (exit code 0); piped input ends after the
-last line with that command's code. A terminal on stdin with stdout redirected counts as piped input (no banner, prompt or
-history), so Ctrl+D there ends the session with the last command's code, not 0. The line editor cannot tell an empty line from a typed one, so a "press twice to
-leave" rule would also quit when someone clears a line or presses Ctrl+C twice to stop a download.
+last line with that command's code. A terminal on stdin with stdout redirected counts as piped input (no banner, prompt
+or history), so Ctrl+D there ends the session with the last command's code, not 0. The line editor cannot tell an empty
+line from a typed one, so a "press twice to leave" rule would also quit when someone clears a line or presses Ctrl+C
+twice to stop a download.
 
 Mixed usage: `download <#> --prefer lang=En -o ~/roms` accepts all CLI flags.
 

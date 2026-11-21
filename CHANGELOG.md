@@ -265,7 +265,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Shell (T-43 S1): `info` and `boxart` with a list or a range (`info 2-3`, `boxart 1-2`) now run once for each entry with the same flags,
+- Shell (T-41-fix, from the T-43 acceptance, S1): `info` and `boxart` with a list or a range (`info 2-3`, `boxart 1-2`) now run once for each entry with the same flags,
   as shell.md section 4 always said, instead of failing with "accepts 1 arg(s)"; the exit code is the first failure and the later
   entries still run. shell.md also records that Ctrl+D with stdout redirected ends with the last command's code (S4) and the 0-column
   terminal limit (S3). The double Ctrl+C of S2 is already gone from main (#64: Ctrl+C never leaves the Shell).

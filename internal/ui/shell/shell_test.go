@@ -202,6 +202,23 @@ func TestInfoAndBoxartRunOncePerEntry(t *testing.T) {
 	}
 }
 
+// Ctrl+C between two entries drops the rest of the list and the command ends with 130, not 0 (Crivo, PR-72 n1).
+func TestCtrlCBetweenEntriesDropsTheRestAndIsNotASuccess(t *testing.T) {
+	r := newRig(t, true, lines("info 1-3")...)
+	r.run.run = func(ctx context.Context, _ []string) int {
+		r.signal <- os.Interrupt // the person presses Ctrl+C while the first entry runs
+		<-ctx.Done()
+		return 0
+	}
+	r.sh.Loop(context.Background())
+	if len(r.run.runs) != 1 {
+		t.Fatalf("runs %q: the entries after Ctrl+C must not run", r.run.runs)
+	}
+	if r.sh.lastCode != exitInterrupted {
+		t.Fatalf("last code %d, want %d", r.sh.lastCode, exitInterrupted)
+	}
+}
+
 // The first failure is the exit code, and the entries after it still run.
 func TestAFailingEntryDoesNotStopTheRestOfTheList(t *testing.T) {
 	r := newRig(t, false, lines("info 1-3")...)

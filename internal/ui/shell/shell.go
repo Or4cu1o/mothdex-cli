@@ -274,6 +274,9 @@ func (s *Shell) command(ctx context.Context, words []string) int {
 				code = rc // the first failure is the exit code, and the rest still run
 			}
 		}
+		if code == 0 && c.Err() != nil { // Ctrl+C between two entries: the rest was dropped, so it did not succeed
+			code = exitInterrupted
+		}
 		return code
 	})
 }
