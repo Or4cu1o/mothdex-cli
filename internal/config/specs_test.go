@@ -46,6 +46,11 @@ func TestSpecsAgreeWithTheParsers(t *testing.T) {
 			}
 		}
 	}
+	// A key the loader ignores in the environment advertises no variable (profile.folders.<id>).
+	f, _ := lookup("profile.folders.snes")
+	if sp := f.spec(); sp.Env != "" || !f.noEnv() {
+		t.Errorf("folder key advertises %q", sp.Env)
+	}
 	specs[0].Key = "changed"
 	if Specs()[0].Key == "changed" {
 		t.Fatal("Specs must return a copy")

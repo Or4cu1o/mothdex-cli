@@ -266,7 +266,7 @@ type folderSetting struct{ id string }
 
 func (f folderSetting) key() string { return folderPrefix + f.id }
 func (f folderSetting) spec() SettingSpec {
-	return SettingSpec{Key: f.key(), Kind: KindString, Env: envName(f.key())}
+	return SettingSpec{Key: f.key(), Kind: KindString} // no variable: the loader ignores one for folders
 }
 func (folderSetting) noEnv() bool       { return true }
 func (folderSetting) defaultValue() any { return "" }
