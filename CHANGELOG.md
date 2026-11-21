@@ -128,6 +128,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Downloader contract (T-27, downloader.md §3.2, T-16): the proxy's `Content-Length` is now the size authority for a
+  transfer, because the maintainer states `link.size` is scraped and only a rough indicator (cavv-dev/mothdex-api#1).
+  The length is required and strict (missing, chunked or `0` is `size_mismatch`), pinned across retries, and the
+  file cap, the space ledger and the 500 MB confirmation re-run on it before the first body byte (`confirmation_required`,
+  then Download anyway with `DownloadRequest.SizeConsent`). `link.size` stays a preflight estimate and a drift warning.
 - `internal/proxy/testdata/sanitize-vectors.json` (T-61 F-1): the `Sanitize` vectors as a shared fixture (`input`, optional `fallback` and `allow_executable`, and an `output` or a stable `error`: `unsafe_name` or `empty_name`). `TestSanitizeVectors` reads it; mothdex-mcp copies the file and checks it for divergence (mcp `download_file`).
 - `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
   three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry
