@@ -1,7 +1,7 @@
 # UX: gamepad GUI (`mothdex-gui`, emulator mode)
 
 Status: draft v1 (T-50) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
-Contract: `docs/contracts/cli/gui.md` (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
+Contract: [`gui.md`](../contracts/cli/gui.md) (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Flows mirror [`tui.md`](tui.md); wording, units and the
 Warming rules come from [`cli-conventions.md`](cli-conventions.md); link ranking from [`prefer-syntax.md`](prefer-syntax.md).
 Platform facts: [T1e](../research/T1e-emulation-systems.md) (frontends, Ports), [T1b](../research/T1b-sdl2-purego.md) (SDL2,
