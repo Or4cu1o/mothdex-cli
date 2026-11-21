@@ -20,11 +20,49 @@ PKG=${SDL_GO_PKG:-internal/ui/gui/sdl}
 MAP='InitVideo SDL_INIT_VIDEO
 InitGameController SDL_INIT_GAMECONTROLLER
 WindowHidden SDL_WINDOW_HIDDEN
+WindowFullscreenDesktop SDL_WINDOW_FULLSCREEN_DESKTOP
 RendererSoftware SDL_RENDERER_SOFTWARE
+RendererPresentVSync SDL_RENDERER_PRESENTVSYNC
 TextureAccessStatic SDL_TEXTUREACCESS_STATIC
+BlendNone SDL_BLENDMODE_NONE
+BlendBlend SDL_BLENDMODE_BLEND
 PixelFormatARGB8888 SDL_PIXELFORMAT_ARGB8888
 EventQuit SDL_QUIT
-EventControllerButtonDown SDL_CONTROLLERBUTTONDOWN'
+EventWindow SDL_WINDOWEVENT
+EventKeyDown SDL_KEYDOWN
+EventKeyUp SDL_KEYUP
+EventControllerAxisMotion SDL_CONTROLLERAXISMOTION
+EventControllerButtonDown SDL_CONTROLLERBUTTONDOWN
+EventControllerButtonUp SDL_CONTROLLERBUTTONUP
+EventControllerDeviceAdded SDL_CONTROLLERDEVICEADDED
+EventControllerDeviceRemoved SDL_CONTROLLERDEVICEREMOVED
+WindowEventResized SDL_WINDOWEVENT_RESIZED
+WindowEventSizeChanged SDL_WINDOWEVENT_SIZE_CHANGED
+ControllerButtonA SDL_CONTROLLER_BUTTON_A
+ControllerButtonB SDL_CONTROLLER_BUTTON_B
+ControllerButtonX SDL_CONTROLLER_BUTTON_X
+ControllerButtonY SDL_CONTROLLER_BUTTON_Y
+ControllerButtonBack SDL_CONTROLLER_BUTTON_BACK
+ControllerButtonStart SDL_CONTROLLER_BUTTON_START
+ControllerButtonLeftShoulder SDL_CONTROLLER_BUTTON_LEFTSHOULDER
+ControllerButtonRightShoulder SDL_CONTROLLER_BUTTON_RIGHTSHOULDER
+ControllerButtonDPadUp SDL_CONTROLLER_BUTTON_DPAD_UP
+ControllerButtonDPadDown SDL_CONTROLLER_BUTTON_DPAD_DOWN
+ControllerButtonDPadLeft SDL_CONTROLLER_BUTTON_DPAD_LEFT
+ControllerButtonDPadRight SDL_CONTROLLER_BUTTON_DPAD_RIGHT
+ControllerAxisLeftX SDL_CONTROLLER_AXIS_LEFTX
+ControllerAxisLeftY SDL_CONTROLLER_AXIS_LEFTY
+KeycodeBackspace SDLK_BACKSPACE
+KeycodeTab SDLK_TAB
+KeycodeReturn SDLK_RETURN
+KeycodeEscape SDLK_ESCAPE
+KeycodeRight SDLK_RIGHT
+KeycodeLeft SDLK_LEFT
+KeycodeDown SDLK_DOWN
+KeycodeUp SDLK_UP
+KeycodePageUp SDLK_PAGEUP
+KeycodePageDown SDLK_PAGEDOWN
+KeycodeKPEnter SDLK_KP_ENTER'
 
 command -v cc >/dev/null 2>&1 || { echo "check-sdl-constants: no C compiler (cc)" >&2; exit 2; }
 
@@ -59,6 +97,26 @@ _Static_assert(offsetof(SDL_ControllerButtonEvent, timestamp) == 4, "cbutton.tim
 _Static_assert(offsetof(SDL_ControllerButtonEvent, which) == 8, "cbutton.which");
 _Static_assert(offsetof(SDL_ControllerButtonEvent, button) == 12, "cbutton.button");
 _Static_assert(offsetof(SDL_ControllerButtonEvent, state) == 13, "cbutton.state");
+_Static_assert(sizeof(SDL_WindowEvent) == 24, "sizeof(SDL_WindowEvent)");
+_Static_assert(offsetof(SDL_WindowEvent, windowID) == 8, "window.windowID");
+_Static_assert(offsetof(SDL_WindowEvent, event) == 12, "window.event");
+_Static_assert(offsetof(SDL_WindowEvent, data1) == 16, "window.data1");
+_Static_assert(offsetof(SDL_WindowEvent, data2) == 20, "window.data2");
+_Static_assert(sizeof(SDL_KeyboardEvent) == 32, "sizeof(SDL_KeyboardEvent)");
+_Static_assert(offsetof(SDL_KeyboardEvent, windowID) == 8, "key.windowID");
+_Static_assert(offsetof(SDL_KeyboardEvent, state) == 12, "key.state");
+_Static_assert(offsetof(SDL_KeyboardEvent, repeat) == 13, "key.repeat");
+_Static_assert(offsetof(SDL_KeyboardEvent, keysym) == 16, "key.keysym");
+_Static_assert(offsetof(SDL_Keysym, scancode) == 0, "keysym.scancode");
+_Static_assert(offsetof(SDL_Keysym, sym) == 4, "keysym.sym");
+_Static_assert(offsetof(SDL_Keysym, mod) == 8, "keysym.mod");
+_Static_assert(offsetof(SDL_Keysym, unused) == 12, "keysym.unused");
+_Static_assert(sizeof(SDL_ControllerAxisEvent) == 20, "sizeof(SDL_ControllerAxisEvent)");
+_Static_assert(offsetof(SDL_ControllerAxisEvent, which) == 8, "caxis.which");
+_Static_assert(offsetof(SDL_ControllerAxisEvent, axis) == 12, "caxis.axis");
+_Static_assert(offsetof(SDL_ControllerAxisEvent, value) == 16, "caxis.value");
+_Static_assert(sizeof(SDL_ControllerDeviceEvent) == 12, "sizeof(SDL_ControllerDeviceEvent)");
+_Static_assert(offsetof(SDL_ControllerDeviceEvent, which) == 8, "cdevice.which");
 int main(void) {
 EOF
 	printf '%s\n' "$MAP" | while read -r goname cname; do

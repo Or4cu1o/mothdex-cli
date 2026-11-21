@@ -13,24 +13,72 @@ import (
 	"unsafe"
 )
 
-// SDL2 constants from SDL.h, SDL_video.h, SDL_render.h, SDL_pixels.h and SDL_events.h.
+// SDL2 constants from SDL.h, SDL_video.h, SDL_render.h, SDL_blendmode.h, SDL_pixels.h, SDL_events.h,
+// SDL_gamecontroller.h and SDL_keycode.h. scripts/check-sdl-constants.sh compares every one of them with the
+// headers: a new numeric constant here needs an entry in its MAP.
 const (
 	InitVideo          = 0x00000020
 	InitGameController = 0x00002000
 
-	WindowHidden = 0x00000008
+	WindowHidden            = 0x00000008
+	WindowFullscreenDesktop = 0x00001001
 
-	RendererSoftware = 0x00000001
+	RendererSoftware     = 0x00000001
+	RendererPresentVSync = 0x00000004
 
 	TextureAccessStatic = 0
+
+	BlendNone  = 0 // SDL_BLENDMODE_NONE
+	BlendBlend = 1 // SDL_BLENDMODE_BLEND: alpha blending
 
 	// PixelFormatARGB8888 is SDL_PIXELFORMAT_ARGB8888: on a little-endian CPU the bytes are B, G, R, A.
 	PixelFormatARGB8888 = 0x16362004
 
-	EventQuit = 0x100
+	EventQuit                 = 0x100
+	EventWindow               = 0x200 // SDL_WINDOWEVENT
+	EventKeyDown              = 0x300
+	EventKeyUp                = 0x301
+	EventControllerAxisMotion = 0x650
 	// EventControllerButtonDown is SDL_CONTROLLERBUTTONDOWN: SDL_CONTROLLERAXISMOTION is 0x650, then
-	// BUTTONDOWN, BUTTONUP and DEVICEADDED (0x653) follow in that order.
-	EventControllerButtonDown = 0x651
+	// BUTTONDOWN, BUTTONUP, DEVICEADDED and DEVICEREMOVED follow in that order.
+	EventControllerButtonDown    = 0x651
+	EventControllerButtonUp      = 0x652
+	EventControllerDeviceAdded   = 0x653
+	EventControllerDeviceRemoved = 0x654
+
+	WindowEventResized     = 5 // SDL_WINDOWEVENT_RESIZED
+	WindowEventSizeChanged = 6 // SDL_WINDOWEVENT_SIZE_CHANGED
+
+	// SDL_GameControllerButton, the ones the GUI reads. They are positions: A is south, B east, X west, Y north.
+	ControllerButtonA             = 0
+	ControllerButtonB             = 1
+	ControllerButtonX             = 2
+	ControllerButtonY             = 3
+	ControllerButtonBack          = 4
+	ControllerButtonStart         = 6
+	ControllerButtonLeftShoulder  = 9
+	ControllerButtonRightShoulder = 10
+	ControllerButtonDPadUp        = 11
+	ControllerButtonDPadDown      = 12
+	ControllerButtonDPadLeft      = 13
+	ControllerButtonDPadRight     = 14
+
+	// SDL_GameControllerAxis, the left stick.
+	ControllerAxisLeftX = 0
+	ControllerAxisLeftY = 1
+
+	// SDL_Keycode values of the keys the keyboard fallback reads (letters are their ASCII codes).
+	KeycodeBackspace = 8
+	KeycodeTab       = 9
+	KeycodeReturn    = 13
+	KeycodeEscape    = 27
+	KeycodeRight     = 0x4000004F
+	KeycodeLeft      = 0x40000050
+	KeycodeDown      = 0x40000051
+	KeycodeUp        = 0x40000052
+	KeycodePageUp    = 0x4000004B
+	KeycodePageDown  = 0x4000004E
+	KeycodeKPEnter   = 0x40000058 // SDLK_KP_ENTER
 )
 
 // Version is SDL_version.
@@ -84,4 +132,75 @@ func (e *Event) ControllerButton() *ControllerButtonEvent {
 func (e *Event) SetControllerButton(typ uint32, which int32, button, state uint8) {
 	*e = Event{}
 	*e.ControllerButton() = ControllerButtonEvent{Type: typ, Which: which, Button: button, State: state}
+}
+
+// WindowEvent is SDL_WindowEvent.
+type WindowEvent struct {
+	Type      uint32
+	Timestamp uint32
+	WindowID  uint32
+	Event     uint8
+	_         [3]uint8
+	Data1     int32
+	Data2     int32
+}
+
+// Window views the event as a window event. The caller checks Type first.
+func (e *Event) Window() *WindowEvent {
+	return (*WindowEvent)(unsafe.Pointer(e)) //nolint:gosec // 24 bytes at the start of a 56-byte event, same layout (abi_test.go)
+}
+
+// KeyboardEvent is SDL_KeyboardEvent with its SDL_Keysym inlined.
+type KeyboardEvent struct {
+	Type      uint32
+	Timestamp uint32
+	WindowID  uint32
+	State     uint8
+	Repeat    uint8
+	_         [2]uint8
+	Scancode  int32
+	Sym       int32 // SDL_Keycode
+	Mod       uint16
+	_         uint16
+	Unused    uint32
+}
+
+// Keyboard views the event as a keyboard event. The caller checks Type first.
+func (e *Event) Keyboard() *KeyboardEvent {
+	return (*KeyboardEvent)(unsafe.Pointer(e)) //nolint:gosec // 32 bytes at the start of a 56-byte event, same layout (abi_test.go)
+}
+
+// ControllerAxisEvent is SDL_ControllerAxisEvent.
+type ControllerAxisEvent struct {
+	Type      uint32
+	Timestamp uint32
+	Which     int32 // SDL_JoystickID
+	Axis      uint8
+	_         [3]uint8
+	Value     int16
+	_         uint16
+}
+
+// ControllerAxis views the event as a controller axis event. The caller checks Type first.
+func (e *Event) ControllerAxis() *ControllerAxisEvent {
+	return (*ControllerAxisEvent)(unsafe.Pointer(e)) //nolint:gosec // 20 bytes at the start of a 56-byte event, same layout (abi_test.go)
+}
+
+// ControllerDeviceEvent is SDL_ControllerDeviceEvent: Which is a device index for DEVICEADDED and an instance
+// id for DEVICEREMOVED.
+type ControllerDeviceEvent struct {
+	Type      uint32
+	Timestamp uint32
+	Which     int32
+}
+
+// ControllerDevice views the event as a controller device event. The caller checks Type first.
+func (e *Event) ControllerDevice() *ControllerDeviceEvent {
+	return (*ControllerDeviceEvent)(unsafe.Pointer(e)) //nolint:gosec // 12 bytes at the start of a 56-byte event, same layout (abi_test.go)
+}
+
+// SetType makes the event an otherwise empty event of the given type, as SDL_UserEvent is for a wake-up.
+func (e *Event) SetType(typ uint32) {
+	*e = Event{}
+	*(*uint32)(unsafe.Pointer(&e.raw[0])) = typ //nolint:gosec // raw is 56 bytes and its first four are the type
 }

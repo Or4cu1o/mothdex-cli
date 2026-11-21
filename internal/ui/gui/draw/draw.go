@@ -61,6 +61,14 @@ type Op struct {
 	Turn             float64
 }
 
+// Layout says how the logical coordinates of a List map to the display: a render scale for sizes above
+// 1200 px tall, or a logical size that SDL letterboxes for displays below 640x480.
+type Layout struct {
+	W, H  int  // the logical size
+	Scale int  // integer render scale; 1 when Fit is set
+	Fit   bool // draw the W x H layout scaled to fit the display, with bars
+}
+
 // List is one frame: the background first, then each layer in the order it must be drawn.
 type List struct {
 	W, H int // the logical size the coordinates belong to

@@ -63,6 +63,7 @@ func (c *testClock) advance(d time.Duration)              { c.mu.Lock(); c.now =
 type step struct {
 	advance time.Duration
 	events  []input.Incoming
+	before  func(frames int) // called when the loop asks for this step, with the frames drawn so far
 }
 
 // scriptedBackend gives the loop its events from a script, one step for each Wait.
@@ -78,14 +79,14 @@ type scriptedBackend struct {
 }
 
 type frame struct {
-	texts   []string
-	metrics gui.Metrics
+	texts  []string
+	layout draw.Layout
 }
 
 func (b *scriptedBackend) Size() (int, int) { return b.w, b.h }
 
-func (b *scriptedBackend) Present(m gui.Metrics, l *draw.List) error {
-	b.frames = append(b.frames, frame{texts: l.Texts(), metrics: m})
+func (b *scriptedBackend) Present(layout draw.Layout, l *draw.List) error {
+	b.frames = append(b.frames, frame{texts: l.Texts(), layout: layout})
 	return nil
 }
 
@@ -97,6 +98,9 @@ func (b *scriptedBackend) Wait(timeout time.Duration) (input.Incoming, bool) {
 	}
 	s := b.steps[b.next]
 	b.next++
+	if s.before != nil {
+		s.before(len(b.frames))
+	}
 	b.clock.advance(s.advance)
 	b.queue = slices.Clone(s.events)
 	return b.Poll()
@@ -240,13 +244,13 @@ func TestPadAndResizeEventsReachTheModel(t *testing.T) {
 		if i := slices.Index(fr.texts, "Open"); i > 0 && fr.texts[i-1] == "B" {
 			sawSwitchLabels = true
 		}
-		sawLarge = sawLarge || fr.metrics.Tier == gui.Large
+		sawLarge = sawLarge || (fr.layout.W == 1920 && fr.layout.H == 1080)
 	}
 	if !sawSwitchLabels {
 		t.Error("a Nintendo pad must put B before Open in the hint bar")
 	}
 	if !sawLarge {
-		t.Error("a 1920x1080 resize must give the large tier")
+		t.Error("a 1920x1080 resize must draw a 1920x1080 layout")
 	}
 }
 
@@ -290,7 +294,7 @@ func TestASignalEndsTheLoopWithTheExitSequence(t *testing.T) {
 type blockingBackend struct{ wake chan struct{} }
 
 func (b *blockingBackend) Size() (int, int)                      { return 1280, 720 }
-func (b *blockingBackend) Present(gui.Metrics, *draw.List) error { return nil }
+func (b *blockingBackend) Present(draw.Layout, *draw.List) error { return nil }
 func (b *blockingBackend) Poll() (input.Incoming, bool)          { return input.Incoming{}, false }
 func (b *blockingBackend) Wake() {
 	select {
@@ -308,4 +312,24 @@ func (b *blockingBackend) Wait(timeout time.Duration) (input.Incoming, bool) {
 	case <-time.After(timeout):
 	}
 	return input.Incoming{}, false
+}
+
+// Stick noise below the threshold makes no action, so it must not make a frame (a handheld's battery).
+func TestEventsThatChangeNothingDoNotRedraw(t *testing.T) {
+	noise := input.Incoming{Kind: input.IncomingInput, Input: input.Event{Kind: input.AxisMotion, Axis: input.LeftX, Value: 4000}}
+	var framesAfterNoise int
+	f := newFixture(t, 1280, 720,
+		step{events: []input.Incoming{noise}},
+		step{before: func(frames int) { framesAfterNoise = frames }, events: []input.Incoming{noise, noise}},
+		step{before: func(frames int) {
+			if frames != framesAfterNoise {
+				t.Errorf("drew %d frames for noise, expected %d", frames, framesAfterNoise)
+			}
+		}, events: []input.Incoming{{Kind: input.IncomingQuit}}},
+		step{advance: 5 * time.Second},
+	)
+	f.run(t)
+	if framesAfterNoise != 1 {
+		t.Errorf("only the first frame was expected before the noise, got %d", framesAfterNoise)
+	}
 }
