@@ -350,7 +350,7 @@ func TestIsLauncherPathSeesThroughWindowsSpellings(t *testing.T) {
 	for path, want := range map[string]bool{
 		`C:\RetroBat\roms\windows\x`: true, `C:/RetroBat/roms/windows/x`: true, `c:\retrobat\ROMS\Windows`: true,
 		`C:\RetroBat\roms\windows.\x`: true, `C:\RetroBat\roms\windows \x`: true, `\\?\C:\RetroBat\roms\windows\x`: true,
-		`C:\RetroBat\roms\.\windows\x`: true, `C:\RetroBat\roms\snes\..\windows\x`: true,
+		`C:\RetroBat\roms\.\windows\x`: true, "C:\\RetroBat\\roms\\snes\\.. \\windows\\x": true, `C:\RetroBat\roms\windows::$INDEX_ALLOCATION\x`: true, `C:\RetroBat\roms\snes\..\windows\x`: true,
 		`C:\RetroBat\roms\ports\x`: true, `C:\RetroBat\roms\snes`: false, `D:\RetroBat\roms\windows`: false,
 		`C:\RetroBat\roms\windows2`: false,
 	} {

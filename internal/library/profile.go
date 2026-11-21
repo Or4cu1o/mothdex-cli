@@ -291,7 +291,8 @@ func components(p string) []string {
 		p = strings.TrimPrefix(p, prefix)
 	}
 	var out []string
-	for _, c := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+	for i, c := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		c = strings.TrimRight(c, " ") // Win32 drops trailing spaces before it looks at "." and ".."
 		switch c {
 		case ".":
 			continue
@@ -300,6 +301,9 @@ func components(p string) []string {
 				out = out[:len(out)-1]
 			}
 			continue
+		}
+		if at := strings.Index(c, ":"); at > 0 && (i != 0 || len(c) != 2) {
+			c = c[:at] // NTFS stream suffix (name::$INDEX_ALLOCATION): the folder itself
 		}
 		if c = strings.TrimRight(c, ". "); c != "" {
 			out = append(out, strings.ToUpper(c))
