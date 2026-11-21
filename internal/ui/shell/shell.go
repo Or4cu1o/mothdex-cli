@@ -25,8 +25,6 @@ import (
 )
 
 const (
-	// abortWindow is how long a second Ctrl+C at the prompt takes to leave the Shell.
-	abortWindow = 2 * time.Second
 	// networkWait bounds the calls made for the banner and for Tab, so a dead network never freezes typing.
 	networkWait = 2 * time.Second
 	// retryAfter is how long a failed Tab source waits before it is asked again.
@@ -102,13 +100,12 @@ func Run(ctx context.Context, env cli.ShellEnv) int {
 
 // Shell is one interactive session.
 type Shell struct {
-	o         Options
-	hist      historyStore
-	lines     []string
-	sig       <-chan os.Signal
-	lastAbort time.Time
-	lastCode  int
-	numbers   *message.Printer
+	o        Options
+	hist     historyStore
+	lines    []string
+	sig      <-chan os.Signal
+	lastCode int
+	numbers  *message.Printer
 }
 
 // New builds a Shell from its options.
@@ -149,10 +146,8 @@ func (s *Shell) Loop(ctx context.Context) int {
 		line, err := s.readLine(ctx)
 		switch {
 		case err == nil:
-		case errors.Is(err, errAborted):
-			if s.abort() {
-				return exitInterrupted
-			}
+		case errors.Is(err, errAborted): // Ctrl+C at the prompt clears the line and says how to leave
+			s.say("ui.shell.ctrlc_hint", nil)
 			continue
 		case errors.Is(err, io.EOF):
 			if s.o.Interactive {
@@ -166,7 +161,6 @@ func (s *Shell) Loop(ctx context.Context) int {
 			_, _ = fmt.Fprintln(s.o.Err, s.bad(s.t("ui.messages.error", nil)+":"), s.t("errors.internal.message", nil))
 			return 1
 		}
-		s.lastAbort = time.Time{}
 		quit, code := s.handle(ctx, line)
 		if quit {
 			return code
@@ -201,17 +195,6 @@ func (s *Shell) readLine(ctx context.Context) (string, error) {
 
 // ask is the prompt of the commands (link chooser, confirmation): it goes through the editor.
 func (s *Shell) ask(label string) (string, error) { return s.o.Editor.Prompt(label) }
-
-// abort handles Ctrl+C at the prompt: a hint, and a second one within abortWindow leaves.
-func (s *Shell) abort() (leave bool) {
-	now := s.o.Now()
-	if !s.lastAbort.IsZero() && now.Sub(s.lastAbort) < abortWindow {
-		return true
-	}
-	s.lastAbort = now
-	s.say("ui.shell.ctrlc_hint", nil)
-	return false
-}
 
 // handle runs one line and says whether the Shell should end.
 func (s *Shell) handle(ctx context.Context, line string) (quit bool, code int) {

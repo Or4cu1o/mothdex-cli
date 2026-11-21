@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-53 (E-M3 service items, gui.md section 8): `internal/compose` is the composition root both binaries build the service with (`compose.Open(ctx, Options) (*Session, error)`; a session's stored `on_exists=overwrite` is reported at start-up; `cmd/mothdex` wraps it in `cli.Session`). `app.DecodeCover` decodes a cover with the fetch limits (5 MiB, type allowlist agreeing with the content type, 4096 pixels per side checked from the header, the first GIF frame checked too), one frame, scaled down to `maxSide` (4 megapixel budget from the header, no full copy while scaling, a decoder panic becomes an error); WebP through `golang.org/x/image` v0.48.0 (BSD-3, Go team). Config keys `gui.confirm_button` (`south|east`), `gui.text_size` (`normal|large`) and `gui.safe_area` (`auto` or 0..10) with their `ConfigSchema` metadata. A regression test covers G3 (`Wait` on idle returns at once and refreshes only after a download).
+- E-M2 polish (T-44), from the UX review: a Shell `download` of several entries prints `Link n chosen` for every entry with more
+  than one link, with or without a preference (one entry still gets the chooser); the Shell no longer exits on a second Ctrl+C,
+  only `exit`, `quit` and Ctrl+D leave; the TUI Entry screen shows the platform id with its name from the cached platform list
+  (`gbc (Game Boy Color)`).
+- `internal/ui/tui` (T-42, part 2 of 2): History and Settings, and the downloads that depend on them. History (`H`): every record
+  newest first, `f` for failed only (the service filter), `/` to filter by title, details with the localized error, `d` to
+  queue a failed download again, `e` to export (txt, json or csv by the extension, with an `Overwrite? [y/N]` question), and a
+  reload when a job ends. Settings (`S`): the curated table of tui.md section 7 from `ConfigList` with a static kind and range
+  per key until the app layer exposes the schema (gap F1); space toggles, Enter edits (an enum opens a list, a number shows its
+  range and an invalid value is refused in place), Backspace resets, a row set by the environment or a flag is read-only and
+  says which, and `Clear cache` asks first. The page size, the confirmation, the cover and the link preference apply at once;
+  the others say "applies on next start". With `interface.confirm_downloads` on, a batch or a file over 500 MB asks before it
+  is queued (cli-conventions section 6). With `download.boxart` on, the cover of a finished file is saved after its `Done`
+  event (`SaveJobBoxart`; a failure is a warning). Review of part 1: the "past the last page" and "hidden results" notes share
+  one toast, and a failed retry puts the jobs back in the Queue.
+- `internal/ui/tui` (T-42, part 1 of 2): the full-screen terminal UI on Bubble Tea v2.1.2, Bubbles v2.2.2 and Lip Gloss
+  v2.1.1. `mothdex tui` opens the frame of tui.md section 1 (title bar with the live queue summary, status bar with the keys
+  of the screen, a toast for 3 s, `?` help) and the screens Search (query, platform and region pickers that fall back to typed
+  ids, sort, the last 5 queries in `<paths.data>/tui_state`, Random), Results (marks per page, `n`/`p` paging, `s` sort,
+  loading with Esc to cancel, empty and error states with `r` retry, `/` back to Search with the fields filled), Entry (the
+  ranked link list is the chooser, `d` the highlighted link, `D` the best one, an "already downloaded" question, `P` for a
+  session preference, `c` for the cover, left and right for the neighbours in the list) and Queue (`Q`: live states with the
+  Warming counter on a UI timer, `x`/`X` cancel, `r` retry a failed job from its request, `c` hide finished, details with `y`
+  to copy the path). Small terminals follow section 9: columns drop below 80, the secondary parts hide below 20 rows, and
+  below 60x16 a notice replaces the screen until it grows back. `--no-color` leaves only bold, faint and reverse, and a
+  non-UTF-8 locale gets the `+-|` frame. A `[y/N]` question accepts the localized "yes" initial. Every server string is cleaned
+  before it is drawn (case 49). The key map is a pure reducer, tested as a table. History and Settings (`H`, `S`) are part 2 and
+  say "not available yet" for now. New strings are `ui.tui.*` (`en_us`, `pt_br`, `es_es`, `ru_ru`). `cli` gains `Deps.TUI`,
+  `TUIEnv` and `Service.Jobs`; `internal/ui/uistate` holds the atomic 0600 file writer shared with the Shell history. The
+  Charm v2 build is checked for linux 386, armv6 and armv7 by the `goreleaser snapshot` job, which builds those targets.
+- `docs/ux/gui.md` (T-50): UX of the gamepad GUI (`mothdex-gui`, E-M3): size tiers from 640x480 to 1080p (scaled
+  below and above), TV safe area with a calibration view, type scale, spacing and color tokens with measured contrast,
+  positional buttons with an A/B swap and per-controller labels, focus model, every screen with its button map
+  (Home, Search with the virtual keyboard, pickers, Results with covers, Entry and link chooser, Queue, History,
+  Settings, Start menu), errors and empty states, quit and the return to the frontend, the Port behavior, the
+  service calls used, the gaps agreed with the T-51 contract, and a three-PR plan.
 - `app.Service.ConfigSchema() []SettingSpec{Key, Kind, Enum, Min, Max, Env}` (F1, ui.md section 6): the metadata of every configuration key (kind string, enum, int, float, bool, duration, size or list; the allowed values or range; the `MOTHDEX_*` variable) for the TUI Settings screen and Shell completion. It reads no file, so it works with a broken configuration. `config.Specs()` builds it from the schema, and a test checks that every enum value and range bound agrees with the parser.
 - `docs/contracts/cli/gui.md` (T-51): the E-M3 GUI contract, covering the separate `mothdex-gui` binary and its package layout, SDL2 through an own purego binding (with what the spike must prove and the decision rule), Noto Sans with the x/image raster, the pinned GameControllerDB, a single download root (no shared limiter), the exit budget, cover decode caps, the packaging impact, the test plan and the gaps for Forja.
 - `docs/release-v0.1.0-checklist.md` (T-23): the ordered owner steps for the first release (open gates A2 and D1 to D3,
@@ -25,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and region ids, `--prefer`, config keys and values, cache namespaces, export paths, entry numbers), a history file
   `<paths.data>/shell_history` (mode 0600, written atomically, last writer wins when two Shells run at once, no lines with a
   leading space or a `config set` of a key ending in `token`, `key` or `url`, or whose value has credentials in an address), and an inline link chooser for `download <#>` when an entry has several downloadable
-  links. Ctrl+C cancels the running command and not the Shell; two at an empty prompt within 2 s leave with 130.
+  links. Ctrl+C cancels the running command and not the Shell; at the prompt it only clears the line and says how to leave
+  (`exit`, `quit` or Ctrl+D); a piped script still ends with 130 on SIGINT.
   `--config`, `--lang`, `--allow-executable` and `-j` are refused inside the Shell, and `mothdex -f shell` opens the
   service with overwrites and executables off. `cmd/mothdex/signals.go` routes SIGINT to the Shell while it runs;
   `cli.Session` gains `DataDir`, `NoColor`, `UTF8` and `Log`, `cli.Deps` gains `Shell` and `Interrupts`. New strings

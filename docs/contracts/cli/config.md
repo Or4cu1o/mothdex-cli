@@ -62,6 +62,10 @@ log:
   console: false
   max_size_mb: 10
   max_files: 5
+gui:                            # the handheld front end (gui.md section 8)
+  confirm_button: south         # south | east (east swaps confirm and back)
+  text_size: normal             # normal | large
+  safe_area: auto               # auto, or an inset of 0..10 percent
 ```
 
 Dropped from the legacy file: `chunk_size`, `preferred_hosts`, `mirror_test_*`/`performance.*` (there are no mirrors),
