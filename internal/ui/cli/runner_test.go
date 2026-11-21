@@ -442,3 +442,39 @@ func TestTUICommandReturnsTheLauncherExitCode(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q: the launcher's code is final and silent", code, errOut.String())
 	}
 }
+
+// A batch in the Shell says which link each entry with several links takes, with no preference set;
+// an entry with one link has nothing to say, and the plain CLI keeps its silence (T-44).
+func TestShellBatchNamesTheLinkOfEveryEntryWithSeveralLinks(t *testing.T) {
+	links := func(r app.Ref, _ app.LinkSelector) ([]app.LinkChoice, error) {
+		if r.Index == 2 { // one link: nothing to choose from
+			return []app.LinkChoice{{Index: 1, Available: true, Link: mothdex.Link{Size: 10}}}, nil
+		}
+		return []app.LinkChoice{
+			{Index: 3, Available: true, Link: mothdex.Link{Size: 10}},
+			{Index: 1, Available: true, Link: mothdex.Link{Size: 10}},
+		}, nil
+	}
+	f := &fake{wait: noop, links: links}
+	rig := newShellRig(t, f, false)
+	if code := rig.r.Run(context.Background(), []string{"download", "1", "2", "3"}); code != 0 {
+		t.Fatalf("exit %d: %s", code, rig.err.String())
+	}
+	if n := strings.Count(rig.err.String(), "Link 3 chosen"); n != 2 { // entries 1 and 3 have two links
+		t.Fatalf("Link n chosen printed %d times, want 2:\n%s", n, rig.err.String())
+	}
+	if strings.Contains(rig.err.String(), "Link 1 chosen") {
+		t.Fatalf("an entry with one link prints nothing:\n%s", rig.err.String())
+	}
+
+	single := newShellRig(t, &fake{wait: noop, links: links}, false)
+	single.r.Run(context.Background(), []string{"download", "1"})
+	if strings.Contains(single.err.String(), "chosen") {
+		t.Fatalf("one entry has the chooser, not this line:\n%s", single.err.String())
+	}
+
+	plain := exec(t, &fake{wait: noop, links: links}, nil, "download", "1", "3")
+	if strings.Contains(plain.err.String(), "chosen") {
+		t.Fatalf("the CLI stays silent without a preference:\n%s", plain.err.String())
+	}
+}

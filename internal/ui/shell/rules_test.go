@@ -246,6 +246,7 @@ func TestComplete(t *testing.T) {
 		{"config reset also offers all", "config reset a", []string{"all"}},
 		{"config set enum values", "config set interface.color ", []string{"always", "auto", "never"}},
 		{"config set offers nothing for a free value", "config set interface.page_size ", nil},
+		{"config set on_exists does not offer overwrite", "config set download.on_exists ", []string{"rename", "skip"}},
 		{"cache subcommands", "cache c", []string{"clear"}},
 		{"cache namespaces", "cache clear ", []string{"covers", "entry", "search"}},
 		{"export paths", "search mario -e o", []string{"out.csv", "out.json"}},

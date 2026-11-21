@@ -29,6 +29,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SDL2 is missing, too old or has no display, or 3 for a failed check. `scripts/gui-probe.sh` builds and inspects it for one
   target (ELF interpreter and `NEEDED`, the armhf `-I` flag) and runs it on the host; `scripts/check-gui-isolation.sh` fails
   if `mothdex` ever depends on purego or a GUI package. `purego` v0.11.3 is pinned in `go.mod`; `mothdex` does not contain it. `ReadPixels` and `UpdateTexture` check that the buffer holds every byte SDL will touch (pitch*(h-1)+w*bytes) before the call and refuse a shorter one; SDL2 is opened with `RTLD_LOCAL`.
+- E-M2 polish (T-44), from the UX review: a Shell `download` of several entries prints `Link n chosen` for every entry with more
+  than one link, with or without a preference (one entry still gets the chooser); the Shell no longer exits on a second Ctrl+C,
+  only `exit`, `quit` and Ctrl+D leave; the TUI Entry screen shows the platform id with its name from the cached platform list
+  (`gbc (Game Boy Color)`).
+- `internal/ui/tui` (T-42, part 2 of 2): History and Settings, and the downloads that depend on them. History (`H`): every record
+  newest first, `f` for failed only (the service filter), `/` to filter by title, details with the localized error, `d` to
+  queue a failed download again, `e` to export (txt, json or csv by the extension, with an `Overwrite? [y/N]` question), and a
+  reload when a job ends. Settings (`S`): the curated table of tui.md section 7 from `ConfigList` with a static kind and range
+  per key until the app layer exposes the schema (gap F1); space toggles, Enter edits (an enum opens a list, a number shows its
+  range and an invalid value is refused in place), Backspace resets, a row set by the environment or a flag is read-only and
+  says which, and `Clear cache` asks first. The page size, the confirmation, the cover and the link preference apply at once;
+  the others say "applies on next start". With `interface.confirm_downloads` on, a batch or a file over 500 MB asks before it
+  is queued (cli-conventions section 6). With `download.boxart` on, the cover of a finished file is saved after its `Done`
+  event (`SaveJobBoxart`; a failure is a warning). Review of part 1: the "past the last page" and "hidden results" notes share
+  one toast, and a failed retry puts the jobs back in the Queue.
 - `internal/ui/tui` (T-42, part 1 of 2): the full-screen terminal UI on Bubble Tea v2.1.2, Bubbles v2.2.2 and Lip Gloss
   v2.1.1. `mothdex tui` opens the frame of tui.md section 1 (title bar with the live queue summary, status bar with the keys
   of the screen, a toast for 3 s, `?` help) and the screens Search (query, platform and region pickers that fall back to typed
@@ -66,7 +81,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and region ids, `--prefer`, config keys and values, cache namespaces, export paths, entry numbers), a history file
   `<paths.data>/shell_history` (mode 0600, written atomically, last writer wins when two Shells run at once, no lines with a
   leading space or a `config set` of a key ending in `token`, `key` or `url`, or whose value has credentials in an address), and an inline link chooser for `download <#>` when an entry has several downloadable
-  links. Ctrl+C cancels the running command and not the Shell; two at an empty prompt within 2 s leave with 130.
+  links. Ctrl+C cancels the running command and not the Shell; at the prompt it only clears the line and says how to leave
+  (`exit`, `quit` or Ctrl+D); a piped script still ends with 130 on SIGINT.
   `--config`, `--lang`, `--allow-executable` and `-j` are refused inside the Shell, and `mothdex -f shell` opens the
   service with overwrites and executables off. `cmd/mothdex/signals.go` routes SIGINT to the Shell while it runs;
   `cli.Session` gains `DataDir`, `NoColor`, `UTF8` and `Log`, `cli.Deps` gains `Shell` and `Interrupts`. New strings
