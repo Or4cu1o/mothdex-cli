@@ -134,7 +134,7 @@ jobs:
         run: |
           # sha256sum --check only covers the listed files: nothing else may be uploaded.
           want=$( { awk '{print $2}' checksums.txt; echo checksums.txt; echo checksums.txt.sigstore.json; } | sort )
-          have=$(ls -1A | sort)
+          have=$(find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
           [ "$want" = "$have" ] || { echo "the files in dist differ from checksums.txt plus checksums.txt and its bundle"; diff <(echo "$want") <(echo "$have") || true; exit 1; }
       - name: The tag still points at the commit that was built
         env:
