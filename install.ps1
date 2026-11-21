@@ -107,19 +107,29 @@ function Get-ExpectedHash([string]$ChecksumsFile, [string]$Name) {
   return $found[0]
 }
 
+# Runs a native tool and returns its exit code and combined output. Windows PowerShell 5.1 turns native stderr into
+# a terminating error under $ErrorActionPreference = 'Stop', so the preference is relaxed only around the call.
+function Invoke-Native([string]$Exe, [string[]]$Arguments) {
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $text = (& $Exe @Arguments 2>&1 | ForEach-Object { "$_" }) -join "`n"
+    return [pscustomobject]@{ Code = $LASTEXITCODE; Output = $text }
+  } finally { $ErrorActionPreference = $previous }
+}
+
 function Test-Signature([string]$Url, [string]$Tag, [string]$Dir, [string]$ZipPath) {
   if (Get-Command cosign -ErrorAction SilentlyContinue) {
     $bundle = Join-Path $Dir 'checksums.txt.sigstore.json'
     try { Get-Remote "$Url/checksums.txt.sigstore.json" $bundle } catch { Fail 'cosign is installed but the signature bundle could not be downloaded' }
-    $out = & cosign verify-blob --bundle $bundle --certificate-identity "$SignerIdentity$Tag" --certificate-oidc-issuer $OidcIssuer (Join-Path $Dir 'checksums.txt') 2>&1
-    if ($LASTEXITCODE -ne 0) { Fail "cosign signature verification failed: $out" }
+    $r = Invoke-Native 'cosign' @('verify-blob', '--bundle', $bundle, '--certificate-identity', "$SignerIdentity$Tag", '--certificate-oidc-issuer', $OidcIssuer, (Join-Path $Dir 'checksums.txt'))
+    if ($r.Code -ne 0) { Fail "cosign signature verification failed: $($r.Output)" }
     return 'cosign signature verified'
   }
   if (Get-Command gh -ErrorAction SilentlyContinue) {
-    & gh auth status *> $null
-    if ($LASTEXITCODE -eq 0) {
-      $out = & gh attestation verify $ZipPath --repo $Repo --signer-workflow "$Repo/.github/workflows/release.yml" --source-ref "refs/tags/$Tag" 2>&1
-      if ($LASTEXITCODE -ne 0) { Fail "gh attestation verification failed: $out" }
+    if ((Invoke-Native 'gh' @('auth', 'status')).Code -eq 0) {
+      $r = Invoke-Native 'gh' @('attestation', 'verify', $ZipPath, '--repo', $Repo, '--signer-workflow', "$Repo/.github/workflows/release.yml", '--source-ref', "refs/tags/$Tag")
+      if ($r.Code -ne 0) { Fail "gh attestation verification failed: $($r.Output)" }
       return 'GitHub attestation verified'
     }
   }

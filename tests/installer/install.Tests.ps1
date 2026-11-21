@@ -165,4 +165,4 @@ $env:PATH = $oldPath
 
 Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 Write-Output "$($script:pass) passed, $($script:fail) failed"
-if ($script:fail -gt 0) { exit 1 }
+exit ([int]($script:fail -gt 0))
