@@ -243,10 +243,18 @@ bin_dir_usable() {
 
 # --- download and verification ---------------------------------------------------------------------------------
 
-# Only URLs built from $BASE are ever passed in. curl is forced to https, including on redirects. wget is used only
-# when it is GNU Wget (https only); busybox wget does not validate TLS certificates, so it is refused.
+# Only URLs built from $BASE are ever passed in. curl is forced to https, including on redirects (--proto-redir).
+# wget cannot do that: GNU Wget follows an https to http redirect in a plain download (--https-only is recursive-only),
+# and busybox wget does not validate TLS certificates. So wget is accepted only when it is GNU Wget AND a signature tool
+# that verify_signature will run (cosign, or a logged-in gh) is present: the signature check does not depend on how
+# the files travelled.
 gnu_wget() {
   wget --version 2>/dev/null | head -n 1 | grep -q 'GNU Wget'
+}
+
+signature_tool_present() {
+  if command -v cosign >/dev/null 2>&1; then return 0; fi
+  command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1
 }
 
 fetch() {
@@ -255,6 +263,8 @@ fetch() {
       -o "$2" "$1"
   elif command -v wget >/dev/null 2>&1; then
     gnu_wget || die "this wget is not GNU Wget (busybox wget does not verify TLS certificates): install curl and run again"
+    signature_tool_present ||
+      die "only wget is available, and wget can follow an https to http redirect: install curl, or cosign (or a logged-in gh) so the signature is verified, and run again"
     wget -q --https-only --secure-protocol=TLSv1_2 --max-redirect=5 --timeout=60 -O "$2" "$1"
   else
     die "curl or GNU wget is required"

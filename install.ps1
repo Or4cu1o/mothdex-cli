@@ -90,11 +90,12 @@ function Test-FolderTrusted([string]$Dir) {
   $trusted = @($me, 'S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
   $acl = Get-Acl -LiteralPath $Dir
   if ($trusted -notcontains $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value) { return $false }
-  $writeMask = [Security.AccessControl.FileSystemRights]'WriteData,AppendData,Delete,DeleteSubdirectoriesAndFiles,ChangePermissions,TakeOwnership'
+  # WriteData, AppendData, DeleteSubdirectoriesAndFiles, Delete, ChangePermissions, TakeOwnership, GenericAll, GenericWrite
+  $writeMask = 0x2 -bor 0x4 -bor 0x40 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000 -bor 0x40000000
   foreach ($rule in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
     if ($rule.AccessControlType -ne 'Allow') { continue }
     if ($trusted -contains $rule.IdentityReference.Value) { continue }
-    if (($rule.FileSystemRights -band $writeMask) -ne 0) { return $false }
+    if (([int]$rule.FileSystemRights -band $writeMask) -ne 0) { return $false }
   }
   return $true
 }

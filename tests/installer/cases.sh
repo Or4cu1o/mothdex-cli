@@ -485,9 +485,26 @@ check "attestation not attempted" absent "$FAKE_LOG.gh"
 reset wget-fallback
 mkdir -p /tmp/nocurl
 cp "$SHIMS/wget" "$SHIMS/fake-fetch" "$SHIMS/uname" /tmp/nocurl/
+cp "$OPTIONAL/cosign" /tmp/nocurl/cosign
 PATH=/tmp/nocurl:$BASE_PATH inst --version v1.2.3
-check "wget fallback works" rc_is 0
+check "wget fallback works with a signature tool" rc_is 0
 check "installed through wget" test -x /home/u/.local/bin/mothdex
+check "signature was verified" test -s "$FAKE_LOG.cosign"
+reset wget-only-without-signature-tool
+mkdir -p /tmp/nocurl
+cp "$SHIMS/wget" "$SHIMS/fake-fetch" "$SHIMS/uname" /tmp/nocurl/
+PATH=/tmp/nocurl:$BASE_PATH inst --version v1.2.3
+check "wget alone is refused (it may follow https to http)" rc_not0
+check "explains the redirect risk" out_has "https to http redirect"
+check "nothing installed (wget alone)" absent /home/u/.local/bin/mothdex
+check "nothing downloaded (wget alone)" no_downloads
+reset wget-with-failing-signature
+mkdir -p /tmp/nocurl
+cp "$SHIMS/wget" "$SHIMS/fake-fetch" "$SHIMS/uname" /tmp/nocurl/
+cp "$OPTIONAL/cosign" /tmp/nocurl/cosign
+COSIGN_RC=1 PATH=/tmp/nocurl:$BASE_PATH inst --version v1.2.3
+check "failing signature aborts the wget path" rc_not0
+check "nothing installed (wget, bad signature)" absent /home/u/.local/bin/mothdex
 
 reset wget-busybox-refused
 mkdir -p /tmp/nocurl2

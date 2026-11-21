@@ -45,8 +45,9 @@ and provenance with the identity below; a failing check aborts before anything
 is installed. The binary goes to the profile `bin_dir` (mode 0755; on Windows
 `%LocalAppData%\Programs\mothdex` by default), and the launcher (Port), only with `--launcher` (`-Launcher` on Windows; off by default in v0.1 because `mothdex tui` does not exist yet), only to
 the profile launcher folder, from a fixed template with a marker line, so an
-existing file of yours is never overwritten. `install.sh` needs curl, or GNU wget (busybox wget does not verify
-TLS certificates and is refused). On Windows, an existing `-BinDir` outside `%LocalAppData%` is accepted only when its
+existing file of yours is never overwritten. `install.sh` needs curl (it forces https, redirects included), or GNU wget together with cosign or a logged-in `gh`:
+wget can follow an https to http redirect, so the signature check is what protects that path (busybox wget does not
+verify TLS certificates and is refused). On Windows, an existing `-BinDir` outside `%LocalAppData%` is accepted only when its
 owner is you or an administrator and no other user can write to it; on a Batocera or Recalbox share partition without file permissions (exFAT, FAT, NTFS) the installer, as
 root, accepts the profile's own folders with a warning (see [SECURITY.md](../SECURITY.md)); a RetroBat folder created under `C:\` may let
 Authenticated Users write, which is inherent to that tree (the launcher is the only file placed there).

@@ -64,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launcher template written only to the profile launcher folder (path allow-list, marker, never overwrites a
   user's file). Tests: shellcheck, 193 container checks (Alpine and Debian, no network, simulated Batocera and
   EmuELEC trees, fake release, a second pass as a non-root user) and Pester-style checks for `install.ps1` in CI (`installer.yml`). The launcher is opt-in (`--launcher`, `-Launcher`) in v0.1 because `mothdex tui` does not exist yet;
-  wget is used only if it is GNU Wget (busybox wget does not verify TLS); on exFAT/FAT/NTFS share partitions of Batocera
+  wget is used only if it is GNU Wget and a signature tool (cosign or a logged-in gh) is present, because wget can follow an https to http redirect (busybox wget does not verify TLS and is refused); on exFAT/FAT/NTFS share partitions of Batocera
   and Recalbox, root installs get a documented, warned exception to the world-writable refusal.
 - `internal/cover`: cover fetch hardening (T-16 CR-9, cache.md section 4): https only, no connection to loopback,
   private, link-local, CGNAT, multicast or special addresses (checked after DNS and again in the dialer Control hook),
