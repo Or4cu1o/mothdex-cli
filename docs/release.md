@@ -23,13 +23,36 @@ dirty versions). The date is the **commit time** (RFC 3339 UTC), not the build
 time, so builds are reproducible. Format and JSON fields:
 [contracts/cli/cli-output.md](contracts/cli/cli-output.md) section 3.1.
 
+## Installing
+
+Download, read, then run. The installer is never piped to a shell, and it
+downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https.
+
+```sh
+curl -fsSLO https://github.com/Or4cu1o/mothdex-cli/raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
+less install.sh
+sh install.sh --dry-run          # downloads and verifies in a temp dir, installs nothing
+sh install.sh                    # or: --version v0.1.0, --profile, --bin-dir, --no-launcher, --uninstall
+```
+
+On Windows, download `install.ps1`, read it, then run `.\install.ps1` (options
+`-Version`, `-RetroBatPath`, `-BinDir`, `-NoLauncher`, `-DryRun`, `-Uninstall`).
+Both installers always check the SHA-256 of the archive against `checksums.txt`
+and, when `cosign` (or an authenticated `gh`) is on the machine, the signature
+and provenance with the identity below; a failing check aborts before anything
+is installed. The binary goes to the profile `bin_dir` (mode 0755; on Windows
+`%LocalAppData%\Programs\mothdex` by default), and the launcher (Port) only to
+the profile launcher folder, from a fixed template with a marker line, so an
+existing file of yours is never overwritten.
+
 ## Verifying a download
 
 Every release file is listed in `checksums.txt`, which is signed with cosign
 (keyless, GitHub OIDC) and attested with GitHub artifact attestations.
 
 ```sh
-# 1. Checksums (what install.sh does; cosign is not required on devices)
+# 1. Checksums (what install.sh does: it compares the archive hash with its line in
+#    checksums.txt; cosign is not required on devices)
 sha256sum --check --ignore-missing checksums.txt
 
 # 2. Signature of checksums.txt and who signed it

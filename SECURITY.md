@@ -26,3 +26,9 @@ attested by GitHub. The exact signer identity and the verification commands are 
 [docs/release.md](docs/release.md#verifying-a-download): the certificate identity
 is the `release.yml` workflow at `refs/tags/vX.Y.Z` of this repository, with issuer
 `https://token.actions.githubusercontent.com`.
+
+The installers (`install.sh`, `install.ps1`) follow the same rule: they read
+only from this repository's GitHub releases, verify the SHA-256 (and the
+signature when cosign or `gh` is present) before installing, and are meant to be
+downloaded and read, never piped to a shell. See
+[docs/release.md](docs/release.md#installing).
