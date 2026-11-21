@@ -100,7 +100,7 @@ for entry in "${targets[@]}"; do
     linux_armv6*|linux_armv7*) runner="$qemu_arm" ;;
     *) continue ;;
   esac
-  out="$($runner "$dir/$bin")"
+  out="$($runner "$dir/$bin" version)"
   want_out="mothdex ${version} (commit ${want_commit:0:7}, ${want_date:0:10})"
   [ "$out" = "$want_out" ] || fail "$name: output '$out', want '$want_out'"
 done
