@@ -86,7 +86,12 @@ func (r *Runner) LastPage() (app.SearchPage, bool)                              
 func (r *Runner) Commands() []CommandInfo                                        // name, short help, flags: for help and completion
 ```
 - `Run` builds a fresh cobra tree per line, so flag state never leaks between lines. It does not reopen or close the Session.
-- `--config` and `--lang` inside the Shell are a `usage` error (shell §2).
+- Some flags take effect only when the service opens (`compose.go` passes them once, in `EnableDownloads`). Inside the Shell they would be accepted and then silently ignored, so the Runner rejects them with a `usage` error, `not available in the Shell; run the command outside it` (`ui.shell.flag_startup_only`):
+  - `--config`, `--lang` (shell §2);
+  - `--allow-executable`, `-j`/`--jobs` (T-41, D4).
+- `-f` inside the Shell only skips the confirmation (cli-conventions §6). Overwriting follows `download.on_exists`, and the per-job `skipped (exists)` line shows when a file was not overwritten.
+- The `shell` and `tui` commands open the service with `Force` and `AllowExecutable` false even when `-f` is given at start-up. Otherwise one `mothdex -f shell` would allow overwriting for every download of the session. `-j` at start-up is honored.
+- Per-request `Force`, `AllowExecutable` and `Concurrency` in `DownloadRequest` are a backlog item (F5). That is a downloader-policy change and needs Sentinela first.
 - With `interactive` set (stdin is a terminal), `download` uses the inline link chooser of shell §4. Confirmations follow cli-conventions §6, and the chooser renders through the cli printer.
 - The chooser and `Runner` live in `internal/ui/cli` because they are CLI output.
 - `ShellEnv` is `{Runner *Runner; Session *Session; Stdin io.Reader; Stdout, Stderr io.Writer; IsTerminal bool}`.
@@ -231,6 +236,7 @@ Items for Forja (app layer). None of them blocks T-41.
 | F1 | Config schema metadata for completion and Settings, through `ConfigSchema() []SettingSpec{Key, Kind, Enum []string, Min, Max string, Env string}` (`schema.go` already has kind, range and enum) | static table in the UI for the curated keys |
 | F2 | `SearchPage.Dropped` (SLUG-RULE, already assigned) | show the warning once the field exists |
 | F3 (backlog) | live reload of config in the running service after `ConfigSet` | `applies on next start` label |
+| F5 (backlog) | per-request `Force`, `AllowExecutable` and `Concurrency` in `DownloadRequest` (Sentinela review first) | the Shell rejects the flags (§2.1) |
 | F4 (backlog) | `HistoryFilter.Slug` / `Offset`, if `history.jsonl` grows large | load all records, filter client-side |
 
 Items for the cli layer, done in T-41 (Vitral, coordinated with Forja because they own `internal/ui/cli`):
@@ -243,3 +249,4 @@ Deviations from the UX docs, to be confirmed by Bússola via Regente:
 - **D1.** TUI `c` saves the cover with `SaveBoxart` into the download destination and toasts that path. The UX doc wants the cache path, but the cache layout is not exposed to UIs.
 - **D2.** Shell `help` text is the cobra help (English, the same as `--help`) until command help is translated. The UX doc names i18n keys `help.<cmd>`.
 - **D3.** Shell `n`, `p` and `last` after a restart print `ui.shell.no_page` (§2.2). Indexes keep working.
+- **D4.** Inside the Shell, `--allow-executable` and `-j` are a usage error and `-f` only skips prompts; start-up `-f` is not applied to the session (§2.1).
