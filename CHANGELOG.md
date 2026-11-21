@@ -87,7 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only with `--force`), a per-filesystem space ledger, name reservation, in-flight journal and startup cleanup, retry
   policy with injected clock and sleeper, zip CRC and upstream hash checks with caps, fsync of file and directory before
   `Done`, and one history record per job. Adds `golang.org/x/text` and `golang.org/x/sys`.
-- T-18 audit round: case 39 ages the symlink target (a following cleanup would delete it), case 24 asserts casefold collisions on every file system, a finalize fallback chain test (hard link, O_EXCL placeholder, second writer in each step) and a launcher-behind-a-link test on a real detected profile.
+- T-18 audit round: case 39 ages the symlink target (a following cleanup would delete it), case 24 asserts casefold collisions on every file system, a finalize fallback chain test (hard link, O_EXCL placeholder, second writer in each step) and a launcher-behind-a-link test on a real detected profile. The rename-policy subtest runs in both the hard link and the placeholder step, with titles that name the step.
 - T-18: `fakefs` counts reads (`OpRead`, `BytesRead`); the case 31, 32, 41 and 42 tests now prove abort at size+1, the exact size limit, bounded verification reads and a stop right after a cancel.
 - T-18: tests for 40 of the 52 T-16 threat-model cases against the downloader (`internal/proxy/cases_*_test.go`):
   URL policy, redirects, gzip, sizes, TLS, platform injection, symlink and junction destinations, launcher folders,
