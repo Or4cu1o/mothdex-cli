@@ -51,7 +51,11 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchPage, error)
 	}
 	// The session is a convenience: when it cannot be saved (read-only cache) the page is still
 	// returned and a later Ref{Index} reports no_session.
-	_ = s.session.Save(session.Last{Query: session.Query{Text: q.Text, Platforms: q.Platforms, Regions: q.Regions, Serial: q.Serial, Sort: string(q.Sort)}, Page: page.Page, Slugs: slugs})
+	last := session.Last{Query: session.Query{Text: q.Text, Platforms: q.Platforms, Regions: q.Regions, Serial: q.Serial, Sort: string(q.Sort)}, Page: page.Page, Slugs: slugs}
+	if err := s.session.Save(last); err != nil {
+		// The older session must not survive: <n> would resolve against a different search.
+		s.session.Clear()
+	}
 	return page, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -390,5 +391,46 @@ func TestRefusedBatchCreatesNoOutputDirectory(t *testing.T) {
 	}
 	if _, serr := os.Stat(r.out); serr == nil {
 		t.Fatal("the -o directory was created for a refused batch")
+	}
+}
+
+// Alicerce m1: callers sharing a failed build each report the error and leave no entry behind;
+// a later call with a root that now exists builds one Downloader. Close during a build never
+// stores handles nobody closes (s1).
+func TestFailedSharedBuildLeavesNoEntryAndRootCanRecover(t *testing.T) {
+	r := newDLRig(t, DownloadConfig{})
+	d := r.svc.dl
+	root := filepath.Join(t.TempDir(), "later")
+	known := map[string]bool{"snes": true}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := d.downloaderFor(root, known); err == nil {
+				t.Error("a missing root must fail")
+			}
+		}()
+	}
+	wg.Wait()
+	d.mu.Lock()
+	n := len(d.roots)
+	d.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d entries left after failed builds", n)
+	}
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	a, err := d.downloaderFor(root, known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := d.downloaderFor(root, known); a != b {
+		t.Fatal("one Downloader per root")
+	}
+	r.svc.closeDownloads()
+	if _, err := d.downloaderFor(filepath.Join(t.TempDir()), known); code(err) != CodeCanceled {
+		t.Fatalf("a build after Close must not keep handles: %v", err)
 	}
 }

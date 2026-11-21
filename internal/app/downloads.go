@@ -138,8 +138,9 @@ type plan struct {
 }
 
 // Enqueue validates every request, opens every destination, and only then queues the jobs: a bad
-// request, an unusable root or a failed Downloader build leaves nothing queued and creates no
-// directory (the -o directory is created after the whole batch validated).
+// request, an unusable root or a failed Downloader build leaves nothing queued. Destination
+// directories are created only after the whole batch validated; when two requests name different
+// roots and a later root fails to open, the roots opened before it may stay on disk (empty).
 func (s *Service) Enqueue(ctx context.Context, reqs []DownloadRequest) ([]JobID, error) {
 	d := s.dl
 	if d == nil {
@@ -267,6 +268,8 @@ type rootEntry struct {
 	err     error
 }
 
+// Journal entries of a root that is not used again in this run are pruned only when that root
+// is used again (a Downloader cleans its own root only).
 // downloaderFor returns the Downloader confined to root, building it (and running its startup
 // Cleanup) the first time.
 func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Downloader, error) {
@@ -280,13 +283,21 @@ func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Do
 	e.once.Do(func() {
 		dl, closers, err := d.build(root, known)
 		d.mu.Lock()
+		if err == nil && d.ctx.Err() != nil { // Close ran during the build: nothing would release these handles
+			for _, c := range closers {
+				_ = c.Close()
+			}
+			dl, closers, err = nil, nil, newError(CodeCanceled, "the service is closing")
+		}
 		e.dl, e.closers, e.err = dl, closers, err
 		d.mu.Unlock()
 	})
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if e.err != nil {
-		delete(d.roots, root) // a failed build is retried on the next use
+		if d.roots[root] == e { // a failed build is retried on the next use; never drop a newer entry
+			delete(d.roots, root)
+		}
 		return nil, e.err
 	}
 	return e.dl, nil
@@ -697,7 +708,8 @@ func codeMessage(code string) string {
 }
 
 // Close cancels running jobs, waits for them to settle, closes the Events channels and releases
-// the root handles of the downloaders.
+// the root handles of the downloaders. An Events reader may miss
+// events still queued when the channel closes; Wait and Jobs are the authoritative result.
 func (s *Service) closeDownloads() {
 	d := s.dl
 	if d == nil {

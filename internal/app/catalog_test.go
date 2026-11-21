@@ -478,3 +478,20 @@ func TestConfigRefusesToStoreOverwriteAndSanitisesUnicodeLineSeparators(t *testi
 		}
 	}
 }
+
+// Alicerce m2: a failed save after an earlier search must not leave the old session behind,
+// or download <n> would fetch an entry of the earlier search.
+func TestFailedSessionSaveDropsTheEarlierSession(t *testing.T) {
+	c := &fakeClient{search: mothdex.SearchResponse{Results: entries("a"), CurrentPage: 1, TotalPages: 1, TotalResults: 1}}
+	s := newSvc(t, c)
+	if _, err := s.Search(context.Background(), SearchQuery{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	c.search.Results = entries(strings.Repeat("x", 4096))
+	if _, err := s.Search(context.Background(), SearchQuery{Text: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Entry(context.Background(), Ref{Index: 1}); code(err) != CodeNoSession {
+		t.Fatalf("the earlier session survived: %v", err)
+	}
+}
