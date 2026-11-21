@@ -73,7 +73,7 @@ cosign verify-blob \
 gh attestation verify mothdex_X.Y.Z_linux_amd64.tar.gz --repo Or4cu1o/mothdex-cli \
   --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml \
   --source-ref refs/tags/vX.Y.Z \
-  --source-digest <commit of the tag: git rev-list -n1 vX.Y.Z> --deny-self-hosted-runners
+  --source-digest "$(git rev-list -n1 vX.Y.Z)" --deny-self-hosted-runners
 ```
 
 ## How the pipeline works
