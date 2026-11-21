@@ -192,11 +192,15 @@ func (s resultsScreen) onSearch(msg searchDoneMsg, rt *shared) (screen, tea.Cmd)
 		s.rows[i] = row{index: r.Index, e: r.Entry}
 	}
 	s.settle(keep, len(s.rows) == 0)
-	if !msg.page.PastLastPage {
-		return s, nil
+	var cmds []tea.Cmd
+	if msg.page.PastLastPage {
+		note := rt.T("ui.cli.search.past_last", i18n.Args{"asked": s.q.Page, "shown": msg.page.Page})
+		cmds = append(cmds, toastCmd(note, toastWarn))
 	}
-	note := rt.T("ui.cli.search.past_last", i18n.Args{"asked": s.q.Page, "shown": msg.page.Page})
-	return s, toastCmd(note, toastWarn)
+	if msg.page.Dropped > 0 { // results hidden by the slug rule must not vanish silently (ui.md F2)
+		cmds = append(cmds, toastCmd(rt.T("ui.cli.search.dropped", i18n.Args{"n": msg.page.Dropped}), toastWarn))
+	}
+	return s, tea.Batch(cmds...)
 }
 
 func (s resultsScreen) onRandom(msg randomDoneMsg, rt *shared) (screen, tea.Cmd) {

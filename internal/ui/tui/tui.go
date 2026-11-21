@@ -21,11 +21,25 @@ const exitInterrupted = 130
 func Run(ctx context.Context, tenv cli.TUIEnv) int {
 	e := newEnvFrom(ctx, tenv.Session)
 	m := newModel(e, newSearch(readState(e.dataDir)))
-	if tenv.Interrupts != nil { // Ctrl+C is a key in raw mode; this only swallows a stray SIGINT
-		_, release := tenv.Interrupts()
-		defer release()
-	}
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tenv.Stdin), tea.WithOutput(tenv.Stdout), tea.WithoutSignalHandler())
+	if tenv.Interrupts != nil {
+		// Ctrl+C is a key in raw mode. A SIGINT sent from outside (kill -INT, a timeout wrapper) takes
+		// the same road, so it asks to quit like Ctrl+C does instead of being swallowed.
+		sig, release := tenv.Interrupts()
+		defer release()
+		stop := make(chan struct{})
+		defer close(stop)
+		go func() {
+			for {
+				select {
+				case <-sig:
+					p.Send(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+				case <-stop:
+					return
+				}
+			}
+		}()
+	}
 	if _, err := p.Run(); err != nil {
 		if ctx.Err() != nil || errors.Is(err, tea.ErrProgramKilled) {
 			return exitInterrupted

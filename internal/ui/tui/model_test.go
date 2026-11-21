@@ -776,3 +776,33 @@ func TestTheLocalizedYesInitialAnswersAQuestion(t *testing.T) {
 		t.Fatal("s (Sim) must confirm")
 	}
 }
+
+func TestHiddenResultsAreReportedNotSilentlyDropped(t *testing.T) {
+	svc := &fakeSvc{search: func(_ context.Context, q app.SearchQuery) (app.SearchPage, error) {
+		p := pageOf(q)
+		p.Dropped = 2
+		return p, nil
+	}}
+	h := newHarness(t, svc)
+	h.search("zelda")
+	if !strings.Contains(h.view(), "2 results were hidden because their slug has an unexpected form.") {
+		t.Fatalf("no warning for the hidden results:\n%s", h.view())
+	}
+}
+
+func TestRetryNeverQueuesTheSameFailedJobsTwice(t *testing.T) {
+	svc := &fakeSvc{}
+	h := newHarness(t, svc)
+	h.search("zelda")
+	h.keys("d") // queued as q1, with its request remembered
+	h.send(eventMsg{ev: app.Event{Job: app.JobSnapshot{ID: "q1", Slug: "zelda", Title: "Title zelda", State: app.StateFailed, Err: &app.Error{Code: "size_mismatch", Message: "bad size"}}}, ok: true})
+	h.keys("Q")
+	before := len(svc.enqueued)
+	h.keys("r", "r")
+	if got := len(svc.enqueued) - before; got != 1 {
+		t.Fatalf("pressing r twice queued %d requests, want 1", got)
+	}
+	if strings.Contains(h.view(), "[size_mismatch]") {
+		t.Fatalf("the retried job must leave the finished list:\n%s", h.view())
+	}
+}

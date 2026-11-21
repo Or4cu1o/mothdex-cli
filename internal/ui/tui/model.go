@@ -131,13 +131,18 @@ type model struct {
 	spinning bool
 	warming  bool
 	events   <-chan app.Event
+	start    tea.Cmd // what the first screen asked for when it started
 }
 
+// newModel builds the root with its first screen already started, so Init has nothing to write back.
 func newModel(e *env, first screen) model {
-	return model{
-		env: e, w: defaultW, h: defaultH, stack: []screen{first}, book: newJobBook(),
+	m := model{
+		env: e, w: defaultW, h: defaultH, book: newJobBook(),
 		done: map[string]bool{}, prefs: e.prefer, events: e.svc.Events(e.ctx),
 	}
+	started, cmd := first.init(m.rt())
+	m.stack, m.start = []screen{started}, cmd
+	return m
 }
 
 func (m model) rt() *shared {
@@ -151,9 +156,7 @@ func (m model) top() screen { return m.stack[len(m.stack)-1] }
 
 // Init starts the first screen, the event subscription and the two small loads the UI needs.
 func (m model) Init() tea.Cmd {
-	first, cmd := m.top().init(m.rt())
-	m.stack[0] = first // the stack is shared with the model Bubble Tea keeps: this is the start-up value
-	return tea.Batch(cmd, m.waitEvent(), m.loadDBInfo(), m.loadHistory(), m.loadJobs())
+	return tea.Batch(m.start, m.waitEvent(), m.loadDBInfo(), m.loadHistory(), m.loadJobs())
 }
 
 func (m model) waitEvent() tea.Cmd {
