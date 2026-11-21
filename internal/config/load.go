@@ -23,6 +23,7 @@ type Options struct {
 	ReadFile func(string) ([]byte, error) // default os.ReadFile
 	Environ  []string                     // KEY=VALUE entries, as os.Environ()
 	Flags    map[string]string            // config key -> raw value from command flags (this run only)
+	Force    bool                         // --force was passed: download.on_exists=overwrite may come from file or env
 }
 
 // Result is the outcome of Load: the typed config plus where each value came from.
@@ -54,7 +55,22 @@ func Load(o Options) (Result, error) {
 			return Result{}, err
 		}
 	}
+	if err := st.checkOverwrite(o.Force); err != nil {
+		return Result{}, err
+	}
 	return st.result(slices.Concat(warnings, envWarnings, st.warnings)), nil
+}
+
+// checkOverwrite refuses download.on_exists=overwrite that a file or the environment supplies
+// when --force is absent (case 22): a persistent setting must not silently destroy files.
+func (st *state) checkOverwrite(force bool) error {
+	const key = "download.on_exists"
+	src := st.src[key]
+	if force || st.vals[key] != "overwrite" || (src != SourceFile && src != SourceEnv) {
+		return nil
+	}
+	return &Error{Kind: KindInvalidValue, Key: key, Value: "overwrite", Source: src,
+		Reason: "overwrite from the config file or environment needs --force"}
 }
 
 // state accumulates the effective value and source per key.

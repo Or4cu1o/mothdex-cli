@@ -37,16 +37,25 @@ func TestCase14And15FolderValuesFailTheLoad(t *testing.T) {
 	}
 }
 
-// Case 22 (configuration half): the schema accepts on_exists = overwrite from the file and the
-// environment and reports where it came from, so the command layer can refuse it without
-// --force. The refusal itself is enforced by the downloader (proxy.New) and the command.
-func TestCase22OverwriteIsReportedWithItsSource(t *testing.T) {
-	file := mustLoad(t, Options{File: "c", ReadFile: memFile("version: 1\ndownload:\n  on_exists: overwrite\n")})
-	if s, _ := file.Get("download.on_exists"); s.Value != "overwrite" || s.Source != SourceFile {
-		t.Fatalf("file: %+v", s)
+// Case 22: on_exists = overwrite from the file or the environment is refused (exit 2) without
+// --force, accepted with it, and a flag value is left to the command and the downloader.
+func TestCase22OverwriteFromFileOrEnvNeedsForce(t *testing.T) {
+	file := Options{File: "c", ReadFile: memFile("version: 1\ndownload:\n  on_exists: overwrite\n")}
+	env := Options{Environ: []string{"MOTHDEX_DOWNLOAD_ON_EXISTS=overwrite"}}
+	for name, o := range map[string]Options{"file": file, "env": env} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(o)
+			var e *Error
+			if !errors.As(err, &e) || e.Key != "download.on_exists" || e.ExitCode() != 2 {
+				t.Fatalf("err %v, want a download.on_exists config error with exit 2", err)
+			}
+			o.Force = true
+			if s, _ := mustLoad(t, o).Get("download.on_exists"); s.Value != "overwrite" {
+				t.Fatalf("with --force: %+v", s)
+			}
+		})
 	}
-	env := mustLoad(t, Options{Environ: []string{"MOTHDEX_DOWNLOAD_ON_EXISTS=overwrite"}})
-	if s, _ := env.Get("download.on_exists"); s.Value != "overwrite" || s.Source != SourceEnv {
-		t.Fatalf("env: %+v", s)
+	if _, err := Load(Options{Flags: map[string]string{"download.on_exists": "overwrite"}}); err != nil {
+		t.Fatalf("a flag value is checked by the command: %v", err)
 	}
 }

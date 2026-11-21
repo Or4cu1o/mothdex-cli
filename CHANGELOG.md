@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/mothdex`: `KindUntrustedRedirect` (`untrusted_redirect`, exit 4) and `IsUntrustedRedirect`. A redirect to another
+  origin (host, scheme or effective port), a fourth hop, or a 3xx without a usable `Location` is refused, not retried,
+  does not open the rate-limit circuit and is never `KindNetwork`; the message names the target host only (T-10c).
+
 ### Changed
 
 - Contracts: `Service.Cover` returns the cached reader and content type (not a path), `internal/cover` owns the
   cover DNS port (the downloader `Resolver` port is dropped from downloader §8), and cache §4 says how T-20 wires it.
+- `internal/config`: `download.on_exists=overwrite` from the config file or `MOTHDEX_DOWNLOAD_ON_EXISTS` is rejected
+  (exit 2) unless `Options.Force` (`--force`) is set; case 22 is covered.
 - `internal/proxy`: `finalize` and `Cleanup` split into smaller steps, `FS.Open` returns a `ReadFile` with `Stat`
   (no type assertion), `Result.Path` documented as absolute; test helpers use `bytes.Reader`, the memory-backed
   directory test asserts on `/dev/shm` when it is tmpfs, and stale `dest_outside_root` wording is gone.
