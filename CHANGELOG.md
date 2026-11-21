@@ -132,7 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ui.gui.bar.will_quit_short`, `Offline` and the badge are never cut), toast width and 2-line wrap with a 6 s locale
   notice, `bg` discs and dialog buttons on `surface`, symbols drawn as shapes, no cut text except titles (wrap, then a
   middle-shortened path), Home tile and footer wrapping, stacked dialog buttons, spinner on the right, and an
-  `(A) Continue` hint on the exit notice.
+  `(A) Continue` hint on the exit notice. After the cli#71 recheck (PR-71-ux-2): a toast that would cover the focus
+  moves above the hint bar, a single long word in a tile label shrinks before it is cut, and a disc on `bg` uses `surface`.
 - `internal/proxy/testdata/sanitize-vectors.json` (T-61 F-1): the `Sanitize` vectors as a shared fixture (`input`, optional `fallback` and `allow_executable`, and an `output` or a stable `error`: `unsafe_name` or `empty_name`). `TestSanitizeVectors` reads it; mothdex-mcp copies the file and checks it for divergence (mcp `download_file`).
 - `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
   three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry

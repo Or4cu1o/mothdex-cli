@@ -134,6 +134,8 @@ grey tone.
 Elements that sit on a `surface` bar or panel use `color.bg` as their fill: the button discs of the hint bar and the
 unfocused dialog buttons (`text` on `bg`, 16.9:1). The `bg`/`surface` edge is decorative (about 1.1:1): each such
 element is identified by its label, and the focused one also has the `focus.ring` (8.7:1 against `surface`).
+A disc or pill drawn straight on `bg` (the `(A) Continue` hint of the exit screen, §5.13) uses `surface` instead, so
+it always differs from what it sits on.
 
 ## 2. Input model
 
@@ -248,7 +250,8 @@ SDL GameController buttons are read **by position** (SDL_GameControllerDB names:
   at most 4 (Start keeps the pill and drops the word). Actions that do nothing on the focused element are hidden,
   not greyed.
 - **Toast:** under the top bar, right-aligned, `surface` with a 4 px left stripe in the state color. Its width is at
-  most 60 % of the safe rectangle; longer text wraps to 2 lines (never cut). It stays 3 s; the locale notice (§1.3)
+  most 60 % of the safe rectangle; longer text wraps to 2 lines (never cut). When it would cover the focused element
+  (with its ring), it moves above the hint bar instead, still right-aligned. It stays 3 s; the locale notice (§1.3)
   stays 6 s. At most one at a time; a new one replaces the old.
 - **Loading:** a spinner (a ring, one turn per second) to the right of the text `Searching…`, `Loading…`, `Starting…`
   or `Updating the game list…`, `1u` away. It appears only after 200 ms, so cached answers never flash.
@@ -301,8 +304,9 @@ Splash ─▶ Home ─A Search─▶ Search (keyboard) ─Start─▶ Results �
 ```
 
 - Tiles in a 3 x 2 grid; `narrow`: 2 x 3. Initial focus: Search. The grid is left-aligned in the content area (the
-  right side stays empty on wide screens). A tile label wraps to 2 lines before it is cut (large text, long
-  translations such as `Configurações`).
+  right side stays empty on wide screens). A tile label wraps to 2 lines at its spaces; a single word wider than the
+  tile (`Configurações` with large text) drops to `secondary`, then `minimum`, and is cut only if even that does not
+  fit.
 - **Recent:** the last 5 query texts, in the same file and format as the TUI (`<paths.data>/tui_state`), so both UIs
   share them. A on a chip runs that search with no filters. Hidden when empty, and in `compact` when the screen has
   fewer than 7 rows of space. Recent has priority over the full tile height: tiles shrink (down to 2 `body` lines)
