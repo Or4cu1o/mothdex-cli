@@ -77,6 +77,17 @@ func (r *rig) stored(url string) bool {
 	return err == nil && e.Hit
 }
 
+func (r *rig) storedType(url string) string {
+	rc, e, err := r.store.GetBlob(cache.NSCovers, cache.KeyCover(url))
+	if rc != nil {
+		_ = rc.Close()
+	}
+	if err != nil || !e.Hit {
+		return ""
+	}
+	return e.Meta.ContentType
+}
+
 func serve(ct string, body []byte) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", ct)
@@ -143,6 +154,18 @@ func TestJPEGAndGIFDimensionCaps(t *testing.T) {
 	}
 }
 
+// webpVP8 is a lossy WebP: a VP8 chunk with the frame tag, the 9d 01 2a start code and the size.
+func webpVP8(w, h uint16, startCode [3]byte) []byte {
+	b := make([]byte, 12+8+10)
+	copy(b, "RIFF")
+	copy(b[8:], "WEBPVP8 ")
+	binary.LittleEndian.PutUint32(b[16:], 10)
+	copy(b[23:], startCode[:])
+	binary.LittleEndian.PutUint16(b[26:], w)
+	binary.LittleEndian.PutUint16(b[28:], h)
+	return b
+}
+
 func webpVP8X(cw, ch, fw, fh uint32) []byte {
 	b := make([]byte, 12+18+8+5)
 	copy(b, "RIFF")
@@ -174,6 +197,7 @@ func TestCase47CoverSSRFIsNotFetched(t *testing.T) {
 		{"IPv4-mapped loopback", "https://[::ffff:127.0.0.1]/c.png", publicHost()},
 		{"link-local metadata", "https://169.254.169.254/c.png", publicHost()},
 		{"userinfo", "https://user@example.com/c.png", publicHost()},
+		{"numeric host resolving to loopback", "https://2130706433/c.png", fakeresolver.New(map[string][]string{"2130706433": {"127.0.0.1"}})},
 		{"DNS to loopback", coverURL, fakeresolver.New(map[string][]string{"example.com": {"127.0.0.1"}})},
 		{"DNS to CGNAT", coverURL, fakeresolver.New(map[string][]string{"example.com": {"100.64.0.1"}})},
 		{"one private answer among public ones", coverURL, fakeresolver.New(map[string][]string{"example.com": {publicIP, "10.0.0.5"}})},
@@ -264,6 +288,13 @@ func TestCase48CoverContentChecks(t *testing.T) {
 		{"png 60000x60000", "image/png", pngHeader(60000, 60000), false},
 		{"png 4097 wide", "image/png", pngHeader(4097, 10), false},
 		{"png exactly 4096", "image/png", pngHeader(4096, 4096), true},
+		{"lossy webp", "image/webp", webpVP8(300, 200, [3]byte{0x9d, 0x01, 0x2a}), true},
+		{"lossy webp exactly 4096", "image/webp", webpVP8(4096, 4096, [3]byte{0x9d, 0x01, 0x2a}), true},
+		{"lossy webp 4097", "image/webp", webpVP8(4097, 100, [3]byte{0x9d, 0x01, 0x2a}), false},
+		{"lossy webp bomb 16383x16383", "image/webp", webpVP8(16383, 16383, [3]byte{0x9d, 0x01, 0x2a}), false},
+		{"lossy webp with a bad start code", "image/webp", webpVP8(64, 64, [3]byte{0, 0, 0}), false},
+		{"exactly 5 MiB", "image/png", append(pngHeader(64, 64), make([]byte, MaxBytes-len(pngHeader(64, 64)))...), true},
+		{"5 MiB plus one byte", "image/png", append(pngHeader(64, 64), make([]byte, MaxBytes-len(pngHeader(64, 64))+1)...), false},
 		{"webp VP8X ok", "image/webp", webpVP8X(300, 200, 300, 200), true},
 		{"webp VP8X small canvas hides a big frame", "image/webp", webpVP8X(100, 100, 16383, 16383), false},
 		{"webp VP8X canvas over the cap", "image/webp", webpVP8X(5000, 100, 100, 100), false},
@@ -280,6 +311,14 @@ func TestCase48CoverContentChecks(t *testing.T) {
 			}
 		})
 	}
+	t.Run("stored content type comes from the bytes", func(t *testing.T) {
+		for ct, body := range map[string][]byte{"image/png": pngHeader(8, 8), "image/webp": webpVP8(8, 8, [3]byte{0x9d, 0x01, 0x2a})} {
+			r := newRig(t, serve(ct, body), publicHost())
+			if !r.f.Fetch(context.Background(), coverURL) || r.storedType(coverURL) != ct {
+				t.Fatalf("%s stored as %q", ct, r.storedType(coverURL))
+			}
+		}
+	})
 	t.Run("non-200", func(t *testing.T) {
 		r := newRig(t, http.NotFoundHandler(), publicHost())
 		if r.f.Fetch(context.Background(), coverURL) {
@@ -296,6 +335,34 @@ func TestFetchSendsTheGenericUserAgent(t *testing.T) {
 	}), publicHost())
 	if !r.f.Fetch(context.Background(), coverURL) || got != mothdex.DefaultUserAgent("") {
 		t.Fatalf("User-Agent %q", got)
+	}
+}
+
+// The 5 MiB bound is enforced while reading: an endless body is cut by the client, so the
+// server stops far short of the 64 MiB it would write if the client read it all (Ensaio minor 2);
+// socket buffers make the exact count loose, hence the wide margin.
+func TestBodyIsReadOnlyUpToTheCap(t *testing.T) {
+	var written atomic.Int64
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		first := pngHeader(64, 64)
+		n, _ := w.Write(first)
+		written.Add(int64(n))
+		chunk := make([]byte, 32<<10)
+		for written.Load() < 64<<20 {
+			n, err := w.Write(chunk)
+			written.Add(int64(n))
+			if err != nil {
+				return
+			}
+		}
+	})
+	r := newRig(t, h, publicHost())
+	if r.f.Fetch(context.Background(), coverURL) {
+		t.Fatal("an endless body must be refused")
+	}
+	if got := written.Load(); got >= 48<<20 {
+		t.Fatalf("the server wrote %d bytes: the client kept reading past the cap", got)
 	}
 }
 
