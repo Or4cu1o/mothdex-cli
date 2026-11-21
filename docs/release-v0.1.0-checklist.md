@@ -58,6 +58,17 @@ What was and was not checked while preparing this page is at the end.
 8. **Approve** the `release` environment only after `build` and `attest` are green and you have read the `build` log
    (the `checksums.txt` that goreleaser prints, and `verify-dist: ok (version 0.1.0 ..., 9 targets)`).
 
+### Optional rehearsal on a pre-release tag (Ensaio, PR-62-test)
+
+The `v*` ruleset forbids moving or deleting tags, so a wrong assumption that fails closed on the real run would burn
+`v0.1.0`. A rehearsal on an annotated tag such as `v0.1.0-rc.1` (a tag with `-` is published as a pre-release) proves what
+the fake-`gh` tests cannot: (a) `GITHUB_SHA` on an annotated tag push equals the peeled commit, so the tag check passes;
+(b) the runner's `gh` accepts `--source-digest` and `--deny-self-hosted-runners` and verifies the real attestations;
+(c) the upload-set step passes on a real dist with SBOMs and the bundle; (d) `GITHUB_TOKEN` can read `git/ref/tags` and
+`git/tags`; (e) the release is created as a pre-release. It cannot prove the tag-moved failure (needs a throwaway repo or
+an admin bypass) or the final non-pre-release path. Creating the tag is **OWNER OK**; the rc tag and its release stay
+afterwards (immutable), so the first real release is `v0.1.0`.
+
 ## 3. Verify the published release
 
 Run in an empty directory, with `gh`, `cosign` and `sha256sum` installed. `TAG=v0.1.0`.

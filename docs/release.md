@@ -109,7 +109,7 @@ These are repository settings, not files, and need the owner's approval:
    file, so it is only as strong as this ruleset, and the publish-time check that the tag still points at the built
    commit leaves a short window before `gh release create` that only the ruleset closes. Residual: a ruleset bypass for the
    repository admin role lets an admin still move a `v*` tag; that check is what catches it inside a run, and immutable
-   releases lock the tag once the release is published. Drop the bypass and lift it only when needed, if that residual matters.
+   releases lock the tag once the release is published (a repository setting: owner-checked, Sentinela saw it enabled in the T-24 review). Drop the bypass and lift it only when needed, if that residual matters.
 3. Do not mark `Release check` as a required status check: it is path-filtered.
 
 The ordered owner steps for the first release (gates, tag, approval, verification of the published assets, rollback) are in
