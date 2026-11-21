@@ -176,7 +176,7 @@ jobs:
           $out = (& (Join-Path $a 'mothdex-gui-probe.exe') 2>&1 | Out-String); $code = $LASTEXITCODE
           $env:PATH = $savedPath; Pop-Location
           Write-Host $out
-          if ($code -ne 1) { throw "case 2: expected exit 1 (SDL2 not found), got $code: a DLL outside the application and system folders was loaded" }
+          if ($code -ne 1) { throw "case 2: expected exit 1 (SDL2 not found), got ${code}: a DLL outside the application and system folders was loaded" }
       - name: go test -tags gui, run from the folder that holds SDL2.dll
         shell: bash
         env:
