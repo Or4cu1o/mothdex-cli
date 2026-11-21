@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-18: tests for T-16 cases 14, 15 (loader side), 22 (configuration half), 44 and 45 in `internal/config` and `internal/library`; the catalog marks 14, 44 and 45 as covered.
 - `internal/library` and `profiles/*.yaml`: system profiles for Batocera, EmuELEC, Recalbox, Lakka, RetroBat, EmuDeck,
   RetroDECK and generic. Detection is a pure function over an injected file tree (priority, ambiguity and any doubt fall
   back to generic with a warning), `DestDir` with platform-id and folder confinement, folder overrides, unverified-item
