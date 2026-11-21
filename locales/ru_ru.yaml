@@ -159,6 +159,7 @@ ui:
         one: 'Загрузка: {count} файл'
         other: 'Загрузка: файлов {count}'
       link_chosen: 'Выбрана ссылка {index} ({why}, 1 из {count}).'
+      size_drift: '{title}: прокси сообщает {real}, а каталог указывал {catalog}; размер в каталоге лишь оценка.'
       confirm: 'Скачать файлов: {count} ({size}) в {dest} ?  [y/N]'
       dest_default: 'папка библиотеки'
       connecting: 'Подключение...'

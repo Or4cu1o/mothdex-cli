@@ -61,9 +61,10 @@ type JobSnapshot struct {
 	Err       *Error
 	Started   time.Time
 	Finished  time.Time
-	// CatalogSize is link.size, a rough estimate; Warnings holds the size drift note (3.2 step 7).
+	// CatalogSize is link.size, a rough estimate; SizeDrift reports that the real size (Expected) is beyond
+	// 1.5x or below 0.5x of it (downloader.md 3.2 step 7): the UI words the warning in its own language.
 	CatalogSize int64
-	Warnings    []string
+	SizeDrift   bool
 }
 
 // Terminal reports whether the job reached a final state.
@@ -500,9 +501,7 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 			}
 		}
 		j.CatalogSize = d.meta[id].expected
-		if res.SizeDrift {
-			j.Warnings = append(j.Warnings, fmt.Sprintf("the proxy reports %d bytes but the catalog said %d; the catalog size is only an estimate", res.ContentLength, j.CatalogSize))
-		}
+		j.SizeDrift = res.SizeDrift
 		if res.State == proxy.StateDone {
 			d.doneSinceWait++
 			d.rememberDone(id, doneJob{slug: j.Slug, path: res.Path})

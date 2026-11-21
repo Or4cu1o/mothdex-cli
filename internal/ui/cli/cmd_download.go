@@ -271,8 +271,9 @@ func (r *runtime) transfer(ctx context.Context, s *Session, reqs []app.DownloadR
 	out := outcome{data: map[string]any{"jobs": jobsJSON(res.Jobs, recs)}, human: func(p *printer) { r.downloadHuman(p, res, time.Since(started)) },
 		warn: func(p *printer) { // the size drift notes (3.2 step 7), in both modes
 			for _, j := range res.Jobs {
-				for _, w := range j.Warnings {
-					p.warning(clean(firstNonEmpty(j.Title, j.Slug)) + ": " + w)
+				if j.SizeDrift {
+					p.warning(p.T("ui.cli.download.size_drift", i18n.Args{"title": clean(firstNonEmpty(j.Title, j.Slug)),
+						"real": humanSize(j.Expected), "catalog": humanSize(j.CatalogSize)}))
 				}
 			}
 		}}

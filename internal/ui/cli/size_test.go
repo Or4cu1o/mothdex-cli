@@ -40,8 +40,7 @@ func TestConfirmationRequiredAtTheRealSize(t *testing.T) {
 // The drift note reaches warnings[] of the --json envelope and the job carries catalog_size.
 func TestSizeDriftWarningInJSON(t *testing.T) {
 	j := job("a", "done", nil)
-	j.Warnings = []string{"the proxy reports 5000 bytes but the catalog said 2000; the catalog size is only an estimate"}
-	j.CatalogSize = 2000
+	j.SizeDrift, j.Expected, j.CatalogSize = true, 5000, 2000
 	f := &fake{wait: func() (app.BatchResult, error) { return app.BatchResult{Done: 1, Jobs: []app.JobSnapshot{j}}, nil }}
 	r := exec(t, f, nil, "download", "1", "--json")
 	var env struct {
@@ -52,7 +51,7 @@ func TestSizeDriftWarningInJSON(t *testing.T) {
 		} `json:"data"`
 		Warnings []string `json:"warnings"`
 	}
-	if err := json.Unmarshal(r.out.Bytes(), &env); err != nil || len(env.Warnings) != 1 || !strings.Contains(env.Warnings[0], "5000 bytes") || env.Data.Jobs[0].CatalogSize != 2000 {
+	if err := json.Unmarshal(r.out.Bytes(), &env); err != nil || len(env.Warnings) != 1 || !strings.Contains(env.Warnings[0], "5 KB") || !strings.Contains(env.Warnings[0], "2 KB") || env.Data.Jobs[0].CatalogSize != 2000 {
 		t.Fatalf("%v %s", err, r.out.String())
 	}
 }

@@ -90,7 +90,7 @@ func TestCase31StrictContentLength(t *testing.T) {
 			t.Fatalf("%d requests", n)
 		}
 	})
-	for name, raw := range map[string]string{"plus sign": "+5", "leading blank": " 5", "decimal": "5.0", "list": "5, 5", "hex": "0x5"} {
+	for name, raw := range map[string]string{"plus sign": "+5", "leading blank": " 5", "decimal": "5.0", "list": "5, 5", "hex": "0x5", "leading zero": "05"} {
 		t.Run("malformed "+name, func(t *testing.T) {
 			r := newRig(t, proxy.Config{})
 			d := &stubDoer{status: 200, header: http.Header{"Content-Length": {raw}}, cl: 5, body: func() io.Reader { return strings.NewReader("12345") }}

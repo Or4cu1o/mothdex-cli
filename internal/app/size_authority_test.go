@@ -18,8 +18,8 @@ func TestSizeDriftIsRecordedAndWarned(t *testing.T) {
 		t.Fatalf("%+v", res)
 	}
 	j := res.Jobs[0]
-	if j.Expected != 5000 || j.CatalogSize != 2000 || len(j.Warnings) != 1 {
-		t.Fatalf("expected %d catalog %d warnings %v", j.Expected, j.CatalogSize, j.Warnings)
+	if j.Expected != 5000 || j.CatalogSize != 2000 || !j.SizeDrift {
+		t.Fatalf("expected %d catalog %d drift %v", j.Expected, j.CatalogSize, j.SizeDrift)
 	}
 	recs, err := r.hist.List(context.Background(), history.Filter{})
 	if err != nil || len(recs) != 1 || recs[0].CatalogSize != 2000 || recs[0].ContentLength != 5000 || recs[0].Expected != 5000 {

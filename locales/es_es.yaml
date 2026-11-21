@@ -155,6 +155,7 @@ ui:
         one: 'Descargando {count} archivo'
         other: 'Descargando {count} archivos'
       link_chosen: 'Enlace {index} elegido ({why}, 1 de {count}).'
+      size_drift: '{title}: el proxy informa {real}, pero el catálogo decía {catalog}; el tamaño del catálogo es solo una estimativa.'
       confirm: '¿Descargar {count} archivos ({size}) en {dest}?  [s/N]'
       dest_default: 'la carpeta de la biblioteca'
       connecting: 'Conectando...'

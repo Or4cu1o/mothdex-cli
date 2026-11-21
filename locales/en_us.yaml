@@ -155,6 +155,7 @@ ui:
         one: 'Downloading {count} file'
         other: 'Downloading {count} files'
       link_chosen: 'Link {index} chosen ({why}, 1 of {count}).'
+      size_drift: '{title}: the proxy reports {real} but the catalog said {catalog}; the catalog size is only an estimate.'
       confirm: 'Download {count} files ({size}) to {dest} ?  [y/N]'
       dest_default: 'the library folder'
       connecting: 'Connecting...'

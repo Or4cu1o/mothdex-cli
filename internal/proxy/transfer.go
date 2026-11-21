@@ -226,6 +226,9 @@ func strictLength(h http.Header, cl int64) bool {
 			return false
 		}
 	}
+	if vals[0][0] == '0' { // no leading zero (one grammar with mothdex-mcp: ^[1-9][0-9]*$)
+		return false
+	}
 	n, err := strconv.ParseInt(vals[0], 10, 64)
 	return err == nil && n == cl
 }
