@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/log`: the slog logger (T-14). A size-rotated file `mothdex.log` under `paths.logs` (`log.max_size_mb`,
+  `log.max_files` in total, created with mode 0700/0600) and an optional stderr copy (`log.console`), from the `log.*`
+  settings. Standard library only. A log file that cannot be opened never stops the program: `log.New` returns a
+  usable logger plus an error to show once as a warning.
 - `pkg/mothdex`: `KindUntrustedRedirect` (`untrusted_redirect`, exit 4) and `IsUntrustedRedirect`. A redirect to another
   origin (host, scheme or effective port), a fourth hop, or a 3xx without a usable `Location` is refused, not retried,
   does not open the rate-limit circuit and is never `KindNetwork`; the message names the target host only (T-10c).
