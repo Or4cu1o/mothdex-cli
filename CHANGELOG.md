@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/contracts/cli/ui.md` (T-40): the E-M2 Shell and TUI contract: packages and imports, `cli.Runner` for the Shell, launchers and an interrupt hand-off in `cli.Deps`, service calls per screen, pinned liner v1.2.3 and Charm v2 versions, test plan, and the app gaps for Forja.
 - CI job `release tools build` compiles the pinned release tools (goreleaser, cosign, syft) from `tools/*` on every PR, the
   way `release.yml` installs them, so a dependabot bump there that no longer builds is caught before a tag (PR-31-sec).
 - T-21c: installer hardening from the #31 reviews. `install.sh`: no `latest` through wget (a redirect could roll it back; pass `--version`), `dir_safe` also refuses a bin_dir with a world-writable non-sticky ancestor (physical path), the FAT exception resolves symlinked parents and stays inside the profile tree. `install.ps1`: a download whose final address is not https is refused (PowerShell 5.1 follows https to http). Tests: parent, sticky, symlinked parent and wget-latest cases; Pester cases for an inherit-only generic ACE and a real http response.
