@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
+  and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does; the tag check is the
+  last step before the release is created, and `publish` refuses to upload files that `checksums.txt` does not list.
+
 ### Added
 
 - PR-71 review rounds (Crivo, Bússola): Quit when finished quits at once when the last job ended under the dialog; `SDL_GAMECONTROLLERCONFIG`
@@ -64,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SDL2 is missing, too old or has no display, or 3 for a failed check. `scripts/gui-probe.sh` builds and inspects it for one
   target (ELF interpreter and `NEEDED`, the armhf `-I` flag) and runs it on the host; `scripts/check-gui-isolation.sh` fails
   if `mothdex` ever depends on purego or a GUI package. `purego` v0.11.3 is pinned in `go.mod`; `mothdex` does not contain it. `ReadPixels` and `UpdateTexture` check that the buffer holds every byte SDL will touch (pitch*(h-1)+w*bytes) before the call and refuse a shorter one; SDL2 is opened with `RTLD_LOCAL`.
+- `docs/qa/T-43-shell-acceptance.md` (T-43): Shell acceptance at `b45d433` against shell.md and ui.md with a snapshot binary and a
+  local fixture API (banner, paging, ranges and overflow inputs, link chooser, per-line flags, Tab, history mode, Ctrl+C and Ctrl+D,
+  script mode and SIGINT), the findings S1 to S5 and the list of what was not verified.
 - T-53 (E-M3 service items, gui.md section 8): `internal/compose` is the composition root both binaries build the service with (`compose.Open(ctx, Options) (*Session, error)`; a session's stored `on_exists=overwrite` is reported at start-up; `cmd/mothdex` wraps it in `cli.Session`). `app.DecodeCover` decodes a cover with the fetch limits (5 MiB, type allowlist agreeing with the content type, 4096 pixels per side checked from the header, the first GIF frame checked too), one frame, scaled down to `maxSide` (4 megapixel budget from the header, no full copy while scaling, a decoder panic becomes an error); WebP through `golang.org/x/image` v0.48.0 (BSD-3, Go team). Config keys `gui.confirm_button` (`south|east`), `gui.text_size` (`normal|large`) and `gui.safe_area` (`auto` or 0..10) with their `ConfigSchema` metadata. A regression test covers G3 (`Wait` on idle returns at once and refreshes only after a download).
 - E-M2 polish (T-44), from the UX review: a Shell `download` of several entries prints `Link n chosen` for every entry with more
   than one link, with or without a preference (one entry still gets the chooser); the Shell no longer exits on a second Ctrl+C,
@@ -180,6 +189,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Downloader contract (T-27, downloader.md §3.2, T-16): the proxy's `Content-Length` is now the size authority for a
+  transfer, because the maintainer states `link.size` is scraped and only a rough indicator (cavv-dev/mothdex-api#1).
+  The length is required and strict (missing, chunked or `0` is `size_mismatch`), pinned across retries, and the
+  file cap, the space ledger and the 500 MB confirmation re-run on it before the first body byte (`confirmation_required`,
+  then Download anyway with `DownloadRequest.SizeConsent`). `link.size` stays a preflight estimate and a drift warning.
 - `internal/proxy/testdata/sanitize-vectors.json` (T-61 F-1): the `Sanitize` vectors as a shared fixture (`input`, optional `fallback` and `allow_executable`, and an `output` or a stable `error`: `unsafe_name` or `empty_name`). `TestSanitizeVectors` reads it; mothdex-mcp copies the file and checks it for divergence (mcp `download_file`).
 - `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
   three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry
@@ -320,6 +334,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `download` with no `-o` and no `download.dir`, when the profile's default ROM folder does not exist, now fails with `path_rejected` (exit 6) and a hint that names the folder and the two ways out (`-o <folder>` or `mothdex config set download.dir <folder>`), instead of a generic `invalid_request` with an unrelated hint (T-26, from Ensaio's T-43 S5). The folder is not created for the user.
+- Shell (T-41-fix, from the T-43 acceptance, S1): `info` and `boxart` with a list or a range (`info 2-3`, `boxart 1-2`) now run once for each entry with the same flags,
+  as shell.md section 4 always said, instead of failing with "accepts 1 arg(s)"; the exit code is the first failure and the later
+  entries still run. shell.md also records that Ctrl+D with stdout redirected ends with the last command's code (S4) and the 0-column
+  terminal limit (S3). The double Ctrl+C of S2 is already gone from main (#64: Ctrl+C never leaves the Shell).
+- T-25 backlog sweep: `Enqueue` removes the directories it created for earlier `-o` roots when a later root cannot be opened; `config.Set` itself refuses a stored `download.on_exists=overwrite` (the check moved from `app.ConfigSet`); `SaveJobBoxart` looks the job up by `JobID` in what the service recorded (bounded to 1000), so a forged snapshot cannot choose the folder or the entry; `history -e json` goes through the same C1 escaper as `--json` (`app.EscapeC1`); `SearchPage.SessionStale` and a warning when the search session can be neither saved nor cleared; a page whose results were all dropped says so instead of advising fewer words. Already done earlier and kept: journal entries carry their root (one root's Cleanup leaves the others), U+2028/2029 are stripped.
 - T-20c and T-22 follow-ups: `mothdex.ValidSlug` (`^[a-z0-9][a-z0-9-]{0,255}$`, one rule with mothdex-mcp) and the inbound policy of api-client section 2. `Search` drops results with an unsafe slug before numbering and before the session is saved (`SearchPage.Dropped`, the `dropped` field of the search JSON, and a warning on stderr and in `warnings[]`), `Entry` returns `api_incompatible` for such an answer, `Random` skips it, and `Entry` refuses an unsafe slug locally. `isTerminal` is a real TTY check (`golang.org/x/term`, BSD-3, maintained by the Go team): `/dev/null` and `NUL` are character devices, so `mothdex download a b </dev/null` prompted, read EOF and exited 130 instead of `confirmation_required` (2) (F3; the Shell uses the same check). `info` on an unknown slug says `No entry found for <slug>.` instead of repeating the code (F5). Crivo's suggestions: byte counts in error messages are sizes (`1.5 MB`), `info` without an argument points at `mothdex info --help`, and a single download cancelled with Ctrl+C prints nothing besides the exit code 130.
 - `internal/cache` on Windows: readers open cache files with `FILE_SHARE_DELETE`, and the replace uses `FileRenameInfoEx` with `FILE_RENAME_POSIX_SEMANTICS` (Windows 10 1809, NTFS; `os.Rename` falls back where unsupported), because `MoveFileEx` still refuses a target with an open handle. A `Put` renaming a new version over an item that a reader holds open no longer fails with "Access is denied". The bounded rename retry could not beat a busy reader (`TestConcurrentGetAndPutKeepTheLatestItem` failed after 59 s on windows-latest); the retry stays as a second line of defence. Regression test `TestPutReplacesAnItemThatAReaderHoldsOpen` holds a reader open across the Put, with no waits.
 - `internal/app` test `TestCoverFromCacheThenFetchSingleflightAndNegativeCache` no longer fails about 1 run in 40 under `-race`: the gate opens only after all five callers joined the single fetch (a join counter on the in-flight call replaces the sleep polling).

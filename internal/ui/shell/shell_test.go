@@ -161,7 +161,6 @@ func TestLinesAreRoutedToTheCLI(t *testing.T) {
 		{"d 2-4", []string{"download", "2", "3", "4"}},
 		{"download 1 3 5 --prefer lang=En", []string{"download", "1", "3", "5", "--prefer", "lang=En"}},
 		{"download 2-3 -o 2020-21", []string{"download", "2", "3", "-o", "2020-21"}},
-		{"boxart 1-2", []string{"boxart", "1", "2"}},
 		{"version", []string{"version"}},
 		{"config set interface.color never", []string{"config", "set", "interface.color", "never"}},
 	}
@@ -173,6 +172,68 @@ func TestLinesAreRoutedToTheCLI(t *testing.T) {
 				t.Fatalf("runs %q, want %q", r.run.runs, tc.want)
 			}
 		})
+	}
+}
+
+// info and boxart take one entry, so a list or a range runs them once for each entry, with the same flags
+// (T-43 S1: `info 2-3` used to end with "accepts 1 arg(s), received 2"). download keeps taking the whole list.
+func TestInfoAndBoxartRunOncePerEntry(t *testing.T) {
+	tests := []struct {
+		line string
+		want [][]string
+	}{
+		{"info 2-3", [][]string{{"info", "2"}, {"info", "3"}}},
+		{"info 1 3", [][]string{{"info", "1"}, {"info", "3"}}},
+		{"boxart 1-2", [][]string{{"boxart", "1"}, {"boxart", "2"}}},
+		{"boxart 4 zelda-slug", [][]string{{"boxart", "4"}, {"boxart", "zelda-slug"}}},
+		{"info 5", [][]string{{"info", "5"}}},
+		{"info 1-2 --prefer lang=En", [][]string{{"info", "--prefer", "lang=En", "1"}, {"info", "--prefer", "lang=En", "2"}}},
+		{"boxart 1-2 --json", [][]string{{"boxart", "--json", "1"}, {"boxart", "--json", "2"}}},
+		{"download 2-3", [][]string{{"download", "2", "3"}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.line, func(t *testing.T) {
+			r := newRig(t, false, lines(tc.line)...)
+			r.sh.Loop(context.Background())
+			if !reflect.DeepEqual(r.run.runs, tc.want) {
+				t.Fatalf("runs %q, want %q", r.run.runs, tc.want)
+			}
+		})
+	}
+}
+
+// Ctrl+C between two entries drops the rest of the list and the command ends with 130, not 0 (Crivo, PR-72 n1).
+func TestCtrlCBetweenEntriesDropsTheRestAndIsNotASuccess(t *testing.T) {
+	r := newRig(t, true, lines("info 1-3")...)
+	r.run.run = func(ctx context.Context, _ []string) int {
+		r.signal <- os.Interrupt // the person presses Ctrl+C while the first entry runs
+		<-ctx.Done()
+		return 0
+	}
+	r.sh.Loop(context.Background())
+	if len(r.run.runs) != 1 {
+		t.Fatalf("runs %q: the entries after Ctrl+C must not run", r.run.runs)
+	}
+	if r.sh.lastCode != exitInterrupted {
+		t.Fatalf("last code %d, want %d", r.sh.lastCode, exitInterrupted)
+	}
+}
+
+// The first failure is the exit code, and the entries after it still run.
+func TestAFailingEntryDoesNotStopTheRestOfTheList(t *testing.T) {
+	r := newRig(t, false, lines("info 1-3")...)
+	r.run.run = func(_ context.Context, args []string) int {
+		if args[len(args)-1] == "2" {
+			return 4
+		}
+		return 0
+	}
+	code := r.sh.Loop(context.Background()) // a piped session exits with the code of its last command
+	if len(r.run.runs) != 3 {
+		t.Fatalf("runs %q: all three entries must run", r.run.runs)
+	}
+	if code != 4 {
+		t.Fatalf("exit code %d, want the first failure, 4", code)
 	}
 }
 

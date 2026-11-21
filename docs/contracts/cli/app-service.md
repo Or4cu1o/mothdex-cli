@@ -40,7 +40,7 @@ type Downloads interface {
     Events(ctx context.Context) <-chan Event // state changes + throttled progress (≤ 4/s per job); never lossy
     Cancel(id JobID) error
     Wait(ctx context.Context) (BatchResult, error) // returns when the queue is empty
-    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a Done job, named <stem of its file>.<ext>
+    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a job this service finished (looked up by job.ID), named <stem of its file>.<ext>
 }
 
 // Method names carry the capability (one type implements all, so `List`/`Get` cannot repeat; T-20a).
@@ -103,6 +103,8 @@ type LinkChoice struct { Index int; Link mothdex.Link; Score int; Available bool
 type DownloadRequest struct {
     Ref Ref; Link LinkSelector
     DestDir string   // "" = config `download.dir` if set, else active profile DestDir(platform) (profiles.md §4)
+    SizeConsent int64 // T-27, downloader §3.2 step 6: 0 = default rule; ConsentAny (-1) = a per-command -f/--force (never a session start-up -f, compose.startupGrants), no header-time
+                      // re-confirmation; > 0 = the exact Content-Length accepted through "Download anyway"
 }
 ```
 
