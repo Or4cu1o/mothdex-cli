@@ -5,7 +5,45 @@ package app
 import (
 	"time"
 
+	"github.com/Or4cu1o/mothdex-cli/internal/cache"
+	"github.com/Or4cu1o/mothdex-cli/internal/config"
+	"github.com/Or4cu1o/mothdex-cli/internal/history"
+	"github.com/Or4cu1o/mothdex-cli/internal/library"
+	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
+)
+
+// Aliases keep the internal packages out of the signatures UIs program against: a UI imports app
+// (and the pkg/mothdex DTOs), never the packages below it.
+type (
+	// State is a job state.
+	State = proxy.State
+	// HistoryFilter selects history records (Failed for --failed, Limit).
+	HistoryFilter = history.Filter
+	// HistoryRecord is one history entry.
+	HistoryRecord = history.Record
+	// Setting is one effective configuration value with its source.
+	Setting = config.Setting
+	// ProfileInfo is the resolved frontend profile.
+	ProfileInfo = library.ProfileInfo
+	// CacheStats reports the cache per namespace.
+	CacheStats = cache.Stats
+)
+
+// Job states; Done, Skipped, Failed and Canceled are terminal.
+const (
+	StateQueued       = proxy.StateQueued
+	StatePreflight    = proxy.StatePreflight
+	StateConnecting   = proxy.StateConnecting
+	StateWarming      = proxy.StateWarming
+	StateTransferring = proxy.StateTransferring
+	StateRetryWait    = proxy.StateRetryWait
+	StateVerifying    = proxy.StateVerifying
+	StateFinalizing   = proxy.StateFinalizing
+	StateDone         = proxy.StateDone
+	StateSkipped      = proxy.StateSkipped
+	StateFailed       = proxy.StateFailed
+	StateCanceled     = proxy.StateCanceled
 )
 
 // Ref names one entry: exactly one of Index (1-based over the last search page) or Slug.

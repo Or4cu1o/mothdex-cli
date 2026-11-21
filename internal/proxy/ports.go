@@ -129,8 +129,9 @@ type Record struct {
 // staging copies inside destination directories it would not otherwise know (TH-15).
 type JournalEntry struct {
 	JobID   string    `json:"job_id"`
-	Staging string    `json:"staging"`  // name inside the staging FS
-	DestDir string    `json:"dest_dir"` // directory inside the destination FS
+	Staging string    `json:"staging"`        // name inside the staging FS
+	DestDir string    `json:"dest_dir"`       // directory inside the destination FS
+	Root    string    `json:"root,omitempty"` // absolute destination root of the job; a Downloader cleans only its own root
 	Started time.Time `json:"started_at"`
 }
 

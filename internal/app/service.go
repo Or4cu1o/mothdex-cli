@@ -60,6 +60,7 @@ type Service struct {
 	dl      *downloads
 	hist    *history.Store
 	cfg     ConfigSource
+	profMu  sync.RWMutex // guards profile
 	profile library.ProfileInfo
 	detect  func(context.Context) (library.ProfileInfo, error)
 

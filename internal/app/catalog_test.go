@@ -172,6 +172,12 @@ func TestRankingRules(t *testing.T) {
 			if fmt.Sprint(got) != fmt.Sprint(tt.want) {
 				t.Fatalf("%v, want %v", got, tt.want)
 			}
+			ranked := rankLinks(links, tt.pref, []string{"proxy.mothdex.net"})
+			for i := 1; i < len(ranked); i++ {
+				if ranked[i-1].Score <= ranked[i].Score {
+					t.Fatalf("Score must fall with the rank: %+v", ranked)
+				}
+			}
 		})
 	}
 	if got := rankLinks([]mothdex.Link{link("Demo", "zip", "A", goodURL, 1)}, Preference{}, []string{"proxy.mothdex.net"}); len(got) != 1 {
@@ -402,5 +408,90 @@ func TestErrorCodesAndExitCodes(t *testing.T) {
 	}
 	if ExitCodeFor("size_mismatch") != 5 || ExitCodeFor("disk_full") != 6 || ExitCodeFor("exists") != 6 || ExitCodeFor("path_rejected") != 6 || ExitCodeFor("nope") != 1 {
 		t.Fatal("download codes map to 5 and 6")
+	}
+}
+
+// Alicerce m3: an explicit --link n resolves against every link, not only the ranked Game ones.
+func TestExplicitLinkIndexWinsOverTheGameFilter(t *testing.T) {
+	c := &fakeClient{entries: map[string]mothdex.Entry{"e": {Slug: "e", Links: []mothdex.Link{
+		link("Game", "zip", "A", goodURL, 10),
+		link("Demo", "zip", "A", goodURL, 20),
+	}}}}
+	s := newSvc(t, c)
+	got, err := s.Links(context.Background(), Ref{Slug: "e"}, LinkSelector{Index: 2})
+	if err != nil || len(got) != 1 || got[0].Index != 2 || got[0].Link.Type != "Demo" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+// Alicerce m5 and s4: concurrent profile reads and detection are race free; a deadline is a cancel.
+func TestProfileIsRaceFreeAndDeadlineIsCanceled(t *testing.T) {
+	s := newSvc(t, &fakeClient{}, func(o *Options) {
+		o.Detect = func(context.Context) (ProfileInfo, error) { return ProfileInfo{ID: "x"}, nil }
+	})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = s.DetectProfile(context.Background()) }()
+		go func() { defer wg.Done(); _ = s.ActiveProfile() }()
+	}
+	wg.Wait()
+	if code(wrap(context.DeadlineExceeded)) != CodeCanceled {
+		t.Fatal("a deadline maps to canceled")
+	}
+}
+
+// failingSession is a cache whose session namespace cannot be written (read-only folder).
+type failingSession struct{ cache.Store }
+
+func (f failingSession) PutJSON(ns, key string, v any, opts ...cache.PutOption) error {
+	if ns == cache.NSSession {
+		return errors.New("read-only")
+	}
+	return f.Store.PutJSON(ns, key, v, opts...)
+}
+
+// Crivo m3: a session that cannot be saved degrades; the search still answers.
+func TestSearchSurvivesAnUnwritableSession(t *testing.T) {
+	c := &fakeClient{search: mothdex.SearchResponse{Results: entries("a"), CurrentPage: 1, TotalPages: 1, TotalResults: 1}}
+	s := newSvc(t, c, func(o *Options) { o.Cache = failingSession{o.Cache} })
+	if p, err := s.Search(context.Background(), SearchQuery{Text: "x"}); err != nil || len(p.Results) != 1 {
+		t.Fatalf("%v %v", p, err)
+	}
+	if _, err := s.Entry(context.Background(), Ref{Index: 1}); code(err) != CodeNoSession {
+		t.Fatalf("a later index reports no_session: %v", err)
+	}
+}
+
+func TestConfigRefusesToStoreOverwriteAndSanitisesUnicodeLineSeparators(t *testing.T) {
+	s := newSvc(t, &fakeClient{}, func(o *Options) { o.Config = ConfigSource{File: filepath.Join(t.TempDir(), "c.yaml")} })
+	if err := s.ConfigSet("download.on_exists", " Overwrite "); code(err) != CodeInvalidConfig {
+		t.Fatalf("overwrite must not be stored: %v", err)
+	}
+	if SanitizeText("a\u2028b\u2029c") != "abc" {
+		t.Fatal("U+2028 and U+2029 are removed")
+	}
+	r := rankLinks([]mothdex.Link{link("Game", "z\x1bip", "S\x07rc", goodURL, 1, "E\x1bn")}, Preference{Languages: []string{"en"}, Formats: []string{"zip"}, Sources: []string{"src"}}, []string{"proxy.mothdex.net"})
+	for _, reason := range r[0].Reasons {
+		if strings.ContainsAny(reason, "\x1b\x07") {
+			t.Fatalf("reasons carry API text: %q", reason)
+		}
+	}
+}
+
+// Alicerce m2: a failed save after an earlier search must not leave the old session behind,
+// or download <n> would fetch an entry of the earlier search.
+func TestFailedSessionSaveDropsTheEarlierSession(t *testing.T) {
+	c := &fakeClient{search: mothdex.SearchResponse{Results: entries("a"), CurrentPage: 1, TotalPages: 1, TotalResults: 1}}
+	s := newSvc(t, c)
+	if _, err := s.Search(context.Background(), SearchQuery{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	c.search.Results = entries(strings.Repeat("x", 4096))
+	if _, err := s.Search(context.Background(), SearchQuery{Text: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Entry(context.Background(), Ref{Index: 1}); code(err) != CodeNoSession {
+		t.Fatalf("the earlier session survived: %v", err)
 	}
 }

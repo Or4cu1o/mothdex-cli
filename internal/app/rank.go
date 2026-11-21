@@ -90,13 +90,13 @@ func indexOfFold(list []string, v string) int {
 func reasons(l mothdex.Link, pref Preference, k [3]int) []string {
 	var out []string
 	if k[0] != noMatch {
-		out = append(out, "lang="+strings.Join(l.Extras, ","))
+		out = append(out, "lang="+SanitizeText(strings.Join(l.Extras, ",")))
 	}
 	if k[1] != noMatch {
-		out = append(out, "format="+l.Format)
+		out = append(out, "format="+SanitizeText(l.Format))
 	}
 	if k[2] != noMatch {
-		out = append(out, "source="+l.SourceName)
+		out = append(out, "source="+SanitizeText(l.SourceName))
 	}
 	if pref.Size != SizeNone {
 		out = append(out, "size="+string(pref.Size))
