@@ -134,6 +134,7 @@ ui:
       hint_last: 'download <#>  |  info <#>'
       none: 'Nenhum resultado para "{text}". Use menos palavras ou tire -p/-r.'
       past_last: 'A página {asked} não existe; mostrando a página {shown}.'
+      dropped: '{n} resultados foram ocultados porque o slug tem um formato inesperado.'
     info:
       slug: 'Slug'
       platform: 'Plataforma'

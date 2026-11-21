@@ -83,9 +83,13 @@ func (r *runtime) runSearch(ctx context.Context, s *Session, text string, f sear
 		"total_pages":    page.TotalPages,
 		"total_results":  page.TotalResults,
 		"past_last_page": page.PastLastPage,
+		"dropped":        page.Dropped,
 		"results":        results,
 	}
 	out := outcome{data: data, meta: &page.Meta}
+	if page.Dropped > 0 {
+		out.warn = func(p *printer) { p.warning(p.T("ui.cli.search.dropped", i18n.Args{"n": page.Dropped})) }
+	}
 	out.human = func(p *printer) {
 		r.searchHuman(p, page, text, pageSize, f.page)
 		if newSearch {

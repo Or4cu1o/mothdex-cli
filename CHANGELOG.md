@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   say "not available yet" for now. New strings are `ui.tui.*` (`en_us`, `pt_br`, `es_es`, `ru_ru`). `cli` gains `Deps.TUI`,
   `TUIEnv` and `Service.Jobs`; `internal/ui/uistate` holds the atomic 0600 file writer shared with the Shell history. The
   Charm v2 build is checked for linux 386, armv6 and armv7 by the `goreleaser snapshot` job, which builds those targets.
+- `docs/qa/T-22-m1-acceptance.md` (T-22): M1 acceptance run at `ebe6a54` with evidence per item (installer against the
+  snapshot archive, mcp slug charset sample, command section C through the real binary and the package tests), the open
+  items, the live download check, and findings F3 (`/dev/null` stdin is treated as a terminal), F4 and F5.
 - `internal/ui/shell` (T-41): the interactive Shell. `mothdex shell`, or `mothdex` with no arguments on a terminal, opens a
   REPL over the same command tree as the CLI (`cli.Runner`: a fresh cobra tree per line, one open session), with a
   banner (entries, or `offline`, and the profile), the `mothdex[<platform|all>:<n>]> ` prompt, `n`, `p`, `page`, `sort`
@@ -94,6 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- App service contract (T-20b): `SaveJobBoxart` (cover named after the downloaded file) and `SaveBoxart` (`boxart`
+  command) replace `DownloadRequest.Boxart`; exports go through `app`; UIs may also import `internal/i18n` and
+  `internal/buildinfo`.
 - Contracts: one slug rule for both repos (`^[a-z0-9][a-z0-9-]{0,255}$`, `mothdex.ValidSlug`). `Entry` refuses other
   slugs locally, search drops entries with an unsafe slug before numbering (`dropped` in `search` JSON, a warning), and a
   single-entry answer with one is `api_incompatible`.
@@ -226,6 +232,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- T-20c and T-22 follow-ups: `mothdex.ValidSlug` (`^[a-z0-9][a-z0-9-]{0,255}$`, one rule with mothdex-mcp) and the inbound policy of api-client section 2. `Search` drops results with an unsafe slug before numbering and before the session is saved (`SearchPage.Dropped`, the `dropped` field of the search JSON, and a warning on stderr and in `warnings[]`), `Entry` returns `api_incompatible` for such an answer, `Random` skips it, and `Entry` refuses an unsafe slug locally. `isTerminal` is a real TTY check (`golang.org/x/term`, BSD-3, maintained by the Go team): `/dev/null` and `NUL` are character devices, so `mothdex download a b </dev/null` prompted, read EOF and exited 130 instead of `confirmation_required` (2) (F3; the Shell uses the same check). `info` on an unknown slug says `No entry found for <slug>.` instead of repeating the code (F5). Crivo's suggestions: byte counts in error messages are sizes (`1.5 MB`), `info` without an argument points at `mothdex info --help`, and a single download cancelled with Ctrl+C prints nothing besides the exit code 130.
 - `internal/cache` on Windows: readers open cache files with `FILE_SHARE_DELETE`, and the replace uses `FileRenameInfoEx` with `FILE_RENAME_POSIX_SEMANTICS` (Windows 10 1809, NTFS; `os.Rename` falls back where unsupported), because `MoveFileEx` still refuses a target with an open handle. A `Put` renaming a new version over an item that a reader holds open no longer fails with "Access is denied". The bounded rename retry could not beat a busy reader (`TestConcurrentGetAndPutKeepTheLatestItem` failed after 59 s on windows-latest); the retry stays as a second line of defence. Regression test `TestPutReplacesAnItemThatAReaderHoldsOpen` holds a reader open across the Put, with no waits.
 - `internal/app` test `TestCoverFromCacheThenFetchSingleflightAndNegativeCache` no longer fails about 1 run in 40 under `-race`: the gate opens only after all five callers joined the single fetch (a join counter on the in-flight call replaces the sleep polling).
 - Config `profile.folders` values reject launcher-folder look-alikes (`portſ`, `wındows`) and the full set of Windows

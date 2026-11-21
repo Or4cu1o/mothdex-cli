@@ -134,6 +134,7 @@ ui:
       hint_last: 'download <#>  |  info <#>'
       none: 'No results for "{text}". Try fewer words, or remove -p/-r.'
       past_last: 'Page {asked} does not exist; showing page {shown}.'
+      dropped: '{n} results were hidden because their slug has an unexpected form.'
     info:
       slug: 'Slug'
       platform: 'Platform'

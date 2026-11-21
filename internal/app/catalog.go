@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 
@@ -42,7 +43,8 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchPage, error)
 		page.Page, page.TotalPages, page.TotalResults = 1, 0, 0
 	}
 	page.PastLastPage = len(resp.Results) > 0 && resp.CurrentPage > 0 && q.Page > resp.CurrentPage
-	entries := slices.Clone(resp.Results)
+	entries := slices.DeleteFunc(slices.Clone(resp.Results), func(e mothdex.Entry) bool { return !mothdex.ValidSlug(e.Slug) })
+	page.Dropped = len(resp.Results) - len(entries)
 	sortEntries(entries, q.Sort)
 	slugs := make([]string, len(entries))
 	for i, e := range entries {
@@ -84,9 +86,22 @@ func (s *Service) Entry(ctx context.Context, ref Ref) (Result[mothdex.Entry], er
 	if err != nil {
 		return Result[mothdex.Entry]{}, err
 	}
-	return readThrough(s, cache.NSEntry, cache.KeyEntry(s.o.BaseURL, slug), false, true, func() (mothdex.Entry, error) {
-		return s.o.Client.Entry(ctx, slug)
+	res, err := readThrough(s, cache.NSEntry, cache.KeyEntry(s.o.BaseURL, slug), false, true, func() (mothdex.Entry, error) {
+		e, err := s.o.Client.Entry(ctx, slug)
+		if err == nil && !mothdex.ValidSlug(e.Slug) {
+			return mothdex.Entry{}, errUnsafeSlug()
+		}
+		return e, err
 	})
+	if err == nil && !mothdex.ValidSlug(res.Value.Slug) { // an entry cached by an older build
+		return Result[mothdex.Entry]{}, errUnsafeSlug()
+	}
+	var ae *Error
+	if errors.As(err, &ae) && ae.Code == CodeNotFound && ae.Args == nil {
+		ae.Args = map[string]any{"ref": slug} // fills "No entry found for {ref}."
+		ae.Message = "no entry found for " + slug
+	}
+	return res, err
 }
 
 // Random returns Count (1..20) distinct random entries: at most 2*Count calls, deduplicated by
@@ -97,8 +112,13 @@ func (s *Service) Random(ctx context.Context, q RandomQuery) (Result[[]mothdex.E
 	}
 	var out []mothdex.Entry
 	seen := map[string]bool{}
+	var unsafe bool
 	for attempt := 0; attempt < 2*q.Count && len(out) < q.Count; attempt++ {
 		e, err := s.o.Client.Random(ctx, q.Filters)
+		if err == nil && !mothdex.ValidSlug(e.Slug) {
+			unsafe = true // counts as a failed attempt
+			continue
+		}
 		if err != nil {
 			if len(out) > 0 {
 				break // a partial answer is better than none
@@ -110,7 +130,15 @@ func (s *Service) Random(ctx context.Context, q RandomQuery) (Result[[]mothdex.E
 			out = append(out, e)
 		}
 	}
+	if len(out) == 0 && unsafe {
+		return Result[[]mothdex.Entry]{}, errUnsafeSlug()
+	}
 	return Result[[]mothdex.Entry]{Value: out, Meta: ResultMeta{FetchedAt: s.o.Clock.Now()}}, nil
+}
+
+// errUnsafeSlug is the single-entry policy for an answer whose slug fails the rule (api-client section 2).
+func errUnsafeSlug() error {
+	return newError(CodeAPIIncompatible, "the service answered an entry whose slug has an unexpected form")
 }
 
 // Platforms lists platforms sorted by id, optionally filtered by brand or class.

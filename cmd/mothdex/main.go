@@ -12,6 +12,7 @@ import (
 
 	// Fallback CA roots for systems without a CA bundle (CR-12); verification is never disabled.
 	_ "golang.org/x/crypto/x509roots/fallback"
+	"golang.org/x/term"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
@@ -64,13 +65,11 @@ func embeddedTranslator(lang string) *i18n.Translator {
 	return b.New(b.Resolve(lang, os.Getenv, i18n.SystemLanguages))
 }
 
+// isTerminal is a real terminal check (isatty / GetConsoleMode). Checking ModeCharDevice alone is
+// wrong: /dev/null and NUL are character devices too, so a piped-from-null stdin looked interactive.
 func isTerminal(v any) bool {
 	f, ok := v.(*os.File)
-	if !ok {
-		return false
-	}
-	st, err := f.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
+	return ok && term.IsTerminal(int(f.Fd())) //nolint:gosec // a file descriptor fits an int
 }
 
 // terminalWidth reads COLUMNS; without it the width is unknown and the caller uses 80.

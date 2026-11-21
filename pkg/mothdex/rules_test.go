@@ -1,6 +1,8 @@
 package mothdex
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -221,5 +223,33 @@ func TestInfoErrorMessageIsCleaned(t *testing.T) {
 	_, e := parseResponse("op", 200, http.Header{}, body, time.Time{})
 	if e == nil || e.Kind != KindAPI || e.Message != "Entry not found[2J" {
 		t.Fatalf("got %#v", e)
+	}
+}
+
+func TestValidSlug(t *testing.T) {
+	long := strings.Repeat("a", 256)
+	for s, want := range map[string]bool{
+		"super-mario-world": true, "1942": true, "a": true, long: true, long + "a": false,
+		"": false, "-a": false, "A": false, "a_b": false, "a b": false, "../x": false, "a/b": false,
+		"é": false, "a\u202eb": false, "a\n": false, "a,b": false,
+	} {
+		if got := ValidSlug(s); got != want {
+			t.Errorf("ValidSlug(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
+
+// api-client section 2: Entry refuses an unsafe slug before any request.
+func TestEntryRefusesAnUnsafeSlugBeforeAnyRequest(t *testing.T) {
+	h := newHarness(t, serveFixture(t, "entry-not-found", nil))
+	for _, slug := range []string{"../x", "Caps", "a b", "-a"} {
+		_, err := h.client.Entry(context.Background(), slug)
+		var e *Error
+		if !errors.As(err, &e) || e.Kind != KindInvalidRequest {
+			t.Errorf("Entry(%q) = %v, want KindInvalidRequest", slug, err)
+		}
+	}
+	if h.hits.Load() != 0 {
+		t.Fatalf("an unsafe slug reached the server: %d requests", h.hits.Load())
 	}
 }

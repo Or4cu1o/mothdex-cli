@@ -14,6 +14,7 @@ type outcome struct {
 	data  any
 	meta  *app.ResultMeta
 	human func(p *printer)
+	warn  func(p *printer) // reports warnings in both modes (stderr, and warnings[] with --json)
 }
 
 // exec opens the service, runs fn, and prints the result in the mode the flags select.
@@ -28,6 +29,9 @@ func (r *runtime) exec(fn func(ctx context.Context, s *Session) (outcome, error)
 		return ferr
 	}
 	p.meta = out.meta
+	if out.warn != nil {
+		out.warn(p)
+	}
 	if p.g.JSON {
 		r.jsonDone = true
 		if werr := p.writeJSON(r.cmd, out.data, ferr); werr != nil {
