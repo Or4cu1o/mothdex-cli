@@ -375,3 +375,70 @@ func TestShellOnATerminalStdinWithRedirectedStdoutNeverPrompts(t *testing.T) {
 		t.Fatalf("download exit %d, stderr %q: want confirmation_required (2)", ran, errOut.String())
 	}
 }
+
+func TestTUICommandNeedsATerminalAndRefusesJSON(t *testing.T) {
+	bundle, err := i18n.Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := bundle.New("en_us")
+	tests := []struct {
+		name     string
+		args     []string
+		terminal bool
+		wantExit int
+		wantErr  string
+		launched bool
+	}{
+		{"a terminal starts it", []string{"tui"}, true, 0, "", true},
+		{"its exit code is the program's", []string{"tui", "--no-color"}, true, 0, "", true},
+		{"no terminal is a usage error", []string{"tui"}, false, 2, "The TUI needs an interactive terminal.", false},
+		{"--json is a usage error", []string{"tui", "--json"}, true, 2, "--json cannot be used with the TUI", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			launched := false
+			d := cli.Deps{
+				Open: func(_ context.Context, g cli.Globals) (*cli.Session, error) {
+					if !g.Shell || !g.Downloads {
+						t.Errorf("the TUI opens the service as an interactive UI with downloads: %+v", g)
+					}
+					return &cli.Session{Svc: &fake{}, T: tr, PageSize: 10, Color: "never"}, nil
+				},
+				Translator: func(string) *i18n.Translator { return tr },
+				Version:    func() buildinfo.Info { return buildinfo.Info{Version: "1"} },
+				Stdin:      strings.NewReader(""), Stdout: &out, Stderr: &errOut,
+				IsTerminal: func(any) bool { return tc.terminal }, Width: func() int { return 80 }, Getenv: func(string) string { return "" },
+				TUI: func(context.Context, cli.TUIEnv) int { launched = true; return 0 },
+			}
+			if code := cli.Execute(context.Background(), d, tc.args); code != tc.wantExit {
+				t.Fatalf("exit %d, want %d: %s", code, tc.wantExit, errOut.String())
+			}
+			if launched != tc.launched || !strings.Contains(errOut.String(), tc.wantErr) {
+				t.Fatalf("launched %v, stderr %q (want %q)", launched, errOut.String(), tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestTUICommandReturnsTheLauncherExitCode(t *testing.T) {
+	bundle, err := i18n.Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := bundle.New("en_us")
+	var errOut bytes.Buffer
+	d := cli.Deps{
+		Open: func(context.Context, cli.Globals) (*cli.Session, error) {
+			return &cli.Session{Svc: &fake{}, T: tr, PageSize: 10, Color: "never"}, nil
+		},
+		Translator: func(string) *i18n.Translator { return tr },
+		Stdin:      strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &errOut,
+		IsTerminal: func(any) bool { return true }, Getenv: func(string) string { return "" },
+		TUI: func(context.Context, cli.TUIEnv) int { return 130 },
+	}
+	if code := cli.Execute(context.Background(), d, []string{"tui"}); code != 130 || errOut.Len() != 0 {
+		t.Fatalf("exit %d, stderr %q: the launcher's code is final and silent", code, errOut.String())
+	}
+}
