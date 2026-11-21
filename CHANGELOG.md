@@ -90,6 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
+  three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry
+  that has more than one link; Ctrl+C never exits the Shell (only `exit`, `quit` and Ctrl+D leave); the TUI Entry
+  screen shows the platform id and name.
 - App service contract (T-20b): `SaveJobBoxart` (cover named after the downloaded file) and `SaveBoxart` (`boxart`
   command) replace `DownloadRequest.Boxart`; exports go through `app`; UIs may also import `internal/i18n` and
   `internal/buildinfo`.
