@@ -170,8 +170,12 @@ func (s *Service) Enqueue(ctx context.Context, reqs []DownloadRequest) ([]JobID,
 		plans = append(plans, p)
 	}
 	dls := make([]*proxy.Downloader, len(plans))
-	var undo []func() // removes the directories this call created, when a later root fails to open
+	var undo []func()  // removes the directories this call created, when a later root fails to open
+	var built []string // roots whose Downloader this call built: nothing was queued on them yet
 	fail := func(err error) ([]JobID, error) {
+		for _, root := range built {
+			d.release(root) // Windows cannot remove a directory that a handle still has open
+		}
 		for i := len(undo) - 1; i >= 0; i-- {
 			undo[i]()
 		}
@@ -184,6 +188,9 @@ func (s *Service) Enqueue(ctx context.Context, reqs []DownloadRequest) ([]JobID,
 				return fail(&Error{Code: string(proxy.CodePathRejected), Message: "the output directory cannot be created", Cause: merr})
 			}
 			undo = append(undo, rm)
+		}
+		if !d.hasRoot(p.root) {
+			built = append(built, p.root)
 		}
 		dl, err := d.downloaderFor(p.root, known)
 		if err != nil {
@@ -313,6 +320,29 @@ func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Do
 		return nil, e.err
 	}
 	return e.dl, nil
+}
+
+func (d *downloads) hasRoot(root string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	_, ok := d.roots[root]
+	return ok
+}
+
+// release closes the Downloader built for root and forgets it, so a later use opens it afresh. It is
+// only for a root this call built and queued nothing on.
+func (d *downloads) release(root string) {
+	d.mu.Lock()
+	e := d.roots[root]
+	delete(d.roots, root)
+	d.mu.Unlock()
+	if e == nil {
+		return
+	}
+	e.once.Do(func() {}) // a build that never ran must not run later
+	for _, c := range e.closers {
+		_ = c.Close()
+	}
 }
 
 // confiner confines destination directories to dest and refuses the profile's launcher folders,
