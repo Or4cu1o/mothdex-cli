@@ -5,13 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"image"
-	"image/gif"  // register GIF for DecodeConfig
-	"image/jpeg" // register JPEG for DecodeConfig
-	"image/png"  // register PNG for DecodeConfig
+	_ "image/gif"  // register GIF for DecodeConfig
+	_ "image/jpeg" // register JPEG for DecodeConfig
+	_ "image/png"  // register PNG for DecodeConfig
 	"strings"
 )
-
-var _ = []any{gif.Decode, jpeg.Decode, png.Decode}
 
 // sniff returns the image type named by the leading magic bytes: jpeg, png, gif, webp or "".
 func sniff(b []byte) string {
@@ -58,25 +56,50 @@ func dimensions(kind string, b []byte) (w, h int, err error) {
 	return cfg.Width, cfg.Height, nil
 }
 
-// webpSize parses the VP8 (lossy), VP8L (lossless) and VP8X (extended) headers.
+// webpSize walks the RIFF chunks. A VP8X canvas is not trusted alone: the first VP8 or VP8L
+// frame chunk is read too (ICCP, ANIM and ALPH are skipped), a file without one is refused, and
+// the result is the larger of canvas and frame on each axis, so a small canvas cannot hide a
+// big frame.
 func webpSize(b []byte) (int, int, error) {
-	if len(b) < 30 {
-		return 0, 0, errBadImage
-	}
-	switch string(b[12:16]) {
-	case "VP8 ":
-		if b[23] != 0x9d || b[24] != 0x01 || b[25] != 0x2a {
-			return 0, 0, errBadImage
+	var cw, ch int
+	for off := 12; off+8 <= len(b); {
+		kind, size := string(b[off:off+4]), int(binary.LittleEndian.Uint32(b[off+4:]))
+		data := b[off+8:]
+		if size < 0 || size > len(data) {
+			if kind != "VP8 " && kind != "VP8L" {
+				return 0, 0, errBadImage
+			}
+			size = len(data) // a frame chunk may be cut: only its header is needed
 		}
-		return int(binary.LittleEndian.Uint16(b[26:])) & 0x3fff, int(binary.LittleEndian.Uint16(b[28:])) & 0x3fff, nil
-	case "VP8L":
-		if b[20] != 0x2f {
-			return 0, 0, errBadImage
+		switch kind {
+		case "VP8X":
+			if size < 10 {
+				return 0, 0, errBadImage
+			}
+			cw = 1 + (int(data[4]) | int(data[5])<<8 | int(data[6])<<16)
+			ch = 1 + (int(data[7]) | int(data[8])<<8 | int(data[9])<<16)
+		case "VP8 ", "VP8L":
+			w, h, err := frameSize(kind, data[:size])
+			if err != nil || (cw > 0 && (w > cw || h > ch)) {
+				return 0, 0, errBadImage
+			}
+			return max(w, cw), max(h, ch), nil
 		}
-		v := binary.LittleEndian.Uint32(b[21:])
-		return int(v&0x3fff) + 1, int(v>>14&0x3fff) + 1, nil
-	case "VP8X":
-		return 1 + (int(b[24]) | int(b[25])<<8 | int(b[26])<<16), 1 + (int(b[27]) | int(b[28])<<8 | int(b[29])<<16), nil
+		off += 8 + size + size&1
 	}
 	return 0, 0, errBadImage
+}
+
+func frameSize(kind string, d []byte) (int, int, error) {
+	if kind == "VP8 " {
+		if len(d) < 10 || d[3] != 0x9d || d[4] != 0x01 || d[5] != 0x2a {
+			return 0, 0, errBadImage
+		}
+		return int(binary.LittleEndian.Uint16(d[6:])) & 0x3fff, int(binary.LittleEndian.Uint16(d[8:])) & 0x3fff, nil
+	}
+	if len(d) < 5 || d[0] != 0x2f {
+		return 0, 0, errBadImage
+	}
+	v := binary.LittleEndian.Uint32(d[1:])
+	return int(v&0x3fff) + 1, int(v>>14&0x3fff) + 1, nil
 }

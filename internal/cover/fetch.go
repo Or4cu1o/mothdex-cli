@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
+	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 // Limits of the cover policy.
@@ -45,12 +46,15 @@ type Options struct {
 	Resolver Resolver
 	Cache    cache.Store
 	Log      *slog.Logger
-	// Dial opens the raw connection to an address that already passed the guard. Nil means a
-	// net.Dialer whose Control hook re-checks the address. Tests replace it to reach a local
-	// server; the guard before it still runs.
-	Dial func(ctx context.Context, network, address string) (net.Conn, error)
-	// TLS overrides the TLS config (tests only).
-	TLS *tls.Config
+	// UserAgent is sent on every request; empty selects mothdex.DefaultUserAgent("").
+	UserAgent string
+}
+
+// hooks are the test seams. They are unexported on purpose: production code can neither skip
+// the dialer Control hook nor weaken TLS.
+type hooks struct {
+	dial func(ctx context.Context, network, address string) (net.Conn, error)
+	tls  *tls.Config
 }
 
 // Fetcher downloads covers into the cache.
@@ -58,10 +62,13 @@ type Fetcher struct {
 	client *http.Client
 	cache  cache.Store
 	log    *slog.Logger
+	agent  string
 }
 
 // New returns a Fetcher.
-func New(o Options) (*Fetcher, error) {
+func New(o Options) (*Fetcher, error) { return newWith(o, hooks{}) }
+
+func newWith(o Options, h hooks) (*Fetcher, error) {
 	if o.Resolver == nil || o.Cache == nil {
 		return nil, errors.New("cover: Resolver and Cache are required")
 	}
@@ -69,14 +76,18 @@ func New(o Options) (*Fetcher, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	dial := o.Dial
+	agent := o.UserAgent
+	if agent == "" {
+		agent = mothdex.DefaultUserAgent("")
+	}
+	dial := h.dial
 	if dial == nil {
 		d := &net.Dialer{Timeout: dialTimeout, Control: control}
 		dial = d.DialContext
 	}
 	tr := &http.Transport{
 		DialContext:         guardedDial(o.Resolver, dial),
-		TLSClientConfig:     o.TLS,
+		TLSClientConfig:     tlsConfig(h.tls),
 		ForceAttemptHTTP2:   true,
 		TLSHandshakeTimeout: dialTimeout,
 		DisableKeepAlives:   true,
@@ -86,6 +97,7 @@ func New(o Options) (*Fetcher, error) {
 	return &Fetcher{
 		cache: o.Cache,
 		log:   log,
+		agent: agent,
 		client: &http.Client{Transport: tr, Timeout: fetchTimeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) > maxRedirects {
 				return errRedirects
@@ -172,6 +184,7 @@ func (f *Fetcher) get(ctx context.Context, rawURL string) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
+	req.Header.Set("User-Agent", f.agent)
 	resp, err := f.client.Do(req)
 	if err != nil {
 		f.log.Debug("cover fetch failed", "err", errors.Unwrap(err))
@@ -198,4 +211,25 @@ func (f *Fetcher) get(ctx context.Context, rawURL string) ([]byte, bool) {
 		return nil, false
 	}
 	return body, true
+}
+
+// tlsConfig is the production TLS policy: TLS 1.2 or newer, verification always on. The
+// argument exists only for the package tests, which trust a local certificate authority.
+func tlsConfig(test *tls.Config) *tls.Config {
+	if test != nil {
+		return test
+	}
+	return &tls.Config{MinVersion: tls.VersionTLS12}
+}
+
+// SystemResolver adapts net.Resolver (LookupIP takes a network) to Resolver.
+type SystemResolver struct{ R *net.Resolver }
+
+// LookupIP resolves host over IPv4 and IPv6 ("ip"); a nil R means net.DefaultResolver.
+func (s SystemResolver) LookupIP(ctx context.Context, host string) ([]net.IP, error) {
+	r := s.R
+	if r == nil {
+		r = net.DefaultResolver
+	}
+	return r.LookupIP(ctx, "ip", host)
 }

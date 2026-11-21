@@ -17,6 +17,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeresolver"
+	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 type clock struct{}
@@ -47,7 +48,7 @@ func newRig(t *testing.T, h http.Handler, res *fakeresolver.Resolver) *rig {
 	r := &rig{store: store, res: res}
 	tlsCfg := srv.Client().Transport.(*http.Transport).TLSClientConfig
 	tlsCfg.RootCAs = pool
-	f, err := New(Options{Resolver: res, Cache: store, TLS: tlsCfg, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+	f, err := newWith(Options{Resolver: res, Cache: store}, hooks{tls: tlsCfg, dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
 		r.dials.Add(1)
 		return (&net.Dialer{}).DialContext(ctx, network, srv.Listener.Addr().String())
 	}})
@@ -98,8 +99,25 @@ func webpVP8L(w, h uint32) []byte {
 	b := make([]byte, 30)
 	copy(b, "RIFF")
 	copy(b[8:], "WEBPVP8L")
+	binary.LittleEndian.PutUint32(b[16:], 5)
 	b[20] = 0x2f
 	binary.LittleEndian.PutUint32(b[21:], (w-1)|(h-1)<<14)
+	return b
+}
+
+// webpVP8X is a VP8X canvas followed by a VP8L frame chunk.
+func webpVP8X(cw, ch, fw, fh uint32) []byte {
+	b := make([]byte, 12+18+8+5)
+	copy(b, "RIFF")
+	copy(b[8:], "WEBPVP8X")
+	binary.LittleEndian.PutUint32(b[16:], 10)
+	for i, v := range []uint32{cw - 1, ch - 1} {
+		b[24+3*i], b[25+3*i], b[26+3*i] = byte(v&0xff), byte(v>>8&0xff), byte(v>>16&0xff)
+	}
+	copy(b[30:], "VP8L")
+	binary.LittleEndian.PutUint32(b[34:], 5)
+	b[38] = 0x2f
+	binary.LittleEndian.PutUint32(b[39:], (fw-1)|(fh-1)<<14)
 	return b
 }
 
@@ -209,6 +227,10 @@ func TestCase48CoverContentChecks(t *testing.T) {
 		{"png 60000x60000", "image/png", pngHeader(60000, 60000), false},
 		{"png 4097 wide", "image/png", pngHeader(4097, 10), false},
 		{"png exactly 4096", "image/png", pngHeader(4096, 4096), true},
+		{"webp VP8X ok", "image/webp", webpVP8X(300, 200, 300, 200), true},
+		{"webp VP8X small canvas hides a big frame", "image/webp", webpVP8X(100, 100, 16383, 16383), false},
+		{"webp VP8X canvas over the cap", "image/webp", webpVP8X(5000, 100, 100, 100), false},
+		{"webp VP8X without a frame chunk", "image/webp", webpVP8X(10, 10, 10, 10)[:30], false},
 		{"webp 60000x60000", "image/webp", webpVP8L(16384, 16384), false},
 		{"truncated png", "image/png", pngHeader(64, 64)[:12], false},
 		{"over 5 MiB", "image/png", big, false},
@@ -229,9 +251,20 @@ func TestCase48CoverContentChecks(t *testing.T) {
 	})
 }
 
+func TestFetchSendsTheGenericUserAgent(t *testing.T) {
+	var got string
+	r := newRig(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		got = req.Header.Get("User-Agent")
+		serve("image/png", pngHeader(8, 8)).ServeHTTP(w, req)
+	}), publicHost())
+	if !r.f.Fetch(context.Background(), coverURL) || got != mothdex.DefaultUserAgent("") {
+		t.Fatalf("User-Agent %q", got)
+	}
+}
+
 func TestBlockedIPTable(t *testing.T) {
 	for _, s := range []string{"127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.0.1", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1",
-		"255.255.255.255", "198.18.0.1", "::1", "::", "fe80::1", "fc00::1", "ff02::1", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:7f00:1::"} {
+		"255.255.255.255", "198.18.0.1", "::1", "::", "fe80::1", "fc00::1", "ff02::1", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:7f00:1::", "0.1.2.3", "fec0::1", "::7f00:1"} {
 		if !blockedIP(netip.MustParseAddr(s)) {
 			t.Errorf("%s must be blocked", s)
 		}

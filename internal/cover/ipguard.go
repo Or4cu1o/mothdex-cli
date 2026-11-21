@@ -10,8 +10,8 @@ import (
 // IETF protocol assignments, benchmarking, reserved/broadcast, and the IPv6 forms that embed an
 // IPv4 address (NAT64, 6to4, Teredo).
 var blockedPrefixes = mustPrefixes(
-	"100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4",
-	"64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32", "100::/64",
+	"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4",
+	"64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32", "100::/64", "fec0::/10", "::/96",
 )
 
 func mustPrefixes(ss ...string) []netip.Prefix {
