@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- API client contract: a refused redirect (another origin, a scheme change or more than 3 hops) is the
+  non-retryable kind `KindUntrustedRedirect` (error code `untrusted_redirect`, exit 4), never a network error.
+- Profiles contract: probe type `files`, the `${MATCH}` variable and the `folders_verified` flag (T-15).
 - Cache contract documents the `AllowStale` and `WithTTL` options and the best-effort rename retry on Windows.
 - API client and config contracts: `http` base URLs are accepted only for loopback IP literals, not `localhost`.
 - Contracts: `version` output shape (`version`, `commit`, commit `date`, `go`, `os`, `arch`; empty in dev builds)
@@ -31,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redirects, non-fatal). Only the 15 platform ids confirmed in the T1e research are mapped to folders; the rest stay
   unmapped until sourced. A `profile.rom_root` (or any `DestDir` result) inside a launcher folder is refused
   (`Profile.IsLauncherPath`, per component and look-alike aware).
+- `internal/testutil`: `fakeresolver` (scripted DNS), `zipfix` (zip bomb, overlapping-member, declared-size and member-count
+  fixtures) and `realfs` (real-directory helpers: links and Windows junctions, tree snapshot, case-sensitivity probe) for
+  the downloader tests (T-18). gosec is not run on `internal/testutil`.
 - `internal/cache`: on-disk cache (search, entry, meta, info, covers, session, state) with canonical request keys,
   per-namespace TTL, sidecar metadata, stale reads, a 200 MB cap with expiry-first then LRU eviction, atomic writes,
   an injected clock and private file modes (0700/0600).

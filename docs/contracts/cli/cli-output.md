@@ -81,7 +81,7 @@ The values live in `internal/buildinfo` (set with `-X` ldflags), so every packag
 | 1 | unexpected internal error | `internal` |
 | 2 | usage or configuration error | `usage`, `invalid_config`, `invalid_request`, `confirmation_required`, `unmapped_platform` |
 | 3 | not found | `not_found`, `no_session`, `index_out_of_range` |
-| 4 | network or service unavailable | `network`, `rate_limited`, `upstream`, `api_incompatible`, `untrusted_url` |
+| 4 | network or service unavailable | `network`, `rate_limited`, `upstream`, `api_incompatible`, `untrusted_url`, `untrusted_redirect` |
 | 5 | integrity | `size_mismatch`, `integrity` |
 | 6 | local filesystem | `permission_denied`, `disk_full`, `exists`, `path_rejected`, `unsafe_name` |
 | 7 | partial: batch with some jobs failed | the first failure code, plus all of them in `data.jobs[].error` |

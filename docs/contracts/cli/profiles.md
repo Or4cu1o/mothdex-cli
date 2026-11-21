@@ -31,8 +31,9 @@ detect:                      # all `all` probes must pass, plus at least one `an
     - { file: /usr/share/batocera/batocera.version, verified: true }
   any: []
 roms:
-  root: /userdata/roms       # may use ${HOME}, ${EXE_DIR}, ${CONFIG:profile.retrobat_path}
+  root: /userdata/roms       # may use ${HOME}, ${EXE_DIR}, ${CONFIG:<key>}, ${MATCH}
   root_verified: true
+  folders_verified: true     # whether the `folders` names are confirmed (omitted = false)
   layout: per_system         # per_system (folder from map) | per_platform_id (folder = Mothdex id)
   unmapped: error            # error | platform_id  (what to do for a Mothdex platform missing from `folders`)
   folders: { md: megadrive, scd: megacd, ps1: psx }   # Mothdex platform id -> folder (see §5)
@@ -50,7 +51,29 @@ refresh:                     # after a download batch
 
 Probe types, all read-only: `file` (exists), `dir` (exists), `os_release: {KEY: value}` (`/etc/os-release`, exact and
 case-sensitive match), `glob` (at least one match, ≤ 2 path levels of wildcards), `config: <key>` (the config value is
-non-empty and the path exists). A probe that errors (permission, I/O) counts as **not matched**.
+non-empty and the path exists), `files: [path, …]` (every listed file exists; used for RetroBat's `RetroBat.exe` +
+`retrobat.ini`). Exactly one type per probe. A probe that errors (permission, I/O) counts as **not matched**.
+
+**Variables** (T-15, accepted): `${HOME}`, `${EXE_DIR}`, `${CONFIG:<key>}` (only the keys the loader allows) and
+`${MATCH}`. `${MATCH}` is the path found by detection, taken from the first passing probe that yields one (`all`
+probes in order, then the matching `any` probe):
+
+| Probe | `${MATCH}` |
+|---|---|
+| `file` | directory of the file |
+| `files` | directory of the **first** listed file |
+| `dir` | the directory |
+| `glob` | the first match in sorted order (a warning names the others when several match, e.g. two SD cards) |
+| `config` | the configured path if it is a directory, otherwise its directory |
+| `os_release` | none |
+
+`${MATCH}` is valid only in paths used **after** detection (`roms.root`, `bin_dir.path`, `launcher.dir`), never inside
+a probe. The loader rejects a profile that uses `${MATCH}` when none of its probes can yield a path. At runtime an
+empty `${MATCH}` makes the root unresolvable, so detection falls back to `generic` (§1).
+
+`folders_verified` covers the whole `folders` map; when it is false (or omitted), `profile show` lists "folder
+names" among the unverified items. Current values: `true` for Batocera, EmuELEC and RetroBat; `false` for Recalbox,
+EmuDeck and RetroDECK (inferred names, T1e §4).
 
 `folders` keys must be Mothdex platform ids from `/platforms`; unknown keys are a load warning. **Values** (T-16 CR-2,
 CR-3) must be a single local component (`filepath.IsLocal`, no separator), and the loader **rejects** (error, profile

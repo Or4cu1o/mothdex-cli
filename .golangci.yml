@@ -11,11 +11,22 @@ linters:
   enable:
     - bodyclose
     - errorlint
+    - depguard
     - gosec
     - misspell
     - noctx
     - revive
   settings:
+    depguard:
+      rules:
+        testutil-only-in-tests:
+          # gosec is off for internal/testutil, so production code must never import it.
+          files:
+            - "!$test"
+            - "!**/internal/testutil/**"
+          deny:
+            - pkg: github.com/Or4cu1o/mothdex-cli/internal/testutil
+              desc: test-support packages may be imported by _test.go files only
     revive:
       rules:
         - name: package-comments
@@ -23,6 +34,14 @@ linters:
         - name: error-return
         - name: error-naming
         - name: unused-parameter
+
+  exclusions:
+    rules:
+      # Test-support packages build hostile fixtures on purpose (decompression
+      # bombs, narrowing conversions into zip headers, paths from t.TempDir).
+      - path: internal/testutil/
+        linters:
+          - gosec
 
 formatters:
   enable:
