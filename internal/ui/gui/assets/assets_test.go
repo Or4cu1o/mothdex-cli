@@ -1,0 +1,36 @@
+package assets
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+	"testing"
+)
+
+// The pins of PINS.md: the embedded files must be exactly the ones that were reviewed.
+func TestEmbeddedAssetsMatchTheirPins(t *testing.T) {
+	sum := func(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+	tests := []struct {
+		name string
+		data []byte
+		sha  string
+		size int
+	}{
+		{"NotoSans-Regular-subset.ttf", NotoSans, "ac3fc986ac93d2aeac30103eff750b87611da0f3460d1ddce4a215c1bf5cdf01", 59800},
+		{"gamecontrollerdb.txt", []byte(ControllerDB), "a9994e85b0d608cfcb4df0e1424523e488829acb1017b6a2a2adf8df6478cb26", 614810},
+	}
+	for _, tc := range tests {
+		if got := sum(tc.data); got != tc.sha || len(tc.data) != tc.size {
+			t.Errorf("%s: sha256 %s and %d bytes, pinned %s and %d bytes", tc.name, got, len(tc.data), tc.sha, tc.size)
+		}
+	}
+}
+
+func TestTheFontIsATrueTypeFileAndTheDatabaseHasMappings(t *testing.T) {
+	if len(NotoSans) < 4 || string(NotoSans[:4]) != "\x00\x01\x00\x00" {
+		t.Fatal("the font does not start with the TrueType signature")
+	}
+	if !strings.Contains(ControllerDB, "platform:Linux") || !strings.Contains(ControllerDB, "platform:Windows") {
+		t.Fatal("the database lacks Linux or Windows mappings")
+	}
+}

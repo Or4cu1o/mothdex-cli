@@ -1,0 +1,33 @@
+# Pins of the embedded GUI assets
+
+Both files are data, never executed. A change to either one is a reviewed PR that changes the pin here and
+the file together; `assets_test.go` fails if they disagree.
+
+## `NotoSans-Regular-subset.ttf`
+
+- Source: release `NotoSans-v2.015` of `notofonts/latin-greek-cyrillic`, asset `NotoSans-v2.015.zip`
+  (SHA-256 `0c34df072a3fa7efbb7cbf34950e1f971a4447cffe365d3a359e2d4089b958f5`), member
+  `NotoSans/unhinted/ttf/NotoSans-Regular.ttf` (SHA-256 `f3961a9cde016d41a4879aecda1474d3a36d6bf54fa0e4643de029cc2248b0e8`).
+- Licence: SIL OFL 1.1, `THIRD_PARTY/NotoSans-OFL-1.1.txt` (the `OFL.txt` of the same release, SHA-256
+  `cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a`). The font stays under OFL; the rest of
+  the program is GPL-3.0.
+- Subset (fonttools, Latin and Cyrillic, no layout tables, no hinting):
+
+  ```sh
+  uv run --with fonttools pyftsubset NotoSans-Regular.ttf \
+    --unicodes="U+0020-007E,U+00A0-024F,U+0400-04FF,U+2010-2027,U+2030-203A,U+2190-2193,U+20AC,U+2212,U+00B7" \
+    --layout-features="" --no-hinting --drop-tables+=DSIG,GPOS,GSUB,GDEF \
+    --output-file=NotoSans-Regular-subset.ttf
+  ```
+
+- Result: 59,800 bytes, SHA-256 `ac3fc986ac93d2aeac30103eff750b87611da0f3460d1ddce4a215c1bf5cdf01`.
+- The font has no check mark, cross or backspace symbol, and no kerning table (x/image reads `kern`, Noto
+  keeps its kerning in GPOS), so the GUI draws the symbols it needs as shapes.
+
+## `gamecontrollerdb.txt`
+
+- Source: `gabomdq/SDL_GameControllerDB`, commit `4e87e3c6c2574f49e1cdf8526b6f829b61e5ccb3` (2026-11-17), file
+  `gamecontrollerdb.txt`, unchanged. Licence: zlib, `THIRD_PARTY/SDL_GameControllerDB-zlib.txt` (SHA-256
+  `97f35b302b361680ec1e891e95d2d52097bb95abff361434916d99dc1305f127`).
+- SHA-256 `a9994e85b0d608cfcb4df0e1424523e488829acb1017b6a2a2adf8df6478cb26`, 614,810 bytes.
+- Lines whose `platform:` is not the running one are skipped before SDL sees them.
