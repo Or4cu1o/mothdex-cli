@@ -1,0 +1,258 @@
+name: GUI spike
+
+# The SDL2 spike of docs/contracts/cli/gui.md section 2 ("What the spike must prove"), kept afterwards as the GUI
+# smoke test. Read-only token, actions pinned by SHA, no dependency cache. Nothing here publishes anything.
+# It runs only when the GUI code, its scripts or this file change, so do not mark its jobs as required checks.
+#
+# Decision rule (gui.md): a failure on a Tier 1 target (linux amd64, linux arm64, windows amd64) stops the spike and
+# goes to Regente; a failure only on arm32 means v0.3.0 ships without the arm32 GUI. The armv6 leg is best effort
+# and may fail (continue-on-error): it is not a stop.
+on:
+  pull_request:
+    paths:
+      - "internal/ui/gui/**"
+      - "cmd/mothdex-gui/**"
+      - "scripts/gui-probe.sh"
+      - "scripts/check-gui-isolation.sh"
+      - "scripts/check-sdl-constants.sh"
+      - "scripts/sdl2-windows.pin"
+      - ".github/workflows/gui-spike.yml"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Debian trixie-slim, the multi-arch index pinned by digest (arm64/v8 and arm/v7 are picked with --platform).
+  DEBIAN_IMAGE: debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+
+jobs:
+  static:
+    name: isolation and SDL2 constants
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install the SDL2 headers (libsdl2-dev)
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libsdl2-dev
+      - name: shellcheck the GUI scripts
+        run: shellcheck -s sh scripts/gui-probe.sh scripts/check-gui-isolation.sh scripts/check-sdl-constants.sh
+      - name: mothdex stays free of purego and the GUI packages
+        run: scripts/check-gui-isolation.sh
+      - name: The binding constants and struct layouts equal the SDL2 headers
+        run: |
+          dpkg -s libsdl2-dev | grep '^Version'
+          scripts/check-sdl-constants.sh
+
+  linux-amd64:
+    name: probe (linux/amd64, distro SDL2, dummy driver)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install the distro SDL2 and readelf
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libsdl2-2.0-0 binutils
+          dpkg -s libsdl2-2.0-0 | grep '^Version'
+      - name: Build, readelf and run the probe
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: scripts/gui-probe.sh linux/amd64
+      - name: go test -tags gui ./internal/ui/gui/sdl
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: go test -tags gui -count=1 -v ./internal/ui/gui/sdl
+      - name: Cross-build and readelf linux/386 (optional target, not run)
+        continue-on-error: true
+        env:
+          GUI_PROBE_RUN: "0"
+        run: scripts/gui-probe.sh linux/386
+      - name: Size report
+        run: |
+          {
+            echo "### GUI probe sizes (linux)"
+            echo
+            printf '%s\n' '```'
+            find dist-gui -type f -name 'mothdex-gui-probe*' -exec ls -l {} +
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  linux-qemu:
+    name: probe (${{ matrix.name }}, qemu-user, Debian)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # armv6 is best effort and Unverified as a technique (gui.md): its failure is not a stop.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux/arm64
+            target: linux/arm64
+            platform: linux/arm64
+            dir: linux_arm64
+            goarch: arm64
+            goarm: ""
+            experimental: false
+          - name: linux/armv7
+            target: linux/arm/7
+            platform: linux/arm/v7
+            dir: linux_armv7
+            goarch: arm
+            goarm: "7"
+            experimental: false
+          - name: linux/armv6 (best effort)
+            target: linux/arm/6
+            platform: linux/arm/v7 # Debian has no armv6 image: the armv6 binary runs on the armhf userland
+            dir: linux_armv6
+            goarch: arm
+            goarm: "6"
+            experimental: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Cross-build the probe and check its ELF (interpreter and NEEDED)
+        env:
+          TARGET: ${{ matrix.target }}
+          GUI_PROBE_RUN: "0"
+        run: scripts/gui-probe.sh "$TARGET"
+      - name: Cross-build the package tests
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          ldflags=""
+          [ "$GOARCH" = arm ] && ldflags="-I /lib/ld-linux-armhf.so.3"
+          CGO_ENABLED=0 GOOS=linux go test -c -tags gui -trimpath ${ldflags:+-ldflags "$ldflags"} \
+            -o "dist-gui/$DIR/sdl.test" ./internal/ui/gui/sdl
+      - name: Set up qemu-user (binfmt image pinned by digest, no cache)
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 # qemu-v10.2.3
+          platforms: ${{ matrix.goarch }}
+          cache-image: false
+      - name: Run the probe and the package tests in the Debian image with its libsdl2
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          docker run --rm --platform "$PLATFORM" \
+            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
+            "$DEBIAN_IMAGE" sh -ec '
+              uname -m
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
+              dpkg -s libsdl2-2.0-0 | grep "^Version"
+              /gui/mothdex-gui-probe
+              /gui/sdl.test -test.v -test.count=1
+            '
+      - name: armv6 CPU model (qemu arm1176) with the same libsdl2, best effort
+        if: matrix.goarm == '6'
+        continue-on-error: true
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          # Only the probe runs under QEMU_CPU: apt and the Debian armhf libraries need an ARMv7 CPU, so a
+          # SIGILL inside libsdl2 here is a limit of the technique (Debian armhf is not built for ARMv6).
+          docker run --rm --platform "$PLATFORM" \
+            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
+            "$DEBIAN_IMAGE" sh -ec '
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
+              QEMU_CPU=arm1176 /gui/mothdex-gui-probe
+            '
+      - name: Size report
+        if: always()
+        env:
+          NAME: ${{ matrix.name }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          {
+            echo "### GUI probe size ($NAME)"
+            echo
+            printf '%s\n' '```'
+            ls -l "dist-gui/$DIR"
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  windows-amd64:
+    name: probe (windows/amd64, pinned SDL2.dll)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fetch SDL2.dll by the pinned URL and verify its SHA-256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = (Get-Content scripts/sdl2-windows.pin | Where-Object { $_ -match '^(url|sha256)=' }) -join "`n" | ConvertFrom-StringData
+          if ($pin.url -notmatch '^https://github\.com/libsdl-org/SDL/releases/download/release-[0-9.]+/SDL2-[0-9.]+-win32-x64\.zip$') { throw "unexpected SDL2 URL: $($pin.url)" }
+          if ($pin.sha256 -notmatch '^[0-9a-f]{64}$') { throw 'the pinned SHA-256 is not 64 lower-case hex digits' }
+          $zip = Join-Path $env:RUNNER_TEMP 'sdl2.zip'
+          Invoke-WebRequest -Uri $pin.url -OutFile $zip -MaximumRedirection 5
+          $got = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLowerInvariant()
+          if ($got -ne $pin.sha256) { throw "SDL2 zip hash mismatch: got $got, pinned $($pin.sha256)" }
+          $dest = 'dist-gui/windows_amd64'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            $entry = $archive.GetEntry('SDL2.dll')
+            if ($null -eq $entry) { throw 'SDL2.dll is not in the archive' }
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $dest 'SDL2.dll'), $true)
+          } finally { $archive.Dispose() }
+          'SDL2.dll sha256: ' + (Get-FileHash -Algorithm SHA256 -Path (Join-Path $dest 'SDL2.dll')).Hash.ToLowerInvariant()
+      - name: Build and run the probe next to SDL2.dll (dummy driver)
+        shell: bash
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: scripts/gui-probe.sh windows/amd64
+      - name: go test -tags gui, run from the folder that holds SDL2.dll
+        shell: bash
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          go test -c -tags gui -trimpath -o dist-gui/windows_amd64/sdl.test.exe ./internal/ui/gui/sdl
+          cd dist-gui/windows_amd64 && ./sdl.test.exe -test.v -test.count=1
+      - name: Size report
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### GUI probe size (windows/amd64)"
+            echo
+            printf '%s\n' '```'
+            ls -l dist-gui/windows_amd64
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"

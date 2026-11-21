@@ -1,0 +1,6 @@
+# The one SDL2.dll the GUI uses on Windows (docs/contracts/cli/gui.md sections 2 and 6): the official libsdl-org
+# release, by exact URL, verified by SHA-256 before anything is extracted. Never fetch it unpinned, never cache it.
+# The hash is the one GitHub shows for the release asset (API field digest) and equals the SHA-256 of a download
+# over TLS from this URL. Changing the version means changing both lines in one reviewed PR.
+url=https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10-win32-x64.zip
+sha256=6cf9706eefd0a4a06dc764007934d428afaf029fabdd408a9e646048c91e18fb
