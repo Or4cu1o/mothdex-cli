@@ -85,6 +85,7 @@ type SearchPage struct {
 	Results                        []IndexedEntry
 	Page, TotalPages, TotalResults int
 	PastLastPage                   bool // the API clamped the requested page
+	Dropped                        int  // results hidden because their slug fails mothdex.ValidSlug
 	Meta                           ResultMeta
 }
 

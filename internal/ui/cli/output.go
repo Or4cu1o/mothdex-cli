@@ -274,7 +274,22 @@ func errorArgs(e *app.Error) i18n.Args {
 	for k, v := range e.Args {
 		a[k] = v
 	}
+	for _, k := range []string{"got", "expected", "needed"} { // byte counts read as sizes
+		if n, ok := byteCount(e.Args[k]); ok {
+			a[k] = humanSize(n)
+		}
+	}
 	return a
+}
+
+func byteCount(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	}
+	return 0, false
 }
 
 // ---- tables ----

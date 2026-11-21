@@ -77,6 +77,7 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 	root.SetOut(r.d.Stdout)
 	root.SetErr(r.d.Stderr)
 	if err := root.ExecuteContext(ctx); err != nil {
+		rt.noteCommand(root, args)
 		return rt.fail(err)
 	}
 	return 0

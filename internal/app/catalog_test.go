@@ -500,8 +500,7 @@ func TestFailedSessionSaveDropsTheEarlierSession(t *testing.T) {
 	if _, err := s.Search(context.Background(), SearchQuery{Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
-	c.search.Results = entries(strings.Repeat("x", 4096))
-	if _, err := s.Search(context.Background(), SearchQuery{Text: "second"}); err != nil {
+	if _, err := s.Search(context.Background(), SearchQuery{Text: strings.Repeat("x", 2048)}); err != nil { // a query the session refuses to store
 		t.Fatal(err)
 	}
 	if _, err := s.Entry(context.Background(), Ref{Index: 1}); code(err) != CodeNoSession {
