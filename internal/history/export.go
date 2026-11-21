@@ -61,7 +61,7 @@ func exportJSON(w io.Writer, records []Record, meta Meta) error {
 		"meta":           map[string]any{"cached": false, "stale": false, "fetched_at": meta.FetchedAt.UTC().Format(time.RFC3339), "cli_version": meta.CLIVersion},
 		"warnings":       []string{},
 	}
-	enc := json.NewEncoder(w)
+	enc := json.NewEncoder(C1Escaper{W: w})
 	enc.SetIndent("", "  ")
 	return enc.Encode(env)
 }
@@ -204,4 +204,25 @@ func pad(s string, n int) string {
 		return s + strings.Repeat(" ", n-m)
 	}
 	return s
+}
+
+// C1Escaper writes JSON with the C1 control runes U+0080-U+009F as \u00XX escapes. encoding/json
+// escapes C0 but writes C1 raw, and U+009B (CSI) and U+009D (OSC) act as escape sequences on
+// xterm-class terminals. These runes can only occur inside JSON strings, so the rewrite is safe.
+type C1Escaper struct{ W io.Writer }
+
+func (c C1Escaper) Write(p []byte) (int, error) {
+	out := make([]byte, 0, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == 0xC2 && i+1 < len(p) && p[i+1] >= 0x80 && p[i+1] <= 0x9F {
+			out = append(out, fmt.Sprintf("\\u%04x", rune(p[i+1]))...)
+			i++
+			continue
+		}
+		out = append(out, p[i])
+	}
+	if _, err := c.W.Write(out); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }

@@ -175,3 +175,21 @@ func TestAtomicWriteLeavesNoTempFiles(t *testing.T) {
 		t.Fatalf("directory contents: %v, %v", entries, err)
 	}
 }
+
+// Alicerce s2: the refusal of a stored overwrite lives in Set, so every caller gets it; the file is untouched.
+func TestSetRefusesAStoredOverwrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	for _, v := range []string{"overwrite", " Overwrite "} {
+		err := Set(path, "download.on_exists", v)
+		var ce *Error
+		if !errors.As(err, &ce) || ce.Kind != KindInvalidValue || ce.Key != "download.on_exists" {
+			t.Fatalf("%q: %v", v, err)
+		}
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("a refused value must not create the file")
+	}
+	if err := Set(path, "download.on_exists", "rename"); err != nil {
+		t.Fatal(err)
+	}
+}

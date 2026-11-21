@@ -54,6 +54,9 @@ Authenticated Users write, which is inherent to that tree (the launcher is the o
 
 ## Verifying a download
 
+The provenance example needs a clone with the tag fetched (`git fetch --tags`); otherwise use the commit SHA of the tag
+instead of `git rev-list`.
+
 Every release file is listed in `checksums.txt`, which is signed with cosign
 (keyless, GitHub OIDC) and attested with GitHub artifact attestations.
 
@@ -72,15 +75,18 @@ cosign verify-blob \
 # 3. Build provenance of a file
 gh attestation verify mothdex_X.Y.Z_linux_amd64.tar.gz --repo Or4cu1o/mothdex-cli \
   --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml \
-  --source-ref refs/tags/vX.Y.Z
+  --source-ref refs/tags/vX.Y.Z \
+  --source-digest "$(git rev-list -n1 vX.Y.Z)" --deny-self-hosted-runners
 ```
 
 ## How the pipeline works
 
 - `release.yml` runs only for `v*` tags that are semantic versions and ancestors
   of `main`. Jobs: `build` (GoReleaser, SBOMs, signature, signature verification,
-  `scripts/verify-dist.sh`), `attest`, `publish` (re-verifies checksums and
-  attestations, then `gh release create --verify-tag`). Each job has its own
+  `scripts/verify-dist.sh`), `attest`, `publish` (re-verifies checksums and attestations: signer workflow, tag, `--source-digest` of that commit, no self-hosted runner;
+  checks that the uploaded files are exactly the ones `checksums.txt` lists plus itself and its bundle; as its last check
+  before creating the release, that the tag still resolves to the commit that was built, annotated tags followed; then
+  `gh release create --verify-tag`). Each job has its own
   least-privilege permissions and no dependency cache is used.
 - GoReleaser, cosign and syft are built from the modules pinned in
   `tools/*/go.mod` (checksums in `go.sum`, updates through Dependabot).
@@ -100,7 +106,10 @@ These are repository settings, not files, and need the owner's approval:
    Restrict deployments to protected branches/tags.
 2. **Tag ruleset for `v*`**: only the owner can create, and tags cannot be moved
    or deleted. The "tag is on `main`" check runs inside the tag's own workflow
-   file, so it is only as strong as this ruleset.
+   file, so it is only as strong as this ruleset, and the publish-time check that the tag still points at the built
+   commit leaves a short window before `gh release create` that only the ruleset closes. Residual: a ruleset bypass for the
+   repository admin role lets an admin still move a `v*` tag; that check is what catches it inside a run, and immutable
+   releases lock the tag once the release is published (a repository setting: owner-checked, Sentinela saw it enabled in the T-24 review). Drop the bypass and lift it only when needed, if that residual matters.
 3. Do not mark `Release check` as a required status check: it is path-filtered.
 
 The ordered owner steps for the first release (gates, tag, approval, verification of the published assets, rollback) are in
