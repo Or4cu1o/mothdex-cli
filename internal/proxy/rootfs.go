@@ -3,6 +3,7 @@ package proxy
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -47,6 +48,15 @@ func (r *RootFS) OpenExcl(name string) (File, error) {
 	return f, nil
 }
 
+// Open implements FS.
+func (r *RootFS) Open(name string) (io.ReadCloser, error) {
+	f, err := r.root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
 // Lstat implements FS.
 func (r *RootFS) Lstat(name string) (fs.FileInfo, error) { return r.root.Lstat(name) }
 
@@ -81,9 +91,6 @@ func (r *RootFS) SyncDir(name string) error {
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 	return syncDirHandle(d)
 }
-
-// openDir opens a directory handle confined to the root, for the Finalizer.
-func (r *RootFS) openDir(name string) (*os.File, error) { return r.root.Open(name) }

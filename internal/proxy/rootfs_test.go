@@ -36,7 +36,7 @@ func put(t *testing.T, r *RootFS, name, body string) {
 
 func read(t *testing.T, r *RootFS, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(r.Dir(), name))
+	b, err := os.ReadFile(filepath.Join(r.Dir(), name)) //nolint:gosec // test helper on a temp dir
 	if err != nil {
 		t.Fatal(err)
 	}

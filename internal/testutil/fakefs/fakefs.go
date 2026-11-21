@@ -24,6 +24,7 @@ import (
 const (
 	OpOpenExcl = "OpenExcl"
 	OpLstat    = "Lstat"
+	OpOpen     = "Open"
 	OpMkdirAll = "MkdirAll"
 	OpRemove   = "Remove"
 	OpReadDir  = "ReadDir"
@@ -236,6 +237,14 @@ func (f *FS) OpenExcl(name string) (proxy.File, error) {
 	return &file{fs: f, name: path.Clean(name), f: fh}, nil
 }
 
+// Open implements proxy.FS.
+func (f *FS) Open(name string) (io.ReadCloser, error) {
+	if err := f.enter(OpOpen, name, ""); err != nil {
+		return nil, err
+	}
+	return f.root.Open(name)
+}
+
 // Lstat implements proxy.FS.
 func (f *FS) Lstat(name string) (fs.FileInfo, error) {
 	if err := f.enter(OpLstat, name, ""); err != nil {
@@ -318,7 +327,7 @@ func (f *FS) SyncDir(name string) error {
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 	f.mu.Lock()
 	f.syncs[path.Clean(name)]++
 	f.mu.Unlock()

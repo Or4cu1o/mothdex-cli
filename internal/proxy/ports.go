@@ -47,6 +47,9 @@ type FS interface {
 	// used for staging files, the .<jobID>.mothdex-tmp cross-device copy and the placeholder
 	// of the no-replace fallback chain. An existing name gives fs.ErrExist.
 	OpenExcl(name string) (File, error)
+	// Open opens an existing regular file for reading: the verify step and the cross-device copy
+	// read the staging file again through a fresh handle.
+	Open(name string) (io.ReadCloser, error)
 	// Lstat never follows a final symlink.
 	Lstat(name string) (fs.FileInfo, error)
 	MkdirAll(name string, perm fs.FileMode) error
@@ -148,12 +151,18 @@ type Event struct {
 // State is a job state.
 type State string
 
-// Job states; the last four are terminal.
+// Job states; Done, Skipped, Failed and Canceled are terminal.
 const (
-	StateQueued   State = "queued"
-	StateRunning  State = "running"
-	StateDone     State = "done"
-	StateSkipped  State = "skipped"
-	StateFailed   State = "failed"
-	StateCanceled State = "canceled"
+	StateQueued       State = "queued"
+	StatePreflight    State = "preflight"
+	StateConnecting   State = "connecting"
+	StateWarming      State = "warming" // headers received, no body byte yet
+	StateTransferring State = "transferring"
+	StateRetryWait    State = "retry_wait"
+	StateVerifying    State = "verifying"
+	StateFinalizing   State = "finalizing"
+	StateDone         State = "done"
+	StateSkipped      State = "skipped"
+	StateFailed       State = "failed"
+	StateCanceled     State = "canceled"
 )

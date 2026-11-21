@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,7 +10,8 @@ import (
 )
 
 func codeOf(err error) Code {
-	if e, ok := err.(*Error); ok {
+	var e *Error
+	if errors.As(err, &e) {
 		return e.Code
 	}
 	return ""

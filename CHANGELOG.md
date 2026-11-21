@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/testutil`: `fakeresolver` (scripted DNS), `zipfix` (zip bomb, overlapping-member, declared-size and member-count
   fixtures) and `realfs` (real-directory helpers: links and Windows junctions, tree snapshot, case-sensitivity probe) for
   the downloader tests (T-18). gosec is not run on `internal/testutil`.
+- `internal/proxy`: the downloader (T-17, proxy links only, D16). `Sanitize` for server-supplied names (same rules on every
+  OS, executable deny-list, fallback name), URL policy (https, exact allowed host, no user info, port 443, no IP or IDN),
+  confinement of the destination directory per component and after the OS resolved links (`GetFinalPathNameByHandle` on
+  Windows), a real FS over `os.Root`, a no-replace finalize per OS (Linux `renameat2`, macOS `renameatx_np`, Windows
+  `MoveFileExW`) with link and placeholder fallbacks and an EXDEV copy, `on_exists` (skip, rename up to 99, overwrite
+  only with `--force`), a per-filesystem space ledger, name reservation, in-flight journal and startup cleanup, retry
+  policy with injected clock and sleeper, zip CRC and upstream hash checks with caps, fsync of file and directory before
+  `Done`, and one history record per job. Adds `golang.org/x/text` and `golang.org/x/sys`.
 - `internal/testutil/fakefs`: `proxy.FS` and `proxy.Finalizer` doubles over a confined temp root with fault injection
   (ENOSPC mid-write, EXDEV, unsupported no-replace rename and hard link), scripted free space and device ids, hooks
   between steps, a call log and a Sync spy, for the downloader disk, partial-file and race cases (T-18).

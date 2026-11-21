@@ -14,12 +14,12 @@ func renameNoReplace(r *RootFS, from, to string) error {
 	if err != nil {
 		return err
 	}
-	defer fd.Close()
+	defer func() { _ = fd.Close() }()
 	td, tb, err := parent(r, to)
 	if err != nil {
 		return err
 	}
-	defer td.Close()
+	defer func() { _ = td.Close() }()
 	err = unix.RenameatxNp(int(fd.Fd()), fb, int(td.Fd()), tb, unix.RENAME_EXCL)
 	runtime.KeepAlive(fd)
 	runtime.KeepAlive(td)
