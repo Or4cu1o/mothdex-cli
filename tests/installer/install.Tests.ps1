@@ -15,10 +15,11 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $script:pass = 0
 $script:fail = 0
 $script:urls = New-Object System.Collections.ArrayList
+$script:message = ''
 $base = 'https://github.com/Or4cu1o/mothdex-cli/releases/'
 
 function Check([string]$What, [bool]$Ok) {
-  if ($Ok) { $script:pass++ } else { $script:fail++; Write-Output "FAIL: $What" }
+  if ($Ok) { $script:pass++ } else { $script:fail++; Write-Output "FAIL: $What [last error: $($script:message)]" }
 }
 
 # Network double: only release URLs of Or4cu1o/mothdex-cli, served from $release.
@@ -83,7 +84,7 @@ $exe = Join-Path $env:LOCALAPPDATA 'Programs\mothdex\mothdex.exe'
 Check 'default install succeeds' (-not $script:threw)
 Check 'binary under LocalAppData' (Test-Path $exe)
 Check 'only GitHub release URLs used' (@($script:urls | Where-Object { -not $_.StartsWith($base) }).Count -eq 0)
-Remove-Item (Split-Path $exe) -Recurse -Force
+Remove-Item (Split-Path $exe) -Recurse -Force -ErrorAction SilentlyContinue
 
 # 2. RetroBat: launcher with the fixed template (TH-30)
 $rb = New-RetroBat 'RetroBat'
