@@ -73,6 +73,13 @@ func (f *fake) SaveBoxart(_ context.Context, r app.Ref, d string) (string, error
 	return "", nil
 }
 
+func (f *fake) SaveJobBoxart(_ context.Context, j app.JobSnapshot, d string) (string, error) {
+	if f.boxart != nil {
+		return f.boxart(app.Ref{Slug: j.Slug}, d)
+	}
+	return "", nil
+}
+
 func (f *fake) Enqueue(_ context.Context, r []app.DownloadRequest) ([]app.JobID, error) {
 	f.reqs = r
 	if f.enqueue != nil {
@@ -426,5 +433,107 @@ func TestUnfilledPlaceholdersFallBackToTheServiceText(t *testing.T) {
 	r := exec(t, f, nil, "search", "x")
 	if strings.ContainsAny(r.err.String(), "{}") || !strings.Contains(r.err.String(), "cannot be stored") || r.code != 2 {
 		t.Fatalf("exit %d %q", r.code, r.err.String())
+	}
+}
+
+// Sentinela (case 49): encoding/json writes C1 controls raw; U+009B is CSI and U+009D is OSC on
+// xterm-class terminals. --json must escape them and still round-trip the value.
+func TestJSONEscapesC1ControlsAndRoundTrips(t *testing.T) {
+	title := "A" + string(rune(0x9b)) + "31mB" + string(rune(0x9d)) + "0;pwnC"
+	r := exec(t, searchWith(page(title)), nil, "search", "x", "--json")
+	for _, c1 := range []rune{0x9b, 0x9d, 0x85} {
+		if strings.ContainsRune(r.out.String(), c1) {
+			t.Fatalf("raw C1 rune %U in the JSON output", c1)
+		}
+	}
+	if !strings.Contains(r.out.String(), `\u009b`) {
+		t.Fatalf("the C1 rune must be a \\u escape: %s", r.out.String())
+	}
+	var env struct {
+		Data struct {
+			Results []struct{ Title string } `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(r.out.Bytes(), &env); err != nil || env.Data.Results[0].Title != title {
+		t.Fatalf("the value must round-trip: %v", err)
+	}
+}
+
+// Alicerce m4 and m3: error.exit_code is the process exit code, and warnings reach the envelope.
+func TestEnvelopeCarriesThePartialExitCodeAndWarnings(t *testing.T) {
+	failure := &app.Error{Code: "network", Message: "down"}
+	f := &fake{wait: func() (app.BatchResult, error) {
+		return app.BatchResult{Done: 1, Failed: 1, RefreshWarning: "refresh skipped", Jobs: []app.JobSnapshot{job("a", "done", nil), job("b", "failed", failure)}}, nil
+	}}
+	r := exec(t, f, nil, "download", "1", "2", "--json")
+	var env struct {
+		Error struct {
+			Code     string
+			ExitCode int `json:"exit_code"`
+		} `json:"error"`
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal(r.out.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if r.code != 7 || env.Error.ExitCode != 7 || env.Error.Code != "network" || len(env.Warnings) != 1 {
+		t.Fatalf("exit %d envelope %+v", r.code, env)
+	}
+}
+
+// An interrupted batch is 130 even when some jobs failed; a partial batch prints the per-job lines
+// once and no second error block.
+func TestInterruptedBatchWinsAndPartialBatchHasNoSecondBlock(t *testing.T) {
+	failure := &app.Error{Code: "size_mismatch", Message: "wrong size"}
+	f := &fake{wait: func() (app.BatchResult, error) {
+		return app.BatchResult{Failed: 1, Cancel: 1, Jobs: []app.JobSnapshot{job("a", "failed", failure), job("b", "canceled", &app.Error{Code: "canceled"})}}, nil
+	}}
+	if r := exec(t, f, nil, "download", "1", "2"); r.code != 130 {
+		t.Fatalf("exit %d", r.code)
+	}
+	f = &fake{wait: func() (app.BatchResult, error) {
+		return app.BatchResult{Done: 1, Failed: 1, Jobs: []app.JobSnapshot{job("a", "done", nil), job("b", "failed", failure)}}, nil
+	}}
+	r := exec(t, f, nil, "download", "1", "2")
+	if r.code != 7 || strings.Count(r.err.String(), "[size_mismatch]") != 1 || strings.Contains(r.err.String(), "code: size_mismatch") {
+		t.Fatalf("exit %d, stderr:\n%s", r.code, r.err.String())
+	}
+}
+
+// Crivo m2: a flag error at the root says "mothdex --help", not "mothdex mothdex --help".
+func TestRootUsageHint(t *testing.T) {
+	r := exec(t, &fake{}, nil, "--bogus")
+	if r.code != 2 || !strings.Contains(r.err.String(), `Run "mothdex --help".`) || strings.Contains(r.err.String(), "mothdex mothdex") {
+		t.Fatalf("exit %d %q", r.code, r.err.String())
+	}
+}
+
+// Crivo m3: an export that cannot be written is a filesystem error (exit 6) with the path and no
+// temporary name or Go text; an existing file gets the --force hint, not download.on_exists.
+func TestExportWriteFailuresAreFilesystemErrors(t *testing.T) {
+	r := exec(t, &fake{}, nil, "history", "-e", filepath.Join(t.TempDir(), "missing", "x.json"))
+	if r.code != 6 || !strings.Contains(r.err.String(), "code: path_rejected") || strings.Contains(r.err.String(), ".mothdex-export") {
+		t.Fatalf("exit %d %q", r.code, r.err.String())
+	}
+	target := filepath.Join(t.TempDir(), "h.json")
+	if err := os.WriteFile(target, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r = exec(t, &fake{}, nil, "history", "-e", target)
+	if r.code != 6 || !strings.Contains(r.err.String(), "--force") || strings.Contains(r.err.String(), "on_exists") {
+		t.Fatalf("exit %d %q", r.code, r.err.String())
+	}
+}
+
+// Crivo m1: a real downloader failure prints its localized message with the values filled in, never
+// a raw {placeholder}.
+func TestFailureLineNeverShowsRawPlaceholders(t *testing.T) {
+	failure := &app.Error{Code: "permission_denied", Message: "cannot write"}
+	f := &fake{wait: func() (app.BatchResult, error) {
+		return app.BatchResult{Failed: 2, Jobs: []app.JobSnapshot{job("a", "failed", failure), job("b", "failed", failure)}}, nil
+	}}
+	r := exec(t, f, nil, "download", "1", "2")
+	if strings.ContainsAny(r.err.String(), "{}") || !strings.Contains(r.err.String(), "[permission_denied]") {
+		t.Fatalf("%q", r.err.String())
 	}
 }

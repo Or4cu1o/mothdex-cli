@@ -120,6 +120,8 @@ ui:
       one: '{count} arquivo'
       other: '{count} arquivos'
   cli:
+    warning: 'aviso'
+    usage_root_hint: 'Execute "mothdex --help".'
     name: 'Nome'
     brand: 'Marca'
     db_info: '{count} entradas no catálogo'
@@ -160,6 +162,8 @@ ui:
     boxart:
       failed: 'Não foi possível salvar a capa de {title} [{code}]'
     export:
+      exists_hint: 'Use --force para substituir, ou escolha outro nome.'
+      write_hint: 'Nada foi gravado. Confira a pasta e as permissões.'
       saved: 'Salvo {path}'
     history:
       date: 'Data'

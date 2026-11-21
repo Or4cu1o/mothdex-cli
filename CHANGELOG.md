@@ -20,7 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--json` keeps raw values. `cmd/mothdex/compose.go` is the composition root (config, log, i18n with `LoadDir`, cache,
   API client with the persisted 429 cooldown, cover fetcher, history, profile, app). `app.Service.SaveBoxart` writes
   covers through the confined destination root (O_EXCL, launcher folders refused, an existing file is kept). Progress is
-  one line per state change on stderr; a live redrawn bar is not done yet.
+  one line per state change on stderr; a live redrawn bar is not done yet. Review round: `--json` escapes C1 controls
+  (CSI/OSC), `error.exit_code` is the process code and `warnings[]` is filled, failure messages carry their named values
+  (`path`, `name`, `host`, ...) and never show a raw `{placeholder}`, export write failures are exit 6 with a `--force`
+  hint, the cover of a downloaded file is named after the file (`SaveJobBoxart`) and is staged then published, a new
+  cover fetch leader re-checks the cache, the persisted 429 cooldown seed is clamped to 10 minutes, `CSVCell` also strips
+  U+2028/2029, and the UI imports only `app` (export writers and type aliases moved behind it). Catalog case 49 is
+  now covered.
 - `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
   platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
   the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`

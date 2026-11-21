@@ -29,6 +29,7 @@ type Catalog interface {
     DBInfo(ctx context.Context) (Result[mothdex.DBInfo], error)
     Links(ctx context.Context, ref Ref, sel LinkSelector) ([]LinkChoice, error) // ranked, pure rule after fetch
     Cover(ctx context.Context, ref Ref) (img io.ReadCloser, contentType string, err error) // covers cache; nil img = no cover
+    SaveBoxart(ctx context.Context, ref Ref, destDir string) (path string, err error)       // standalone `boxart`: <title>.<ext>
 }
 
 type Downloads interface {
@@ -37,6 +38,7 @@ type Downloads interface {
     Events(ctx context.Context) <-chan Event // state changes + throttled progress (≤ 4/s per job); never lossy
     Cancel(id JobID) error
     Wait(ctx context.Context) (BatchResult, error) // returns when the queue is empty
+    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a Done job, named <stem of its file>.<ext>
 }
 
 // Method names carry the capability (one type implements all, so `List`/`Get` cannot repeat; T-20a).
@@ -97,7 +99,6 @@ type LinkChoice struct { Index int; Link mothdex.Link; Score int; Available bool
 type DownloadRequest struct {
     Ref Ref; Link LinkSelector
     DestDir string   // "" = config `download.dir` if set, else active profile DestDir(platform) (profiles.md §4)
-    Boxart *bool     // nil = config `download.boxart`
 }
 ```
 
@@ -130,9 +131,17 @@ type DownloadRequest struct {
 - **Downloaders.** The service builds one downloader per destination root (downloader §6.2 confines each to its
   root). `download.concurrency`, the space ledger and the batch name set therefore apply per root. The CLI uses one
   root per batch; long-lived UIs (E-M3) that mix roots need a shared limiter first.
-- **Boxart** (`DownloadRequest.Boxart`): after a `Done` job the service, not the UI, writes the cover next to the
-  file through the same confined destination FS: name `<stem of the sanitized name>.<ext from the stored type>`,
-  never over an existing file, never in a launcher folder. A failure is a warning and never fails the job.
+- **Boxart** (`SaveBoxart`, `SaveJobBoxart`): the service, not the UI, writes covers, so every UI shares the rule. The
+  cover comes from the covers cache (validated fetcher, cache §4); the extension comes from the stored content type
+  (png, jpg, gif, webp); the name goes through `proxy.Sanitize`. `SaveJobBoxart` names it `<stem of the final file
+  name>.<ext>` in the file's folder (a frontend pairs them by stem); `SaveBoxart` (the standalone command) names it
+  `<title>.<ext>` in the destination `Enqueue` would use. The write goes through the confined destination root: staged
+  and published without replacing (O_EXCL, link or copy), an existing file is kept and its path returned, launcher
+  folders are refused (`path_rejected`). An entry without a usable cover is `not_found`. Whether to call it after a
+  download (`download.boxart`, `--boxart`) is the UI's choice; a failure is a warning and never fails the job.
+- **Export** (`ExportTarget`, `WriteExport`, `ExportHistory`, `CSVCell`): the txt/json/csv writers of cli-output §5 live
+  in the service so Shell and TUI share one path. A write failure is `exists`, `path_rejected`, `permission_denied` or
+  `disk_full` (exit 6) with the target path, never the temporary name.
 - **Stale fallback.** On `KindNetwork` or `KindRateLimited`, catalog reads may serve an expired cache entry
   (≤ 7 days old) with `Meta.Stale = true`. Never for `Random`.
 - **429 cooldown** is persisted in namespace `state` (see api-client §4) and restored on start.

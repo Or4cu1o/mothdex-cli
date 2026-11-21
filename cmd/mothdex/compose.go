@@ -31,6 +31,9 @@ func (realClock) Now() time.Time { return time.Now() }
 // cooldownKey is the `state` item that carries the 429 cooldown across runs (api-client section 4).
 const cooldownKey = "api_cooldown"
 
+// maxCooldown is the breaker cooldown (api-client section 4); a stored value beyond it is clamped.
+const maxCooldown = 10 * time.Minute
+
 // open is the composition root: config, logger, i18n, cache, API client, cover fetcher, history,
 // profile, then the app service. It is the only place that knows every piece.
 func open(_ context.Context, g cli.Globals) (*cli.Session, error) {
@@ -98,6 +101,9 @@ func open(_ context.Context, g cli.Globals) (*cli.Session, error) {
 	}
 	var until time.Time
 	if e, gerr := store.GetJSON(cache.NSState, cooldownKey, &until); gerr == nil && e.Hit && until.After(time.Now()) {
+		if limit := time.Now().Add(maxCooldown); until.After(limit) {
+			until = limit // a corrupt state file or a clock jump must not block the API for long
+		}
 		opts = append(opts, mothdex.WithCooldown(until))
 	}
 	client, err := mothdex.New(opts...)

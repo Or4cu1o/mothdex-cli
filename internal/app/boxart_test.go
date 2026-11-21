@@ -2,9 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -72,5 +76,65 @@ func TestSaveBoxartRefusesLauncherFolders(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(romRoot, "ports", "Game.png")); err == nil {
 		t.Fatal("a cover was written into a launcher folder")
+	}
+}
+
+// Alicerce m1: after a download the cover is named after the file (the stem), in the file's folder,
+// so a frontend pairs them; two links of one entry would not share one cover name.
+func TestSaveJobBoxartIsNamedAfterTheDownloadedFile(t *testing.T) {
+	r := boxartRig(t, nil)
+	res := r.run(t, "game")
+	if res.Done != 1 {
+		t.Fatalf("%+v", res)
+	}
+	job := res.Jobs[0]
+	path, err := r.svc.SaveJobBoxart(context.Background(), job, r.out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stem := strings.TrimSuffix(filepath.Base(job.Path), filepath.Ext(job.Path))
+	if want := filepath.Join(filepath.Dir(job.Path), stem+".png"); path != want {
+		t.Fatalf("path %q, want %q", path, want)
+	}
+	if _, err := r.svc.SaveJobBoxart(context.Background(), JobSnapshot{Slug: "game", State: StateFailed}, r.out); code(err) != CodeInvalidRequest {
+		t.Fatalf("a job that is not done has no cover to save: %v", err)
+	}
+}
+
+// Crivo m1: a failed download carries the named values its message needs.
+func TestFailedJobCarriesNamedValues(t *testing.T) {
+	r := newDLRig(t, DownloadConfig{})
+	res := r.run(t, "bad")
+	if res.Failed != 1 || res.Jobs[0].Err == nil {
+		t.Fatalf("%+v", res)
+	}
+	a := res.Jobs[0].Err.Args
+	for _, k := range []string{"path", "name", "host", "allowed", "got", "expected", "needed"} {
+		if _, ok := a[k]; !ok {
+			t.Errorf("missing named value %q: %v", k, a)
+		}
+	}
+	if a["host"] != "proxy.mothdex.net" {
+		t.Errorf("host %v", a["host"])
+	}
+}
+
+// Crivo m3: export write failures map to stable filesystem codes.
+func TestWriteExportMapsFailures(t *testing.T) {
+	dir := t.TempDir()
+	err := WriteExport(filepath.Join(dir, "missing", "x.csv"), false, func(io.Writer) error { return nil })
+	var ae *Error
+	if !errors.As(err, &ae) || ae.Code != "path_rejected" || strings.Contains(ae.Message, ".mothdex-export") { // the Cause keeps the Go text for -v and the log
+		t.Fatalf("%v", err)
+	}
+	target := filepath.Join(dir, "x.csv")
+	if err := WriteExport(target, false, func(w io.Writer) error { _, e := w.Write([]byte("a")); return e }); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteExport(target, false, func(io.Writer) error { return nil }); code(err) != "exists" {
+		t.Fatalf("%v", err)
+	}
+	if _, _, err := ExportTarget(filepath.Join(dir, "noext"), "", "search", time.Now()); code(err) != CodeUsage {
+		t.Fatalf("%v", err)
 	}
 }

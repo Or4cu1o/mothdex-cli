@@ -99,7 +99,7 @@ func Catalog() []Case {
 		{ID: 47, Group: grpRefresh, Title: "Cover SSRF", Needs: "Redirect + fakeresolver", Assert: "http, 192.168.0.1, DNS to 127.0.0.1, redirect to private IP: not fetched; job still Done", Status: Covered, Test: "TestCase47CoverSSRFIsNotFetched"},
 		{ID: 48, Group: grpRefresh, Title: "Cover content checks", Needs: "OK(html/svg bytes).With(Content-Type, image/png); OK(png header 60000x60000)", Assert: "rejected, not stored", Status: Covered, Test: "TestCase48CoverContentChecks"},
 
-		{ID: 49, Group: grpOutput, Title: "Terminal escapes", Needs: "none", Assert: "title/filename with OSC 52 and ESC[2J: human output has no ESC byte; --json escapes it", Status: Pending},
+		{ID: 49, Group: grpOutput, Title: "Terminal escapes", Needs: "none", Assert: "title/filename with OSC 52 and ESC[2J: human output has no ESC byte; --json escapes it", Status: Covered, Test: "TestHostileTextIsStrippedFromHumanOutputButKeptInJSON + TestHostileErrorTextIsCleaned + TestCase49DownloadAndInfoPaths"},
 		{ID: 50, Group: grpOutput, Title: "CSV formula guard", Needs: "none", Assert: "filename =HYPERLINK(...) exported cell begins with a quote", Status: Covered, Test: "TestCase50CSVFormulaGuard"},
 
 		{ID: 51, Group: grpInstall, Title: "Launcher path injection (T-21)", Needs: "none", Assert: "bin_dir with a space and with $(id): refused or quoted so that sh -n passes and the literal path runs", Status: Pending},

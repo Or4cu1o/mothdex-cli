@@ -120,6 +120,8 @@ ui:
       one: '{count} archivo'
       other: '{count} archivos'
   cli:
+    warning: 'aviso'
+    usage_root_hint: 'Ejecuta "mothdex --help".'
     name: 'Nombre'
     brand: 'Marca'
     db_info: '{count} entradas en el catálogo'
@@ -160,6 +162,8 @@ ui:
     boxart:
       failed: 'No se pudo guardar la carátula de {title} [{code}]'
     export:
+      exists_hint: 'Usa --force para reemplazarlo, o elige otro nombre.'
+      write_hint: 'No se escribió nada. Revisa la carpeta y sus permisos.'
       saved: 'Guardado {path}'
     history:
       date: 'Fecha'

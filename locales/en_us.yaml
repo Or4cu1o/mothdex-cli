@@ -120,6 +120,8 @@ ui:
       one: '{count} file'
       other: '{count} files'
   cli:
+    warning: 'warning'
+    usage_root_hint: 'Run "mothdex --help".'
     name: 'Name'
     brand: 'Brand'
     db_info: '{count} entries in the catalog'
@@ -160,6 +162,8 @@ ui:
     boxart:
       failed: 'Cannot save the cover of {title} [{code}]'
     export:
+      exists_hint: 'Pass --force to replace it, or choose another name.'
+      write_hint: 'Nothing was written. Check the folder and its permissions.'
       saved: 'Saved {path}'
     history:
       date: 'Date'
