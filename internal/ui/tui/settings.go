@@ -47,7 +47,8 @@ var settingSections = []struct {
 	{"download", []settingSpec{
 		{key: "download.dir", kind: kindText},
 		{key: "download.concurrency", kind: kindInt, rng: "1-6"},
-		{key: "download.on_exists", kind: kindEnum, enum: []string{"skip", "rename", "overwrite"}},
+		// overwrite is not offered: the service always refuses it as a setting (use -f per run)
+		{key: "download.on_exists", kind: kindEnum, enum: []string{"skip", "rename"}},
 		{key: "download.boxart", kind: kindBool, live: true},
 		{key: "download.prefer.languages", kind: kindList, live: true},
 		{key: "download.prefer.formats", kind: kindList, live: true},
