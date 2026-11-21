@@ -1,0 +1,111 @@
+// Package draw holds the draw list: what the GUI model produces and the SDL backend executes. It is plain
+// data with no behavior, so the model never imports SDL and the backend never imports the model.
+// Coordinates are logical pixels; the backend applies the render scale or the logical size.
+package draw
+
+// Rect is a rectangle in logical pixels.
+type Rect struct{ X, Y, W, H int }
+
+// Right is the first column outside the rectangle.
+func (r Rect) Right() int { return r.X + r.W }
+
+// Bottom is the first row outside the rectangle.
+func (r Rect) Bottom() int { return r.Y + r.H }
+
+// Empty reports whether the rectangle has no area.
+func (r Rect) Empty() bool { return r.W <= 0 || r.H <= 0 }
+
+// Inset shrinks the rectangle by n on every edge (n < 0 grows it).
+func (r Rect) Inset(n int) Rect { return Rect{r.X + n, r.Y + n, r.W - 2*n, r.H - 2*n} }
+
+// Contains reports whether the point is inside the rectangle.
+func (r Rect) Contains(x, y int) bool { return x >= r.X && x < r.Right() && y >= r.Y && y < r.Bottom() }
+
+// Within reports whether r lies entirely inside outer.
+func (r Rect) Within(outer Rect) bool {
+	return r.X >= outer.X && r.Y >= outer.Y && r.Right() <= outer.Right() && r.Bottom() <= outer.Bottom()
+}
+
+// Center is the middle of the rectangle.
+func (r Rect) Center() (int, int) { return r.X + r.W/2, r.Y + r.H/2 }
+
+// Color is a straight (not premultiplied) RGBA color.
+type Color struct{ R, G, B, A uint8 }
+
+// Kind is the kind of an Op.
+type Kind int
+
+// Op kinds.
+const (
+	KindRect    Kind = iota // a filled rectangle, with rounded corners when Radius > 0
+	KindText                // one line of text
+	KindSpinner             // a ring, one turn per second
+)
+
+// Op is one drawing operation. Only the fields of its Kind are used.
+type Op struct {
+	Kind  Kind
+	Color Color
+
+	// KindRect
+	Rect   Rect
+	Radius int
+
+	// KindText: X is the left edge of the first character and Base the baseline row; Size is in pixels.
+	X, Base, Size int
+	Text          string
+
+	// KindSpinner: the center, the outer radius and the thickness of the ring, and the turn so far in
+	// 0..1 (the backend draws the bright arc from there).
+	CX, CY, R, Thick int
+	Turn             float64
+}
+
+// Layout says how the logical coordinates of a List map to the display: a render scale for sizes above
+// 1200 px tall, or a logical size that SDL letterboxes for displays below 640x480.
+type Layout struct {
+	W, H  int  // the logical size
+	Scale int  // integer render scale; 1 when Fit is set
+	Fit   bool // draw the W x H layout scaled to fit the display, with bars
+}
+
+// List is one frame: the background first, then each layer in the order it must be drawn.
+type List struct {
+	W, H int // the logical size the coordinates belong to
+	Ops  []Op
+}
+
+// Reset empties the list for the next frame and keeps its capacity.
+func (l *List) Reset(w, h int) { l.W, l.H, l.Ops = w, h, l.Ops[:0] }
+
+// Fill appends a filled rectangle.
+func (l *List) Fill(r Rect, radius int, c Color) {
+	if r.Empty() || c.A == 0 {
+		return
+	}
+	l.Ops = append(l.Ops, Op{Kind: KindRect, Rect: r, Radius: radius, Color: c})
+}
+
+// Text appends one line of text.
+func (l *List) Text(x, base, size int, c Color, s string) {
+	if s == "" || c.A == 0 {
+		return
+	}
+	l.Ops = append(l.Ops, Op{Kind: KindText, X: x, Base: base, Size: size, Color: c, Text: s})
+}
+
+// Spinner appends a spinner.
+func (l *List) Spinner(cx, cy, r, thick int, turn float64, c Color) {
+	l.Ops = append(l.Ops, Op{Kind: KindSpinner, CX: cx, CY: cy, R: r, Thick: thick, Turn: turn, Color: c})
+}
+
+// Texts returns the text of every text op, in drawing order, for tests that assert on content.
+func (l *List) Texts() []string {
+	var out []string
+	for _, op := range l.Ops {
+		if op.Kind == KindText {
+			out = append(out, op.Text)
+		}
+	}
+	return out
+}

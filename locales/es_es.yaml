@@ -234,6 +234,63 @@ ui:
       sort: 'Ordena la página actual: relevance, title o size'
       number: 'Muestra la entrada con ese número (igual que info)'
       d: 'Descarga entradas por número: d 1 3, o d 2-4'
+  gui:
+    locale_fallback: 'Este idioma aún no está disponible en este modo de pantalla. Se muestra inglés.'
+    not_yet: '{name} aún no está disponible.'
+    splash:
+      starting: 'Iniciando…'
+    home:
+      search: 'Buscar'
+      platforms: 'Plataformas'
+      random: 'Aleatorio'
+      queue: 'Cola'
+      history: 'Historial'
+      settings: 'Ajustes'
+      recent: 'Recientes'
+      footer: '{entries} entradas · {profile} · {root}'
+      footer_pending: '{profile} · {root}'
+      footer_offline: 'Catálogo no disponible. Las búsquedas en caché siguen funcionando.'
+      footer_generic: 'No se detectó ningún sistema de emulación. Los juegos van a {path}.'
+    bar:
+      offline: 'Sin conexión'
+      will_quit: 'Saldrá cuando terminen las descargas'
+      badge_active: '{active}'
+      badge_queued: '{active} · {queued} en cola'
+      will_quit_short: 'Salida pendiente'
+    hint:
+      menu: 'Menú'
+      open: 'Abrir'
+      quit: 'Salir'
+      continue: 'Continuar'
+    menu:
+      home: 'Inicio'
+      queue: 'Cola'
+      history: 'Historial'
+      settings: 'Ajustes'
+      buttons: 'Botones'
+      dont_quit: 'No salir'
+      quit: 'Salir'
+    quit:
+      ask: '¿Salir y volver a {frontend}?'
+      ask_generic: '¿Salir?'
+      stay: 'Quedarse'
+      quit: 'Salir'
+      busy:
+        one: 'Sigue en curso {count} descarga.'
+        other: 'Siguen en curso {count} descargas.'
+      keep: 'Seguir descargando'
+      when_finished: 'Salir al terminar'
+      cancel_and_quit: 'Cancelar y salir'
+    exit:
+      downloaded: '{count} descargado(s)'
+      skipped: '{count} omitido(s)'
+      failed: '{count} con error'
+      canceled: '{count} cancelado(s)'
+      refreshing: 'Actualizando la lista de juegos…'
+      returning: 'Volviendo a {frontend}'
+      closing: 'Cerrando'
+    toast:
+      download_failed: 'Descarga fallida: {title}'
   tui:
     needs_terminal: 'La TUI necesita un terminal interactivo.'
     too_small: 'Terminal demasiado pequeño (hacen falta {need_w}x{need_h}, hay {w}x{h}). Cambia el tamaño o pulsa q.'

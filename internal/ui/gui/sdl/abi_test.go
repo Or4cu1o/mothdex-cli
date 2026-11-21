@@ -17,6 +17,10 @@ func TestStructLayoutMatchesTheSDL2Headers(t *testing.T) {
 	var v Version
 	var b ControllerButtonEvent
 	var e Event
+	var w WindowEvent
+	var k KeyboardEvent
+	var a ControllerAxisEvent
+	var d ControllerDeviceEvent
 	tests := []struct {
 		name string
 		got  uintptr
@@ -35,6 +39,25 @@ func TestStructLayoutMatchesTheSDL2Headers(t *testing.T) {
 		{"SDL_ControllerButtonEvent.which", unsafe.Offsetof(b.Which), 8},
 		{"SDL_ControllerButtonEvent.button", unsafe.Offsetof(b.Button), 12},
 		{"SDL_ControllerButtonEvent.state", unsafe.Offsetof(b.State), 13},
+		{"sizeof(SDL_WindowEvent)", unsafe.Sizeof(w), 24},
+		{"SDL_WindowEvent.windowID", unsafe.Offsetof(w.WindowID), 8},
+		{"SDL_WindowEvent.event", unsafe.Offsetof(w.Event), 12},
+		{"SDL_WindowEvent.data1", unsafe.Offsetof(w.Data1), 16},
+		{"SDL_WindowEvent.data2", unsafe.Offsetof(w.Data2), 20},
+		{"sizeof(SDL_KeyboardEvent)", unsafe.Sizeof(k), 32},
+		{"SDL_KeyboardEvent.windowID", unsafe.Offsetof(k.WindowID), 8},
+		{"SDL_KeyboardEvent.state", unsafe.Offsetof(k.State), 12},
+		{"SDL_KeyboardEvent.repeat", unsafe.Offsetof(k.Repeat), 13},
+		{"SDL_Keysym.scancode", unsafe.Offsetof(k.Scancode), 16},
+		{"SDL_Keysym.sym", unsafe.Offsetof(k.Sym), 20},
+		{"SDL_Keysym.mod", unsafe.Offsetof(k.Mod), 24},
+		{"SDL_Keysym.unused", unsafe.Offsetof(k.Unused), 28},
+		{"sizeof(SDL_ControllerAxisEvent)", unsafe.Sizeof(a), 20},
+		{"SDL_ControllerAxisEvent.which", unsafe.Offsetof(a.Which), 8},
+		{"SDL_ControllerAxisEvent.axis", unsafe.Offsetof(a.Axis), 12},
+		{"SDL_ControllerAxisEvent.value", unsafe.Offsetof(a.Value), 16},
+		{"sizeof(SDL_ControllerDeviceEvent)", unsafe.Sizeof(d), 12},
+		{"SDL_ControllerDeviceEvent.which", unsafe.Offsetof(d.Which), 8},
 	}
 	for _, tc := range tests {
 		if tc.got != tc.want {
@@ -175,5 +198,49 @@ func TestBytesPerPixelOfTheFormatsTheBindingUses(t *testing.T) {
 		if got := bytesPerPixel(tc.format); got != tc.want {
 			t.Errorf("%s: bytesPerPixel(%#x) = %d, want %d", name, tc.format, got, tc.want)
 		}
+	}
+}
+
+// bind registers SDL_GetVersion first and reads the version before the rest, so it must lead the table.
+func TestTheTableStartsWithGetVersion(t *testing.T) {
+	var a api
+	if got := a.table()[0].name; got != "SDL_GetVersion" {
+		t.Fatalf("the first function is %s, bind needs SDL_GetVersion", got)
+	}
+}
+
+// An optional function (newer than the minimum) must not raise the minimum version, and only optional
+// functions may be newer than it.
+func TestOnlyOptionalFunctionsAreNewerThanTheMinimum(t *testing.T) {
+	var a api
+	min := MinimumVersion()
+	optionalSeen := false
+	for _, b := range a.table() {
+		if b.since.AtLeast(Version{2, 0, 1}) && !b.optional {
+			t.Errorf("%s needs SDL %s and is not optional, which would raise the minimum", b.name, b.since)
+		}
+		optionalSeen = optionalSeen || b.optional
+		if !b.optional && !min.AtLeast(b.since) {
+			t.Errorf("minimum %s is older than the required %s (%s)", min, b.name, b.since)
+		}
+	}
+	if !optionalSeen {
+		t.Error("SDL_GameControllerGetType (2.0.12) must be optional")
+	}
+}
+
+func TestNewEventViewsRoundTrip(t *testing.T) {
+	e := NewEvent()
+	*e.Keyboard() = KeyboardEvent{Type: EventKeyDown, Repeat: 1, Sym: KeycodeEscape}
+	if e.Type() != EventKeyDown || e.Keyboard().Sym != KeycodeEscape || e.Keyboard().Repeat != 1 {
+		t.Fatalf("%+v", *e.Keyboard())
+	}
+	*e.ControllerAxis() = ControllerAxisEvent{Type: EventControllerAxisMotion, Which: 3, Axis: ControllerAxisLeftY, Value: -32768}
+	if got := e.ControllerAxis(); got.Value != -32768 || got.Which != 3 || got.Axis != ControllerAxisLeftY {
+		t.Fatalf("%+v", *got)
+	}
+	e.SetType(0x8001)
+	if e.Type() != 0x8001 || e.Keyboard().Sym != 0 {
+		t.Fatal("SetType must clear the rest of the event")
 	}
 }

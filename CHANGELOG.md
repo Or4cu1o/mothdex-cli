@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PR-71 review rounds (Crivo, Bússola): Quit when finished quits at once when the last job ended under the dialog; `SDL_GAMECONTROLLERCONFIG`
+  and `SDL_GAMECONTROLLERCONFIG_FILE` are read in Go and added after the embedded database and the user file so they win (SDL applies them
+  at `SDL_Init`, before our lines, which would have replaced them; `gui.md` and the contract say so now); when the exit sequence runs out of
+  its 2 s budget the process leaves without calling `Close` again; closing the window asks like Quit; window shown/exposed/restored redraw;
+  `-h` exits 0; a progress event no longer copies the job tally. UX (gui.md v1.1): the top bar keeps its title and uses the short pending-quit
+  text (`ui.gui.bar.will_quit_short`) when the full one does not fit, Offline and the badge are never cut; the Home footer wraps to two lines
+  and a long ROM folder is shortened in the middle; tile labels wrap and a long single word drops to a smaller size instead of being split;
+  toasts take at most 60 % of the width, wrap to two lines, stay off the focused element, and the language notice stays 6 s; stacked dialog
+  buttons fill the panel; hint pills have air around words; the Splash spinner is on the right; the exit notice shows `(A) Continue`.
+- T-54 (GUI PR 1, Medium; the SDL binding stays under the High review of the spike): `mothdex-gui` now runs. Foundation, Splash,
+  Home, the Start menu, the quit dialogs of docs/ux/gui.md section 5.13, the exit screen and SIGTERM, with the screens behind the
+  tiles (Search, Platforms, Random, Queue, History, Settings) saying "not available yet" until the next pull requests.
+  - `internal/ui/gui` (pure Go, no SDL): size tiers and the safe rectangle (section 1), focus engine by geometry (section 3), frame
+    with top bar, hint bar, toast and queue badge, the model as a value with `Update`/`Render`, the quit decision table and the exit
+    sequence (Cancel, Wait, Close inside the 2 s budget, with an injectable clock). `internal/ui/gui/input`: button positions, the
+    confirm/back swap, repeat, stick hysteresis, Select on release, the keyboard fallback, hint labels by controller type, and the
+    controller database loader (embedded, then `<paths.data>/gamecontrollerdb.txt`, foreign `platform:` lines dropped before SDL).
+    `internal/ui/gui/text`: measuring, truncation, wrapping and a glyph atlas on `golang.org/x/image` v0.48.0.
+    `internal/ui/gui/draw`: the draw list. `internal/ui/gui/loop`: the run loop over a `Backend` interface, tested with a scripted
+    backend.
+  - `internal/ui/gui/assets`: Noto Sans Regular (subset to Latin and Cyrillic, OFL-1.1) and `gamecontrollerdb.txt` (commit
+    `4e87e3c6c257`, zlib), embedded and pinned by SHA-256 in `PINS.md` and `assets_test.go`; licences in `THIRD_PARTY/`. The font has no
+    arrows, check marks or crosses, so the queue arrow is drawn as a shape.
+  - `internal/ui/gui/sdl`: 17 more SDL2 functions (renderer size and logical size, blend and color mods, `SDL_WaitEventTimeout`,
+    game controllers; `SDL_GameControllerGetType` is optional and only bound on SDL 2.0.12 or later, so the minimum stays 2.0.0),
+    the event views and key and button maps, and `Backend`, which executes a draw list and turns SDL events into loop events.
+    `scripts/check-sdl-constants.sh` covers every new constant and event layout.
+  - `cmd/mothdex-gui`: composes the service through `internal/compose`, opens SDL and runs the loop; exit codes 0, 1 (SDL or
+    display), 2 (configuration), 3 (internal), every failure also in the log file. `-probe` (or an executable named
+    `mothdex-gui-probe`, which is how the CI legs run it) keeps the spike's headless check; `-window WxH` opens a window on a desktop.
+    Interface languages the font cannot draw (`zh_cn`, `ja_jp`, `hi_in`) show `en_us` and one notice on Home.
+  - Locales: `ui.gui.*` in en_us, pt_br, es_es and ru_ru.
 - PR-69 review (Ensaio V1/S1): a test with a fake `api` proves `ReadPixels` and `UpdateTexture` refuse short buffers, a pitch below the row
   and a rect outside the texture before SDL is called; `GUI_REQUIRE_SDL=1` turns the missing-SDL skip into a failure and is set in the
   amd64 and Windows test steps.
