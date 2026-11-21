@@ -1,0 +1,51 @@
+name: Installer
+
+# Facts for the gate: this workflow is read only by GitHub Actions; it holds no secrets (permissions: contents read);
+# the instruction behind it: "Tests: shellcheck, plus container tests ... against a local fake release (no network in tests)".
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  unix:
+    name: installer (shellcheck + containers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: shellcheck -x -s sh install.sh tests/installer/cases.sh tests/installer/run.sh tests/installer/shims/* tests/installer/optional/*
+      - name: container tests (no network)
+        run: sh tests/installer/run.sh
+
+  windows:
+    name: installer (windows, ${{ matrix.shell }})
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: install.ps1 tests (Windows PowerShell 5.1)
+        if: matrix.shell == 'powershell'
+        shell: powershell
+        run: .\tests\installer\install.Tests.ps1
+      - name: install.ps1 tests (PowerShell 7)
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: .\tests\installer\install.Tests.ps1

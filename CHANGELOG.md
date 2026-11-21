@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI job `release tools build` compiles the pinned release tools (goreleaser, cosign, syft) from `tools/*` on every PR, the
   way `release.yml` installs them, so a dependabot bump there that no longer builds is caught before a tag (PR-31-sec).
+- `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
+  platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
+  the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`
+  validates every request before queueing any, a Downloader per destination root (`-o` or `download.dir` becomes the
+  absolute root; otherwise the profile ROM root), startup `Cleanup`, journal, `Confiner` with the profile launcher
+  paths, `Jobs`/`Events`/`Cancel`/`Wait`, the frontend refresh once per batch and only after a Done job (case 46),
+  and the history record with title, link index, expected size and error object. Config read path that works on a
+  file holding `on_exists=overwrite`; the overwrite-without-force refusal is `invalid_config` (exit 2). `*app.Error`
+  has its whole text cleaned of terminal escapes and maps to the exit codes (case 49, service half).
+- `internal/i18n` and `locales/`: embedded locales plus an optional external folder (per-key override), automatic
+  detection (`LC_ALL`, `LC_MESSAGES`, `LANG`; the Windows preferred UI languages), `interface.language` resolution
+  (exact, same language, en_us), named `{placeholders}`, CLDR plural forms, and a per-key fallback to en_us. `en_us`,
+  `pt_br`, `es_es` and `ru_ru` are complete (the `errors.<code>.message` and `.hint` table of cli-output section 4 and
+  the UI basics); `zh_cn`, `ja_jp` and `hi_in` translate the UI basics and fall back for the rest. A test fails when a
+  locale lacks keys it promises, defines keys en_us lacks, or changes placeholders.
 - `internal/log`: the slog logger (T-14). A size-rotated file `mothdex.log` under `paths.logs` (`log.max_size_mb`,
   `log.max_files` in total, created with mode 0700/0600) and an optional stderr copy (`log.console`), from the `log.*`
   settings. Standard library only. A log file that cannot be opened never stops the program: `log.New` returns a
@@ -27,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Contracts follow the T-20a fixes and the T-21 installer: `Events` is never lossy (per-subscriber queue), the
+  journal entry carries its destination root and cleanup is per root, a failed session save deletes the stored
+  session, and the installer launcher is opt-in (D22) with the root-only FAT share exception (TH-31).
+- App service contract (T-20a review): capability method names as implemented, UI packages import only `app`
+  (aliases for internal types), one downloader per destination root, and the service writes boxart.
 - Release and profile contracts follow the T-21b installer: `checksums.txt` also lists SBOMs, the exact-line
   checksum rule, the `install.ps1` architecture mapping, and the RetroBat `bin_dir` in `%LocalAppData%`.
 - CLI conventions §7: English error strings for `invalid_request`, `unmapped_platform`, `untrusted_redirect` and
@@ -65,6 +85,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-21b: `install.sh` (POSIX sh; Batocera, EmuELEC, Recalbox, Lakka, generic Linux, macOS) and `install.ps1`
+  (Windows, RetroBat). Downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https, always verifies
+  SHA-256 from `checksums.txt`, and also `cosign verify-blob` or `gh attestation verify` when the tool is present
+  (a present tool that fails aborts). `--version` pinning, `--dry-run`, `--uninstall`, profile `bin_dir`, a fixed
+  launcher template written only to the profile launcher folder (path allow-list, marker, never overwrites a
+  user's file). Tests: shellcheck, 193 container checks (Alpine and Debian, no network, simulated Batocera and
+  EmuELEC trees, fake release, a second pass as a non-root user) and Pester-style checks for `install.ps1` in CI (`installer.yml`). The launcher is opt-in (`--launcher`, `-Launcher`) in v0.1 because `mothdex tui` does not exist yet;
+  wget is used only if it is GNU Wget and a signature tool (cosign or a logged-in gh) is present, because wget can follow an https to http redirect (busybox wget does not verify TLS and is refused); on exFAT/FAT/NTFS share partitions of Batocera
+  and Recalbox, root installs get a documented, warned exception to the world-writable refusal.
 - `internal/cover`: cover fetch hardening (T-16 CR-9, cache.md section 4): https only, no connection to loopback,
   private, link-local, CGNAT, multicast or special addresses (checked after DNS and again in the dialer Control hook),
   at most 3 redirects each re-checked, 5 MiB cap, Content-Type must agree with the magic bytes (jpeg, png, webp, gif;

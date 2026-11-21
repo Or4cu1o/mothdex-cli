@@ -22,6 +22,12 @@ Command-line client for the [Mothdex](https://api.mothdex.net) API.
 - [ ] Stable `--json` output and documented exit codes
 - [ ] Release binaries for Linux, Windows and macOS with checksums
 
+## Install
+
+Download `install.sh` (or `install.ps1` on Windows) from this repository, read it, and run it; it
+verifies checksums and signatures before installing. Details and options:
+[docs/release.md](docs/release.md#installing).
+
 ## Build
 
 Requires the Go version declared in [`go.mod`](go.mod).

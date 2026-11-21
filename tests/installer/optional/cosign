@@ -1,0 +1,4 @@
+#!/bin/sh
+# cosign stand-in: records its arguments, exits with COSIGN_RC (default 0).
+printf '%s\n' "$*" >>"$FAKE_LOG.cosign"
+exit "${COSIGN_RC:-0}"

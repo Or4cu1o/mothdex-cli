@@ -74,7 +74,7 @@ func Catalog() []Case {
 
 		{ID: 26, Group: grpNet, Title: "URL policy table", Needs: "none (Connections() == 0)", Assert: "http, :8443, userinfo, evil host, 127.0.0.1, [::1], suffix host, IDN give untrusted_url with no connection; trailing dot and upper case accepted", Status: Covered, Test: "TestCase26URLPolicyThroughTheDownloader"},
 		{ID: 27, Group: grpNet, Title: "Redirects", Needs: "Redirect(302, allowed) and Redirect(302, evil)", Assert: "both Failed(untrusted_url), not retried (Requests() length 1)", Status: Covered, Test: "TestCase27RedirectsAreNeverFollowedNorRetried"},
-		{ID: 28, Group: grpNet, Title: "Off-proxy link ranking", Needs: "none", Assert: "archive.org link excluded from ranking; download --link n on it gives untrusted_url with a clear message", Status: Pending},
+		{ID: 28, Group: grpNet, Title: "Off-proxy link ranking", Needs: "none", Assert: "archive.org link excluded from ranking; download --link n on it gives untrusted_url with a clear message", Status: Covered, Test: "TestCase28OffProxyLinkIsExcludedAndRefused"},
 		{ID: 29, Group: grpNet, Title: "Poisoned cache entry", Needs: "none", Assert: "cached entry with malicious filename/url gets the same rejections as from the network", Status: Covered, Test: "TestCase29HostileLinkFieldsGetTheSameRejections"},
 		{ID: 30, Group: grpNet, Title: "Gzip despite identity", Needs: "GzipDespiteIdentity", Assert: "Failed(integrity), nothing finalized; Requests()[0] carried Accept-Encoding: identity", Status: Covered, Test: "TestCase30GzipDespiteIdentityIsAnIntegrityFailure"},
 		{ID: 31, Group: grpNet, Title: "Length mismatch and oversize", Needs: "LengthMismatch, Oversized, MaliciousDisposition", Assert: "CL != link.size gives size_mismatch, not retried; no CL with size+1 bytes aborts at byte size+1 and removes .part; disposition name ignored", Status: Covered, Test: "TestCase31LengthMismatchOversizeAndDisposition"},
@@ -95,7 +95,7 @@ func Catalog() []Case {
 
 		{ID: 44, Group: grpRefresh, Title: "Refresh URL policy", Needs: "none", Assert: "http://localhost, 127.0.0.1.nip.io, 192.168.x.x, https://127.0.0.1 rejected at profile load; http://127.0.0.1/reloadgames and [::1] accepted", Status: Covered, Test: "TestCase44RefreshURLPolicyCatalogURLs"},
 		{ID: 45, Group: grpRefresh, Title: "Refresh hardening", Needs: "Redirect, Oversized(10 MiB), StallBeforeHeaders + fakeclock", Assert: "no redirect followed, <= 64 KiB read, returns within 3 s of fake time, warning only, HTTP_PROXY unused", Status: Covered, Test: "TestRefreshClientPolicy + TestRefreshKindsAndBodyCap + TestRefreshNeverFollowsRedirectsEvenWithADefaultClient + TestRefresh"},
-		{ID: 46, Group: grpRefresh, Title: "Refresh once per batch", Needs: "OK", Assert: "called once when >= 1 Done; never when all Skipped/Failed", Status: Pending},
+		{ID: 46, Group: grpRefresh, Title: "Refresh once per batch", Needs: "OK", Assert: "called once when >= 1 Done; never when all Skipped/Failed", Status: Covered, Test: "TestCase46RefreshOncePerBatch"},
 		{ID: 47, Group: grpRefresh, Title: "Cover SSRF", Needs: "Redirect + fakeresolver", Assert: "http, 192.168.0.1, DNS to 127.0.0.1, redirect to private IP: not fetched; job still Done", Status: Covered, Test: "TestCase47CoverSSRFIsNotFetched"},
 		{ID: 48, Group: grpRefresh, Title: "Cover content checks", Needs: "OK(html/svg bytes).With(Content-Type, image/png); OK(png header 60000x60000)", Assert: "rejected, not stored", Status: Covered, Test: "TestCase48CoverContentChecks"},
 

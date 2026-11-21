@@ -1,0 +1,11 @@
+#!/bin/sh
+# curl stand-in: takes the same arguments install.sh passes (-o <dest> and a URL).
+dest=""; url=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) dest=$2; shift 2 ;;
+    http*) url=$1; shift ;;
+    *) shift ;;
+  esac
+done
+exec "$(dirname "$0")/fake-fetch" "$url" "$dest"
