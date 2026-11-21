@@ -1,0 +1,23 @@
+# Source: docs/research/T1e-emulation-systems.md (checked 2026-11-20). Verified flags: true = confirmed in T1e,
+# false (or omitted) = unverified or inferred, to be confirmed by the community beta.
+# Only the 15 platform ids confirmed in T1e section 4 are mapped; every other id is deliberately unmapped (unmapped: error),
+# so the user picks -o <dir> or profile.folders.<id> until its folder name is sourced.
+schema: 1
+id: lakka
+name: Lakka
+os: linux
+priority: 90
+detect:
+  all:
+    - { os_release: { NAME: Lakka }, verified: true }
+  any:
+    - { os_release: { ID: lakka }, verified: true }
+roms:
+  root: /storage/roms
+  root_verified: true
+  folders_verified: true
+  layout: per_platform_id   # Lakka has no per-system folder convention
+  unmapped: error
+bin_dir: { path: /storage/.local/bin, verified: false }
+launcher: { kind: none, verified: true }   # SSH use only
+refresh: { kind: none, verified: true }    # RetroArch scanner
