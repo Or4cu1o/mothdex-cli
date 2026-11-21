@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- System profiles map 40 to 48 Mothdex platform ids per frontend (Batocera, EmuELEC, RetroBat, EmuDeck, RetroDECK,
+  Recalbox) from the T15b research; arcade ids (D18) and `pc` (D19) stay unmapped on purpose. Contracts document the folder
+  rules and that the launcher-folder check is lexical and is repeated after path resolution.
 - API client contract: a refused redirect (another origin, a scheme change or more than 3 hops) is the
   non-retryable kind `KindUntrustedRedirect` (error code `untrusted_redirect`, exit 4), never a network error.
 - Profiles contract: probe type `files`, the `${MATCH}` variable and the `folders_verified` flag (T-15).

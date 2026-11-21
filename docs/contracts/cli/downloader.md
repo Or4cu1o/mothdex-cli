@@ -156,6 +156,12 @@ Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name
   or the profile map) must not be equal to, or inside, the active profile's `launcher.dir` or any folder named
   `ports`, `ports_scripts` or `windows` directly under the ROM root; otherwise `Failed(path_rejected)`, unless the run
   has `--allow-executable`.
+  `Profile.IsLauncherPath` (internal/library) is **lexical**: it compares path components, without touching the
+  filesystem, and fails closed on relative or drive-relative input. Callers therefore make `-o` (and any relative
+  `download.dir`) **absolute first** (`filepath.Abs`). Preflight applies the check **again** on the real path of the
+  destdir after it is resolved (`filepath.EvalSymlinks`; on Windows the final path from `GetFinalPathNameByHandle`,
+  which also expands 8.3 short names such as `PORTS~1` and follows junctions). A destdir that becomes a launcher
+  folder only after resolution is `Failed(path_rejected)`.
 - **Windows** (CR-13): Go ≥ 1.23 `EvalSymlinks` does not resolve junctions, so confinement is verified with
   `GetFinalPathNameByHandle` on the opened destdir handle, compared against the same call on the root handle.
 - On POSIX systems, directories the downloader creates get mode `0700` and files `0600` (umask may only reduce them) (CR-7).
