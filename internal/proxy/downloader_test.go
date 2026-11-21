@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -83,7 +84,7 @@ func (r *rig) download(job proxy.Job) proxy.Result {
 }
 
 func TestDownloadHappyPath(t *testing.T) {
-	r := newRig(t, proxy.Config{Verify: true})
+	r := newRig(t, proxy.Config{})
 	body := fakeproxy.Pattern(300_000)
 	r.srv.Script("/f/a", fakeproxy.OK(body))
 
@@ -129,7 +130,7 @@ func TestDownloadRetriesATruncatedStreamOnTheSameDescriptor(t *testing.T) {
 	}
 	opens := 0
 	for _, c := range r.fs.Calls() {
-		if c.Op == fakefs.OpOpenExcl && c.Name != "" && c.Name[:9] == "downloads" {
+		if c.Op == fakefs.OpOpenExcl && strings.HasSuffix(c.Name, ".part") {
 			opens++
 		}
 	}

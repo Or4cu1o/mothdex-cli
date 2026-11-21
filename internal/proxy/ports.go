@@ -75,6 +75,9 @@ type File interface {
 	io.Reader
 	io.Seeker
 	Truncate(size int64) error
+	// Stat describes the open descriptor, so finalize can check that the staging name still
+	// refers to this very file (os.SameFile).
+	Stat() (fs.FileInfo, error)
 	Sync() error
 	Close() error
 }

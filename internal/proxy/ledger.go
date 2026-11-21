@@ -74,11 +74,12 @@ func (l *ledger) release(claims []claim) {
 // nameSet is the in-process name reservation, keyed by casefold(NFC(destdir/name)) so that
 // Game.zip and game.zip, or two spellings of one accented name, collide (TH-08).
 type nameSet struct {
-	mu   sync.Mutex
-	held map[string]string
+	mu    sync.Mutex
+	held  map[string]string
+	final map[string]bool // names finalized by this Downloader: overwrite never replaces them
 }
 
-func newNameSet() *nameSet { return &nameSet{held: map[string]string{}} }
+func newNameSet() *nameSet { return &nameSet{held: map[string]string{}, final: map[string]bool{}} }
 
 func nameKey(destdir, name string) string {
 	return cases.Fold().String(norm.NFC.String(strings.TrimSuffix(destdir, "/") + "/" + name))
@@ -100,4 +101,18 @@ func (n *nameSet) release(destdir, name string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	delete(n.held, nameKey(destdir, name))
+}
+
+// markFinal records a name a job finalized; the reservation itself is released at the terminal
+// state, so without this a later job of the same batch could overwrite the earlier file.
+func (n *nameSet) markFinal(destdir, name string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.final[nameKey(destdir, name)] = true
+}
+
+func (n *nameSet) isFinal(destdir, name string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.final[nameKey(destdir, name)]
 }

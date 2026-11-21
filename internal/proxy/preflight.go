@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -21,56 +22,57 @@ var platformRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 func (d *Downloader) preflight(ctx context.Context, j *jobState) (State, *Error) {
 	d.event(j, StatePreflight, nil)
 	if ctx.Err() != nil {
-		return StateCanceled, &Error{Code: CodeCanceled, Message: "canceled", Err: ctx.Err()}
+		return StateCanceled, canceled(ctx)
 	}
-	link := j.job.Link
-
-	u, err := CheckURL(link.URL, d.cfg.AllowedHosts) // on every attempt too: see transfer
-	if err != nil {
-		return StateFailed, asError(err)
+	if err := d.checkLink(j); err != nil {
+		return StateFailed, err
 	}
-	j.url = u.String()
-
-	if link.Size <= 0 || link.Size > d.cfg.MaxFileSize {
-		return StateFailed, &Error{Code: CodeSizeMismatch, Message: "the size of the link is not acceptable"}
-	}
-
-	var nameOpts []NameOption
-	nameOpts = append(nameOpts, WithFallback(j.job.Slug, link.Format, j.id))
-	if d.cfg.AllowExecutable {
-		nameOpts = append(nameOpts, AllowExecutable())
-	}
-	name, err := Sanitize(link.Filename, nameOpts...)
-	switch {
-	case errors.Is(err, ErrUnsafeName):
-		return StateFailed, &Error{Code: CodeUnsafeName, Message: "the file has an executable extension", Err: err}
-	case err != nil:
-		return StateFailed, &Error{Code: CodeInternal, Message: "cannot name the file", Err: err}
-	}
-	j.name = name
-
-	if !platformRe.MatchString(j.job.Platform) || !d.cfg.Platforms[j.job.Platform] {
-		return StateFailed, &Error{Code: CodePathRejected, Message: "unknown platform id"}
-	}
-	rel, err := d.o.Confine(j.job.DestDir)
-	if err != nil {
-		return StateFailed, asError(err)
-	}
-	j.destRel = rel
-
-	j.baseName, j.nameOpts = name, nameOpts
 	if state, perr := d.reserveName(j, 0); state != "" || perr != nil {
 		return state, perr
 	}
 	if perr := d.reserveSpace(j); perr != nil {
 		return StateFailed, perr
 	}
-	j.staging = stagingDir + "/" + j.id + ".part"
 	if jerr := d.o.Journal.Add(JournalEntry{JobID: j.id, Staging: j.staging, DestDir: j.destRel, Started: j.started}); jerr != nil {
 		return StateFailed, &Error{Code: CodeInternal, Message: "cannot write the in-flight journal", Err: jerr}
 	}
 	j.journaled = true
 	return "", nil
+}
+
+// checkLink validates what came from the API or the cache: URL, size, name, platform and
+// destination directory (steps 1 to 4).
+func (d *Downloader) checkLink(j *jobState) *Error {
+	link := j.job.Link
+	u, err := CheckURL(link.URL, d.cfg.AllowedHosts) // on every attempt too: see transfer
+	if err != nil {
+		return asError(err)
+	}
+	j.url = u.String()
+	if link.Size <= 0 || link.Size > d.cfg.MaxFileSize {
+		return &Error{Code: CodeSizeMismatch, Message: "the size of the link is not acceptable"}
+	}
+	opts := []NameOption{WithFallback(j.job.Slug, link.Format, j.id)}
+	if d.cfg.AllowExecutable {
+		opts = append(opts, AllowExecutable())
+	}
+	name, err := Sanitize(link.Filename, opts...)
+	switch {
+	case errors.Is(err, ErrUnsafeName):
+		return &Error{Code: CodeUnsafeName, Message: "the file has an executable extension", Err: err}
+	case err != nil:
+		return &Error{Code: CodeInternal, Message: "cannot name the file", Err: err}
+	}
+	j.name, j.baseName, j.nameOpts = name, name, opts
+	if !platformRe.MatchString(j.job.Platform) || !d.cfg.Platforms[j.job.Platform] {
+		return &Error{Code: CodePathRejected, Message: "unknown platform id"}
+	}
+	rel, err := d.o.Confine(j.job.DestDir)
+	if err != nil {
+		return asError(err)
+	}
+	j.destRel = rel
+	return nil
 }
 
 // reserveName takes the in-process name reservation and applies on_exists against the batch
@@ -104,7 +106,7 @@ func (d *Downloader) reserveName(j *jobState, start int) (State, *Error) {
 			}
 			j.name = cand
 			return StateSkipped, nil
-		case d.cfg.OnExists == OnExistsOverwrite && held:
+		case d.cfg.OnExists == OnExistsOverwrite && held && !d.names.isFinal(j.destRel, cand):
 			if !info.Mode().IsRegular() {
 				d.names.release(j.destRel, cand)
 				return StateFailed, &Error{Code: CodePathRejected, Message: "the existing target is not a regular file"}
@@ -113,7 +115,7 @@ func (d *Downloader) reserveName(j *jobState, start int) (State, *Error) {
 			return "", nil
 		}
 		if held {
-			d.names.release(j.destRel, cand) // rename, or overwrite against another job of the batch
+			d.names.release(j.destRel, cand) // rename; or overwrite against a name of this batch
 		}
 	}
 	return StateFailed, &Error{Code: CodeExists, Message: "all numbered names up to (99) are taken"}
@@ -143,7 +145,10 @@ func numbered(name string, n int, opts []NameOption) (string, error) {
 	return Sanitize(fmt.Sprintf("%s (%d)%s", stem, n, ext), opts...)
 }
 
-// reserveSpace is step 7: one claim per file system, all or nothing.
+// reserveSpace is step 7: one claim per file system, all or nothing. When the staging
+// directory and the destination are on the same device the file is staged inside the
+// destination (written once, plain rename) and only one claim is made; otherwise it is staged
+// in paths.temp, copied later, and both file systems are claimed (T-17-arch M2).
 func (d *Downloader) reserveSpace(j *jobState) *Error {
 	need, ok := spaceNeed(j.job.Link.Size)
 	if !ok {
@@ -156,14 +161,17 @@ func (d *Downloader) reserveSpace(j *jobState) *Error {
 	if err != nil {
 		return &Error{Code: CodeInternal, Message: "cannot read the free space of the staging directory", Err: err}
 	}
-	claims := []claim{{dev: dev, free: free, need: need}}
-	dfree, ddev, err := d.o.Dest.Free(j.destRel)
+	dfree, ddev, err := d.o.Dest.Free(d.existingDir(j.destRel))
 	if err != nil {
 		return &Error{Code: CodeInternal, Message: "cannot read the free space of the destination", Err: err}
 	}
-	// One object and one device: the staging file is renamed, no second copy exists.
-	if d.o.Staging != d.o.Dest || ddev != dev {
-		claims = append(claims, claim{dev: ddev, free: dfree, need: need})
+	claims := []claim{{dev: ddev, free: dfree, need: need}}
+	j.stageInDest = dev == ddev
+	if j.stageInDest {
+		j.staging = joinName(j.destRel, "."+j.id+".part")
+	} else {
+		j.staging = stagingDir + "/" + j.id + ".part"
+		claims = append(claims, claim{dev: dev, free: free, need: need})
 	}
 	if !d.ledger.reserve(claims) {
 		return &Error{Code: CodeDiskFull, Message: "not enough free space for this download"}
@@ -172,15 +180,26 @@ func (d *Downloader) reserveSpace(j *jobState) *Error {
 	return nil
 }
 
-// openStaging creates the staging file: O_CREATE|O_EXCL|O_NOFOLLOW, 0600, name from the job id.
-func (d *Downloader) openStaging(j *jobState) *Error {
-	f, err := d.o.Staging.OpenExcl(j.staging)
-	if err != nil {
-		code := CodeInternal
-		if isDiskFull(err) {
-			code = CodeDiskFull
+// existingDir is the nearest existing ancestor of a destination directory that may not exist
+// yet (it is created only when the staging file is).
+func (d *Downloader) existingDir(rel string) string {
+	for p := rel; p != "." && p != "/" && p != ""; p = path.Dir(p) {
+		if _, err := d.o.Dest.Lstat(p); err == nil {
+			return p
 		}
-		return &Error{Code: code, Message: "cannot create the staging file", Err: err}
+	}
+	return "."
+}
+
+// openStaging creates the destination directory (0700) and the staging file with
+// O_CREATE|O_EXCL|O_NOFOLLOW, 0600, named from the job id.
+func (d *Downloader) openStaging(j *jobState) *Error {
+	if err := d.o.Dest.MkdirAll(j.destRel, 0o700); err != nil {
+		return &Error{Code: CodePathRejected, Message: "cannot create the destination directory", Err: err}
+	}
+	f, err := d.stagingFS(j).OpenExcl(j.staging)
+	if err != nil {
+		return writeFailure("cannot create the staging file", err)
 	}
 	j.file = f
 	return nil

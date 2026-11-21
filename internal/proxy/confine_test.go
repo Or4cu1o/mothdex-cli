@@ -41,14 +41,14 @@ func TestConfinerResolve(t *testing.T) {
 			t.Errorf("%s: got %q, %v, want %q", dest, got, err, want)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, "a", "b")); err != nil {
-		t.Errorf("the destination must be created: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "a", "b")); err == nil {
+		t.Error("Resolve must not create the directory: that happens with the staging file")
 	}
 
 	bad := map[string]Code{
-		sibling:                           CodeDestOutsideRoot, // string prefix trap
-		filepath.Join(root, "..", "x"):    CodeDestOutsideRoot,
-		base:                              CodeDestOutsideRoot,
+		sibling:                           CodePathRejected, // string prefix trap
+		filepath.Join(root, "..", "x"):    CodePathRejected,
+		base:                              CodePathRejected,
 		filepath.Join(root, "ports"):      CodePathRejected,
 		filepath.Join(root, "ports", "x"): CodePathRejected,
 		"":                                CodePathRejected,
@@ -85,7 +85,7 @@ func TestConfinerRefusesALinkOutsideTheRoot(t *testing.T) {
 	t.Cleanup(func() { _ = rfs.Close() })
 	c := &Confiner{FS: rfs}
 	for _, dest := range []string{filepath.Join(root, "snes"), filepath.Join(root, "snes", "sub")} {
-		if _, err := c.Resolve(dest); codeOf(err) != CodeDestOutsideRoot {
+		if _, err := c.Resolve(dest); codeOf(err) != CodePathRejected {
 			t.Errorf("%s: want dest_outside_root, got %v", dest, err)
 		}
 	}

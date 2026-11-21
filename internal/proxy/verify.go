@@ -34,12 +34,18 @@ func integrity(msg string, cause error) *attemptErr {
 	return &attemptErr{kind: kindIntegrity, err: &Error{Code: CodeIntegrity, Message: msg, Err: cause}}
 }
 
+// structural is an integrity failure that a second download cannot fix (a bomb, too many
+// members, a broken directory): fatal, so the hostile file is fetched once.
+func structural(msg string, cause error) *attemptErr {
+	return fatal(CodeIntegrity, msg, cause)
+}
+
 // verify runs the checks of section 4 on the staging file. The size was checked while
 // streaming; the local SHA-256 was computed on the fly.
 func (d *Downloader) verify(ctx context.Context, j *jobState) *attemptErr {
 	d.event(j, StateVerifying, nil)
 	j.crc, j.hash = statusSkipped, statusSkipped
-	if !d.cfg.Verify {
+	if d.cfg.SkipVerify {
 		return nil
 	}
 	ra := &fileAt{f: j.file}
@@ -52,7 +58,7 @@ func (d *Downloader) verify(ctx context.Context, j *jobState) *attemptErr {
 		zr, err = zip.NewReader(ra, j.bytes)
 		if err != nil {
 			j.crc = statusFailed
-			return integrity("the zip archive is damaged", err)
+			return structural("the zip archive is damaged", err) // the same file again would fail the same way
 		}
 		if ae := d.checkZip(ctx, j, zr); ae != nil {
 			return ae
@@ -87,14 +93,14 @@ func zipBudget(size int64) int64 {
 func (d *Downloader) checkZip(ctx context.Context, j *jobState, zr *zip.Reader) *attemptErr {
 	if len(zr.File) > zipMaxMembers {
 		j.crc = statusFailed
-		return integrity("the zip archive has too many members", nil)
+		return structural("the zip archive has too many members", nil)
 	}
 	budget := zipBudget(j.bytes)
 	var total int64
 	for _, f := range zr.File {
 		if total += int64(min(f.UncompressedSize64, uint64(budget)+1)); total > budget { //nolint:gosec // clamped to the budget
 			j.crc = statusFailed
-			return integrity("the zip archive declares too much data", nil)
+			return structural("the zip archive declares too much data", nil)
 		}
 	}
 	total = 0
@@ -116,9 +122,12 @@ func (d *Downloader) zipReadFailure(ctx context.Context, j *jobState, err error)
 		return nil
 	case ctx.Err() != nil:
 		return &attemptErr{kind: kindFatal, err: canceled(ctx)}
+	case errors.Is(err, errZipTooBig):
+		j.crc = statusFailed
+		return structural("the zip archive inflates past the cap", err)
 	default:
 		j.crc = statusFailed
-		return integrity("the zip archive failed its checks", err)
+		return integrity("the zip archive failed its checks", err) // a bad CRC may be a bad transfer: one retry
 	}
 }
 
@@ -187,8 +196,12 @@ func (d *Downloader) checkHashes(ctx context.Context, j *jobState, ra *fileAt, z
 		src = io.NopCloser(io.NewSectionReader(ra, 0, j.bytes))
 	}
 	defer func() { _ = src.Close() }()
+	limit := j.bytes
+	if h.Scope == mothdex.HashScopeContent && zr != nil {
+		limit = zipBudget(j.bytes) // a member inflates; the file itself is exactly j.bytes
+	}
 	hh := alg()
-	if _, err := copyCtx(ctx, hh, src, zipAbsoluteCap); err != nil {
+	if _, err := copyCtx(ctx, hh, src, limit); err != nil {
 		if ctx.Err() != nil {
 			return &attemptErr{kind: kindFatal, err: canceled(ctx)}
 		}

@@ -112,7 +112,8 @@ func TestCase19PreplantedTemporaryName(t *testing.T) {
 	for _, kind := range []string{"symlink", "file"} {
 		t.Run(kind, func(t *testing.T) {
 			r := newRig(t, proxy.Config{})
-			staging := fakefs.New(t) // a second file system: the copy path, .<jobID>.mothdex-tmp
+			staging := fakefs.New(t) // a second file system on another device: the copy path, .<jobID>.mothdex-tmp
+			staging.SetVolume(".", 1<<50, 2)
 			r.rebuild(proxy.Config{}, func(o *proxy.Options) {
 				o.Staging = staging
 				o.IDs = bytes.NewReader(make([]byte, 16)) // job id "aaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -420,7 +421,7 @@ func cancelOn(t *testing.T, cfg proxy.Config, state proxy.State) (*rig, context.
 func TestCase38CancelInTransferringAndVerifying(t *testing.T) {
 	for _, state := range []proxy.State{proxy.StateTransferring, proxy.StateVerifying} {
 		t.Run(string(state), func(t *testing.T) {
-			r, ctx := cancelOn(t, proxy.Config{Verify: true}, state)
+			r, ctx := cancelOn(t, proxy.Config{}, state)
 			body := zipfix.Valid(map[string][]byte{"a.bin": fakeproxy.Pattern(20_000), "b.bin": fakeproxy.Pattern(20_000)})
 			r.srv.Script("/f/a", fakeproxy.StallMidStream(body, len(body)/2, time.Hour))
 			if state == proxy.StateVerifying {
@@ -499,39 +500,64 @@ func TestCase39StartupCleanup(t *testing.T) {
 	}
 }
 
-// Case 40: a retry writes through the descriptor it already holds, never through the path.
+// Case 40: a retry writes through the descriptor it already holds, never through the path, and
+// finalize notices that the staging name no longer is that file (Crivo addendum): the job does
+// not report Done over a planted link.
 func TestCase40RetryNeverWritesThroughASwappedPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("an open file cannot be unlinked on Windows, so the path swap cannot happen")
 	}
-	r := newRig(t, proxy.Config{})
-	victim := filepath.Join(realfs.Dir(t), "victim")
-	realfs.WriteFile(t, victim, []byte("precious"))
-	swapped := false
-	r.rebuild(proxy.Config{}, func(o *proxy.Options) {
-		inner := o.OnEvent
-		o.OnEvent = func(e proxy.Event) {
-			inner(e)
-			if e.State != proxy.StateRetryWait || swapped {
-				return
+	for _, crossDevice := range []bool{false, true} {
+		t.Run(map[bool]string{false: "staged in the destination", true: "staged in paths.temp"}[crossDevice], func(t *testing.T) {
+			r := newRig(t, proxy.Config{})
+			if crossDevice {
+				r.fs.SetVolume("downloads", 1<<50, 2)
 			}
-			swapped = true
-			p := r.fs.Path("downloads/" + e.JobID + ".part")
-			if err := os.Remove(p); err != nil {
-				t.Error(err)
+			victim := filepath.Join(realfs.Dir(t), "victim")
+			realfs.WriteFile(t, victim, []byte("precious"))
+			swapped := false
+			r.rebuild(proxy.Config{}, func(o *proxy.Options) {
+				inner := o.OnEvent
+				o.OnEvent = func(e proxy.Event) {
+					inner(e)
+					if e.State != proxy.StateRetryWait || swapped {
+						return
+					}
+					swapped = true
+					p := r.fs.Path("roms/snes/." + e.JobID + ".part")
+					if crossDevice {
+						p = r.fs.Path("downloads/" + e.JobID + ".part")
+					}
+					if err := os.Remove(p); err != nil {
+						t.Error(err)
+					}
+					realfs.Symlink(t, victim, p)
+				}
+			})
+			body := fakeproxy.Pattern(50_000)
+			r.srv.Script("/f/a", fakeproxy.Truncate(body, 10_000), fakeproxy.OK(body))
+
+			res := r.download(r.job("/f/a", "a.zip", len(body)))
+
+			if !swapped {
+				t.Fatal("the retry state was never reached")
 			}
-			realfs.Symlink(t, victim, p)
-		}
-	})
-	body := fakeproxy.Pattern(50_000)
-	r.srv.Script("/f/a", fakeproxy.Truncate(body, 10_000), fakeproxy.OK(body))
-
-	r.download(r.job("/f/a", "a.zip", len(body)))
-
-	if !swapped {
-		t.Fatal("the retry state was never reached")
-	}
-	if got, _ := os.ReadFile(victim); string(got) != "precious" { //nolint:gosec // test path
-		t.Fatalf("the symlink target was written: %d bytes", len(got))
+			if got, _ := os.ReadFile(victim); string(got) != "precious" { //nolint:gosec // test path
+				t.Fatalf("the symlink target was written: %d bytes", len(got))
+			}
+			final := r.fs.Path("roms/snes/a.zip")
+			info, err := os.Lstat(final)
+			switch {
+			case res.State == proxy.StateDone:
+				if err != nil || !info.Mode().IsRegular() {
+					t.Fatalf("Done but the final entry is not a regular file: %v %v", info, err)
+				}
+				if got, _ := os.ReadFile(final); !bytes.Equal(got, body) { //nolint:gosec // test path
+					t.Fatal("Done with the wrong content")
+				}
+			case err == nil:
+				t.Fatalf("state %s but a final entry exists (%v)", res.State, info.Mode())
+			}
+		})
 	}
 }

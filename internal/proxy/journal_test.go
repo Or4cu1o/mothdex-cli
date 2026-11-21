@@ -3,36 +3,39 @@ package proxy
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestFileJournalPersistsAndSkipsGarbage(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "data", "inflight.jsonl")
-	j := NewFileJournal(path)
+func TestFileJournalOneFilePerJobAcrossInstances(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data", "inflight")
+	a, b := NewFileJournal(dir), NewFileJournal(dir) // two processes
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	for _, id := range []string{"a", "b"} {
-		if err := j.Add(JournalEntry{JobID: id, Staging: "downloads/" + id + ".part", DestDir: "snes", Started: now}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := j.Remove("a"); err != nil {
+	ida, idb := strings.Repeat("a", 26), strings.Repeat("b", 26)
+	if err := a.Add(JournalEntry{JobID: ida, DestDir: "snes", Started: now}); err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // temp path
-	if err != nil {
+	if err := b.Add(JournalEntry{JobID: idb, DestDir: "snes", Started: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.WriteString("not json\n{\"job_id\":\"\"}\n"); err != nil {
+	if err := a.Add(JournalEntry{JobID: ida}); err == nil {
+		t.Fatal("an entry is created with O_EXCL: a second Add of the same id must fail")
+	}
+	if got, err := a.Entries(); err != nil || len(got) != 2 {
+		t.Fatalf("both entries must be visible to either instance: %+v %v", got, err)
+	}
+	if err := b.Remove(ida); err != nil {
 		t.Fatal(err)
 	}
-	_ = f.Close()
-
-	got, err := NewFileJournal(path).Entries()
-	if err != nil || len(got) != 1 || got[0].JobID != "b" {
+	if err := os.WriteFile(filepath.Join(dir, "junk.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := a.Entries()
+	if err != nil || len(got) != 1 || got[0].JobID != idb {
 		t.Fatalf("entries %+v, err %v", got, err)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm()&0o077 != 0 && os.PathSeparator == '/' {
-		t.Fatalf("the journal must be private: %v %v", info, err)
+	if err := a.Add(JournalEntry{JobID: "../evil"}); err == nil {
+		t.Fatal("a job id that is not 26 base32 characters must be refused")
 	}
 }

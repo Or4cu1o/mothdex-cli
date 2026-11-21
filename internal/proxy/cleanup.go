@@ -56,13 +56,17 @@ func (d *Downloader) Cleanup(ctx context.Context) error {
 			continue // a malformed entry is never trusted; a live job keeps its entry
 		}
 		stagingGone, err1 := removeIfOld(d.o.Staging, stagingDir+"/"+je.JobID+".part", now)
-		tmpGone := true
+		destGone := true
 		var err2 error
 		if dir := path.Clean(je.DestDir); fs.ValidPath(dir) {
-			tmpGone, err2 = removeIfOld(d.o.Dest, joinName(dir, "."+je.JobID+".mothdex-tmp"), now)
+			for _, suffix := range []string{".part", ".mothdex-tmp"} { // staged in place, or the cross-device copy
+				gone, err := removeIfOld(d.o.Dest, joinName(dir, "."+je.JobID+suffix), now)
+				destGone = destGone && gone
+				err2 = errors.Join(err2, err)
+			}
 		}
 		errs = append(errs, err1, err2)
-		if stagingGone && tmpGone {
+		if stagingGone && destGone {
 			if err := d.o.Journal.Remove(je.JobID); err != nil {
 				errs = append(errs, err)
 			}

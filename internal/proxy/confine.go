@@ -35,50 +35,40 @@ func (c *Confiner) Resolve(destdir string) (string, error) {
 	if c.launcher(abs) {
 		return "", launcherRefused()
 	}
-	// A link planted in the tree is caught before anything is created: resolve what exists.
-	if err := c.checkExistingPart(filepath.Join(c.FS.Dir(), rel)); err != nil {
+	// The directory is created later, when its staging file is (a job that is skipped or
+	// refused for space leaves no empty folder). What exists already is resolved now, so a
+	// link planted in the tree is refused before anything is written.
+	real, err := c.resolveExisting(filepath.Join(c.FS.Dir(), rel))
+	if err != nil {
 		return "", err
 	}
-	name := filepath.ToSlash(rel)
-	if err := c.FS.MkdirAll(name, 0o700); err != nil {
-		return "", &Error{Code: CodePathRejected, Message: "cannot create the destination directory", Err: err}
+	if c.launcher(real) {
+		return "", launcherRefused()
 	}
+	return filepath.ToSlash(rel), nil
+}
+
+// resolveExisting resolves the longest existing ancestor of dir through the operating system,
+// requires it to be inside the resolved root (dest_outside_root semantics, code path_rejected),
+// and returns the resolved path with the not yet existing remainder appended.
+func (c *Confiner) resolveExisting(dir string) (string, error) {
 	realRoot, err := finalPath(c.FS.Dir())
 	if err != nil {
 		return "", &Error{Code: CodeInternal, Message: "cannot resolve the root directory", Err: err}
 	}
-	realDest, err := finalPath(filepath.Join(c.FS.Dir(), rel))
-	if err != nil {
-		return "", &Error{Code: CodeInternal, Message: "cannot resolve the destination directory", Err: err}
-	}
-	if _, ok := within(realRoot, realDest); !ok {
-		return "", outside()
-	}
-	if c.launcher(realDest) {
-		return "", launcherRefused()
-	}
-	return name, nil
-}
-
-// checkExistingPart resolves the longest existing ancestor of dir and requires it to be inside
-// the resolved root, so a symlink or junction that leaves the root is reported as
-// dest_outside_root instead of a generic failure from the confined root.
-func (c *Confiner) checkExistingPart(dir string) error {
-	realRoot, err := finalPath(c.FS.Dir())
-	if err != nil {
-		return &Error{Code: CodeInternal, Message: "cannot resolve the root directory", Err: err}
-	}
+	rest := ""
 	for p := dir; ; p = filepath.Dir(p) {
 		real, err := finalPath(p)
 		if err == nil {
 			if _, ok := within(realRoot, real); !ok {
-				return outside()
+				return "", outside()
 			}
-			return nil
+			return filepath.Join(real, rest), nil
 		}
 		if filepath.Dir(p) == p {
-			return &Error{Code: CodePathRejected, Message: "cannot resolve the destination directory", Err: err}
+			return "", &Error{Code: CodePathRejected, Message: "cannot resolve the destination directory", Err: err}
 		}
+		rest = filepath.Join(filepath.Base(p), rest)
 	}
 }
 
@@ -87,7 +77,7 @@ func (c *Confiner) launcher(path string) bool {
 }
 
 func outside() *Error {
-	return &Error{Code: CodeDestOutsideRoot, Message: "the destination directory resolves outside the ROM root; pass the real path with -o"}
+	return &Error{Code: CodePathRejected, Message: "the destination directory resolves outside the ROM root; pass the real path with -o"}
 }
 
 func launcherRefused() *Error {

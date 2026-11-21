@@ -1,14 +1,13 @@
 package proxy
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -53,50 +52,76 @@ func removeJob(in []JournalEntry, jobID string) []JournalEntry {
 	return out
 }
 
-// FileJournal keeps the journal as JSON lines in <paths.data>/inflight.jsonl. The data
-// directory belongs to the application, so plain os calls are used; the file is 0600 and
-// every change rewrites it through a temporary file and a rename.
-type FileJournal struct {
-	mu   sync.Mutex
-	path string
-}
+// FileJournal keeps one small file per in-flight job, <dir>/<jobID>.json (the "inflight"
+// directory under paths.data). One file per job means two processes (CLI and TUI, or two runs)
+// never rewrite each other's entries: Add creates the file with O_EXCL, Remove deletes it.
+// Add flushes the file and the directory so that the entry survives a crash, which is the
+// point of a journal.
+type FileJournal struct{ dir string }
 
 var _ Journal = (*FileJournal)(nil)
 
-// NewFileJournal returns a journal stored at path (created on first use).
-func NewFileJournal(path string) *FileJournal { return &FileJournal{path: path} }
+// NewFileJournal returns a journal stored in dir (created on first use, 0700).
+func NewFileJournal(dir string) *FileJournal { return &FileJournal{dir: dir} }
+
+func (j *FileJournal) file(jobID string) (string, error) {
+	if !jobIDRe.MatchString(jobID) {
+		return "", fmt.Errorf("proxy: invalid job id in the journal")
+	}
+	return filepath.Join(j.dir, jobID+".json"), nil
+}
 
 // Add implements Journal.
 func (j *FileJournal) Add(e JournalEntry) error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	cur, err := j.read()
+	name, err := j.file(e.JobID)
 	if err != nil {
 		return err
 	}
-	return j.write(append(cur, e))
+	if err := os.MkdirAll(j.dir, 0o700); err != nil {
+		return fmt.Errorf("proxy: journal directory: %w", err)
+	}
+	line, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // name is dir + a validated job id
+	if err != nil {
+		return fmt.Errorf("proxy: create journal entry: %w", err)
+	}
+	if _, err := f.Write(line); err != nil {
+		_ = f.Close()
+		_ = os.Remove(name)
+		return fmt.Errorf("proxy: write journal entry: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(name)
+		return fmt.Errorf("proxy: flush journal entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	syncDirPath(j.dir)
+	return nil
 }
 
-// Remove implements Journal.
+// Remove implements Journal. A missing entry is not an error.
 func (j *FileJournal) Remove(jobID string) error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	cur, err := j.read()
+	name, err := j.file(jobID)
 	if err != nil {
 		return err
 	}
-	return j.write(removeJob(cur, jobID))
+	if err := os.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("proxy: remove journal entry: %w", err)
+	}
+	syncDirPath(j.dir)
+	return nil
 }
 
-// Entries implements Journal. Lines that do not parse are skipped, never fatal.
+// Entries implements Journal. Files that do not parse or are not named <jobID>.json are
+// skipped, never fatal.
 func (j *FileJournal) Entries() ([]JournalEntry, error) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.read()
-}
-
-func (j *FileJournal) read() ([]JournalEntry, error) {
-	b, err := os.ReadFile(j.path)
+	items, err := os.ReadDir(j.dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -104,36 +129,27 @@ func (j *FileJournal) read() ([]JournalEntry, error) {
 		return nil, fmt.Errorf("proxy: read journal: %w", err)
 	}
 	var out []JournalEntry
-	sc := bufio.NewScanner(bytes.NewReader(b))
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	for sc.Scan() {
+	for _, it := range items {
+		id, ok := strings.CutSuffix(it.Name(), ".json")
+		if !ok || !it.Type().IsRegular() || !jobIDRe.MatchString(id) {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(j.dir, it.Name())) //nolint:gosec // dir + a validated name
+		if err != nil {
+			continue
+		}
 		var e JournalEntry
-		if json.Unmarshal(sc.Bytes(), &e) == nil && e.JobID != "" {
+		if json.Unmarshal(b, &e) == nil && e.JobID == id {
 			out = append(out, e)
 		}
 	}
 	return out, nil
 }
 
-func (j *FileJournal) write(entries []JournalEntry) error {
-	if err := os.MkdirAll(filepath.Dir(j.path), 0o700); err != nil {
-		return fmt.Errorf("proxy: journal directory: %w", err)
+// syncDirPath flushes a directory; failures (Windows cannot) are ignored.
+func syncDirPath(dir string) {
+	if d, err := os.Open(dir); err == nil { //nolint:gosec // the journal directory
+		_ = d.Sync()
+		_ = d.Close()
 	}
-	var buf bytes.Buffer
-	for _, e := range entries {
-		line, err := json.Marshal(e)
-		if err != nil {
-			return err
-		}
-		buf.Write(line)
-		buf.WriteByte('\n')
-	}
-	tmp := j.path + ".tmp"
-	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
-		return fmt.Errorf("proxy: write journal: %w", err)
-	}
-	if err := os.Rename(tmp, j.path); err != nil {
-		return fmt.Errorf("proxy: replace journal: %w", err)
-	}
-	return nil
 }

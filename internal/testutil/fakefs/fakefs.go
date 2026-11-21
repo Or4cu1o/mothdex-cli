@@ -365,6 +365,7 @@ func (x *file) Write(p []byte) (int, error) {
 
 func (x *file) Read(p []byte) (int, error)                { return x.f.Read(p) }
 func (x *file) Seek(off int64, whence int) (int64, error) { return x.f.Seek(off, whence) }
+func (x *file) Stat() (fs.FileInfo, error)                { return x.f.Stat() }
 func (x *file) Truncate(size int64) error {
 	if err := x.fs.enter(OpTruncate, x.name, ""); err != nil {
 		return err

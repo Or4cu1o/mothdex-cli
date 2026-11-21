@@ -15,7 +15,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/zipfix"
 )
 
-func verifyRig(t *testing.T) *rig { return newRig(t, proxy.Config{Verify: true}) }
+func verifyRig(t *testing.T) *rig { return newRig(t, proxy.Config{}) }
 
 // Case 41: hostile archives are refused as integrity failures, with bounded work.
 func TestCase41ZipBombs(t *testing.T) {
@@ -43,7 +43,7 @@ func TestCase41ZipBombs(t *testing.T) {
 
 // Case 42: a cancel during the CRC pass returns Canceled, not an integrity failure.
 func TestCase42CancelDuringZipCRC(t *testing.T) {
-	r, ctx := cancelOn(t, proxy.Config{Verify: true}, proxy.StateVerifying)
+	r, ctx := cancelOn(t, proxy.Config{}, proxy.StateVerifying)
 	members := map[string][]byte{}
 	for _, n := range []string{"a.bin", "b.bin", "c.bin", "d.bin"} {
 		members[n] = fakeproxy.Pattern(2 << 20)
@@ -86,7 +86,7 @@ func TestCase43MagicByteDetection(t *testing.T) {
 		})
 	}
 	t.Run("verify off skips every check", func(t *testing.T) {
-		r := newRig(t, proxy.Config{})
+		r := newRig(t, proxy.Config{SkipVerify: true})
 		body := zipfix.DeclaredSizeLie(1<<20, 1000)
 		r.srv.Script("/f/z", fakeproxy.OK(body))
 		if res := r.download(r.job("/f/z", "z.zip", len(body))); res.State != proxy.StateDone {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"math"
+	"os"
 	"syscall"
 )
 
@@ -16,6 +17,9 @@ func (d *Downloader) finalize(ctx context.Context, j *jobState) (State, *Error) 
 	if err := j.file.Sync(); err != nil {
 		return StateFailed, writeFailure("cannot flush the staging file", err)
 	}
+	if err := d.checkStagingName(j); err != nil {
+		return StateFailed, err
+	}
 	cerr := j.file.Close()
 	j.file = nil
 	if cerr != nil {
@@ -23,7 +27,7 @@ func (d *Downloader) finalize(ctx context.Context, j *jobState) (State, *Error) 
 	}
 
 	src := j.staging
-	if d.o.Staging != d.o.Dest { // two roots cannot be renamed across: copy into the destination
+	if !j.stageInDest { // staged on another device: copy into the destination, then rename there
 		var err *Error
 		if src, err = d.copyToDest(ctx, j); err != nil {
 			return stateOf(err), err
@@ -56,6 +60,29 @@ func (d *Downloader) finalize(ctx context.Context, j *jobState) (State, *Error) 
 	}
 }
 
+// checkStagingName requires that the staging name still refers to the file the downloader
+// has been writing: same file, regular, not a link planted in its place (T-17 review).
+func (d *Downloader) checkStagingName(j *jobState) *Error {
+	fi, err1 := j.file.Stat()
+	li, err2 := d.stagingFS(j).Lstat(j.staging)
+	if err1 != nil || err2 != nil || !li.Mode().IsRegular() || !os.SameFile(fi, li) {
+		return &Error{Code: CodePathRejected, Message: "the staging file was replaced while downloading"}
+	}
+	return nil
+}
+
+// checkPlaced requires the final name to be a regular file of the expected size, and removes
+// what it placed if not.
+func (d *Downloader) checkPlaced(j *jobState) *Error {
+	final := joinName(j.destRel, j.name)
+	info, err := d.o.Dest.Lstat(final)
+	if err == nil && info.Mode().IsRegular() && info.Size() == j.bytes {
+		return nil
+	}
+	_ = d.o.Dest.Remove(final)
+	return &Error{Code: CodePathRejected, Message: "the placed file is not the downloaded file"}
+}
+
 // writeFailure classifies a write or rename error.
 func writeFailure(msg string, err error) *Error {
 	code := CodeInternal
@@ -68,6 +95,12 @@ func writeFailure(msg string, err error) *Error {
 // finishPlacement is the last step after the rename: flush the directory.
 func (d *Downloader) finishPlacement(j *jobState) (State, *Error) {
 	j.tmp = "" // the copy became the final file
+	if err := d.checkPlaced(j); err != nil {
+		return StateFailed, err
+	}
+	d.names.markFinal(j.destRel, j.name)
+	// If the directory flush fails below the file is already in place; the job is reported
+	// Failed (Done needs both fsyncs, CR-5) and the file is left for the user to see.
 	if err := d.o.Dest.SyncDir(j.destRel); err != nil {
 		return StateFailed, writeFailure("cannot flush the destination directory", err)
 	}
@@ -137,6 +170,11 @@ func (d *Downloader) existsAtFinalize(j *jobState) (State, *Error) {
 		j.nameHeld = false
 		return d.reserveName(j, j.renameN+1)
 	case OnExistsOverwrite:
+		if d.names.isFinal(j.destRel, j.name) { // a file of this batch: never replace it, rename
+			d.names.release(j.destRel, j.name)
+			j.nameHeld = false
+			return d.reserveName(j, j.renameN+1)
+		}
 		info, err := d.o.Dest.Lstat(joinName(j.destRel, j.name))
 		if err == nil && !info.Mode().IsRegular() {
 			return StateFailed, &Error{Code: CodePathRejected, Message: "the existing target is not a regular file"}
@@ -158,7 +196,7 @@ func (d *Downloader) copyToDest(ctx context.Context, j *jobState) (string, *Erro
 		return "", writeFailure("cannot create the temporary copy", err)
 	}
 	j.tmp = tmp
-	src, err := d.o.Staging.Open(j.staging)
+	src, err := d.stagingFS(j).Open(j.staging)
 	if err != nil {
 		_ = dst.Close()
 		return "", &Error{Code: CodeInternal, Message: "cannot reopen the staging file", Err: err}
@@ -179,6 +217,6 @@ func (d *Downloader) copyToDest(ctx context.Context, j *jobState) (string, *Erro
 	if err := dst.Close(); err != nil {
 		return "", writeFailure("cannot close the temporary copy", err)
 	}
-	_ = d.o.Staging.Remove(j.staging)
+	_ = d.stagingFS(j).Remove(j.staging)
 	return tmp, nil
 }

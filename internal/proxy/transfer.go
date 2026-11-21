@@ -44,8 +44,9 @@ var (
 )
 
 const (
-	backoffBase = 2 * time.Second
-	backoffCap  = 60 * time.Second
+	maxRetryAfter = 15 * time.Minute // a worker slot is held while waiting
+	backoffBase   = 2 * time.Second
+	backoffCap    = 60 * time.Second
 )
 
 // transfer runs attempts until the file is complete and verified, or the retry policy gives up.
@@ -190,10 +191,10 @@ func (d *Downloader) checkResponse(j *jobState, req *http.Request, resp *http.Re
 func retryAfter(v string, now time.Time) time.Duration {
 	v = strings.TrimSpace(v)
 	if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
-		return min(time.Duration(secs)*time.Second, time.Hour)
+		return min(time.Duration(secs)*time.Second, maxRetryAfter)
 	}
 	if t, err := http.ParseTime(v); err == nil && t.After(now) {
-		return min(t.Sub(now), time.Hour)
+		return min(t.Sub(now), maxRetryAfter)
 	}
 	return 0
 }

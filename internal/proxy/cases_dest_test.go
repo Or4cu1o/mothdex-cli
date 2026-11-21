@@ -63,7 +63,7 @@ func linkedDestination(t *testing.T, link func(testing.TB, string, string)) {
 	before := realfs.Snapshot(t, outside)
 
 	for _, dest := range []string{filepath.Join(root, "snes"), filepath.Join(root, "snes", "sub")} {
-		wantFailed(t, r.download(job(r, dest, body)), proxy.CodeDestOutsideRoot)
+		wantFailed(t, r.download(job(r, dest, body)), proxy.CodePathRejected)
 	}
 	if d := realfs.DiffSnapshots(before, realfs.Snapshot(t, outside)); len(d) != 0 {
 		t.Fatalf("something was written outside the root: %v", d)

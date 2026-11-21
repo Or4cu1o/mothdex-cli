@@ -8,21 +8,20 @@ type Code string
 
 // Error codes of the downloader.
 const (
-	CodeUntrustedURL    Code = "untrusted_url"
-	CodeSizeMismatch    Code = "size_mismatch"
-	CodeIntegrity       Code = "integrity"
-	CodeDiskFull        Code = "disk_full"
-	CodePathRejected    Code = "path_rejected"
-	CodeUnsafeName      Code = "unsafe_name"
-	CodeExists          Code = "exists"
-	CodeDestOutsideRoot Code = "dest_outside_root"
-	CodeUnmapped        Code = "unmapped_platform"
-	CodeNetwork         Code = "network"
-	CodeNotFound        Code = "not_found"
-	CodeRateLimited     Code = "rate_limited"
-	CodeUpstream        Code = "upstream"
-	CodeCanceled        Code = "canceled"
-	CodeInternal        Code = "internal"
+	CodeUntrustedURL Code = "untrusted_url"
+	CodeSizeMismatch Code = "size_mismatch"
+	CodeIntegrity    Code = "integrity"
+	CodeDiskFull     Code = "disk_full"
+	CodePathRejected Code = "path_rejected"
+	CodeUnsafeName   Code = "unsafe_name"
+	CodeExists       Code = "exists"
+	CodeUnmapped     Code = "unmapped_platform"
+	CodeNetwork      Code = "network"
+	CodeNotFound     Code = "not_found"
+	CodeRateLimited  Code = "rate_limited"
+	CodeUpstream     Code = "upstream"
+	CodeCanceled     Code = "canceled"
+	CodeInternal     Code = "internal"
 )
 
 // Error is the typed error of the downloader. Use errors.As and compare Code.
