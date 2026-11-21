@@ -76,7 +76,7 @@ any state ── Cancel / ctx ─▶ Canceled (staging removed, reservations rel
    `need = size + max(size / 20, 256 MiB)` with overflow-checked `int64` math (no floats). The job starts only if
    `free − reserved(fs) ≥ need` on each filesystem it will write; otherwise `Failed(disk_full)`. Released at the
    terminal state. `ENOSPC` while writing → `Failed(disk_full)` and immediate cleanup.
-8. **In-flight journal:** append `{jobID, staging paths, destdir, started_at}` to `<paths.data>/inflight.jsonl`;
+8. **In-flight journal:** append `{jobID, staging paths, destdir, root, started_at}` to `<paths.data>/inflight.jsonl`;
    the entry is removed at the terminal state (§6.4).
 
 `Content-Length` present and different from `link.size` → `Failed(size_mismatch)`, not retryable (the catalog and the
@@ -203,6 +203,9 @@ At startup, delete only **regular** files (`Lstat`, never follow) older than 24 
 - `^[a-z2-7]{26}\.part$` in `<paths.temp>/downloads/`;
 - `^\.[a-z2-7]{26}\.part$` and `^\.[a-z2-7]{26}\.mothdex-tmp$` in the destdirs listed in `<paths.data>/inflight.jsonl`.
 
+Cleanup is per destination root: a Downloader handles only journal entries whose `root` is its own absolute
+destination root (an entry without `root` predates the field and is handled by any root). Entries of a root that is
+not opened again stay until it is; the staging sweep in `<paths.temp>/downloads/` does not depend on the journal.
 Journal entries whose job files are gone are pruned. The downloader never deletes anything else.
 
 ## 7. Pool and events
@@ -226,7 +229,7 @@ Everything that touches the outside world is an injected port (`internal/proxy/p
 | `FS` | confined file system with `os.Root` semantics: `OpenExcl` (create-exclusive, no-follow, `0600`), `Open` (read an existing regular file again: verify and the EXDEV copy), `Lstat`, `MkdirAll`, `Remove`, `ReadDir`, `Link` (`fs.ErrExist`, or `errors.ErrUnsupported`), `Free` (free bytes plus device id, for the ledger and the EXDEV decision) and `SyncDir` (the §3 `fsync` of the destdir; it reports success where a directory cannot be synced, e.g. Windows, where `MOVEFILE_WRITE_THROUGH` covers it) |
 | `File` | the staging handle: read, write, seek, `Truncate`, `Sync`, `Close`; reused across retries (§3) |
 | `Finalizer` | `Rename(fs, from, to, replace)`: no-replace per OS (§6.3); `fs.ErrExist`, `ErrUnsupported` or `EXDEV`; `replace=true` only for `--force` after the `Lstat` check |
-| `Journal` | the in-flight journal (§6.4): `Add` and `Entries` plus clearing an entry at the terminal state, over `{job_id, staging, dest_dir, started_at}` |
+| `Journal` | the in-flight journal (§6.4): `Add` and `Entries` plus clearing an entry at the terminal state, over `{job_id, staging, dest_dir, root, started_at}` (`root` is the absolute destination root, used by the per-root cleanup) |
 | `History` | `Append(Record)`, exactly once per job at its terminal state |
 
 `Record` (input to history, T-19): `JobID, Slug, Platform, State, Code` (empty unless failed), `RawName` (the received
