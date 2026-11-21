@@ -319,7 +319,7 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 	case screenEntry:
 		return m.onEntryAction(a, now)
 	case screenQueue:
-		return m.onQueueAction(a, now)
+		return m.onQueueAction(a)
 	}
 	return m.onHomeAction(a, now)
 }

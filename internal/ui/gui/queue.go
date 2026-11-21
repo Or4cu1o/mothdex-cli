@@ -213,7 +213,7 @@ func (m Model) focusedJob() (app.JobSnapshot, bool) {
 	return app.JobSnapshot{}, false
 }
 
-func (m Model) onQueueAction(a input.Action, now time.Time) (Model, []Cmd) {
+func (m Model) onQueueAction(a input.Action) (Model, []Cmd) {
 	q := m.queue
 	if q.details != "" {
 		if a == input.Back || a == input.Confirm {
