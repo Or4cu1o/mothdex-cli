@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/qa/T-43-shell-acceptance.md` (T-43): Shell acceptance at `b45d433` against shell.md and ui.md with a snapshot binary and a
+  local fixture API (banner, paging, ranges and overflow inputs, link chooser, per-line flags, Tab, history mode, Ctrl+C and Ctrl+D,
+  script mode and SIGINT), the findings S1 to S5 and the list of what was not verified.
 - T-53 (E-M3 service items, gui.md section 8): `internal/compose` is the composition root both binaries build the service with (`compose.Open(ctx, Options) (*Session, error)`; a session's stored `on_exists=overwrite` is reported at start-up; `cmd/mothdex` wraps it in `cli.Session`). `app.DecodeCover` decodes a cover with the fetch limits (5 MiB, type allowlist agreeing with the content type, 4096 pixels per side checked from the header, the first GIF frame checked too), one frame, scaled down to `maxSide` (4 megapixel budget from the header, no full copy while scaling, a decoder panic becomes an error); WebP through `golang.org/x/image` v0.48.0 (BSD-3, Go team). Config keys `gui.confirm_button` (`south|east`), `gui.text_size` (`normal|large`) and `gui.safe_area` (`auto` or 0..10) with their `ConfigSchema` metadata. A regression test covers G3 (`Wait` on idle returns at once and refreshes only after a download).
 - E-M2 polish (T-44), from the UX review: a Shell `download` of several entries prints `Link n chosen` for every entry with more
   than one link, with or without a preference (one entry still gets the chooser); the Shell no longer exits on a second Ctrl+C,
