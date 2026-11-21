@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -395,6 +396,10 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 	dest, err := proxy.OpenRootFS(root)
 	if err != nil {
 		_ = staging.Close()
+		if errors.Is(err, fs.ErrNotExist) { // the profile's default ROM folder is not there (an -o root is created first)
+			return nil, nil, &Error{Code: string(proxy.CodePathRejected), Message: "the default download folder does not exist", Cause: err,
+				Args: map[string]any{"path": root, "hint_key": "errors.path_rejected.missing_hint"}}
+		}
 		return nil, nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
 	}
 	conf := d.confiner(dest)

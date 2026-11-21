@@ -15,6 +15,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PR-69 review (Ensaio V1/S1): a test with a fake `api` proves `ReadPixels` and `UpdateTexture` refuse short buffers, a pitch below the row
+  and a rect outside the texture before SDL is called; `GUI_REQUIRE_SDL=1` turns the missing-SDL skip into a failure and is set in the
+  amd64 and Windows test steps.
+- T-52b: CI for the GUI spike (`.github/workflows/gui-spike.yml`, read-only, actions pinned by SHA): the probe and `go test -tags gui`
+  on linux amd64 with the distro libsdl2 (dummy driver), on windows amd64 with `SDL2.dll` 2.32.10 fetched by the exact release URL and verified against a
+  pinned SHA-256 (`scripts/sdl2-windows.pin`); `readelf` per Linux target, the isolation check and a size report. The arm64, armv7 and armv6 legs (qemu-user, pinned
+  Debian images) are in `gui-spike-qemu.yml` (qemu-user from the runner's apt and the pinned Debian images through docker, because the
+  repository does not allow `docker/setup-qemu-action`; if binfmt does not work in containers it falls back to `qemu-<arch>`
+  with a sysroot). The spike CI also runs negative library-planting tests (a garbage `libSDL2-2.0.so.0` or `SDL2.dll` in the
+  working directory, next to the probe or on `PATH` must not load), requires a program interpreter and no RPATH or RUNPATH
+  on every Linux probe, and reports the ARMv6 CPU-model run (attempted, exit code, `/bin/true` and ld.so control runs) in the job
+  summary and as a warning. The result of the spike is recorded in `docs/qa/T-52-gui-spike-report.md`. New
+  `scripts/check-sdl-constants.sh` compiles a C program against the libsdl2-dev headers and fails when a binding constant
+  or struct layout differs.
+- `internal/ui/gui/sdl` and `cmd/mothdex-gui` (T-52, spike): our own thin purego binding of 23 SDL2 functions (video, renderer,
+  textures, events, `SDL_GameControllerAddMapping`), loaded from the system SDL2 at run time. Pointers, integers and floats
+  only; `SDL_Event` and `SDL_Rect` go by pointer and their layout is tested per architecture. Linux opens `libSDL2-2.0.so.0` by
+  soname only; Windows opens `SDL2.dll` from the executable folder or System32 only, never the current directory. The probe
+  (`mothdex-gui`, tag `gui`, `CGO_ENABLED=0`) runs the headless check of the contract in order (load, version, mapping, window and
+  renderer, atlas texture, draw, pixel read-back, render scale, event round trip), prints the SDL version and exits 0, or 1 when
+  SDL2 is missing, too old or has no display, or 3 for a failed check. `scripts/gui-probe.sh` builds and inspects it for one
+  target (ELF interpreter and `NEEDED`, the armhf `-I` flag) and runs it on the host; `scripts/check-gui-isolation.sh` fails
+  if `mothdex` ever depends on purego or a GUI package. `purego` v0.11.3 is pinned in `go.mod`; `mothdex` does not contain it. `ReadPixels` and `UpdateTexture` check that the buffer holds every byte SDL will touch (pitch*(h-1)+w*bytes) before the call and refuse a shorter one; SDL2 is opened with `RTLD_LOCAL`.
 - `docs/qa/T-43-shell-acceptance.md` (T-43): Shell acceptance at `b45d433` against shell.md and ui.md with a snapshot binary and a
   local fixture API (banner, paging, ranges and overflow inputs, link chooser, per-line flags, Tab, history mode, Ctrl+C and Ctrl+D,
   script mode and SIGINT), the findings S1 to S5 and the list of what was not verified.
@@ -280,6 +303,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `download` with no `-o` and no `download.dir`, when the profile's default ROM folder does not exist, now fails with `path_rejected` (exit 6) and a hint that names the folder and the two ways out (`-o <folder>` or `mothdex config set download.dir <folder>`), instead of a generic `invalid_request` with an unrelated hint (T-26, from Ensaio's T-43 S5). The folder is not created for the user.
+- Shell (T-41-fix, from the T-43 acceptance, S1): `info` and `boxart` with a list or a range (`info 2-3`, `boxart 1-2`) now run once for each entry with the same flags,
+  as shell.md section 4 always said, instead of failing with "accepts 1 arg(s)"; the exit code is the first failure and the later
+  entries still run. shell.md also records that Ctrl+D with stdout redirected ends with the last command's code (S4) and the 0-column
+  terminal limit (S3). The double Ctrl+C of S2 is already gone from main (#64: Ctrl+C never leaves the Shell).
 - T-25 backlog sweep: `Enqueue` removes the directories it created for earlier `-o` roots when a later root cannot be opened; `config.Set` itself refuses a stored `download.on_exists=overwrite` (the check moved from `app.ConfigSet`); `SaveJobBoxart` looks the job up by `JobID` in what the service recorded (bounded to 1000), so a forged snapshot cannot choose the folder or the entry; `history -e json` goes through the same C1 escaper as `--json` (`app.EscapeC1`); `SearchPage.SessionStale` and a warning when the search session can be neither saved nor cleared; a page whose results were all dropped says so instead of advising fewer words. Already done earlier and kept: journal entries carry their root (one root's Cleanup leaves the others), U+2028/2029 are stripped.
 - T-20c and T-22 follow-ups: `mothdex.ValidSlug` (`^[a-z0-9][a-z0-9-]{0,255}$`, one rule with mothdex-mcp) and the inbound policy of api-client section 2. `Search` drops results with an unsafe slug before numbering and before the session is saved (`SearchPage.Dropped`, the `dropped` field of the search JSON, and a warning on stderr and in `warnings[]`), `Entry` returns `api_incompatible` for such an answer, `Random` skips it, and `Entry` refuses an unsafe slug locally. `isTerminal` is a real TTY check (`golang.org/x/term`, BSD-3, maintained by the Go team): `/dev/null` and `NUL` are character devices, so `mothdex download a b </dev/null` prompted, read EOF and exited 130 instead of `confirmation_required` (2) (F3; the Shell uses the same check). `info` on an unknown slug says `No entry found for <slug>.` instead of repeating the code (F5). Crivo's suggestions: byte counts in error messages are sizes (`1.5 MB`), `info` without an argument points at `mothdex info --help`, and a single download cancelled with Ctrl+C prints nothing besides the exit code 130.
 - `internal/cache` on Windows: readers open cache files with `FILE_SHARE_DELETE`, and the replace uses `FileRenameInfoEx` with `FILE_RENAME_POSIX_SEMANTICS` (Windows 10 1809, NTFS; `os.Rename` falls back where unsupported), because `MoveFileEx` still refuses a target with an open handle. A `Put` renaming a new version over an item that a reader holds open no longer fails with "Access is denied". The bounded rename retry could not beat a busy reader (`TestConcurrentGetAndPutKeepTheLatestItem` failed after 59 s on windows-latest); the retry stays as a second line of defence. Regression test `TestPutReplacesAnItemThatAReaderHoldsOpen` holds a reader open across the Put, with no waits.

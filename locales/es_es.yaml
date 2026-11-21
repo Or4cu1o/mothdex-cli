@@ -65,6 +65,7 @@ errors:
   path_rejected:
     message: 'Se rechaza escribir en {path}.'
     hint: 'No se escribió nada. Elige otra carpeta con -o, o revisa profile.folders.'
+    missing_hint: '{path} no existe. Crea la carpeta, usa -o <carpeta> o ejecuta: mothdex config set download.dir <carpeta>'
   unsafe_name:
     message: 'Se rechaza guardar {name}: su tipo de archivo puede ejecutar código.'
     hint: 'No se escribió nada. Elige otro enlace con --link, o pasa --allow-executable si confías en él.'

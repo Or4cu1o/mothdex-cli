@@ -100,6 +100,24 @@ func expandIndexes(args []string, takesValue func(flag string) bool) ([]string, 
 	return out, nil
 }
 
+// splitEntries separates the words of a command that takes entries, after expandIndexes, into the flag words
+// (with the value of a flag that takes one) and the entries named, numbers and slugs, in order.
+func splitEntries(args []string, takesValue func(flag string) bool) (flags, entries []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") && len(a) > 1 {
+			flags = append(flags, a)
+			if !strings.Contains(a, "=") && takesValue != nil && takesValue(a) && i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+			continue
+		}
+		entries = append(entries, a)
+	}
+	return flags, entries
+}
+
 // isNumber reports whether a word is only digits: a bare number is the shortcut for info.
 func isNumber(w string) bool {
 	if w == "" {
