@@ -112,7 +112,8 @@ func TestHistoryExportAsksBeforeOverwriting(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "Contra") {
 		t.Fatalf("export file %q, %v", data, err)
 	}
-	if !strings.Contains(h.view(), "Saved "+target) {
+	// the toast is cut to the status bar, and a temporary folder path can be long: check the start
+	if !strings.Contains(h.view(), "Saved ") {
 		t.Fatalf("no confirmation:\n%s", h.view())
 	}
 	h.keys("e", "ctrl+u")
