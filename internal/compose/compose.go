@@ -88,7 +88,7 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	if o.Jobs > 0 {
 		flags["download.concurrency"] = strconv.Itoa(o.Jobs)
 	}
-	res, err := config.Load(config.Options{File: file, Environ: os.Environ(), Flags: flags, Force: o.Force})
+	res, err := config.Load(config.Options{File: file, Environ: os.Environ(), Flags: flags, Force: o.Force && !o.Session}) // a session never honors a start-up -f, so a stored overwrite is reported here
 	if err != nil {
 		// `config reset` and `config set` must be able to repair a broken file: carry on with the
 		// defaults for those commands and let the service report the problem when it reads it.
@@ -169,7 +169,7 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	if o.Downloads {
 		// The Shell opens the service once for many commands, so -f and --allow-executable given at
 		// start-up must not allow overwrites or executables for the whole session (ui.md section 2.1).
-		force, allowExec := o.Force && !o.Session, o.AllowExecutable && !o.Session
+		force, allowExec := startupGrants(o)
 		env := app.Env{
 			TempDir: paths.Temp, DataDir: paths.Data, Profile: info, History: hist, Concurrency: cfg.Download.Concurrency,
 			Download: app.DownloadConfig{AllowedHosts: cfg.Download.AllowedHosts, Concurrency: cfg.Download.Concurrency, OnExists: cfg.Download.OnExists,
@@ -189,6 +189,12 @@ func Open(_ context.Context, o Options) (*Session, error) {
 		DataDir: paths.Data, Log: logger,
 		NoColor: o.NoColor || cfg.Interface.Color == "never" || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 	}, nil
+}
+
+// startupGrants are the start-up flags that reach the downloader: a session serves many commands, so
+// -f and --allow-executable given when it started are not applied to all of them (ui.md section 2.1).
+func startupGrants(o Options) (force, allowExecutable bool) {
+	return o.Force && !o.Session, o.AllowExecutable && !o.Session
 }
 
 func preference(p config.Prefer) app.Preference {

@@ -4,22 +4,32 @@ import (
 	"bytes"
 	"errors"
 	"image"
-	"image/draw"
 	"image/gif"
 	"io"
 
+	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/webp"
 )
+
+// MaxDecodePixels is the pixel budget of Decode, checked from the header: the side cap alone still
+// allows 16 million pixels, which costs 64 to 190 MiB to decode (more for 16-bit PNG and progressive
+// JPEG), too much for a handheld. A cover shown on screen does not need more than 4 megapixels.
+const MaxDecodePixels = 4 << 20
 
 // ErrDecode is returned for a cover that is too big, of an unknown or disagreeing type, or unreadable.
 var ErrDecode = errors.New("cover: cannot decode the image")
 
 // Decode reads one cover from r and returns its first frame, scaled down to fit maxSide pixels on
 // its longer side when maxSide is above zero (never scaled up). It applies the same limits as
-// Fetch, so a hostile image from the cache is refused too: at most MaxBytes of input, a type from
+// Fetch plus a pixel budget (MaxDecodePixels), so a hostile image from the cache is refused too: at most MaxBytes of input, a type from
 // the allowlist whose magic bytes agree with contentType, and a header size of at most MaxPixelSide
 // on each axis, checked before any pixel is decoded. Animated images yield their first frame.
-func Decode(r io.Reader, contentType string, maxSide int) (image.Image, error) {
+func Decode(r io.Reader, contentType string, maxSide int) (img image.Image, err error) {
+	defer func() { // a decoder panic must not take a front end down
+		if recover() != nil {
+			img, err = nil, ErrDecode
+		}
+	}()
 	b, err := io.ReadAll(io.LimitReader(r, MaxBytes+1))
 	if err != nil || len(b) > MaxBytes {
 		return nil, ErrDecode
@@ -29,13 +39,12 @@ func Decode(r io.Reader, contentType string, maxSide int) (image.Image, error) {
 		return nil, ErrDecode
 	}
 	w, h, err := dimensions(kind, b)
-	if err != nil || w < 1 || h < 1 || w > MaxPixelSide || h > MaxPixelSide {
+	if err != nil || w < 1 || h < 1 || w > MaxPixelSide || h > MaxPixelSide || w*h > MaxDecodePixels {
 		return nil, ErrDecode
 	}
 	if kind == "gif" && !gifFramesFit(b) { // the header says nothing about the frame the decoder allocates
 		return nil, ErrDecode
 	}
-	var img image.Image
 	switch kind {
 	case "webp":
 		img, err = webp.Decode(bytes.NewReader(b))
@@ -81,8 +90,8 @@ func gifFramesFit(b []byte) bool {
 	return false
 }
 
-// fit scales img down so that its longer side is at most maxSide, averaging the source pixels
-// under each target pixel. maxSide <= 0 or an image that already fits is returned as is.
+// fit scales img down so that its longer side is at most maxSide, straight from the decoded image
+// (no full copy of the source). maxSide <= 0 or an image that already fits is returned as is.
 func fit(img image.Image, maxSide int) image.Image {
 	bnd := img.Bounds()
 	w, h := bnd.Dx(), bnd.Dy()
@@ -90,31 +99,7 @@ func fit(img image.Image, maxSide int) image.Image {
 		return img
 	}
 	nw, nh := max(1, w*maxSide/max(w, h)), max(1, h*maxSide/max(w, h))
-	src := image.NewNRGBA(bnd)
-	draw.Draw(src, bnd, img, bnd.Min, draw.Src)
 	dst := image.NewNRGBA(image.Rect(0, 0, nw, nh))
-	for y := 0; y < nh; y++ {
-		y0, y1 := y*h/nh, max(y*h/nh+1, (y+1)*h/nh)
-		for x := 0; x < nw; x++ {
-			x0, x1 := x*w/nw, max(x*w/nw+1, (x+1)*w/nw)
-			var r, g, bl, a, n int
-			for sy := y0; sy < y1; sy++ {
-				for sx := x0; sx < x1; sx++ {
-					o := src.PixOffset(bnd.Min.X+sx, bnd.Min.Y+sy)
-					pa := int(src.Pix[o+3])
-					r += int(src.Pix[o]) * pa
-					g += int(src.Pix[o+1]) * pa
-					bl += int(src.Pix[o+2]) * pa
-					a += pa
-					n++
-				}
-			}
-			d := dst.PixOffset(x, y)
-			if a > 0 { // alpha-weighted, so a transparent border does not darken the edge
-				dst.Pix[d], dst.Pix[d+1], dst.Pix[d+2] = uint8(r/a), uint8(g/a), uint8(bl/a) //nolint:gosec // an average of bytes
-			}
-			dst.Pix[d+3] = uint8(a / n) //nolint:gosec // an average of bytes
-		}
-	}
+	xdraw.BiLinear.Scale(dst, dst.Bounds(), img, bnd, xdraw.Src, nil) // a filter scaled to the ratio: no aliasing when shrinking a lot
 	return dst
 }

@@ -161,17 +161,16 @@ type DownloadRequest struct {
   respects `ctx`; cancelling a UI action cancels the request, not the queue (use `Cancel`).
 - **Composition root** is `cmd/mothdex/main.go`: config → logger → i18n → cache → API client → downloader → history → app.
   Tests build the service with fakes for the client and the downloader.
+- **Cover decoding (gui.md section 8, G2).** `app.DecodeCover(r io.Reader, contentType string, maxSide int) (image.Image, error)`
+  decodes a cover that `Cover` returned. It applies the limits of the fetch again (at most `cover.MaxBytes` of input, a type
+  from the allowlist that agrees with `contentType`, at most `cover.MaxPixelSide` per side read from the header before any
+  pixel is decoded; a GIF's first frame size is checked too) and a pixel budget of `cover.MaxDecodePixels` (4 megapixels,
+  also from the header), because the side cap alone still allows 64 to 190 MiB per decode on a handheld. It decodes one
+  frame (the first of an animated GIF; PNG, JPEG, GIF and still WebP; an animated WebP is refused) and scales it down to
+  `maxSide` on the longer side when `maxSide > 0` (never up, straight from the decoded image). A decoder panic is an error.
+  A refusal is an `*Error` (`not_found`) whose Cause is `cover.ErrDecode`. Front ends decode one cover at a time.
 
 ## Resolved questions (Regente, T-2 phase 1)
 
 - OQ-APP-1: Bússola settled it in T-6: `--prefer key=v1,v2` (repeatable) with keys `lang`, `format`, `source`, `size=smallest|largest`. Parsing lives in the CLI layer; an unknown key is a `usage` error (exit 2).
 - OQ-APP-2: yes. `download --search <query>` is `Search` plus `Enqueue` of the first hit, implemented in the CLI layer (no new service method).
-
-## Cover decoding (gui.md section 8, G2)
-
-`app.DecodeCover(r io.Reader, contentType string, maxSide int) (image.Image, error)` decodes a cover that `Cover`
-returned. It applies the limits of the fetch again (at most `cover.MaxBytes` of input, a type from the allowlist that
-agrees with `contentType`, at most `cover.MaxPixelSide` per side read from the header before any pixel is decoded; a GIF's
-first frame size is checked too), decodes one frame (the first of an animated GIF; PNG, JPEG, GIF and still WebP) and
-scales it down to `maxSide` on the longer side when `maxSide > 0` (never up). A refusal is an `*Error` (`not_found`) whose
-Cause is `cover.ErrDecode`.
