@@ -1,0 +1,169 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/spf13/cobra"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+)
+
+// exitError carries an exit code that differs from the one of its error code (batch downloads:
+// 7 when some jobs failed, 130 when interrupted).
+type exitError struct {
+	err  error
+	code int
+}
+
+func (e *exitError) Error() string { return e.err.Error() }
+func (e *exitError) Unwrap() error { return e.err }
+
+// runtime is the state of one command-line run.
+type runtime struct {
+	d    Deps
+	g    Globals
+	p    *printer
+	sess *Session
+	ctx  context.Context
+	cmd  string // command name used in the --json envelope
+
+	jsonDone bool // the envelope was already written (a partial batch result)
+}
+
+// Execute runs the command line and returns the process exit code. It prints every error itself.
+func Execute(ctx context.Context, d Deps, args []string) int {
+	r := &runtime{d: d, ctx: ctx}
+	root := r.rootCommand()
+	root.SetArgs(args)
+	root.SetOut(d.Stdout)
+	root.SetErr(d.Stderr)
+	err := root.ExecuteContext(ctx)
+	if r.sess != nil && r.sess.Close != nil {
+		defer r.sess.Close()
+	}
+	if err == nil {
+		return 0
+	}
+	return r.fail(err)
+}
+
+// fail prints err and returns its exit code. Errors are never silenced, not even by -q.
+func (r *runtime) fail(err error) int {
+	var ee *exitError
+	code := 0
+	inner := err
+	if errors.As(err, &ee) {
+		code, inner = ee.code, ee.err
+	}
+	ae := asAppError(inner)
+	if !isAppError(inner) {
+		ae = usageFromCobra(inner)
+	}
+	if code == 0 {
+		code = ae.ExitCode()
+	}
+	p := r.printer()
+	if p.g.JSON && !r.jsonDone {
+		_ = p.writeJSON(r.cmd, nil, ae)
+	}
+	p.renderError(ae)
+	return code
+}
+
+func isAppError(err error) bool {
+	var ae *app.Error
+	return errors.As(err, &ae)
+}
+
+// usageFromCobra turns a cobra parse error (unknown flag, wrong argument count) into a usage error.
+func usageFromCobra(err error) *app.Error {
+	return &app.Error{Code: app.CodeUsage, Message: err.Error(), Args: map[string]any{"detail": err.Error()}}
+}
+
+func usageErr(command, format string, a ...any) *app.Error {
+	d := fmt.Sprintf(format, a...)
+	return &app.Error{Code: app.CodeUsage, Message: d, Args: map[string]any{"detail": d, "command": command}}
+}
+
+// printer returns the printer, creating one with the best translator available when the service
+// has not opened yet (errors that happen before Open).
+func (r *runtime) printer() *printer {
+	if r.p == nil {
+		var t *i18n.Translator
+		if r.d.Translator != nil {
+			t = r.d.Translator(r.g.Lang)
+		}
+		r.p = newPrinter(r.d, &r.g, t)
+	}
+	return r.p
+}
+
+// open builds the service once, after the flags are parsed.
+func (r *runtime) open() (*Session, error) {
+	if r.sess != nil {
+		return r.sess, nil
+	}
+	s, err := r.d.Open(r.ctx, r.g)
+	if err != nil {
+		return nil, err
+	}
+	r.sess = s
+	p := r.printer()
+	p.t = s.T
+	p.setColor(s.Color)
+	for _, w := range s.Warnings {
+		p.warning(w)
+	}
+	return s, nil
+}
+
+func (r *runtime) rootCommand() *cobra.Command {
+	root := &cobra.Command{
+		Use:           "mothdex",
+		Short:         "Search and download from the Mothdex catalog",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if r.g.Version {
+				return r.runVersion()
+			}
+			r.cmd = "help"
+			return cmd.Help()
+		},
+	}
+	f := root.PersistentFlags()
+	f.BoolVar(&r.g.JSON, "json", false, "print one JSON document on stdout")
+	f.BoolVarP(&r.g.Quiet, "quiet", "q", false, "print only the result and errors")
+	f.BoolVarP(&r.g.Verbose, "verbose", "v", false, "show the cause of errors")
+	f.BoolVar(&r.g.NoColor, "no-color", false, "turn colors off")
+	f.StringVar(&r.g.Lang, "lang", "", "interface language, for example pt_br")
+	f.StringVar(&r.g.Config, "config", "", "configuration file")
+	f.StringVar(&r.g.Profile, "profile", "", "frontend profile id")
+	f.BoolVarP(&r.g.Force, "force", "f", false, "skip prompts; allow overwriting files")
+	f.BoolVar(&r.g.Refresh, "refresh", false, "skip cache reads, still write")
+	f.BoolVar(&r.g.Version, "version", false, "print the version and exit")
+	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		r.cmd = commandName(c)
+		return usageErr(r.cmd, "%s", err.Error())
+	})
+	root.PersistentPreRun = func(c *cobra.Command, _ []string) { r.cmd = commandName(c); r.g.Command = r.cmd }
+	root.AddCommand(
+		r.searchCmd(), r.infoCmd(), r.randomCmd(), r.downloadCmd(), r.boxartCmd(),
+		r.platformsCmd(), r.regionsCmd(), r.dbInfoCmd(), r.historyCmd(), r.cacheCmd(),
+		r.configCmd(), r.profileCmd(), r.versionCmd(), r.soonCmd("shell"), r.soonCmd("tui"), r.soonCmd("gui"),
+	)
+	return root
+}
+
+// commandName is the name used in the --json envelope: the top-level command, so subcommands of
+// cache, config and profile all report that group.
+func commandName(c *cobra.Command) string {
+	for c.HasParent() && c.Parent().HasParent() {
+		c = c.Parent()
+	}
+	return c.Name()
+}

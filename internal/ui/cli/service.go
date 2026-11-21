@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
 	"github.com/Or4cu1o/mothdex-cli/internal/config"
 	"github.com/Or4cu1o/mothdex-cli/internal/history"
@@ -25,6 +26,7 @@ type Service interface {
 	DBInfo(ctx context.Context) (app.Result[mothdex.DBInfo], error)
 	Links(ctx context.Context, ref app.Ref, sel app.LinkSelector) ([]app.LinkChoice, error)
 	Cover(ctx context.Context, ref app.Ref) (io.ReadCloser, string, error)
+	SaveBoxart(ctx context.Context, ref app.Ref, destDir string) (string, error)
 	Enqueue(ctx context.Context, reqs []app.DownloadRequest) ([]app.JobID, error)
 	Events(ctx context.Context) <-chan app.Event
 	Cancel(id app.JobID) error
@@ -45,20 +47,27 @@ var _ Service = (*app.Service)(nil)
 
 // Globals are the flags every command accepts.
 type Globals struct {
-	JSON, Quiet, NoColor, Verbose bool
-	Lang, Config, Profile         string
-	Refresh                       bool
-	Force, AllowExecutable        bool
-	Jobs                          int
-	Output                        string // -o on download and boxart
+	JSON, Quiet, NoColor, Verbose, Version bool
+	Lang, Config, Profile                  string
+	Refresh                                bool
+	Force, AllowExecutable                 bool
+	Jobs                                   int
+	Output                                 string // -o on download and boxart
+	Command                                string // top-level command being run
+	Downloads                              bool   // the command needs the Downloads capability
 }
 
 // Session is what Open returns: the service plus the settings the commands read.
 type Session struct {
 	Svc      Service
 	T        *i18n.Translator
-	Settings map[string]config.Setting
+	Prefer   app.Preference // download.prefer baseline; --prefer replaces a key's list
+	Boxart   bool           // download.boxart
+	Confirm  bool           // interface.confirm_downloads
+	PageSize int            // interface.page_size
+	Color    string         // interface.color: auto | always | never
 	Warnings []string
+	Close    func() // releases the service; may be nil
 }
 
 // Deps are the things the commands need from the outside: tests replace all of them.
@@ -68,7 +77,7 @@ type Deps struct {
 	Open func(ctx context.Context, g Globals) (*Session, error)
 	// Translator returns an en_us-capable translator for errors that happen before Open.
 	Translator func(lang string) *i18n.Translator
-	Version    func() mothdex.Info
+	Version    func() buildinfo.Info
 	Stdin      io.Reader
 	Stdout     io.Writer
 	Stderr     io.Writer

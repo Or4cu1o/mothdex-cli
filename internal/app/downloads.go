@@ -268,10 +268,9 @@ type rootEntry struct {
 	err     error
 }
 
-// Journal entries of a root that is not used again in this run are pruned only when that root
-// is used again (a Downloader cleans its own root only).
 // downloaderFor returns the Downloader confined to root, building it (and running its startup
-// Cleanup) the first time.
+// Cleanup) the first time. Journal entries of a root that is not used again in this run are
+// pruned only when that root is used again (a Downloader cleans its own root only).
 func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Downloader, error) {
 	d.mu.Lock()
 	e, ok := d.roots[root]
@@ -303,16 +302,9 @@ func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Do
 	return e.dl, nil
 }
 
-func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader, []io.Closer, error) {
-	staging, err := proxy.OpenStagingFS(d.env.TempDir)
-	if err != nil {
-		return nil, nil, &Error{Code: CodeInternal, Message: "cannot open the staging directory", Cause: err}
-	}
-	dest, err := proxy.OpenRootFS(root)
-	if err != nil {
-		_ = staging.Close()
-		return nil, nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
-	}
+// confiner confines destination directories to dest and refuses the profile's launcher folders,
+// through the links of either side (see proxy.Confiner).
+func (d *downloads) confiner(dest *proxy.RootFS) *proxy.Confiner {
 	prof := d.env.Profile
 	var launchers []string
 	if prof.Profile.Launcher.Dir != "" {
@@ -323,7 +315,20 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 			launchers = append(launchers, filepath.Join(prof.RomRoot, f))
 		}
 	}
-	conf := &proxy.Confiner{FS: dest, IsLauncher: prof.Profile.IsLauncherPath, LauncherPaths: launchers, AllowExecutable: d.env.Download.AllowExecutable}
+	return &proxy.Confiner{FS: dest, IsLauncher: prof.Profile.IsLauncherPath, LauncherPaths: launchers, AllowExecutable: d.env.Download.AllowExecutable}
+}
+
+func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader, []io.Closer, error) {
+	staging, err := proxy.OpenStagingFS(d.env.TempDir)
+	if err != nil {
+		return nil, nil, &Error{Code: CodeInternal, Message: "cannot open the staging directory", Cause: err}
+	}
+	dest, err := proxy.OpenRootFS(root)
+	if err != nil {
+		_ = staging.Close()
+		return nil, nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
+	}
+	conf := d.confiner(dest)
 	cfg := d.env.Download
 	if cfg.OnExists == string(proxy.OnExistsOverwrite) && !cfg.Force {
 		_ = staging.Close()

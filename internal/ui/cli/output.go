@@ -12,8 +12,8 @@ import (
 	"golang.org/x/text/width"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
-	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 const (
@@ -56,6 +56,48 @@ func newPrinter(d Deps, g *Globals, t *i18n.Translator) *printer {
 	p.color = !g.NoColor && !g.JSON && env("NO_COLOR") == "" && env("TERM") != "dumb" && (tty || errTTY)
 	return p
 }
+
+// setColor applies interface.color: never, always, or auto (a terminal, NO_COLOR unset, TERM not
+// dumb). --no-color and --json win over everything.
+func (p *printer) setColor(mode string) {
+	if p.g.NoColor || p.g.JSON || mode == "never" {
+		p.color = false
+		return
+	}
+	if mode == "always" {
+		p.color = true
+	}
+}
+
+// sym is a status symbol with its ASCII fallback when the locale is not UTF-8 or TERM=linux.
+func (p *printer) sym(name string) string {
+	utf8 := false
+	if p.d.Getenv != nil {
+		for _, k := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+			if v := p.d.Getenv(k); v != "" {
+				utf8 = strings.Contains(strings.ToLower(v), "utf-8") || strings.Contains(strings.ToLower(v), "utf8")
+				break
+			}
+		}
+		if p.d.Getenv("TERM") == "linux" {
+			utf8 = false
+		}
+	}
+	switch {
+	case name == "ok" && utf8:
+		return "\u2714"
+	case name == "ok":
+		return "[ok]"
+	case name == "fail" && utf8:
+		return "\u2718"
+	}
+	return "[x]"
+}
+
+func (p *printer) ok(s string) string { return p.style("32", s) }
+
+// N translates a plural key.
+func (p *printer) N(key string, n int, args i18n.Args) string { return p.t.N(key, n, args) }
 
 // style wraps s in an SGR sequence when color is on.
 func (p *printer) style(code, s string) string {
@@ -118,7 +160,7 @@ type meta struct {
 
 func (p *printer) envelope(command string, data any, err error) envelope {
 	e := envelope{SchemaVersion: schemaVersion, Command: command, OK: err == nil, Data: data, Warnings: append([]string{}, p.warns...)}
-	v := mothdex.Info{}
+	v := buildinfo.Info{}
 	if p.d.Version != nil {
 		v = p.d.Version()
 	}

@@ -29,6 +29,7 @@ const (
 	CodeConfirmationNeeded  = "confirmation_required"
 	CodeInvalidConfig       = "invalid_config"
 	CodeUnmappedPlatform    = "unmapped_platform"
+	CodePermissionDenied    = "permission_denied"
 	exitInternal            = 1
 	exitUsage               = 2
 	exitNotFound            = 3
