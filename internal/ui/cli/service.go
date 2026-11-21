@@ -67,6 +67,7 @@ type Session struct {
 	PageSize int            // interface.page_size
 	Color    string         // interface.color: auto | always | never
 	Warnings []string
+	LogPath  string // the log file, for the internal error hint
 	Close    func() // releases the service; may be nil
 }
 

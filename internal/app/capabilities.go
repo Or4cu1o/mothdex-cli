@@ -73,7 +73,7 @@ func (s *Service) ConfigSet(key, value string) error {
 		return newError(CodeInvalidConfig, "there is no config file path")
 	}
 	if key == "download.on_exists" && strings.EqualFold(strings.TrimSpace(value), "overwrite") {
-		return newError(CodeInvalidConfig, "download.on_exists=overwrite cannot be stored: it is only honored with --force on the command line")
+		return &Error{Code: CodeInvalidConfig, Message: "download.on_exists=overwrite cannot be stored: it is only honored with --force on the command line", Args: map[string]any{"key": key, "value": "overwrite", "source": "config set"}}
 	}
 	return configError(config.Set(s.cfg.File, key, value))
 }
@@ -94,7 +94,7 @@ func configError(err error) error {
 	}
 	var ce *config.Error
 	if errors.As(err, &ce) {
-		return &Error{Code: ce.Code(), Message: ce.Reason, Cause: err}
+		return &Error{Code: ce.Code(), Message: ce.Reason, Cause: err, Args: map[string]any{"key": ce.Key, "value": ce.Value, "source": string(ce.Source), "detail": ce.Reason}}
 	}
 	return wrap(err)
 }

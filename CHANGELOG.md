@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/ui/cli` and `cmd/mothdex` (T-20b): the command line. cobra commands `search`, `info`, `random`, `download`,
+  `boxart`, `platforms`, `regions`, `db-info`, `history`, `cache stats|clear`, `config list|get|set|reset`,
+  `profile show|detect` and `version` (`shell`, `tui`, `gui` print "not available yet"). Human tables with the 80/60
+  column rules, the `--json` envelope v1 (partial data on a batch), the localized error block from
+  `errors.<code>.message|hint` (a placeholder with no value falls back to the service text), the exit codes of
+  cli-output section 4 (7 for a partial batch, 130 for Ctrl+C; a second Ctrl+C within 2 s exits at once), `--prefer`,
+  `--link`, `-o` (becomes the absolute root), `-e/--export` with the CSV formula guard, and the confirmation prompt rules
+  (never with `--json`, `-q` or a piped stdin). Every API string passes `SanitizeText` before a terminal (case 49);
+  `--json` keeps raw values. `cmd/mothdex/compose.go` is the composition root (config, log, i18n with `LoadDir`, cache,
+  API client with the persisted 429 cooldown, cover fetcher, history, profile, app). `app.Service.SaveBoxart` writes
+  covers through the confined destination root (O_EXCL, launcher folders refused, an existing file is kept). Progress is
+  one line per state change on stderr; a live redrawn bar is not done yet.
 - `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
   platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
   the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -38,7 +39,7 @@ func (r *runtime) searchCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "search [text...]",
 		Short: "Search the catalog",
-		RunE: func(c *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				return r.runSearch(ctx, s, strings.Join(args, " "), f)
 			})
@@ -197,7 +198,7 @@ func (r *runtime) exportSearch(f searchFlags, page app.SearchPage, results []jso
 	}
 	if err := history.WriteExport(target, r.g.Force, render); err != nil {
 		code := app.CodeInvalidRequest
-		if err == history.ErrExists {
+		if errors.Is(err, history.ErrExists) {
 			code = "exists"
 		}
 		return &app.Error{Code: code, Message: err.Error(), Args: map[string]any{"path": target, "detail": err.Error()}, Cause: err}
@@ -230,7 +231,7 @@ func (r *runtime) infoCmd() *cobra.Command {
 		Use:   "info <#|slug>",
 		Short: "Show one entry and its links",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(c *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				ref, err := parseRef("info", args[0], slug)
 				if err != nil {
@@ -315,7 +316,7 @@ func (r *runtime) randomCmd() *cobra.Command {
 		Use:   "random",
 		Short: "Show random entries",
 		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				if count < 1 || count > 20 {
 					return outcome{}, usageErr("random", "--count takes 1 to 20")
@@ -350,7 +351,7 @@ func (r *runtime) platformsCmd() *cobra.Command {
 		Use:   "platforms",
 		Short: "List platforms",
 		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				res, err := s.Svc.Platforms(ctx, app.PlatformFilter{Brand: brand, Class: class})
 				if err != nil {
@@ -378,7 +379,7 @@ func (r *runtime) regionsCmd() *cobra.Command {
 		Use:   "regions",
 		Short: "List regions",
 		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				res, err := s.Svc.Regions(ctx)
 				if err != nil {
@@ -403,7 +404,7 @@ func (r *runtime) dbInfoCmd() *cobra.Command {
 		Use:   "db-info",
 		Short: "Show catalog statistics",
 		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				res, err := s.Svc.DBInfo(ctx)
 				if err != nil {

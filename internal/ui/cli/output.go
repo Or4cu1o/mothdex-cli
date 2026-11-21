@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -26,16 +27,17 @@ const (
 // printer renders everything a command prints. Human text always goes through app.SanitizeText
 // (CR-14); JSON keeps the raw values, escaped by the encoder.
 type printer struct {
-	d     Deps
-	g     *Globals
-	t     *i18n.Translator
-	out   io.Writer
-	err   io.Writer
-	color bool
-	tty   bool // stdout is a terminal
-	width int
-	meta  *app.ResultMeta
-	warns []string
+	d       Deps
+	g       *Globals
+	t       *i18n.Translator
+	out     io.Writer
+	err     io.Writer
+	color   bool
+	tty     bool // stdout is a terminal
+	width   int
+	meta    *app.ResultMeta
+	logPath string // shown by errors.internal
+	warns   []string
 }
 
 func newPrinter(d Deps, g *Globals, t *i18n.Translator) *printer {
@@ -211,13 +213,16 @@ func clean(s string) string { return app.SanitizeText(s) }
 func (p *printer) renderError(err error) {
 	ae := asAppError(err)
 	args := errorArgs(ae)
+	if p.logPath != "" {
+		args["log_path"] = p.logPath
+	}
 	msg := p.t.T("errors."+ae.Code+".message", args)
-	if !p.t.Has("errors." + ae.Code + ".message") {
-		msg = englishMessage(ae)
+	if !p.t.Has("errors."+ae.Code+".message") || unfilled(msg) {
+		msg = englishMessage(ae) // a placeholder with no value: the service's own English text
 	}
 	_, _ = fmt.Fprintf(p.err, "%s %s\n", p.bad(p.T("ui.messages.error", nil)+":"), clean(msg))
 	if p.t.Has("errors." + ae.Code + ".hint") {
-		if hint := p.t.T("errors."+ae.Code+".hint", args); hint != "" {
+		if hint := p.t.T("errors."+ae.Code+".hint", args); hint != "" && !unfilled(hint) {
 			_, _ = fmt.Fprintf(p.err, "  %s\n", clean(hint))
 		}
 	}
@@ -226,6 +231,11 @@ func (p *printer) renderError(err error) {
 		_, _ = fmt.Fprintf(p.err, "  %s\n", p.dim("cause: "+clean(ae.Cause.Error())))
 	}
 }
+
+// unfilled reports a {name} placeholder left in translated text.
+func unfilled(s string) bool { return placeholder.MatchString(s) }
+
+var placeholder = regexp.MustCompile(`\{[a-z_]+\}`)
 
 // errorArgs are the named placeholders of the error messages; values with no source stay as
 // written in the text, which is visible rather than silently wrong.
@@ -369,8 +379,10 @@ func humanSize(n int64) string {
 	const k = 1024.0
 	f := float64(n)
 	switch {
-	case n <= 0:
+	case n < 0:
 		return ""
+	case n == 0:
+		return "0 B"
 	case f < k:
 		return fmt.Sprintf("%d B", n)
 	case f < k*k:

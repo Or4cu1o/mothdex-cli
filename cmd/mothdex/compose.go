@@ -137,7 +137,7 @@ func open(_ context.Context, g cli.Globals) (*cli.Session, error) {
 	}
 	return &cli.Session{
 		Svc: svc, T: tr, Prefer: preference(cfg.Download.Prefer), Boxart: cfg.Download.Boxart, Confirm: cfg.Interface.ConfirmDownloads,
-		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings,
+		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings, LogPath: filepath.Join(paths.Logs, mlog.FileName),
 		Close: func() { _ = svc.Close(); _ = closeLog.Close() },
 	}, nil
 }

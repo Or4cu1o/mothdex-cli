@@ -114,6 +114,7 @@ func (r *runtime) open() (*Session, error) {
 	p := r.printer()
 	p.t = s.T
 	p.setColor(s.Color)
+	p.logPath = s.LogPath
 	for _, w := range s.Warnings {
 		p.warning(w)
 	}

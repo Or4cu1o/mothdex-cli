@@ -30,7 +30,7 @@ func (r *runtime) downloadCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "download [#|slug ...]",
 		Short: "Download entries",
-		RunE: func(c *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			r.g.Downloads = true
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				return r.runDownload(ctx, s, args, f)
@@ -380,7 +380,7 @@ func (r *runtime) boxartCmd() *cobra.Command {
 		Use:   "boxart <#|slug>",
 		Short: "Save the cover of an entry",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(c *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			r.g.Downloads = true
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				ref, err := parseRef("boxart", args[0], slug)

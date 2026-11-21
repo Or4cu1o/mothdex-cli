@@ -161,13 +161,13 @@ func noop() (app.BatchResult, error) { return app.BatchResult{}, nil }
 // Case 49 (CR-14): ANSI escapes, bidi controls and zero-width characters in API text never reach
 // a terminal in human output; --json keeps the value, escaped by the encoder.
 func TestHostileTextIsStrippedFromHumanOutputButKeptInJSON(t *testing.T) {
-	hostile := "Evil\x1b]0;pwn\x07 Game" + string(rune(0x202E)) + "​Title"
+	hostile := "Evil\x1b]0;pwn\x07 Game" + string(rune(0x202E)) + "\u200bTitle"
 	f := searchWith(page(hostile))
 	r := exec(t, f, nil, "search", "evil")
 	if r.code != 0 {
 		t.Fatalf("exit %d: %s", r.code, r.err.String())
 	}
-	for _, bad := range []string{"\x1b", "\x07", string(rune(0x202E)), "​"} {
+	for _, bad := range []string{"\x1b", "\x07", string(rune(0x202E)), "\u200b"} {
 		if strings.Contains(r.out.String()+r.err.String(), bad) {
 			t.Fatalf("control rune %q reached the terminal:\n%q", bad, r.out.String())
 		}
@@ -353,14 +353,14 @@ func TestSearchExportCSVGuardsFormulasAndRefusesToOverwrite(t *testing.T) {
 	if r := exec(t, f, nil, "search", "x", "-e", target); r.code != 0 {
 		t.Fatalf("exit %d %s", r.code, r.err.String())
 	}
-	b, _ := os.ReadFile(target)
+	b, _ := os.ReadFile(target) //nolint:gosec // reads a file the test wrote under t.TempDir
 	if !strings.Contains(string(b), "'=HYPERLINK(1)") || !strings.HasPrefix(string(b), "index,slug,title,platform,regions,serial,links,best_link_filename,best_link_size\n") {
 		t.Fatalf("%s", b)
 	}
 	if r := exec(t, f, nil, "search", "x", "-e", target); r.code == 0 {
 		t.Fatalf("an existing file must not be replaced without --force")
 	}
-	if got, _ := os.ReadFile(target); !bytes.Equal(got, b) {
+	if got, _ := os.ReadFile(target); !bytes.Equal(got, b) { //nolint:gosec // reads a file the test wrote under t.TempDir
 		t.Fatal("the existing export was modified")
 	}
 	if r := exec(t, f, nil, "search", "x", "-e", target, "--force"); r.code != 0 {
@@ -416,5 +416,17 @@ func TestBoxartCommandPrintsPath(t *testing.T) {
 	dir := t.TempDir()
 	if r := exec(t, f, nil, "boxart", "mario", "-o", dir); r.code != 0 || strings.TrimSpace(r.out.String()) != filepath.Join(dir, "mario.png") {
 		t.Fatalf("%d %q %q", r.code, r.out.String(), r.err.String())
+	}
+}
+
+// A translated message with a placeholder the service gave no value for never prints "{key}":
+// the service's English text is shown instead and the broken hint is dropped.
+func TestUnfilledPlaceholdersFallBackToTheServiceText(t *testing.T) {
+	f := &fake{search: func(app.SearchQuery) (app.SearchPage, error) {
+		return app.SearchPage{}, &app.Error{Code: app.CodeInvalidConfig, Message: "download.on_exists=overwrite cannot be stored"}
+	}}
+	r := exec(t, f, nil, "search", "x")
+	if strings.ContainsAny(r.err.String(), "{}") || !strings.Contains(r.err.String(), "cannot be stored") || r.code != 2 {
+		t.Fatalf("exit %d %q", r.code, r.err.String())
 	}
 }

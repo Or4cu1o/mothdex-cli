@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -26,7 +27,7 @@ func (r *runtime) historyCmd() *cobra.Command {
 		Use:   "history",
 		Short: "Show past downloads",
 		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
 				recs, err := s.Svc.History(ctx, history.Filter{Failed: failed, Limit: limit})
 				if err != nil {
@@ -66,7 +67,7 @@ func (r *runtime) exportHistory(path, format string, recs []history.Record) erro
 	})
 	if err != nil {
 		code := app.CodeInvalidRequest
-		if err == history.ErrExists {
+		if errors.Is(err, history.ErrExists) {
 			code = "exists"
 		}
 		return &app.Error{Code: code, Message: err.Error(), Args: map[string]any{"path": target, "detail": err.Error()}, Cause: err}
@@ -95,7 +96,7 @@ func (r *runtime) cacheCmd() *cobra.Command {
 	c.AddCommand(&cobra.Command{
 		Use: "stats", Short: "Show cache usage", Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
+			return r.exec(func(_ context.Context, s *Session) (outcome, error) {
 				st, err := s.Svc.CacheStats()
 				if err != nil {
 					return outcome{}, err
@@ -116,7 +117,7 @@ func (r *runtime) cacheCmd() *cobra.Command {
 	c.AddCommand(&cobra.Command{
 		Use: "clear [namespace...]", Short: "Clear cached data (default: everything except the session and state)",
 		RunE: func(_ *cobra.Command, args []string) error {
-			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
+			return r.exec(func(_ context.Context, s *Session) (outcome, error) {
 				if err := s.Svc.CacheClear(args...); err != nil {
 					return outcome{}, err
 				}
@@ -150,7 +151,7 @@ func (r *runtime) configCmd() *cobra.Command {
 	c.AddCommand(&cobra.Command{
 		Use: "list", Short: "List every setting", Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
+			return r.exec(func(_ context.Context, s *Session) (outcome, error) {
 				list, err := s.Svc.ConfigList()
 				if err != nil {
 					return outcome{}, err
@@ -162,7 +163,7 @@ func (r *runtime) configCmd() *cobra.Command {
 	c.AddCommand(&cobra.Command{
 		Use: "get <key>", Short: "Show one setting", Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
+			return r.exec(func(_ context.Context, s *Session) (outcome, error) {
 				st, err := s.Svc.ConfigGet(args[0])
 				if err != nil {
 					return outcome{}, err
@@ -174,7 +175,7 @@ func (r *runtime) configCmd() *cobra.Command {
 	c.AddCommand(&cobra.Command{
 		Use: "set <key> <value>", Short: "Change a setting in the configuration file", Args: cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
+			return r.exec(func(_ context.Context, s *Session) (outcome, error) {
 				if err := s.Svc.ConfigSet(args[0], args[1]); err != nil {
 					return outcome{}, err
 				}
@@ -189,7 +190,7 @@ func (r *runtime) configCmd() *cobra.Command {
 	c.AddCommand(&cobra.Command{
 		Use: "reset <key|all>", Short: "Remove a setting from the configuration file", Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
+			return r.exec(func(_ context.Context, s *Session) (outcome, error) {
 				if err := s.Svc.ConfigReset(args[0]); err != nil {
 					return outcome{}, err
 				}
@@ -280,7 +281,7 @@ func (r *runtime) runVersion() error {
 	if r.cmd == "" || r.cmd == "mothdex" {
 		r.cmd = "version"
 	}
-	return r.local(func(p *printer) (any, func(*printer), error) {
+	return r.local(func(_ *printer) (any, func(*printer), error) {
 		info := buildinfo.Info{}
 		if r.d.Version != nil {
 			info = r.d.Version()
@@ -292,7 +293,7 @@ func (r *runtime) runVersion() error {
 func (r *runtime) soonCmd(name string) *cobra.Command {
 	return &cobra.Command{Use: name, Short: "Not available yet", Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return r.local(func(p *printer) (any, func(*printer), error) {
+			return r.local(func(_ *printer) (any, func(*printer), error) {
 				return map[string]any{"available": false}, func(p *printer) {
 					_, _ = fmt.Fprintln(p.out, p.T("ui.cli.soon", i18n.Args{"name": name}))
 				}, nil

@@ -74,7 +74,7 @@ errors:
     hint: 'Los detalles están en {log_path}. Por favor, infórmalo.'
 ui:
   messages:
-    error: 'Error'
+    error: 'error'
     yes: 'Sí'
     no: 'No'
     ok: 'OK'
