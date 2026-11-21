@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Contracts follow the T-20a fixes and the T-21 installer: `Events` is never lossy (per-subscriber queue), the
+  journal entry carries its destination root and cleanup is per root, a failed session save deletes the stored
+  session, and the installer launcher is opt-in (D22) with the root-only FAT share exception (TH-31).
 - App service contract (T-20a review): capability method names as implemented, UI packages import only `app`
   (aliases for internal types), one downloader per destination root, and the service writes boxart.
 - Release and profile contracts follow the T-21b installer: `checksums.txt` also lists SBOMs, the exact-line
