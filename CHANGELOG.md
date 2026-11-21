@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CI job `release tools build` compiles the pinned release tools (goreleaser, cosign, syft) from `tools/*` on every PR, the
+  way `release.yml` installs them, so a dependabot bump there that no longer builds is caught before a tag (PR-31-sec).
+- T-21c: installer hardening from the #31 reviews. `install.sh`: no `latest` through wget (a redirect could roll it back; pass `--version`), `dir_safe` also refuses a bin_dir with a world-writable non-sticky ancestor (physical path), the FAT exception resolves symlinked parents and stays inside the profile tree. `install.ps1`: a download whose final address is not https is refused (PowerShell 5.1 follows https to http). Tests: parent, sticky, symlinked parent and wget-latest cases; Pester cases for an inherit-only generic ACE and a real http response.
 - `docs/qa/T-22-m1-acceptance.md`: the M1 acceptance checklist (T-22) with the evidence source per item, what waits for
   T-20b, and the plan for the mcp slug charset sample.
 - `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
@@ -42,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Contracts: one slug rule for both repos (`^[a-z0-9][a-z0-9-]{0,255}$`, `mothdex.ValidSlug`). `Entry` refuses other
+  slugs locally, search drops entries with an unsafe slug before numbering (`dropped` in `search` JSON, a warning), and a
+  single-entry answer with one is `api_incompatible`.
 - T-16 catalog: cases 51 and 52 (installer launcher path injection and permissions) are now Covered by
   `tests/installer/cases.sh`, `nonroot.sh` and `install.Tests.ps1`; 51 of 52 cases are Covered, only 49 (terminal
   escapes in the UI output) is Pending.
@@ -171,7 +177,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `internal/cache` on Windows: readers open cache files with `FILE_SHARE_DELETE`, so a `Put` renaming a new version over an item that a reader holds open no longer fails with "Access is denied". The bounded rename retry could not beat a busy reader (`TestConcurrentGetAndPutKeepTheLatestItem` failed after 59 s on windows-latest); the retry stays as a second line of defence. Regression test `TestPutReplacesAnItemThatAReaderHoldsOpen` holds a reader open across the Put, with no waits.
+- `internal/cache` on Windows: readers open cache files with `FILE_SHARE_DELETE`, and the replace uses `FileRenameInfoEx` with `FILE_RENAME_POSIX_SEMANTICS` (Windows 10 1809, NTFS; `os.Rename` falls back where unsupported), because `MoveFileEx` still refuses a target with an open handle. A `Put` renaming a new version over an item that a reader holds open no longer fails with "Access is denied". The bounded rename retry could not beat a busy reader (`TestConcurrentGetAndPutKeepTheLatestItem` failed after 59 s on windows-latest); the retry stays as a second line of defence. Regression test `TestPutReplacesAnItemThatAReaderHoldsOpen` holds a reader open across the Put, with no waits.
+- `internal/app` test `TestCoverFromCacheThenFetchSingleflightAndNegativeCache` no longer fails about 1 run in 40 under `-race`: the gate opens only after all five callers joined the single fetch (a join counter on the in-flight call replaces the sleep polling).
 - Config `profile.folders` values reject launcher-folder look-alikes (`portſ`, `wındows`) and the full set of Windows
   device names (`COM0`, `LPT0`, superscript digits); `api.base_url` rejection messages (load and `set`, client validation) never echo the URL userinfo, and a URL that does not parse is
   replaced by a placeholder; the API client

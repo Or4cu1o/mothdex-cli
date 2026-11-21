@@ -89,7 +89,21 @@ func (c *Client) Info(ctx context.Context) (DBInfo, error)                      
 ```
 
 Local validation runs before any request and returns `KindInvalidRequest` without spending a token:
-`slug` must be non-empty and ≤ 256 bytes; `MaxResults` 0..100; `Page` ≥ 0; at most 50 platforms or regions.
+`slug` must match the slug rule below; `MaxResults` 0..100; `Page` ≥ 0; at most 50 platforms or regions.
+
+**Slug rule (both repos).** A slug is `^[a-z0-9][a-z0-9-]{0,255}$`: ASCII lowercase letters, digits and `-`, starting
+with a letter or digit, 1 to 256 bytes. It is the only slug shape either client passes on, because slugs end up in
+command lines, file names, CSV cells, the session file and terminal output. `pkg/mothdex` exports
+`ValidSlug(s string) bool` as the one Go implementation; mothdex-mcp has the same regular expression (`SAFE_SLUG`).
+- **Outbound:** `Entry` refuses a slug outside the rule with `KindInvalidRequest` before any request (user input such
+  as `--slug`).
+- **Inbound:** the client returns API data as answered and does not filter it. The policy for an answer that carries
+  an unsafe slug belongs to the consumers, and is the same in both: a **list** answer (search results) drops those
+  entries with a warning, and a **single-entry** answer (`/entry`, `/entry/random`) fails with `KindDecode`
+  (`api_incompatible`). In mothdex-cli the app service applies it (app-service §3); in mothdex-mcp the tool layer
+  (tools.md §1).
+- Whether the live catalog has slugs outside the rule is sampled by T-22; a change to the rule is a contract change in
+  this file first.
 POST bodies are always a JSON object (`{}` when empty). Response bodies are capped at **16 MiB** (`KindDecode` above that).
 
 ## 3. Errors

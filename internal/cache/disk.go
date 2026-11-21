@@ -130,7 +130,7 @@ func readShared(path string) ([]byte, error) {
 func replaceFile(src, dst string) error {
 	var err error
 	for attempt := 0; attempt < renameAttempts; attempt++ {
-		if err = os.Rename(src, dst); err == nil || runtime.GOOS != "windows" {
+		if err = renameOver(src, dst); err == nil || runtime.GOOS != "windows" {
 			return err
 		}
 		time.Sleep(time.Duration(attempt+1) * renameBackoff)

@@ -540,6 +540,36 @@ inst --uninstall
 check "uninstall removes the opt-in launcher" absent /userdata/roms/ports/Mothdex.sh
 INST_LAUNCHER=1
 
+reset wget-latest-refused
+mkdir -p /tmp/nocurl
+cp "$SHIMS/wget" "$SHIMS/fake-fetch" "$SHIMS/uname" /tmp/nocurl/
+cp "$OPTIONAL/cosign" /tmp/nocurl/cosign
+PATH=/tmp/nocurl:$BASE_PATH inst
+check "wget without --version is refused (no rollback through a redirect)" rc_not0
+check "asks for --version" out_has "--version"
+check "nothing installed (wget latest)" absent /home/u/.local/bin/mothdex
+reset parent-world-writable
+fs_batocera
+mkdir -p /opt/shared
+chmod 0777 /opt/shared
+inst --bin-dir /opt/shared/bin --version v1.2.3
+check "bin_dir under a world-writable parent is refused" rc_not0
+check "no binary (writable parent)" absent /opt/shared/bin/mothdex
+reset parent-sticky-world-writable
+fs_batocera
+mkdir -p /opt/sticky
+chmod 1777 /opt/sticky
+inst --bin-dir /opt/sticky/bin --version v1.2.3
+check "a sticky world-writable parent (like /tmp) is accepted" rc_is 0
+reset parent-symlinked-in-profile-tree
+fs_batocera
+mkdir -p /opt/elsewhere/bin
+chmod 0777 /opt/elsewhere/bin
+ln -s /opt/elsewhere /userdata/link
+FAKE_FSTYPE=exfat inst --bin-dir /userdata/link/bin --version v1.2.3
+check "FAT exception does not follow a symlinked parent out of the profile tree" rc_not0
+check "no binary (symlinked parent)" absent /opt/elsewhere/bin/mothdex
+
 reset help-and-bad-options
 inst --help
 check "help exits 0" rc_is 0
