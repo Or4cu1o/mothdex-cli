@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/cover`: cover fetch hardening (T-16 CR-9, cache.md section 4): https only, no connection to loopback,
+  private, link-local, CGNAT, multicast or special addresses (checked after DNS and again in the dialer Control hook),
+  at most 3 redirects each re-checked, 5 MiB cap, Content-Type must agree with the magic bytes (jpeg, png, webp, gif;
+  SVG refused), header-only size check of at most 4096 x 4096. Violations are a cache miss. Cases 47 and 48 covered.
+
 - T-18: tests for T-16 cases 14, 15 (loader side), 22 (configuration half), 44 and 45 in `internal/config` and `internal/library`; the catalog marks 14, 44 and 45 as covered.
 - `internal/library` and `profiles/*.yaml`: system profiles for Batocera, EmuELEC, Recalbox, Lakka, RetroBat, EmuDeck,
   RetroDECK and generic. Detection is a pure function over an injected file tree (priority, ambiguity and any doubt fall
