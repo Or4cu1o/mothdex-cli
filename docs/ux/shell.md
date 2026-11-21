@@ -1,6 +1,6 @@
 # UX: interactive Shell (REPL)
 
-Status: draft v1 (T-6) · Owner: Bússola · Implementer: Vitral · Risk: Medium
+Status: v1.1 (T-6; E-M2 deviations recorded in UX-sync, Decisions D24) · Owner: Bússola · Implementer: Vitral · Risk: Medium
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Human output rules come from [`cli-conventions.md`](cli-conventions.md); syntax of
 `--prefer` from [`prefer-syntax.md`](prefer-syntax.md). Library: `peterh/liner` (PLAN §9), so history and completion are line-based.
 
@@ -26,13 +26,17 @@ mothdex[snes:2]> download 1
 ```
 
 Prompt: `mothdex> ` with no session; `mothdex[<platform>:<n>]> ` after a search, where platform is the `-p` filter (if any)
-and `n` the count on the page (dim). The prompt is plain text; color only when allowed (`--no-color` rules apply).
+and `n` the count on the page. The prompt is plain text with no color or dim style, because the line editor refuses
+control characters in a prompt (D24).
 
 Banner data comes from `DBInfo` and `Profiles.Active`; if offline it shows `offline` instead of the entry count, no error.
 
 Commands: every CLI command except `shell`, `tui`, `gui`. Meta commands: `help [cmd]`, `clear`, `exit`/`quit`
 (Ctrl+D also exits), `last` (reprint the last search page). Global flags (`--json`, `-q`, `--no-color`) work per command.
-`--config` and `--lang` are start-up only and are rejected inside the Shell with a usage message.
+`--config`, `--lang`, `--allow-executable` and `-j`/`--jobs` take effect only when the service opens, so they are
+rejected inside the Shell with a usage message (`not available in the Shell; run the command outside it`). Inside the
+Shell `-f` only skips the confirmation; overwriting still follows `download.on_exists`. `mothdex -f shell` and
+`--allow-executable` at start-up are not applied to the session (D24, ui.md D4).
 
 ## 3. Search flow and paging
 
@@ -43,8 +47,13 @@ Page 1/4 · 37 results · n next · p prev · <#> info · d <#> download
 mothdex[all:10]> n
 ```
 
+- The footer is one line: `Page 1/4 · 37 results · n next · p prev · <#> info · d <#> download`. With a single page
+  the paging shortcuts are left out; the `{size} per page` part of the CLI footer is not shown (D24).
 - `n`, `p` (bare words) go to the next/previous page of the **last search** (re-calls `Search` with the page changed,
   same query). At the ends: `This is the first page.` / `This is the last page.`
+- `n`, `p`, `page`, `sort` and `last` work on the last page shown **in this Shell process**. After a restart they print
+  `No search yet in this shell. Run search first.`; indexes (`download 1`) still resolve through the stored session
+  (D24, ui.md D3).
 - `page <n>` jumps. `sort title|size|relevance` re-sorts (current page only, per service rule).
 - A new `search` replaces the session; the old indexes stop being valid (the table header says so on the first search
   after a change: `Indexes now refer to this search.`).
@@ -60,7 +69,10 @@ Because the Shell persists the session (service saves it), indexes also work aft
 Link choice on `download <#>`:
 1. `--link n` or `--prefer ...` given, or `download.prefer` configured: take the winner, print the
    `Link 2 chosen (...)` line (prefer-syntax §5), then download.
-2. Otherwise, if the entry has more than one link, open the **link chooser** (inline, no full screen):
+2. Otherwise, for a **single** index (`download 1`) whose entry has more than one link, open the **link chooser**
+   (inline, no full screen). With several indexes (`download 1 3 5`, `download 2-4`) there is no chooser: each entry
+   takes its default link, and every entry with more than one link prints the `Link 2 chosen (...)` line before the
+   confirmation, so the person sees what was picked (D24-review).
 
 ```
 mothdex> download 1
@@ -71,11 +83,16 @@ Zelda: Link's Awakening DX · 3 links
 Link [1]: _
 ```
 Enter takes the default (the top-ranked link, marked `*`); a number picks that link; `q` or empty-after-Ctrl+C cancels.
-With one link there is no chooser. In scripted input (stdin not a TTY) the chooser never appears: the default is used.
+With one link there is no chooser. The chooser and the confirmation need both stdin and stdout on a terminal (the line
+editor writes to stdout); otherwise the default is used, as in scripted input (D24).
 
 3. Confirmation follows cli-conventions §6; then progress rows render in place. The prompt returns when the queue is
-   empty. Ctrl+C during a download cancels the queue (`Cancel`) and returns to the prompt, it does not exit the Shell;
-   Ctrl+C at an empty prompt shows `Type exit or press Ctrl+D to leave.`; a second one within 2 s exits.
+   empty. Ctrl+C during a download cancels the queue (`Cancel`) and returns to the prompt; it does not exit the Shell.
+
+**Ctrl+C never exits the Shell** (D24-review). At the prompt it clears the typed line and shows
+`Type exit or press Ctrl+D to leave.` Only `exit`, `quit` and Ctrl+D leave (exit code 0); piped input ends after the
+last line with that command's code. The line editor cannot tell an empty line from a typed one, so a "press twice to
+leave" rule would also quit when someone clears a line or presses Ctrl+C twice to stop a download.
 
 Mixed usage: `download <#> --prefer lang=En -o ~/roms` accepts all CLI flags.
 
@@ -114,7 +131,8 @@ silently offers nothing for that position; it never prints errors while typing.
 ## 7. Help
 
 `help` lists commands in one column with a one-line summary each (i18n `help.<cmd>`); `help <cmd>` prints usage, flags
-and two examples, the same text as `mothdex <cmd> --help`.
+and two examples, the same text as `mothdex <cmd> --help`. Until command help is translated, both are the English
+cobra help (D24, ui.md D2; translation is backlog).
 
 ## 8. Edge cases
 
@@ -123,6 +141,7 @@ and two examples, the same text as `mothdex <cmd> --help`.
 | Unknown command | `Unknown command "serch". Did you mean "search"?` (edit distance ≤ 2) plus `Type help.` |
 | Terminal narrower than 60 | same truncation rules as the CLI |
 | EOF on stdin (piped script) | exit after the last line, exit code of the last command |
+| Ctrl+C | cancels the running command, or clears the typed line; never exits (§4) |
 | Offline | commands fail with `network`; the prompt keeps working; cached searches still answer (stale note) |
 | Resize | the next table uses the new width; no redraw of old output |
 | Locale | strings in the active language; commands and flags are never translated |
