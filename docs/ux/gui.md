@@ -1,6 +1,6 @@
 # UX: gamepad GUI (`mothdex-gui`, emulator mode)
 
-Status: draft v1 (T-50) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
+Status: v1.1 (T-50; cli#71 review rules, PR-71-ux) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
 Contract: [`gui.md`](../contracts/cli/gui.md) (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Flows mirror [`tui.md`](tui.md); wording, units and the
 Warming rules come from [`cli-conventions.md`](cli-conventions.md); link ranking from [`prefer-syntax.md`](prefer-syntax.md).
@@ -73,7 +73,13 @@ All content, bars and dialogs live inside the **safe rectangle**; only the backg
 - Glyphs missing from the font (CJK, Devanagari in a title) draw the font's replacement box; the title stays
   selectable and downloadable.
 - Interface languages the font cannot render (`zh_cn`, `ja_jp`, `hi_in`): the GUI uses `en_us` strings and shows once
-  on Home `This language is not available in this screen mode yet. Showing English.` (CJK and Devanagari: backlog).
+  on Home `This language is not available in this screen mode yet. Showing English.` as a `warn` toast that stays
+  6 s (§4; CJK and Devanagari: backlog).
+- **Symbols are shapes.** The embedded font has no arrows, check marks or crosses, so `↓`, `✔` and `✘` are drawn as
+  shapes in the text color, sized to the cap height of the text beside them, with a gap of one space.
+- **No string is cut except titles** (entry titles, and the screen title in the top bar as §4 allows). Other text
+  wraps (at most 2 lines unless a screen says otherwise); a path that still does not fit is shortened in the middle,
+  keeping the first and the last folder (`/home/someone/…/collection`).
 
 ### 1.4 Spacing and sizes
 
@@ -124,6 +130,10 @@ Every text pair passes AA (4.5:1), and `text` passes AAA (7:1) on all three back
 3:1 non-text rule against both `bg` and `surface`. Color never carries meaning alone: every state also has a word or
 symbol (`✔`, `✘`, `!`). Disabled elements use `text.dim` and a `(not available)` reason in the hint bar, not just a
 grey tone.
+
+Elements that sit on a `surface` bar or panel use `color.bg` as their fill: the button discs of the hint bar and the
+unfocused dialog buttons (`text` on `bg`, 16.9:1). The `bg`/`surface` edge is decorative (about 1.1:1): each such
+element is identified by its label, and the focused one also has the `focus.ring` (8.7:1 against `surface`).
 
 ## 2. Input model
 
@@ -223,14 +233,25 @@ SDL GameController buttons are read **by position** (SDL_GameControllerDB names:
 - **Top bar:** `mothdex › <screen>` (and the query on Results), then on the right, in this order: `Offline` (warn,
   when the last catalog call failed with `network` and no later call succeeded), `Will quit when downloads finish`
   (§5.13), and the **queue badge** `↓ 2 · 1 queued` (hidden when the queue is idle; `↓ 1` alone when nothing is queued).
+- **Top bar fit** (every tier, text size and language; nothing leaves the bar or the safe rectangle):
+  1. The title keeps at least the width of the screen name (`mothdex` on Home, the last crumb elsewhere). Status
+     items never start left of that width plus `2u`.
+  2. When the status items do not fit, `Will quit when downloads finish` switches to its short form
+     `ui.gui.bar.will_quit_short` (en `Quit pending`, pt_br `Saída pendente`, es_es `Salida pendiente`, ru_ru
+     `Ожидается выход`).
+  3. If they still do not fit, only that item is cut with `…`. `Offline` and the queue badge are never cut.
+  4. Whatever room is left goes to the title, cut at the end with `…` (crumbs are dropped from the left first:
+     `… › Results "zelda"`).
 - **Hint bar:** the screen's actions, at most 5, right-aligned in the order A, X, Y, B, with `Start Menu` on the left.
-  Each hint is the controller label in a circle (`surface` disc, `text` letter) plus the action word. `compact`
-  shows at most 4 (Start keeps the disc and drops the word). Actions that do nothing on the focused element are
-  hidden, not greyed.
-- **Toast:** one line under the top bar, right-aligned, 3 s, `surface` with a 4 px left stripe in the state color.
-  At most one at a time; a new one replaces the old.
-- **Loading:** a spinner (a ring, one turn per second) next to the text `Searching…` or `Loading…`. It appears only
-  after 200 ms, so cached answers never flash.
+  Each hint is the controller label on a `bg` disc (`text` letter, §1.5) plus the action word in `text.dim`. A label
+  longer than one letter (`Start`, `Cross`, `Circle`) becomes a pill with `1u` padding on each side. `compact` shows
+  at most 4 (Start keeps the pill and drops the word). Actions that do nothing on the focused element are hidden,
+  not greyed.
+- **Toast:** under the top bar, right-aligned, `surface` with a 4 px left stripe in the state color. Its width is at
+  most 60 % of the safe rectangle; longer text wraps to 2 lines (never cut). It stays 3 s; the locale notice (§1.3)
+  stays 6 s. At most one at a time; a new one replaces the old.
+- **Loading:** a spinner (a ring, one turn per second) to the right of the text `Searching…`, `Loading…`, `Starting…`
+  or `Updating the game list…`, `1u` away. It appears only after 200 ms, so cached answers never flash.
 
 ## 5. Screens
 
@@ -279,13 +300,17 @@ Splash ─▶ Home ─A Search─▶ Search (keyboard) ─Start─▶ Results �
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Tiles in a 3 x 2 grid; `narrow`: 2 x 3. Initial focus: Search.
+- Tiles in a 3 x 2 grid; `narrow`: 2 x 3. Initial focus: Search. The grid is left-aligned in the content area (the
+  right side stays empty on wide screens). A tile label wraps to 2 lines before it is cut (large text, long
+  translations such as `Configurações`).
 - **Recent:** the last 5 query texts, in the same file and format as the TUI (`<paths.data>/tui_state`), so both UIs
   share them. A on a chip runs that search with no filters. Hidden when empty, and in `compact` when the screen has
-  fewer than 7 rows of space.
+  fewer than 7 rows of space. Recent has priority over the full tile height: tiles shrink (down to 2 `body` lines)
+  to keep it; chips that do not fit the row are left out.
 - Footer: catalog size from `DBInfo`, profile name, ROM root. When the profile is `generic`, the footer reads
   `No emulation system detected. Games go to <path>.` (warn color), and Settings › System explains why
-  (`ProfileInfo.Warnings`).
+  (`ProfileInfo.Warnings`). The footer wraps to at most 2 lines (layout reserves both); a path that still does not
+  fit is shortened in the middle (§1.3), so the folder is always readable.
 - **Random:** `Random{Count: 10}` with no filters; the Results header reads `Random picks`.
 
 ### 5.3 Search
@@ -591,6 +616,9 @@ Rows come from `ConfigList` (value and source). Keys:
 
 - One pattern: a title (one sentence, `body`), an optional detail (`secondary`), then buttons in a row. The safe or
   non-destructive option is on the left and has the initial focus, except where §5 says otherwise.
+- When the row does not fit the safe rectangle (large text, narrow screens, long translations), the buttons stack
+  vertically in the same order, top to bottom, each as wide as the panel's inner width; D-pad Up/Down moves between
+  them. Unfocused buttons are `bg` on the `surface` panel (§1.5).
 - Never more than three buttons. B always equals the cancel option.
 - Dialog text is the TUI question without `[y/N]` (for example `Already downloaded. Download again?`).
 
@@ -627,7 +655,8 @@ Rows come from `ConfigList` (value and source). Keys:
 - The summary line counts this session's terminal jobs. With no downloads it is omitted, and so is the refresh line.
 - When `BatchResult.RefreshWarning` is non-empty (manual refresh on Recalbox and ES-DE, or a failed hook), it replaces
   the refresh line, for example `Refresh the game list from the frontend menu to see the new games.` It stays for
-  4 s after `Close` returns; A skips the wait.
+  4 s after `Close` returns; A skips the wait. During those 4 s the screen shows one hint, `(A) Continue`, at the
+  bottom of the safe rectangle (no hint bar otherwise).
 - Otherwise the screen stays at least 1 s, so it can be read.
 - The frontend name is `ActiveProfile().Name`; for `generic` the last line reads `Closing`.
 
@@ -733,7 +762,8 @@ button label by controller type and swap.
 ## 11. Checks for Retina (conformance)
 
 - At 640x480, 1280x720 and 1920x1080: text sizes, row heights and bar heights match §1.3-1.4 (±1 px), and nothing is
-  drawn outside the safe rectangle with `gui.safe_area` at 0, 5 and 10.
+  drawn outside the safe rectangle with `gui.safe_area` at 0, 5 and 10. Include the worst top bar (§4): `Offline`, a
+  pending quit and the queue badge together, with large text, in pt_br and ru_ru.
 - At 480x320 the compact layout is scaled and letterboxed, not cropped.
 - Every screen in §5 can be entered, used and left with the pad only. The focused element is always visible and is
   restored by id after Back.
