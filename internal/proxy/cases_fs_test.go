@@ -266,7 +266,7 @@ func TestCase24BatchNameCollisions(t *testing.T) {
 				if policy == proxy.OnExistsSkip && done < 1 {
 					t.Fatalf("skip: %d jobs done, at least one must write its file", done)
 				}
-				if policy == proxy.OnExistsSkip && done != 1 { // "Game.zip" and "game.zip" collide on every file system
+				if policy == proxy.OnExistsSkip && done != 1 { // the downloader treats names that differ only in case as one name on every disk (portability, TH-08), though ext4 would keep both
 					t.Fatalf("skip: %d jobs done, want exactly one (the names collide)", done)
 				}
 				if len(r.history.recs) != 2 {
@@ -654,17 +654,23 @@ func TestFinalizeFallbackChain(t *testing.T) {
 		}
 		stagingEmpty(t, r)
 	})
-	t.Run("rename policy moves on to the next name in every step", func(t *testing.T) {
-		r := setup(t, proxy.Config{OnExists: proxy.OnExistsRename}, true)
-		r.fs.Before(fakefs.OpOpenExcl, final, func() { plant(t, r, final, "second writer") })
-		if res := r.download(r.job("/f/a", "a.zip", len(body))); res.State != proxy.StateDone {
-			t.Fatalf("state %s err %v", res.State, res.Err)
-		}
-		if got, _ := os.ReadFile(r.fs.Path(final)); string(got) != "second writer" {
-			t.Fatalf("the second writer's file was replaced: %q", got)
-		}
-		if got, _ := os.ReadFile(r.fs.Path("roms/snes/a (1).zip")); !bytes.Equal(got, body) {
-			t.Fatal("our file must land under the next free name")
-		}
-	})
+	for _, step := range []struct {
+		name            string
+		linkUnsupported bool
+		op              string
+	}{{"hard link", false, fakefs.OpLink}, {"placeholder", true, fakefs.OpOpenExcl}} {
+		t.Run("rename policy moves on to the next name in the "+step.name+" step", func(t *testing.T) {
+			r := setup(t, proxy.Config{OnExists: proxy.OnExistsRename}, step.linkUnsupported)
+			r.fs.Before(step.op, final, func() { plant(t, r, final, "second writer") })
+			if res := r.download(r.job("/f/a", "a.zip", len(body))); res.State != proxy.StateDone {
+				t.Fatalf("state %s err %v", res.State, res.Err)
+			}
+			if got, _ := os.ReadFile(r.fs.Path(final)); string(got) != "second writer" {
+				t.Fatalf("the second writer's file was replaced: %q", got)
+			}
+			if got, _ := os.ReadFile(r.fs.Path("roms/snes/a (1).zip")); !bytes.Equal(got, body) {
+				t.Fatal("our file must land under the next free name")
+			}
+		})
+	}
 }
