@@ -71,7 +71,7 @@ func ttl(k string, def time.Duration, ptr func(*Config) *time.Duration) setting 
 
 // language normalizes to lower case ("pt_BR" and "pt_br" are the same value).
 func language(k string, ptr func(*Config) *string) setting {
-	return spec[string]{k: k, def: "auto", ptr: ptr, parser: func(raw any) (string, error) {
+	return spec[string]{k: k, def: "auto", ptr: ptr, meta: SettingSpec{Kind: KindString}, parser: func(raw any) (string, error) {
 		s, err := asString(raw)
 		if err != nil {
 			return "", err
