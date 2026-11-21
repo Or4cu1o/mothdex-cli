@@ -289,3 +289,15 @@ func (f *Fake) History(context.Context, app.HistoryFilter) ([]app.HistoryRecord,
 	f.record("history")
 	return slices.Clone(f.Records), nil
 }
+
+// ExitCalls is the part of Calls the exit sequence makes: the cancels, Wait and Close, without the reads of the
+// start-up.
+func (f *Fake) ExitCalls() []string {
+	var out []string
+	for _, c := range f.Calls() {
+		if c == "wait" || c == "close" || strings.HasPrefix(c, "cancel:") {
+			out = append(out, c)
+		}
+	}
+	return out
+}

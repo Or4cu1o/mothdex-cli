@@ -178,7 +178,7 @@ func TestQuitThroughTheDialogRunsTheExitSequenceAndEndsTheLoop(t *testing.T) {
 	if !f.sawText("Quit and return to Batocera?") || !f.sawText("Returning to Batocera") {
 		t.Errorf("the dialog and the exit screen must both have been drawn")
 	}
-	if got := f.svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := f.svc.ExitCalls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("service calls %v", got)
 	}
 }
@@ -257,7 +257,7 @@ func TestASignalEndsTheLoopWithTheExitSequence(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the loop did not end after the signal")
 	}
-	if got := svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := svc.ExitCalls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("service calls %v", got)
 	}
 }

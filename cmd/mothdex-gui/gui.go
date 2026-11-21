@@ -92,6 +92,7 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	model, cmds := gui.New(gui.Options{
 		Service: sess.Svc, T: tr, Font: font, Clock: gui.SystemClock(), Log: log, DataDir: sess.DataDir,
 		Version: buildinfo.Get().Version, LocaleFallback: fallback, Width: w, Height: h, Safe: gui.AutoSafeArea,
+		LogPath: sess.LogPath, Prefer: sess.Prefer, Boxart: sess.Boxart, Confirm: sess.Confirm,
 	}, time.Now())
 
 	final, err := loop.Run(ctx, loop.Config{

@@ -42,6 +42,7 @@ func pendingQuit(t *testing.T, w, h int, offline bool, opts ...harnessOpt) *harn
 	if !hn.m.quitPending {
 		t.Fatal("quit is not pending")
 	}
+	hn.press(input.Back) // Quit when finished opened the Queue: back to Home
 	return hn
 }
 

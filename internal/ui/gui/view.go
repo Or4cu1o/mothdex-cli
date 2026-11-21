@@ -113,10 +113,25 @@ func (m Model) Render(now time.Time, l *draw.List) {
 	case screenSplash:
 		m.drawSplash(p, now)
 	case screenHome:
-		m.drawFrame(p, "", m.hintsHome())
+		m.drawFrame(p, frameSpec{hints: m.hintsHome()})
 		m.drawHome(p)
 	case screenExit:
 		m.drawExit(p, now)
+	case screenSearch:
+		m.drawFrame(p, m.searchFrame())
+		m.drawSearch(p)
+	case screenPicker:
+		m.drawFrame(p, m.pickerFrame())
+		m.drawPicker(p, now)
+	case screenResults:
+		m.drawFrame(p, m.resultsFrame())
+		m.drawResults(p, now)
+	case screenEntry:
+		m.drawFrame(p, m.entryFrame())
+		m.drawEntry(p, now)
+	case screenQueue:
+		m.drawFrame(p, m.queueFrame())
+		m.drawQueue(p, now)
 	}
 	switch m.overlay {
 	case overlayMenu:
@@ -130,14 +145,25 @@ func (m Model) Render(now time.Time, l *draw.List) {
 // hint is one entry of the hint bar: the role of a button and the word for what it does.
 type hint struct {
 	role  input.Action
+	role2 input.Action // a second button sharing the word, such as (L)(R) Cursor; input.None for one
 	label string
+	// optional hints are dropped first when the bar has no room (compact shows four).
+	optional bool
 }
 
-// drawFrame draws the top bar and the hint bar of docs/ux/gui.md section 4. screen is the crumb after the
-// brand (empty on Home).
-func (m Model) drawFrame(p painter, screen string, hints []hint) {
-	m.drawTopBar(p, screen)
-	m.drawHintBar(p, hints, true)
+// frameSpec is what a screen puts in the frame (docs/ux/gui.md section 4): the crumbs after the brand, an
+// extra word on the right of the top bar ("2 selected"), the hints, and the word of the Start hint.
+type frameSpec struct {
+	crumbs []string
+	extra  string
+	hints  []hint
+	start  string // "" is Menu
+}
+
+// drawFrame draws the top bar and the hint bar of docs/ux/gui.md section 4.
+func (m Model) drawFrame(p painter, spec frameSpec) {
+	m.drawTopBar(p, spec)
+	m.drawHintBar(p, spec.hints, spec.start, true)
 }
 
 func (m Model) queueBadge() string {
@@ -162,15 +188,18 @@ type topBarItem struct {
 // (docs/ux/gui.md section 4, PR-71 review M1): Offline and the queue badge are never cut; the pending-quit
 // notice switches to its short text when the full one does not fit, and is cut with an ellipsis only if even
 // that does not. They are returned in reading order with the total width they take.
-func (m Model) topBarItems(p painter, avail int) ([]topBarItem, int) {
+func (m Model) topBarItems(p painter, avail int, extra string) ([]topBarItem, int) {
 	met := m.metrics
 	gap := 2 * met.Unit
 	size := met.Secondary
 	var fixedBefore, fixedAfter []topBarItem
+	if extra != "" {
+		fixedBefore = append(fixedBefore, topBarItem{s: extra, c: colDim})
+	}
 	if m.offline {
 		fixedBefore = append(fixedBefore, topBarItem{s: m.tr("ui.gui.bar.offline", nil), c: colWarn})
 	}
-	if badge := m.queueBadge(); badge != "" {
+	if badge := m.queueBadge(); badge != "" && m.screen != screenQueue { // the Queue shows its own counts
 		fixedAfter = append(fixedAfter, topBarItem{s: badge, c: colAccent, arrow: true})
 	}
 	widthOf := func(it topBarItem) int {
@@ -212,23 +241,53 @@ func (m Model) topBarItems(p painter, avail int) ([]topBarItem, int) {
 	return items, total(items)
 }
 
-func (m Model) drawTopBar(p painter, screen string) {
+// fitCrumbs writes the title of the top bar for a width: "mothdex › Results › zelda" when it fits, otherwise
+// crumbs are dropped from the left behind an ellipsis ("… › Results › zelda", "… › zelda"), and only the last
+// crumb itself is cut when even that does not fit (docs/ux/gui.md section 4).
+func fitCrumbs(p painter, size int, crumbs []string, maxW int) string {
+	full := brand
+	for _, c := range crumbs {
+		full += crumb + c
+	}
+	if p.width(size, full) <= maxW {
+		return full
+	}
+	for from := 1; from < len(crumbs); from++ {
+		t := "…"
+		for _, c := range crumbs[from:] {
+			t += crumb + c
+		}
+		if p.width(size, t) <= maxW {
+			return t
+		}
+	}
+	last := crumbs[len(crumbs)-1]
+	return "…" + crumb + p.fit(size, last, max(maxW-p.width(size, "…"+crumb), p.width(size, "…")))
+}
+
+// minTitleWidth is the width the title always keeps: the brand on Home, and on other screens the last crumb
+// after an ellipsis.
+func minTitleWidth(p painter, size int, crumbs []string) int {
+	if len(crumbs) == 0 {
+		return p.width(size, brand)
+	}
+	return p.width(size, "…"+crumb+crumbs[len(crumbs)-1])
+}
+
+func (m Model) drawTopBar(p painter, spec frameSpec) {
 	met := m.metrics
 	bar := met.TopBarRect()
 	p.l.Fill(bar, 0, colSurface)
 	pad := 2 * met.Unit
 
-	title := brand
-	if screen != "" {
-		title += crumb + screen
+	full := brand
+	for _, c := range spec.crumbs {
+		full += crumb + c
 	}
-	// The title always keeps the width of the screen's own name, and the right side takes the rest.
-	minTitle := min(p.width(met.Title, title), p.width(met.Title, brand))
-	if screen != "" {
-		minTitle = min(p.width(met.Title, title), p.width(met.Title, brand+crumb+"…"))
-	}
+	// The title always keeps its minimum, and the right side takes the rest.
+	minTitle := min(p.width(met.Title, full), minTitleWidth(p, met.Title, spec.crumbs))
 	avail := max(bar.W-2*pad-minTitle-pad, 0)
-	right, _ := m.topBarItems(p, avail)
+	right, _ := m.topBarItems(p, avail, spec.extra)
 
 	x := bar.Right() - pad
 	for i := len(right) - 1; i >= 0; i-- {
@@ -238,7 +297,7 @@ func (m Model) drawTopBar(p painter, screen string) {
 		}
 		x = p.rightAligned(x, bar.Y, bar.H, met.Secondary, right[i].c, right[i].s) - pad
 	}
-	title = p.fit(met.Title, title, max(x-(bar.X+pad), 0))
+	title := fitCrumbs(p, met.Title, spec.crumbs, max(x-(bar.X+pad), 0))
 	p.text(bar.X+pad, bar.Y+(bar.H-LineHeight(met.Title))/2, met.Title, colText, title)
 }
 
@@ -252,14 +311,17 @@ func (p painter) pillWidth(h int, label string) int {
 }
 
 // pill draws a button label on a dark disc (a pill for a longer label) and returns its width.
-func (p painter) pill(x, y, h int, label string) int {
+func (p painter) pill(x, y, h int, label string) int { return p.pillOn(x, y, h, label, colBG) }
+
+// pillOn draws a pill with the given fill: bg on a surface bar, surface on the bg screen.
+func (p painter) pillOn(x, y, h int, label string, fill draw.Color) int {
 	w := p.pillWidth(h, label)
-	p.l.Fill(rect{X: x, Y: y, W: w, H: h}, h/2, colBG)
+	p.l.Fill(rect{X: x, Y: y, W: w, H: h}, h/2, fill)
 	p.centered(rect{X: x, Y: y, W: w, H: h}, p.m.Secondary, colText, label)
 	return w
 }
 
-func (m Model) drawHintBar(p painter, hints []hint, withStart bool) {
+func (m Model) drawHintBar(p painter, hints []hint, start string, withStart bool) {
 	met := m.metrics
 	bar := met.HintBarRect()
 	p.l.Fill(bar, 0, colSurface)
@@ -273,7 +335,10 @@ func (m Model) drawHintBar(p painter, hints []hint, withStart bool) {
 	if withStart {
 		x += p.pill(x, y, h, input.PositionLabel(input.Start, m.pad)) + met.Unit/2
 		if met.Tier != Compact {
-			p.text(x, bar.Y+(bar.H-LineHeight(size))/2, size, colDim, m.tr("ui.gui.hint.menu", nil))
+			if start == "" {
+				start = m.tr("ui.gui.hint.menu", nil)
+			}
+			p.text(x, bar.Y+(bar.H-LineHeight(size))/2, size, colDim, start)
 		}
 	}
 
@@ -281,24 +346,53 @@ func (m Model) drawHintBar(p painter, hints []hint, withStart bool) {
 	if met.Tier == Compact {
 		limit = 4
 	}
-	if len(hints) > limit {
-		hints = hints[:limit]
-	}
+	hints = dropHints(hints, limit)
 	gap := 2 * met.Unit
 	total := 0
-	type placed struct{ label, word string }
+	type placed struct {
+		labels []string
+		word   string
+	}
 	items := make([]placed, 0, len(hints))
 	for _, hnt := range hints {
-		label := input.Hint(hnt.role, m.pad, m.cfg.confirmEast)
-		items = append(items, placed{label, hnt.label})
-		total += p.pillWidth(h, label) + met.Unit/2 + p.width(size, hnt.label) + gap
+		labels := []string{input.Hint(hnt.role, m.pad, m.cfg.confirmEast)}
+		if hnt.role2 != input.None {
+			labels = append(labels, input.Hint(hnt.role2, m.pad, m.cfg.confirmEast))
+		}
+		items = append(items, placed{labels, hnt.label})
+		for _, l := range labels {
+			total += p.pillWidth(h, l) + met.Unit/4
+		}
+		total += met.Unit/2 + p.width(size, hnt.label) + gap
 	}
 	x = bar.Right() - pad - (total - gap)
 	for _, it := range items {
-		x += p.pill(x, y, h, it.label) + met.Unit/2
+		for _, l := range it.labels {
+			x += p.pill(x, y, h, l) + met.Unit/4
+		}
+		x += met.Unit / 2
 		p.text(x, bar.Y+(bar.H-LineHeight(size))/2, size, colDim, it.word)
 		x += p.width(size, it.word) + gap
 	}
+}
+
+// dropHints keeps at most limit hints: optional ones go first, from the left, then the last ones.
+func dropHints(hints []hint, limit int) []hint {
+	out := append([]hint(nil), hints...)
+	for len(out) > limit {
+		drop := -1
+		for i, h := range out {
+			if h.optional {
+				drop = i
+				break
+			}
+		}
+		if drop < 0 {
+			drop = len(out) - 1
+		}
+		out = append(out[:drop], out[drop+1:]...)
+	}
+	return out
 }
 
 func (k toastKind) color() draw.Color {

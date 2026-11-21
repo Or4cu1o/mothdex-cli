@@ -305,7 +305,7 @@ func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
 	if !final.Done() {
 		t.Fatal("the loop ended before the exit screen was done")
 	}
-	if got := svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := svc.ExitCalls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("service calls %v", got)
 	}
 	if len(p.steps) != 0 {

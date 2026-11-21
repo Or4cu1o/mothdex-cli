@@ -130,6 +130,8 @@ func (h *harness) mustNotHave(s ...string) {
 	}
 }
 
+func exitCalls(svc *guitest.Fake) []string { return svc.ExitCalls() }
+
 func activeJob(id string) app.JobSnapshot {
 	return app.JobSnapshot{ID: app.JobID(id), Title: "Contra (USA)", State: app.StateTransferring}
 }
@@ -253,12 +255,14 @@ func TestNarrowHomeIsTwoByThree(t *testing.T) {
 // The screens behind the tiles are in the next pull request: a tile says so, and the toast ends after 3 s.
 func TestATileThatIsNotBuiltYetSaysSoInAToast(t *testing.T) {
 	h := started(t, guitest.New(), 1280, 720)
+	h.press(input.Down)
+	h.press(input.Right) // History
 	h.press(input.Confirm)
-	h.mustHave("Search is not available yet.")
+	h.mustHave("History is not available yet.")
 	h.advance(2900 * time.Millisecond)
-	h.mustHave("Search is not available yet.")
+	h.mustHave("History is not available yet.")
 	h.advance(200 * time.Millisecond)
-	h.mustNotHave("Search is not available yet.")
+	h.mustNotHave("History is not available yet.")
 }
 
 func TestRecentSearchesComeFromTheSharedStateFile(t *testing.T) {
@@ -279,8 +283,10 @@ func TestRecentSearchesComeFromTheSharedStateFile(t *testing.T) {
 	if !strings.HasPrefix(h.m.focus, chipPrefix) {
 		t.Fatalf("two rows down from Search is a chip, got %q", h.m.focus)
 	}
-	h.press(input.Confirm)
-	h.mustHave("Search is not available yet.")
+	h.press(input.Confirm) // a recent search runs again with no filters
+	if h.m.screen != screenResults || h.m.results.query.Text != "zelda" || len(h.m.results.query.Platforms) != 0 {
+		t.Fatalf("screen %d, query %+v: the chip must open Results for its text", h.m.screen, h.m.results.query)
+	}
 
 	empty := started(t, guitest.New(), 1280, 720)
 	empty.mustNotHave("Recent")
@@ -310,8 +316,8 @@ func TestBackOnHomeAsksAndStayKeepsHome(t *testing.T) {
 	if h.m.screen != screenHome || h.m.overlay != overlayNone {
 		t.Fatal("Stay must keep Home")
 	}
-	if len(h.svc.Calls()) != 0 {
-		t.Fatalf("nothing may be called: %v", h.svc.Calls())
+	if len(exitCalls(h.svc)) != 0 {
+		t.Fatalf("nothing may be called: %v", exitCalls(h.svc))
 	}
 }
 
@@ -325,7 +331,7 @@ func TestQuitFromTheDialogShowsTheExitScreenForAtLeastOneSecond(t *testing.T) {
 		t.Fatal("Quit must show the exit screen")
 	}
 	h.mustHave("Returning to Batocera")
-	if got := h.svc.Calls(); len(got) != 2 || got[0] != "wait" || got[1] != "close" {
+	if got := exitCalls(h.svc); len(got) != 2 || got[0] != "wait" || got[1] != "close" {
 		t.Fatalf("calls %v, want wait then close", got)
 	}
 	h.advance(900 * time.Millisecond)
@@ -357,9 +363,10 @@ func TestStartMenuQuitWithNothingRunningQuitsWithoutADialog(t *testing.T) {
 func TestStartMenuItemsThatAreNotBuiltYetSayso(t *testing.T) {
 	h := started(t, guitest.New(), 1280, 720)
 	h.press(input.Menu)
-	h.press(input.Down) // Queue
+	h.press(input.Down)
+	h.press(input.Down) // History
 	h.press(input.Confirm)
-	h.mustHave("Queue is not available yet.")
+	h.mustHave("History is not available yet.")
 	if h.m.overlay != overlayNone {
 		t.Fatal("the menu must close")
 	}
@@ -389,14 +396,15 @@ func TestQuitWithDownloadsAsksAndQuitWhenFinishedWaitsForTheQueue(t *testing.T) 
 	h.advance(200 * time.Millisecond)
 	h.press(input.Right)
 	h.press(input.Confirm) // Quit when finished
-	if h.m.screen != screenHome || !h.m.quitPending {
-		t.Fatal("Quit when finished keeps the app open and marks the quit as pending")
+	if h.m.screen != screenQueue || !h.m.quitPending {
+		t.Fatalf("screen %d: Quit when finished marks the quit as pending and opens the Queue (PR-71 UX review)", h.m.screen)
 	}
 	h.mustHave("Will quit when downloads finish")
 
 	h.press(input.Menu)
 	h.mustHave("Don't quit")
 	h.press(input.Back)
+	h.press(input.Back) // back from the Queue to Home
 
 	done := activeJob("1")
 	done.State = app.StateDone
@@ -410,7 +418,7 @@ func TestQuitWithDownloadsAsksAndQuitWhenFinishedWaitsForTheQueue(t *testing.T) 
 	if h.m.screen != screenExit {
 		t.Fatal("the exit screen must follow when the queue empties")
 	}
-	if got := h.svc.Calls(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := exitCalls(h.svc); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("calls %v: no job is canceled when quitting after the queue", got)
 	}
 }
@@ -422,13 +430,11 @@ func TestDontQuitClearsAPendingQuit(t *testing.T) {
 	h.press(input.Back)
 	h.advance(200 * time.Millisecond)
 	h.press(input.Right)
-	h.press(input.Confirm)
+	h.press(input.Confirm) // the Queue opens
 	h.press(input.Menu)
-	h.press(input.Down)
-	h.press(input.Down)
-	h.press(input.Down)
-	h.press(input.Down)
-	h.press(input.Down) // Don't quit sits just above Quit
+	for i := 0; i < 10 && h.m.menuFocus != menuDontQuit; i++ {
+		h.press(input.Down) // Don't quit sits just above Quit, after the Queue's own actions
+	}
 	if h.m.menuFocus != menuDontQuit {
 		t.Fatalf("menu focus %q", h.m.menuFocus)
 	}
@@ -440,7 +446,7 @@ func TestDontQuitClearsAPendingQuit(t *testing.T) {
 	done := activeJob("1")
 	done.State = app.StateDone
 	h.send(JobMsg{Job: done})
-	if h.m.screen != screenHome {
+	if h.m.screen == screenExit {
 		t.Fatal("the app must stay when the quit was withdrawn")
 	}
 }
@@ -459,7 +465,7 @@ func TestCancelAndQuitCancelsEveryUnfinishedJobThenWaitsAndCloses(t *testing.T) 
 	h.press(input.Right)
 	h.press(input.Right)
 	h.press(input.Confirm)
-	if got := h.svc.Calls(); !slices.Equal(got, []string{"cancel:1", "cancel:2", "wait", "close"}) {
+	if got := exitCalls(h.svc); !slices.Equal(got, []string{"cancel:1", "cancel:2", "wait", "close"}) {
 		t.Fatalf("calls %v", got)
 	}
 	if h.m.screen != screenExit {
@@ -478,15 +484,15 @@ func TestSIGTERMDrivesTheExitSequenceWithoutADialog(t *testing.T) {
 	if h.m.screen != screenExit || h.m.overlay != overlayNone {
 		t.Fatalf("screen %d overlay %d", h.m.screen, h.m.overlay)
 	}
-	if got := h.svc.Calls(); !slices.Equal(got, []string{"cancel:1", "wait", "close"}) {
+	if got := exitCalls(h.svc); !slices.Equal(got, []string{"cancel:1", "wait", "close"}) {
 		t.Fatalf("calls %v", got)
 	}
 	if !h.m.Done() {
 		t.Fatal("SIGTERM leaves at once: no hold on the exit screen")
 	}
-	before := len(h.svc.Calls())
+	before := len(exitCalls(h.svc))
 	h.send(SignalMsg{}) // a second signal changes nothing
-	if len(h.svc.Calls()) != before {
+	if len(exitCalls(h.svc)) != before {
 		t.Fatal("a second signal ran the sequence again")
 	}
 }
@@ -643,6 +649,8 @@ func TestNextWakeIsTheNearestTimer(t *testing.T) {
 	if _, ok := h.m.NextWake(h.now); ok {
 		t.Fatal("a calm Home needs no frames")
 	}
+	h.press(input.Down)
+	h.press(input.Right) // History: not built yet, so it answers with a toast
 	h.press(input.Confirm)
 	if wake, ok := h.m.NextWake(h.now); !ok || wake.Sub(h.now) != toastFor {
 		t.Fatalf("a toast ends in 3 s: %v %v", wake.Sub(h.now), ok)
@@ -783,7 +791,7 @@ func TestClosingTheWindowAsksLikeQuit(t *testing.T) {
 		t.Fatalf("screen %d overlay %d: with downloads a dialog must ask", busy.m.screen, busy.m.overlay)
 	}
 	busy.mustHave("2 downloads are still running.")
-	if got := svc.Calls(); len(got) != 0 {
+	if got := exitCalls(svc); len(got) != 0 {
 		t.Fatalf("nothing may be called or canceled before the answer: %v", got)
 	}
 	busy.send(SignalMsg{}) // SIGTERM still goes straight through

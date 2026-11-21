@@ -78,6 +78,7 @@ type Options struct {
 	Clock          Clock
 	Log            *slog.Logger
 	DataDir        string // paths.data, where tui_state lives
+	LogPath        string // the log file, for the internal error text
 	Version        string // shown on the Splash
 	LocaleFallback bool   // the interface language needs a font this screen mode lacks: English is shown
 	Width, Height  int    // the display size at start
