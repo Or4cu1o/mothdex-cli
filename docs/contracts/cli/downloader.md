@@ -105,7 +105,7 @@ An integrity failure gets **one** re-download; a second one ends in `Failed(inte
 |---|---|---|
 | network error, reset, TLS handshake, timeout (connect/header/first-byte/idle) | yes | `max_attempts` total (default 5) |
 | truncated stream (`EOF` with `bytes < expected`) | yes | same |
-| `5xx`, `429` | yes; `Retry-After` honored when larger | same |
+| `5xx`, `429` | yes; `Retry-After` honored when larger, capped at 15 min (a worker slot is held while waiting) | same |
 | `404` | yes (A3) | separate: `not_found_retries` (default 3) with fixed delays 30 s, 60 s, 120 s |
 | other `4xx`, any 3xx, `size_mismatch`, `untrusted_url`, `unsafe_name`, `path_rejected`, disk full, permission | no | — |
 
@@ -156,6 +156,12 @@ Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name
   or the profile map) must not be equal to, or inside, the active profile's `launcher.dir` or any folder named
   `ports`, `ports_scripts` or `windows` directly under the ROM root; otherwise `Failed(path_rejected)`, unless the run
   has `--allow-executable`.
+  `Profile.IsLauncherPath` (internal/library) is **lexical**: it compares path components, without touching the
+  filesystem, and fails closed on relative or drive-relative input. Callers therefore make `-o` (and any relative
+  `download.dir`) **absolute first** (`filepath.Abs`). Preflight applies the check **again** on the real path of the
+  destdir after it is resolved (`filepath.EvalSymlinks`; on Windows the final path from `GetFinalPathNameByHandle`,
+  which also expands 8.3 short names such as `PORTS~1` and follows junctions). A destdir that becomes a launcher
+  folder only after resolution is `Failed(path_rejected)`.
 - **Windows** (CR-13): Go ≥ 1.23 `EvalSymlinks` does not resolve junctions, so confinement is verified with
   `GetFinalPathNameByHandle` on the opened destdir handle, compared against the same call on the root handle.
 - On POSIX systems, directories the downloader creates get mode `0700` and files `0600` (umask may only reduce them) (CR-7).
@@ -163,8 +169,13 @@ Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name
 ### 6.3 Staging and finalize without replace (CR-4, CR-7; TH-08–13)
 
 - `jobID` = 128-bit random value, lowercase base32 without padding (26 chars, `[a-z2-7]`). No server text in staging names.
-- Staging: `<paths.temp>/downloads/<jobID>.part`, opened through `os.Root.OpenFile` with `O_CREATE|O_EXCL|O_NOFOLLOW`;
-  the same fd is reused (truncated) across retries.
+- Staging location (T-17-arch): when `<paths.temp>` and the destdir are on the **same device** (`FS.Free` reports the
+  device id), the staging file is `<destdir>/.<jobID>.part` inside the destination root, so finalize is a plain
+  no-replace rename and the file is written once. Otherwise it is `<paths.temp>/downloads/<jobID>.part` and finalize
+  uses the cross-device copy below. Two `os.Root` handles on the same disk are **not** a reason to copy. The space
+  ledger then holds one claim for a same-device job and two for a cross-device one.
+- Staging files are opened through `os.Root.OpenFile` with `O_CREATE|O_EXCL|O_NOFOLLOW`; the same fd is reused
+  (truncated) across retries. A dot-prefixed `.part` name is not a ROM extension, so frontends do not list it.
 - Finalize **never replaces** an existing file (`os.Rename` and `os.Root.Rename` both replace, T-16 F8):
   - Linux `renameat2(RENAME_NOREPLACE)` (`golang.org/x/sys/unix`); Windows `MoveFileExW` **without**
     `MOVEFILE_REPLACE_EXISTING`, with `MOVEFILE_WRITE_THROUGH`; macOS `renameatx_np(RENAME_EXCL)`;
@@ -179,12 +190,18 @@ Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name
   for that single file. Before replacing, `Lstat` the target through the `os.Root`: anything that is not a regular
   file (symlink, directory, device, FIFO, socket, Windows reparse point) → `Failed(path_rejected)`, and the target is
   left untouched (T-16 G2, TH-10).
+- **Collisions inside one batch** (Regente decision, T-17): `overwrite` replaces only a file that existed **before**
+  the batch. When two jobs of the same batch reduce to the same reserved name (§3.1 step 5, `casefold(NFC(...))`), the
+  later job is resolved by `rename` (`name (1).ext` …) even under `overwrite`, so a job never replaces a file written
+  by another job of the same batch. `skip` and `rename` behave as usual. This holds **after** the earlier job is done:
+  the downloader keeps, for the whole batch, the set of names its jobs finalized (`casefold(NFC(destdir/name))`), and
+  `overwrite` is refused for any name in it. Releasing the per-job reservation at a terminal state is not enough.
 
 ### 6.4 Cleanup (CR-7; TH-15)
 
 At startup, delete only **regular** files (`Lstat`, never follow) older than 24 h by **mtime** whose names match exactly:
 - `^[a-z2-7]{26}\.part$` in `<paths.temp>/downloads/`;
-- `^\.[a-z2-7]{26}\.mothdex-tmp$` in the destdirs listed in `<paths.data>/inflight.jsonl`.
+- `^\.[a-z2-7]{26}\.part$` and `^\.[a-z2-7]{26}\.mothdex-tmp$` in the destdirs listed in `<paths.data>/inflight.jsonl`.
 
 Journal entries whose job files are gone are pruned. The downloader never deletes anything else.
 
@@ -199,8 +216,34 @@ Journal entries whose job files are gone are pruned. The downloader never delete
 
 ## 8. Test hooks (T-18)
 
-`Downloader` takes `HTTPDoer`, `Clock`, `Sleeper`, `Rand`, an `os.Root`-based FS and a per-OS `Finalizer` (no-replace
-move) interface. The fake proxy covers: stall before the first byte, stall mid-stream, truncation, transient 404, 429,
+Everything that touches the outside world is an injected port (`internal/proxy/ports.go`, T-17):
+
+| Port | Contract |
+|---|---|
+| `HTTPDoer` | `Do(*http.Request)`; the downloader enforces the URL policy (§2) itself and never relies on the doer |
+| `Clock` | `Now()` and `NewTimer(d)` (channel plus stop), so timeouts run on a fake clock |
+| `Sleeper`, `Rand` | backoff sleep that honours `ctx`; jitter source (`Int63n`). The job id has its own `io.Reader` source |
+| `FS` | confined file system with `os.Root` semantics: `OpenExcl` (create-exclusive, no-follow, `0600`), `Open` (read an existing regular file again: verify and the EXDEV copy), `Lstat`, `MkdirAll`, `Remove`, `ReadDir`, `Link` (`fs.ErrExist`, or `errors.ErrUnsupported`), `Free` (free bytes plus device id, for the ledger and the EXDEV decision) and `SyncDir` (the §3 `fsync` of the destdir; it reports success where a directory cannot be synced, e.g. Windows, where `MOVEFILE_WRITE_THROUGH` covers it) |
+| `File` | the staging handle: read, write, seek, `Truncate`, `Sync`, `Close`; reused across retries (§3) |
+| `Finalizer` | `Rename(fs, from, to, replace)`: no-replace per OS (§6.3); `fs.ErrExist`, `ErrUnsupported` or `EXDEV`; `replace=true` only for `--force` after the `Lstat` check |
+| `Resolver` | `LookupIP` for the cover SSRF guard (cache.md §4) |
+| `Journal` | the in-flight journal (§6.4): `Add` and `Entries` plus clearing an entry at the terminal state, over `{job_id, staging, dest_dir, started_at}` |
+| `History` | `Append(Record)`, exactly once per job at its terminal state |
+
+`Record` (input to history, T-19): `JobID, Slug, Platform, State, Code` (empty unless failed), `RawName` (the received
+`link.filename`, escaped before display), `Name` (sanitized; empty if the job failed before naming), `Path`, `Bytes`,
+`SHA256`, `CRC` and `Hash` (`ok|skipped|failed`), `Attempts`, `Started`, `Finished`. Entry and link metadata (`title`,
+`source_name`, `link_index`) are added by the history layer. `Record.Path` is the **absolute** final path (the
+destination root joined with the name), because history outlives a profile or `-o` change; a root-relative path
+would need a migration later.
+
+**Calling the downloader (T-20).** The app service's `Downloads` (app-service §1) needs, from the downloader: a job id
+**before** the job starts (returned by `Enqueue` and carried by every event), a `Queued` event when a job is
+accepted (not when a worker slot frees up), and cancellation of **one** job without cancelling the batch. The
+downloader therefore assigns ids at submission and supports per-job cancel by id; error codes are only those of
+cli-output §4 (a destdir outside the root is `path_rejected`).
+
+The fake proxy covers: stall before the first byte, stall mid-stream, truncation, transient 404, 429,
 any 3xx, `Content-Length` mismatch, extra bytes, `Content-Encoding: gzip`, malicious filenames, off-policy URLs (http,
 userinfo, port, IP literal, IDN, trailing dot) and zip bombs. [T-16 §8](../../security/T-16-threat-model-downloader.md) lists the full test set.
 

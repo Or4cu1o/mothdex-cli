@@ -1,7 +1,7 @@
-# Source: docs/research/T1e-emulation-systems.md (checked 2026-11-20). Verified flags: true = confirmed in T1e,
-# false (or omitted) = unverified or inferred, to be confirmed by the community beta.
-# Only the 15 platform ids confirmed in T1e section 4 are mapped; every other id is deliberately unmapped (unmapped: error),
-# so the user picks -o <dir> or profile.folders.<id> until its folder name is sourced.
+# Source: docs/research/T15b-platform-folders.md (Sonda, checked 2026-11-20) for folders; T1e for paths and probes.
+# Verified flags: true = confirmed in the cited source, false (or omitted) = unverified or inferred, to be confirmed by the
+# community beta. Unmapped on purpose (unmapped: error, the user picks -o <dir> or profile.folders.<id>): arcade ids
+# (profiles.md §5), ids with no system in this frontend, and pc (D19: its folder windows is a launcher folder).
 schema: 1
 id: batocera
 name: Batocera
@@ -18,20 +18,53 @@ roms:
   unmapped: error
   folders:
     32x: sega32x
+    3do: 3do
+    3ds: 3ds
+    64dd: n64dd
+    a26: atari2600
+    a52: atari5200
+    a78: atari7800
+    cdi: cdi
+    cv: colecovision
     dc: dreamcast
+    dos: dos
+    fds: fds
+    fmt: fmtowns
     gb: gb
     gba: gba
     gbc: gbc
+    gc: gamecube
     gg: gamegear
+    intv: intellivision
+    jag: jaguar
+    jcd: jaguarcd
+    lynx: lynx
+    mac: macintosh
     md: megadrive
+    n3ds: 3ds
     n64: n64
+    nds: nds
     nes: nes
+    ngcd: neogeocd
+    pc98: pc98
+    pcfx: pcfx
+    pmin: pokemini
     ps1: psx
+    ps2: ps2
+    ps3: ps3
+    psp: psp
+    psv: psvita
     sat: saturn
     scd: megacd
     sms: mastersystem
     snes: snes
     tg16: pcengine
+    tgcd: pcenginecd
+    vb: virtualboy
+    wii: wii
+    wiiu: wiiu
+    x360: xbox360
+    xbox: xbox
 bin_dir: { path: /userdata/system/bin, verified: false }
 launcher: { kind: sh, dir: /userdata/roms/ports, verified: true }
 refresh: { kind: http_get, url: "http://127.0.0.1:1234/reloadgames", timeout: 3s, verified: true }

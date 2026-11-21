@@ -115,6 +115,9 @@ type DownloadRequest struct {
   preferred formats, (3) `source_name` in the preferred sources, (4) `Size` (smallest or largest `size` first; `none` skips
   this step), (5) API order. Region is not a link attribute (it lives on `Entry`), so it stays a search filter (`-r`). With no preference, the first
   `Game` link wins. The UIs show every link with its Reasons; non-interactive commands take the top link.
+- **Platform ids for downloads.** The downloader refuses a job whose platform is not in `/platforms`
+  (downloader §6.2), so the service passes the cached `meta` list, stale entries included (≤ 7 d). With no list at
+  all, `Enqueue` fails with `network` rather than failing every job as `path_rejected`.
 - **Stale fallback.** On `KindNetwork` or `KindRateLimited`, catalog reads may serve an expired cache entry
   (≤ 7 days old) with `Meta.Stale = true`. Never for `Random`.
 - **429 cooldown** is persisted in namespace `state` (see api-client §4) and restored on start.
