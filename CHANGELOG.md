@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Home, Search with the virtual keyboard, pickers, Results with covers, Entry and link chooser, Queue, History,
   Settings, Start menu), errors and empty states, quit and the return to the frontend, the Port behavior, the
   service calls used, the gaps agreed with the T-51 contract, and a three-PR plan.
+- `app.Service.ConfigSchema() []SettingSpec{Key, Kind, Enum, Min, Max, Env}` (F1, ui.md section 6): the metadata of every configuration key (kind string, enum, int, float, bool, duration, size or list; the allowed values or range; the `MOTHDEX_*` variable) for the TUI Settings screen and Shell completion. It reads no file, so it works with a broken configuration. `config.Specs()` builds it from the schema, and a test checks that every enum value and range bound agrees with the parser.
 - `docs/contracts/cli/gui.md` (T-51): the E-M3 GUI contract, covering the separate `mothdex-gui` binary and its package layout, SDL2 through an own purego binding (with what the spike must prove and the decision rule), Noto Sans with the x/image raster, the pinned GameControllerDB, a single download root (no shared limiter), the exit budget, cover decode caps, the packaging impact, the test plan and the gaps for Forja.
 - `docs/release-v0.1.0-checklist.md` (T-23): the ordered owner steps for the first release (open gates A2 and D1 to D3,
   environment and tag settings, tag, what `release.yml` publishes, verification of the published assets, rollback) and what
@@ -92,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `internal/proxy/testdata/sanitize-vectors.json` (T-61 F-1): the `Sanitize` vectors as a shared fixture (`input`, optional `fallback` and `allow_executable`, and an `output` or a stable `error`: `unsafe_name` or `empty_name`). `TestSanitizeVectors` reads it; mothdex-mcp copies the file and checks it for divergence (mcp `download_file`).
 - `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
   three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry
   that has more than one link; Ctrl+C never exits the Shell (only `exit`, `quit` and Ctrl+D leave); the TUI Entry

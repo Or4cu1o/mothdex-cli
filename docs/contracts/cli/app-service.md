@@ -56,6 +56,7 @@ type Cache interface {
 type Config interface {
     ConfigGet(key string) (Setting, error)
     ConfigList() ([]Setting, error) // effective value + source (default|file|env|flag)
+    ConfigSchema() []SettingSpec    // per key: Kind (string|enum|int|float|bool|duration|size|list), Enum, Min, Max, Env; no file read
     ConfigSet(key, value string) error   // validates, writes the YAML file atomically
     ConfigReset(key string) error        // key or "all"
 }
