@@ -33,6 +33,17 @@ type fakeSvc struct {
 	history   []app.HistoryRecord
 	jobs      []app.JobSnapshot
 
+	configs      []app.Setting
+	configSet    func(key, value string) error
+	cache        app.CacheStats
+	jobCoverErr  error
+	enqueueErr   error
+	sets         [][2]string
+	resets       []string
+	cacheCleared int
+	jobCovers    []app.JobSnapshot
+	histFilters  []app.HistoryFilter
+
 	searches  []app.SearchQuery
 	linkSels  []app.LinkSelector
 	entries   []string
@@ -122,6 +133,9 @@ func (f *fakeSvc) SaveBoxart(context.Context, app.Ref, string) (string, error) {
 func (f *fakeSvc) Enqueue(_ context.Context, reqs []app.DownloadRequest) ([]app.JobID, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.enqueueErr != nil {
+		return nil, f.enqueueErr
+	}
 	ids := make([]app.JobID, len(reqs))
 	for i, r := range reqs {
 		f.enqueued = append(f.enqueued, r)
@@ -151,8 +165,77 @@ func (f *fakeSvc) Cancel(id app.JobID) error {
 	return nil
 }
 
-func (f *fakeSvc) History(context.Context, app.HistoryFilter) ([]app.HistoryRecord, error) {
-	return f.history, nil
+func (f *fakeSvc) History(_ context.Context, flt app.HistoryFilter) ([]app.HistoryRecord, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.histFilters = append(f.histFilters, flt)
+	if !flt.Failed {
+		return f.history, nil
+	}
+	var out []app.HistoryRecord
+	for _, r := range f.history {
+		if r.Error != nil {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeSvc) ConfigList() ([]app.Setting, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]app.Setting(nil), f.configs...), nil
+}
+
+// ConfigSet stores the value like the service would: bools and ints are parsed, lists split.
+func (f *fakeSvc) ConfigSet(key, value string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sets = append(f.sets, [2]string{key, value})
+	if f.configSet != nil {
+		if err := f.configSet(key, value); err != nil {
+			return err
+		}
+	}
+	for i, c := range f.configs {
+		if c.Key != key {
+			continue
+		}
+		switch c.Value.(type) {
+		case bool:
+			f.configs[i].Value = value == "true"
+		case int:
+			n, _ := strconv.Atoi(value)
+			f.configs[i].Value = n
+		case []string:
+			f.configs[i].Value = splitIDs(value)
+		default:
+			f.configs[i].Value = value
+		}
+		f.configs[i].Source = "file"
+	}
+	return nil
+}
+
+func (f *fakeSvc) ConfigReset(key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.resets = append(f.resets, key)
+	return nil
+}
+
+func (f *fakeSvc) CacheStats() (app.CacheStats, error) { return f.cache, nil }
+
+func (f *fakeSvc) CacheClear(...string) error {
+	f.cacheCleared++
+	return nil
+}
+
+func (f *fakeSvc) SaveJobBoxart(_ context.Context, j app.JobSnapshot, _ string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.jobCovers = append(f.jobCovers, j)
+	return "/roms/x.png", f.jobCoverErr
 }
 
 func (f *fakeSvc) ActiveProfile() app.ProfileInfo { return app.ProfileInfo{ID: "generic"} }
@@ -659,6 +742,12 @@ func TestHostileServerTextNeverReachesTheTerminal(t *testing.T) {
 	check("Queue")
 	h.send(toastMsg{text: hostile, kind: toastInfo})
 	check("toast")
+	svc.history = []app.HistoryRecord{{ID: "x", Title: hostile, Platform: hostile, Path: hostile, Filename: hostile, SHA256: hostile, StartedAt: t0}}
+	h.keys("esc", "H", "enter")
+	check("History details")
+	svc.configs = []app.Setting{{Key: "download.dir", Value: hostile, Source: "file"}}
+	h.keys("esc", "esc", "S")
+	check("Settings")
 }
 
 // sgrParams lists every numeric parameter of every SGR sequence in s.
@@ -701,7 +790,9 @@ func TestNoColorUsesOnlyBoldFaintAndReverse(t *testing.T) {
 func TestEveryScreenFillsTheTerminalExactlyAtEverySize(t *testing.T) {
 	for _, sz := range [][2]int{{60, 16}, {79, 19}, {80, 24}, {100, 30}, {200, 60}} {
 		w, hh := sz[0], sz[1]
-		h := newHarness(t, &fakeSvc{})
+		svc := settingsSvc()
+		svc.history = historySvc().history
+		h := newHarness(t, svc)
 		h.resize(w, hh)
 		shots := map[string]string{"search": h.m.render()}
 		h.search("zelda")
@@ -713,6 +804,14 @@ func TestEveryScreenFillsTheTerminalExactlyAtEverySize(t *testing.T) {
 		shots["queue"] = h.m.render()
 		h.keys("?")
 		shots["help"] = h.m.render()
+		h.keys("esc", "esc", "H") // close help, leave the queue, open the history
+		shots["history"] = h.m.render()
+		h.keys("enter")
+		shots["history details"] = h.m.render()
+		h.keys("esc", "esc", "S")
+		shots["settings"] = h.m.render()
+		h.keys("enter")
+		shots["settings editor"] = h.m.render()
 		for name, raw := range shots {
 			lines := strings.Split(raw, "\n")
 			if len(lines) != hh {

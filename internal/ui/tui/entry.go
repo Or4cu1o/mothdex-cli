@@ -23,7 +23,8 @@ type entryDoneMsg struct {
 
 // pendingDownload is a download waiting for the "Already downloaded. Download again?" answer.
 type pendingDownload struct {
-	req app.DownloadRequest
+	req  app.DownloadRequest
+	text string // the question, already translated
 }
 
 // entryScreen shows one entry and its ranked links; the link list is the link chooser (tui.md section 4).
@@ -215,8 +216,18 @@ func (s entryScreen) downloadLink(rt *shared, index int) (screen, tea.Cmd) {
 	if which == 0 {
 		which = defaultChoice(s.choices)
 	}
-	if rt.done[doneKey(s.slug(), which)] {
-		s.confirm = &pendingDownload{req: req}
+	var size int64
+	for _, c := range s.choices {
+		if c.Index == which {
+			size = c.Link.Size
+		}
+	}
+	switch {
+	case rt.done[doneKey(s.slug(), which)]:
+		s.confirm = &pendingDownload{req: req, text: rt.T("ui.tui.entry.again", nil)}
+		return s, nil
+	case needsConfirm(rt.confirm, 1, size):
+		s.confirm = &pendingDownload{req: req, text: rt.N("ui.tui.confirm_download", 1, i18n.Args{"size": humanSize(size)})}
 		return s, nil
 	}
 	return s, enqueueCmd(rt.env, []app.DownloadRequest{req})
@@ -355,7 +366,7 @@ func (s entryScreen) view(rt *shared, w, h int) screenView {
 	}
 	sv := screenView{body: lines}
 	if s.confirm != nil {
-		sv.status, sv.prompt = render(st.warn, rt.T("ui.tui.entry.again", nil)), true
+		sv.status, sv.prompt = render(st.warn, s.confirm.text), true
 	}
 	return sv
 }

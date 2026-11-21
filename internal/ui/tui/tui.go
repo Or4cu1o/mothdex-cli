@@ -52,7 +52,7 @@ func Run(ctx context.Context, tenv cli.TUIEnv) int {
 
 func newEnvFrom(ctx context.Context, s *cli.Session) *env {
 	return &env{
-		ctx: ctx, svc: s.Svc, t: s.T, st: newStyles(s.NoColor, s.UTF8), prefer: s.Prefer, pageSize: s.PageSize,
+		ctx: ctx, svc: s.Svc, t: s.T, st: newStyles(s.NoColor, s.UTF8), prefer: s.Prefer, confirm: s.Confirm, boxart: s.Boxart, pageSize: s.PageSize,
 		dataDir: s.DataDir, logPath: s.LogPath, log: s.Log, now: time.Now, after: realAfter, seq: &atomic.Int64{}, num: printer(s.T),
 	}
 }

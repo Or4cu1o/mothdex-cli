@@ -72,6 +72,19 @@ func (s queueScreen) at(nav []app.JobSnapshot) int {
 }
 
 func (s queueScreen) update(msg tea.Msg, rt *shared) (screen, tea.Cmd) {
+	if r, ok := msg.(retriedMsg); ok { // a failed retry puts the jobs back in the list
+		if r.enq.err != nil {
+			hidden := make(map[app.JobID]bool, len(s.hidden))
+			for id := range s.hidden {
+				hidden[id] = true
+			}
+			for _, id := range r.ids {
+				delete(hidden, id)
+			}
+			s.hidden = hidden
+		}
+		return s, nil
+	}
 	ev, ok := msg.(keyEv)
 	if !ok {
 		return s, nil
@@ -167,11 +180,12 @@ func cancelCmd(e *env, jobs []app.JobSnapshot) tea.Cmd {
 	}
 }
 
-// retry queues the original request of every failed job again and hides those jobs, so pressing r a
-// second time cannot queue the same files twice. There is no new service method: it is Enqueue once
-// more (tui.md section 5).
+// retry queues the original request of every failed job again and hides those jobs at once, so a
+// second r cannot queue the same files twice. If Enqueue fails they come back (retriedMsg). There is
+// no new service method: it is Enqueue once more (tui.md section 5).
 func (s queueScreen) retry(rt *shared) (queueScreen, tea.Cmd) {
 	var reqs []app.DownloadRequest
+	var ids []app.JobID
 	hidden := make(map[app.JobID]bool, len(s.hidden))
 	for id := range s.hidden {
 		hidden[id] = true
@@ -181,7 +195,7 @@ func (s queueScreen) retry(rt *shared) (queueScreen, tea.Cmd) {
 			continue
 		}
 		if r, ok := rt.book.reqs[j.ID]; ok {
-			reqs = append(reqs, r)
+			reqs, ids = append(reqs, r), append(ids, j.ID)
 			hidden[j.ID] = true
 		}
 	}
@@ -189,7 +203,11 @@ func (s queueScreen) retry(rt *shared) (queueScreen, tea.Cmd) {
 		return s, nil
 	}
 	s.hidden = hidden
-	return s, enqueueCmd(rt.env, reqs)
+	enqueue := enqueueCmd(rt.env, reqs)
+	return s, func() tea.Msg {
+		enq, _ := enqueue().(enqueuedMsg)
+		return retriedMsg{enq: enq, ids: ids}
+	}
 }
 
 // progressBar draws bytes of expected as a bar of width cells and the percentage.

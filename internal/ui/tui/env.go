@@ -29,11 +29,17 @@ type service interface {
 	DBInfo(ctx context.Context) (app.Result[mothdex.DBInfo], error)
 	Links(ctx context.Context, ref app.Ref, sel app.LinkSelector) ([]app.LinkChoice, error)
 	SaveBoxart(ctx context.Context, ref app.Ref, destDir string) (string, error)
+	SaveJobBoxart(ctx context.Context, job app.JobSnapshot, destDir string) (string, error)
 	Enqueue(ctx context.Context, reqs []app.DownloadRequest) ([]app.JobID, error)
 	Jobs() []app.JobSnapshot
 	Events(ctx context.Context) <-chan app.Event
 	Cancel(id app.JobID) error
 	History(ctx context.Context, f app.HistoryFilter) ([]app.HistoryRecord, error)
+	ConfigList() ([]app.Setting, error)
+	ConfigSet(key, value string) error
+	ConfigReset(key string) error
+	CacheStats() (app.CacheStats, error)
+	CacheClear(ns ...string) error
 	ActiveProfile() app.ProfileInfo
 }
 
@@ -44,6 +50,8 @@ type env struct {
 	t        *i18n.Translator
 	st       styles
 	prefer   app.Preference // download.prefer, the baseline of the P overlay
+	confirm  bool           // interface.confirm_downloads at start-up
+	boxart   bool           // download.boxart at start-up
 	pageSize int
 	dataDir  string
 	logPath  string

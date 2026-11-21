@@ -61,6 +61,8 @@ const (
 	actCancel
 	actCancelAll
 	actClearFinished
+	actFilter
+	actReset
 	actFailedOnly
 	actExport
 	actCover
@@ -200,6 +202,8 @@ func screenKey(sc screenID, key string) action {
 		}
 	case scHistory:
 		switch key {
+		case "/":
+			return actFilter
 		case "f":
 			return actFailedOnly
 		case "e":
@@ -208,6 +212,9 @@ func screenKey(sc screenID, key string) action {
 			return actRetry
 		}
 	case scSettings:
+		if key == "backspace" {
+			return actReset
+		}
 	}
 	return actNone
 }

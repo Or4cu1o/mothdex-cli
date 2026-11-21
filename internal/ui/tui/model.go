@@ -73,6 +73,13 @@ type (
 		err  error
 	}
 	tickMsg struct{ kind tickKind }
+	// appliedMsg carries the effective settings after a change in the Settings screen.
+	appliedMsg struct{ settings []app.Setting }
+	// retriedMsg is the answer to a retry from the Queue: the request and the jobs it re-queued.
+	retriedMsg struct {
+		enq enqueuedMsg
+		ids []app.JobID
+	}
 	// keyEv is a key already mapped to an action by the reducer; the raw key stays for text fields.
 	keyEv struct {
 		a action
@@ -91,6 +98,10 @@ type shared struct {
 	dbTotal int64
 	dbKnown bool
 	spin    int
+	// settings that change while the TUI runs; they shadow the start-up values of env
+	pageSize int
+	confirm  bool
+	boxart   bool
 }
 
 // screenView is what a screen draws: the body lines, the text in the separator, and an optional
@@ -127,6 +138,9 @@ type model struct {
 	dbKnown  bool
 	help     bool
 	quitAsk  bool
+	pageSize int // the settings the TUI applies at once (interface.page_size ...)
+	confirm  bool
+	boxart   bool
 	spin     int
 	spinning bool
 	warming  bool
@@ -139,6 +153,7 @@ func newModel(e *env, first screen) model {
 	m := model{
 		env: e, w: defaultW, h: defaultH, book: newJobBook(),
 		done: map[string]bool{}, prefs: e.prefer, events: e.svc.Events(e.ctx),
+		pageSize: e.pageSize, confirm: e.confirm, boxart: e.boxart,
 	}
 	started, cmd := first.init(m.rt())
 	m.stack, m.start = []screen{started}, cmd
@@ -148,7 +163,7 @@ func newModel(e *env, first screen) model {
 func (m model) rt() *shared {
 	return &shared{
 		env: m.env, w: m.w, h: m.h, tier: tier(m.w, m.h), prefs: m.prefs, done: m.done, book: m.book,
-		dbTotal: m.dbTotal, dbKnown: m.dbKnown, spin: m.spin,
+		dbTotal: m.dbTotal, dbKnown: m.dbKnown, spin: m.spin, pageSize: m.pageSize, confirm: m.confirm, boxart: m.boxart,
 	}
 }
 
@@ -226,6 +241,12 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onEvent(msg)
 	case enqueuedMsg:
 		return m.onEnqueued(msg)
+	case retriedMsg:
+		next, cmd := m.onEnqueued(msg.enq)
+		out, fan := next.(model).fanout(msg)
+		return out, tea.Batch(cmd, fan)
+	case appliedMsg:
+		return m.apply(msg.settings), nil
 	case dbInfoMsg:
 		m.dbTotal, m.dbKnown = msg.total, msg.ok
 		return m, nil
@@ -309,12 +330,21 @@ func (m model) onEvent(msg eventMsg) (tea.Model, tea.Cmd) {
 	if !msg.ok {
 		return m, nil
 	}
+	wasDone := m.book.byID[msg.ev.Job.ID].State == app.StateDone // before this event is applied
 	m.book = m.book.apply(msg.ev.Job, m.env.now())
 	if msg.ev.Job.State == app.StateDone {
 		m.done = maps.Clone(m.done)
 		m.done[doneKey(msg.ev.Job.Slug, msg.ev.Job.LinkIndex)] = true
 	}
 	cmds := []tea.Cmd{m.waitEvent()}
+	if msg.ev.Job.State == app.StateDone && m.boxart && !wasDone {
+		cmds = append(cmds, m.saveCover(msg.ev.Job))
+	}
+	if msg.ev.Job.Terminal() { // History reloads when a job ends
+		next, c := m.fanout(jobEndedMsg{})
+		m = next.(model)
+		cmds = append(cmds, c)
+	}
 	if done, skipped, failed, ok := m.book.settled(); ok {
 		m.book = m.book.resetBatch()
 		var c tea.Cmd
@@ -332,6 +362,20 @@ func summaryKind(failed int) toastKind {
 }
 
 // summaryText is "3 downloaded, 1 skipped, 0 failed".
+// saveCover writes the cover next to a finished file when download.boxart is on. The UI decides when
+// (a Done job, never after an interrupt); the service decides how (app-service.md, Boxart). A failure is
+// a warning, and an entry with no cover is normal.
+func (m model) saveCover(j app.JobSnapshot) tea.Cmd {
+	e := m.env
+	return func() tea.Msg {
+		if _, err := e.svc.SaveJobBoxart(e.ctx, j, ""); err != nil && !isNotFound(err) {
+			f := e.failureOf(err)
+			return toastMsg{text: e.T("ui.cli.boxart.failed", i18n.Args{"title": clean(j.Title), "code": f.code}), kind: toastWarn}
+		}
+		return nil
+	}
+}
+
 func (m model) summaryText(done, skipped, failed int) string {
 	return m.env.T("ui.tui.summary", i18n.Args{"done": done, "skipped": skipped, "failed": failed})
 }
@@ -392,6 +436,44 @@ func (m model) ensureTicks() (model, tea.Cmd) {
 		cmds = append(cmds, m.env.after(warmEvery, tickMsg{tickWarm}))
 	}
 	return m, tea.Batch(cmds...)
+}
+
+// apply takes the settings that the TUI applies while it runs from the effective values the service
+// reports: the page size, the confirmation, the cover, and the link preference.
+func (m model) apply(list []app.Setting) model {
+	by := make(map[string]any, len(list))
+	for _, s := range list {
+		by[s.Key] = s.Value
+	}
+	if v, ok := by["interface.page_size"].(int); ok && v > 0 {
+		m.pageSize = v
+	}
+	if v, ok := by["interface.confirm_downloads"].(bool); ok {
+		m.confirm = v
+	}
+	if v, ok := by["download.boxart"].(bool); ok {
+		m.boxart = v
+	}
+	m.prefs = preferenceFrom(by, m.prefs)
+	return m
+}
+
+// preferenceFrom reads download.prefer.* from the effective settings; a key that is missing keeps
+// what the baseline had.
+func preferenceFrom(by map[string]any, base app.Preference) app.Preference {
+	if v, ok := by["download.prefer.languages"].([]string); ok {
+		base.Languages = v
+	}
+	if v, ok := by["download.prefer.formats"].([]string); ok {
+		base.Formats = v
+	}
+	if v, ok := by["download.prefer.sources"].([]string); ok {
+		base.Sources = v
+	}
+	if v, ok := by["download.prefer.size"].(string); ok {
+		base.Size = app.SizePref(v)
+	}
+	return base
 }
 
 // quitNeedsAsk is the quit rule of tui.md section 1: ask only when downloads are in progress.
@@ -462,9 +544,15 @@ func (m model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.push(newQueue())
 	case actHistory:
-		return m.showToast(m.env.T("ui.cli.soon", i18n.Args{"name": "history"}), toastWarn)
+		if top.id() == scHistory {
+			return m, nil
+		}
+		return m.push(newHistory())
 	case actSettings:
-		return m.showToast(m.env.T("ui.cli.soon", i18n.Args{"name": "settings"}), toastWarn)
+		if top.id() == scSettings {
+			return m, nil
+		}
+		return m.push(newSettings())
 	case actSearchScreen:
 		if top.id() != scSearch {
 			var fill *app.SearchQuery
