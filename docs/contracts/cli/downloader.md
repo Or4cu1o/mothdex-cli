@@ -100,11 +100,16 @@ staging file.
    ledger lock: the job keeps going only if `free − (reserved(fs) − own claim) ≥ need(cl)` on each filesystem it
    writes; otherwise `Failed(disk_full)`, not retryable. A smaller `cl` shrinks the claim.
 6. **Consent at the real size:** the job carries `SizeConsent` (app-service §2). When it is the default rule,
-   `interface.confirm_downloads` is on, `link.size ≤ 500 MiB` and `cl > 500 MiB`, the job ends
+   `interface.confirm_downloads` is on, `link.size ≤ 500 MB` and `cl > 500 MB`, the job ends
    `Failed(confirmation_required)`, not retryable, with `cl` in the event. When it is an exact value, `cl` must equal
    it, or the job ends the same way. Interactive UIs offer **Download anyway**, which re-queues that one job with
    `SizeConsent = cl`; non-interactive runs fail unless `-f/--force` (cli-output §1). No body byte is written
    without consent at the real size, and no worker waits on a prompt.
+   - **Threshold:** 500 MB is the same constant as the cli-conventions §6 prompt, `524 288 000` bytes (sizes are
+     binary-based, §5 there), so the two gates cannot disagree.
+   - **`ConsentAny` follows `compose.startupGrants`:** only a per-command `-f/--force` sets it. A `-f` given when the
+     Shell, TUI or GUI started never becomes `ConsentAny` for later jobs; in a session, consent comes only from a
+     per-command `-f` or from Download anyway.
 7. **Drift record:** `link.size` and `cl` are both recorded (§8 `Record`). No tolerance band applies: a catalog
    size off by a unit (MB vs MiB, KB vs MB) is common and is not an error. When `cl > 1.5 × link.size` or
    `cl < link.size / 2`, the job adds a warning (`warnings[]` and stderr) once.
