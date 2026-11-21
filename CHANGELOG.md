@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Downloader contract (T-17 architecture pass): same-device staging inside the destdir (no double write), the
+  batch keeps finalized names so `overwrite` never replaces them, `Retry-After` capped at 15 min, absolute
+  `Record.Path`, and what the app service needs from the downloader (ids at submission, per-job cancel).
 - Downloader contract: within one batch, a name collision under `on_exists: overwrite` is resolved by rename,
   never by replacing another job's file; the injected ports (`FS.Open`, `FS.SyncDir`, `Journal`, `History`) and the
   history `Record` are documented. `download` JSON gains `raw_filename` and `hash` (additive).
