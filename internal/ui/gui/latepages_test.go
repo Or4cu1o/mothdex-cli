@@ -255,3 +255,18 @@ func TestResultsQuerySummaryIsSanitized(t *testing.T) {
 	}
 	_ = fmt.Sprint
 }
+
+// PR-76 recheck nit: moving to the next entry with R cancels the call of the entry it leaves.
+func TestMovingToANeighbourCancelsThePreviousEntryCall(t *testing.T) {
+	h := started(t, zeldaService(3), 1280, 720)
+	searchFor(t, h, "zelda")
+	h.press(input.Confirm)
+	canceled := 0
+	h.m.entry.cancel = func() { canceled++ }
+	h.press(input.PageDown)
+	h.press(input.PageDown)
+	if canceled != 1 {
+		t.Fatalf("the earlier call was canceled %d times, want 1 (the second one replaced the hook)", canceled)
+	}
+	h.mustHave("Zelda 003")
+}

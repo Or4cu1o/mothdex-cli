@@ -40,6 +40,9 @@ func (m Model) openEntry(row resultRow, now time.Time) (Model, []Cmd) {
 }
 
 func (m Model) loadEntry(slug, title string, now time.Time) (Model, []Cmd) {
+	if m.entry.cancel != nil { // a fast run of L and R must not leave each earlier call running to its timeout
+		m.entry.cancel()
+	}
 	seq := m.entry.seq + 1
 	m.entry = entryState{slug: slug, title: title, phase: loadBusy, since: now, seq: seq, why: m.entry.why}
 	m.coverSlug, m.coverSince = slug, now
