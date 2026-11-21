@@ -143,6 +143,7 @@ func resolve(ctx context.Context, r Resolver, host string) ([]netip.Addr, error)
 	return out, nil
 }
 
+// Any port is accepted: cache.md restricts hosts by address, not by port (Crivo s3, decision recorded).
 func checkURL(u *url.URL) error {
 	if u.Scheme != "https" || u.User != nil || u.Hostname() == "" {
 		return errors.New("cover: only plain https URLs are fetched")

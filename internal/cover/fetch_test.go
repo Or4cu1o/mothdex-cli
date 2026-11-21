@@ -8,6 +8,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
+	"image"
+	"image/color"
+	"image/gif"
+	"image/jpeg"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -108,6 +112,37 @@ func webpVP8L(w, h uint32) []byte {
 }
 
 // webpVP8X is a VP8X canvas followed by a VP8L frame chunk.
+func encoded(t *testing.T, kind string, w, h int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	var err error
+	if kind == "jpeg" {
+		err = jpeg.Encode(&buf, image.NewGray(image.Rect(0, 0, w, h)), nil)
+	} else {
+		err = gif.Encode(&buf, image.NewPaletted(image.Rect(0, 0, w, h), color.Palette{color.Black, color.White}), nil)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// Crivo s2: JPEG and GIF go through the same size check (animated WebP, a VP8X with ANMF
+// frames and no VP8/VP8L at the top level, is refused as unreadable: a cover is a still image).
+func TestJPEGAndGIFDimensionCaps(t *testing.T) {
+	for _, kind := range []string{"jpeg", "gif"} {
+		for _, tt := range []struct {
+			w, h int
+			want bool
+		}{{64, 64, true}, {4096, 4, true}, {4097, 4, false}, {4, 4097, false}} {
+			r := newRig(t, serve("image/"+kind, encoded(t, kind, tt.w, tt.h)), publicHost())
+			if got := r.f.Fetch(context.Background(), coverURL); got != tt.want {
+				t.Errorf("%s %dx%d: %v, want %v", kind, tt.w, tt.h, got, tt.want)
+			}
+		}
+	}
+}
+
 func webpVP8X(cw, ch, fw, fh uint32) []byte {
 	b := make([]byte, 12+18+8+5)
 	copy(b, "RIFF")
@@ -271,7 +306,7 @@ func TestBlockedIPTable(t *testing.T) {
 			t.Errorf("%s must be blocked", s)
 		}
 	}
-	for _, s := range []string{publicIP, "8.8.8.8", "2606:4700::1111"} {
+	for _, s := range []string{publicIP, "8.8.8.8", "2606:4700::1111", "64:ff9b::5db8:d822"} {
 		if blockedIP(netip.MustParseAddr(s)) {
 			t.Errorf("%s must be allowed", s)
 		}
