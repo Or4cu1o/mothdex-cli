@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/history"
+	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeclock"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeproxy"
