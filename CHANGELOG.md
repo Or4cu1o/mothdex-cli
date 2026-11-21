@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- App service contract (T-20a review): capability method names as implemented, UI packages import only `app`
+  (aliases for internal types), one downloader per destination root, and the service writes boxart.
 - CLI conventions §7: English error strings for `invalid_request`, `unmapped_platform`, `untrusted_redirect` and
   `unsafe_name`; `path_rejected` now describes a refused destination, not a file name (that is `unsafe_name`).
 - Contracts: `Service.Cover` returns the cached reader and content type (not a path), `internal/cover` owns the

@@ -4,7 +4,9 @@ Status: draft v1 (T-2 phase 1) · Owner: Alicerce · Implementer: Forja (T-20) �
 
 The **only** API the four UIs (CLI, Shell, TUI, GUI) call. Business rules live here or below it;
 UIs format, prompt and render, nothing else. UIs may import `pkg/mothdex` **types** (Entry, Link, …) as DTOs,
-but never call `mothdex.Client`, the cache, the downloader or the config loader directly.
+but never call `mothdex.Client`, the cache, the downloader or the config loader directly. Every type in the
+service's signatures is declared in `app` (aliases of internal types are fine: `HistoryRecord = history.Record`,
+`State = proxy.State`), so UI packages import only `app` and `pkg/mothdex`; only the composition root imports internals.
 
 > Layout note: this adds `internal/app/` to PLAN §2.2. Announced to Guindaste (T-3).
 
@@ -37,25 +39,26 @@ type Downloads interface {
     Wait(ctx context.Context) (BatchResult, error) // returns when the queue is empty
 }
 
+// Method names carry the capability (one type implements all, so `List`/`Get` cannot repeat; T-20a).
 type History interface {
-    List(ctx context.Context, f HistoryFilter) ([]HistoryRecord, error)
+    History(ctx context.Context, f HistoryFilter) ([]HistoryRecord, error)
 }
 
 type Cache interface {
-    Stats() (CacheStats, error)
-    Clear(ns ...string) error // none = all except `session` and `state`
+    CacheStats() (CacheStats, error)
+    CacheClear(ns ...string) error // none = all except `session` and `state`
 }
 
 type Config interface {
-    Get(key string) (Setting, error)
-    List() []Setting // effective value + source (default|file|env|flag)
-    Set(key, value string) error   // validates, writes the YAML file atomically
-    Reset(key string) error        // key or "all"
+    ConfigGet(key string) (Setting, error)
+    ConfigList() ([]Setting, error) // effective value + source (default|file|env|flag)
+    ConfigSet(key, value string) error   // validates, writes the YAML file atomically
+    ConfigReset(key string) error        // key or "all"
 }
 
 type Profiles interface { // schema: profiles.md
-    Active() ProfileInfo                             // resolved once at startup (flag > config > detection)
-    Detect(ctx context.Context) (ProfileInfo, error) // re-run detection, for `profile detect`
+    ActiveProfile() ProfileInfo                             // resolved once at startup (flag > config > detection)
+    DetectProfile(ctx context.Context) (ProfileInfo, error) // re-run detection, for `profile detect`
 }
 ```
 
@@ -118,6 +121,12 @@ type DownloadRequest struct {
 - **Platform ids for downloads.** The downloader refuses a job whose platform is not in `/platforms`
   (downloader §6.2), so the service passes the cached `meta` list, stale entries included (≤ 7 d). With no list at
   all, `Enqueue` fails with `network` rather than failing every job as `path_rejected`.
+- **Downloaders.** The service builds one downloader per destination root (downloader §6.2 confines each to its
+  root). `download.concurrency`, the space ledger and the batch name set therefore apply per root. The CLI uses one
+  root per batch; long-lived UIs (E-M3) that mix roots need a shared limiter first.
+- **Boxart** (`DownloadRequest.Boxart`): after a `Done` job the service, not the UI, writes the cover next to the
+  file through the same confined destination FS: name `<stem of the sanitized name>.<ext from the stored type>`,
+  never over an existing file, never in a launcher folder. A failure is a warning and never fails the job.
 - **Stale fallback.** On `KindNetwork` or `KindRateLimited`, catalog reads may serve an expired cache entry
   (≤ 7 days old) with `Meta.Stale = true`. Never for `Random`.
 - **429 cooldown** is persisted in namespace `state` (see api-client §4) and restored on start.
