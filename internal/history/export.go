@@ -78,7 +78,7 @@ func exportCSV(w io.Writer, records []Record) error {
 		row := []string{r.ID, stamp(r.StartedAt), stamp(r.FinishedAt), r.State, r.Slug, r.Title, r.Platform, r.Filename, r.Path,
 			strconv.FormatInt(r.Bytes, 10), r.SHA256, r.CRC, strconv.Itoa(r.Attempts), r.errorCode()}
 		for i, c := range row {
-			row[i] = csvCell(c)
+			row[i] = CSVCell(c)
 		}
 		if err := cw.Write(row); err != nil {
 			return err
@@ -88,9 +88,9 @@ func exportCSV(w io.Writer, records []Record) error {
 	return cw.Error()
 }
 
-// csvCell removes Cc and Cf runes first (so a hidden control character cannot hide the leading
+// CSVCell removes Cc and Cf runes first (so a hidden control character cannot hide the leading
 // '=') and then prefixes a quote to a cell that starts with = + - @ tab or CR.
-func csvCell(s string) string {
+func CSVCell(s string) string {
 	s = StripUntrusted(s)
 	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
 		return "'" + s
