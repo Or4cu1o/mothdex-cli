@@ -54,7 +54,7 @@ type Globals struct {
 	Output                                 string // -o on download and boxart
 	Command                                string // top-level command being run
 	Downloads                              bool   // the command needs the Downloads capability
-	Shell                                  bool   // the interactive Shell opens the service (ui.md section 2.1)
+	Shell                                  bool   // an interactive UI (Shell or TUI) opens the service (ui.md section 2.1)
 }
 
 // Session is what Open returns: the service plus the settings the commands read.
@@ -96,8 +96,19 @@ type Deps struct {
 	// Shell runs the interactive Shell (internal/ui/shell); nil in tests that do not need it. The
 	// composition root injects it so that cli never imports the UI packages (ui.md section 1).
 	Shell func(ctx context.Context, env ShellEnv) int
+	// TUI runs the full-screen terminal UI (internal/ui/tui); nil in tests that do not need it.
+	TUI func(ctx context.Context, env TUIEnv) int
 	// Interrupts hands SIGINT to the caller until release runs; meanwhile the root context is not
 	// canceled by it. SIGTERM keeps canceling the root. Nil means there is nothing to hand over.
+	Interrupts func() (sig <-chan os.Signal, release func())
+}
+
+// TUIEnv is what the TUI launcher receives. The session is open with the downloads capability.
+type TUIEnv struct {
+	Session    *Session
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
 	Interrupts func() (sig <-chan os.Signal, release func())
 }
 
