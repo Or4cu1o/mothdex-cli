@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/app` (T-20a, in progress): the catalog half of the app service: search with a saved session, entry,
+  random, platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers
+  through the hardened fetcher with a singleflight and a per-session negative cache, stale cache fallback (7 d), and
+  `*app.Error` whose whole text is cleaned of terminal escapes (case 49, service half) with the exit-code mapping.
+
 - `internal/history`: JSONL transfer history (`Append`, `List` newest first with a `--failed` filter, damaged lines
   skipped) and export to txt (120 columns), json (the `--json` envelope) and csv (RFC 4180, control and format
   characters stripped, formula guard); `ExportTarget` and `WriteExport` give directory naming, format inference and an
