@@ -1,6 +1,9 @@
 package config
 
 import (
+	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -61,7 +64,32 @@ var schema = []setting{
 	boolean("log.console", false, func(c *Config) *bool { return &c.Log.Console }),
 	integer("log.max_size_mb", 10, 1, 1024, func(c *Config) *int { return &c.Log.MaxSizeMB }),
 	integer("log.max_files", 5, 1, 100, func(c *Config) *int { return &c.Log.MaxFiles }),
+
+	oneOf("gui.confirm_button", "south", func(c *Config) *string { return &c.GUI.ConfirmButton }, "south", "east"),
+	oneOf("gui.text_size", "normal", func(c *Config) *string { return &c.GUI.TextSize }, "normal", "large"),
+	safeArea("gui.safe_area", func(c *Config) *string { return &c.GUI.SafeArea }),
 }
+
+// safeArea accepts auto or a whole percentage 0..10, written as a number or as text in the file.
+func safeArea(k string, ptr func(*Config) *string) setting {
+	allowed := append([]string{"auto"}, percents...)
+	return spec[string]{k: k, def: "auto", ptr: ptr, meta: SettingSpec{Kind: KindEnum, Enum: allowed}, parser: func(raw any) (string, error) {
+		if n, ok := raw.(int); ok {
+			raw = strconv.Itoa(n)
+		}
+		v, err := asString(raw)
+		if err != nil {
+			return "", err
+		}
+		if v = strings.TrimSpace(v); !slices.Contains(allowed, v) {
+			return "", fmt.Errorf("must be auto or a number from 0 to 10")
+		}
+		return v, nil
+	}}
+}
+
+// percents are the safe-area insets the GUI accepts: 0 to 10 percent of the screen.
+var percents = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 
 var profileIDs = []string{"auto", "batocera", "emuelec", "recalbox", "lakka", "retrobat", "emudeck", "retrodeck", "generic"}
 
