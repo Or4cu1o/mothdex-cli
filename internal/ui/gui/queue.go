@@ -222,7 +222,7 @@ func (m Model) onQueueAction(a input.Action, now time.Time) (Model, []Cmd) {
 		return m, nil
 	}
 	if len(q.sheet) > 0 {
-		return m.onSheetAction(a, now)
+		return m.onSheetAction(a)
 	}
 	items := m.queueItems()
 	switch a {
@@ -270,7 +270,7 @@ func (m Model) sheetFor(j app.JobSnapshot) []sheetItem {
 	return []sheetItem{details, {sheetHide, m.tr("ui.gui.queue.hide", nil)}, closeItem}
 }
 
-func (m Model) onSheetAction(a input.Action, now time.Time) (Model, []Cmd) {
+func (m Model) onSheetAction(a input.Action) (Model, []Cmd) {
 	q := m.queue
 	idx := slices.IndexFunc(q.sheet, func(s sheetItem) bool { return s.id == q.sheetFocus })
 	switch a {
