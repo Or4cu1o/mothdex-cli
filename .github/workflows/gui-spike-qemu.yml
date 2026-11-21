@@ -1,0 +1,219 @@
+name: GUI spike (qemu)
+
+# The arm64, armv7 and armv6 legs of the GUI spike (docs/contracts/cli/gui.md section 2, items 3 and 1). qemu-user comes
+# from the runner distro (qemu-user-static and binfmt-support from apt), not from docker/setup-qemu-action: the
+# repository's allowed-actions policy does not list that action, and a workflow that uses it fails at startup. The Debian
+# images are pinned by digest. The armv6 leg is best effort. Same rules as gui-spike.yml: read-only token, actions pinned
+# by SHA, no cache. Like it, this workflow is path-filtered: do not mark its jobs as required checks.
+on:
+  pull_request:
+    paths:
+      - "internal/ui/gui/**"
+      - "cmd/mothdex-gui/**"
+      - "scripts/gui-probe.sh"
+      - ".github/workflows/gui-spike-qemu.yml"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Debian trixie-slim, the multi-arch index pinned by digest (arm64/v8 and arm/v7 are picked with --platform).
+  DEBIAN_IMAGE: debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+
+jobs:
+  linux-qemu:
+    name: probe (${{ matrix.name }}, qemu-user, Debian)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # armv6 is best effort and Unverified as a technique (gui.md): its failure is not a stop.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux/arm64
+            target: linux/arm64
+            platform: linux/arm64
+            dir: linux_arm64
+            goarch: arm64
+            goarm: ""
+            deb_arch: arm64
+            qemu_bin: qemu-aarch64
+            experimental: false
+          - name: linux/armv7
+            target: linux/arm/7
+            platform: linux/arm/v7
+            dir: linux_armv7
+            goarch: arm
+            goarm: "7"
+            deb_arch: armhf
+            qemu_bin: qemu-arm
+            experimental: false
+          - name: linux/armv6 (best effort)
+            target: linux/arm/6
+            platform: linux/arm/v7 # Debian has no armv6 image: the armv6 binary runs on the armhf userland
+            dir: linux_armv6
+            goarch: arm
+            goarm: "6"
+            deb_arch: armhf
+            qemu_bin: qemu-arm
+            experimental: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Cross-build the probe and check its ELF (interpreter and NEEDED)
+        env:
+          TARGET: ${{ matrix.target }}
+          GUI_PROBE_RUN: "0"
+        run: scripts/gui-probe.sh "$TARGET"
+      - name: Cross-build the package tests
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          ldflags=""
+          [ "$GOARCH" = arm ] && ldflags="-I /lib/ld-linux-armhf.so.3"
+          CGO_ENABLED=0 GOOS=linux go test -c -tags gui -trimpath ${ldflags:+-ldflags "$ldflags"} \
+            -o "dist-gui/$DIR/sdl.test" ./internal/ui/gui/sdl
+      - name: Install qemu-user from the runner distro (no third-party action)
+        run: |
+          sudo apt-get update -qq
+          # Ubuntu 26.04 has no qemu-user-static: qemu-user plus qemu-user-binfmt instead.
+          if apt-cache policy qemu-user-static | grep -q 'Candidate: [0-9]'; then
+            pkgs=(qemu-user-static binfmt-support)
+          else
+            pkgs=(qemu-user qemu-user-binfmt)
+          fi
+          sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
+          qemu-aarch64 --version | head -1 || qemu-aarch64-static --version | head -1
+      - name: Path 1, binfmt - does the foreign-architecture Debian image run in a container?
+        id: binfmt
+        continue-on-error: true
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: docker run --rm --platform "$PLATFORM" "$DEBIAN_IMAGE" uname -m
+      - name: Path 1, binfmt - probe and package tests in the Debian image with its libsdl2
+        if: steps.binfmt.outcome == 'success'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          docker run --rm --platform "$PLATFORM" \
+            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e GUI_REQUIRE_SDL=1 -e DEBIAN_FRONTEND=noninteractive \
+            "$DEBIAN_IMAGE" sh -ec '
+              uname -m
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
+              dpkg -s libsdl2-2.0-0 | grep "^Version"
+              /gui/mothdex-gui-probe
+              /gui/sdl.test -test.v -test.count=1
+            '
+      - name: Path 2, no binfmt - build a sysroot (pinned Debian image plus the libsdl2 packages of the target)
+        if: steps.binfmt.outcome != 'success'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DEB_ARCH: ${{ matrix.deb_arch }}
+        run: |
+          # The foreign image is only exported (docker create, never run); the target-architecture .deb files are
+          # downloaded by a native container of the same pinned image and unpacked on top. Nothing runs under binfmt.
+          mkdir -p sysroot debs
+          cid=$(docker create --platform "$PLATFORM" "$DEBIAN_IMAGE" true)
+          docker export "$cid" | tar -x -C sysroot
+          docker rm "$cid" >/dev/null
+          docker run --rm -e DEB_ARCH -e DEBIAN_FRONTEND=noninteractive -v "$PWD/debs:/debs" "$DEBIAN_IMAGE" sh -ec '
+            dpkg --add-architecture "$DEB_ARCH"
+            apt-get update -qq
+            mkdir -p /debs/partial
+            apt-get install -y -qq --download-only --no-install-recommends -o Dir::Cache::archives=/debs "libsdl2-2.0-0:$DEB_ARCH"
+            chmod -R a+rX /debs
+          '
+          for deb in debs/*.deb; do dpkg-deb -x "$deb" sysroot; done
+          find debs -name 'libsdl2*' -o -name 'libc6*'
+          find sysroot -name 'libSDL2-2.0.so.0*' | head -3
+      - name: Path 2, no binfmt - probe and package tests with qemu-user and the sysroot
+        if: steps.binfmt.outcome != 'success'
+        env:
+          QEMU_BIN: ${{ matrix.qemu_bin }}
+          DIR: ${{ matrix.dir }}
+          SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1"
+        run: |
+          "$QEMU_BIN" -L sysroot "dist-gui/$DIR/mothdex-gui-probe"
+          "$QEMU_BIN" -L sysroot "dist-gui/$DIR/sdl.test" -test.v -test.count=1
+      - name: armv6 CPU model (qemu arm1176), best effort - the result is reported in the summary and as a warning
+        id: arm1176
+        if: matrix.goarm == '6'
+        continue-on-error: true
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIR: ${{ matrix.dir }}
+          BINFMT: ${{ steps.binfmt.outcome }}
+          QEMU_BIN: ${{ matrix.qemu_bin }}
+          SDL_VIDEODRIVER: dummy
+        run: |
+          # Debian armhf is built for ARMv7, so its ld.so and libc may not run on an ARMv6 model at all. To tell that
+          # apart from a fault of the probe (Go runtime, purego), three things run on the arm1176 model: a plain
+          # Debian binary (/bin/true), the dynamic loader itself, and the probe.
+          set +e
+          if [ "$BINFMT" = success ]; then
+            docker run --rm --platform "$PLATFORM" \
+              -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
+              "$DEBIAN_IMAGE" sh -c '
+                apt-get update -qq
+                apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
+                QEMU_CPU=arm1176 /bin/true;                              echo "true_exit=$?"
+                QEMU_CPU=arm1176 /lib/ld-linux-armhf.so.3 --version >/dev/null; echo "ld_exit=$?"
+                QEMU_CPU=arm1176 /gui/mothdex-gui-probe;                 echo "probe_exit=$?"
+              ' 2>&1 | tee arm1176.log
+          else
+            {
+              "$QEMU_BIN" -cpu arm1176 -L sysroot sysroot/bin/true;                               echo "true_exit=$?"
+              "$QEMU_BIN" -cpu arm1176 -L sysroot sysroot/lib/ld-linux-armhf.so.3 --version >/dev/null; echo "ld_exit=$?"
+              "$QEMU_BIN" -cpu arm1176 -L sysroot "dist-gui/$DIR/mothdex-gui-probe";              echo "probe_exit=$?"
+            } 2>&1 | tee arm1176.log
+          fi
+          set -e
+          t=$(sed -n 's/^true_exit=//p' arm1176.log | tail -1); l=$(sed -n 's/^ld_exit=//p' arm1176.log | tail -1)
+          p=$(sed -n 's/^probe_exit=//p' arm1176.log | tail -1)
+          t=${t:-unknown}; l=${l:-unknown}; p=${p:-unknown}
+          if [ "$p" = 0 ]; then verdict="the probe ran on the arm1176 model"
+          elif [ "$t" != 0 ] || [ "$l" != 0 ]; then verdict="a plain Debian armhf binary or ld.so already fails on this model: the Debian userland is built for ARMv7, so this run says nothing about the probe, Go or purego"
+          else verdict="/bin/true and ld.so run but the probe fails: cause unknown, to be investigated"
+          fi
+          {
+            echo "### armv6 on the arm1176 CPU model (qemu-user)"
+            echo
+            echo "| step | exit code |"
+            echo "|---|---|"
+            echo "| Debian armhf /bin/true | $t |"
+            echo "| Debian armhf ld.so --version | $l |"
+            echo "| the probe | $p (139 = SIGSEGV) |"
+            echo
+            echo "$verdict. Real ARMv6 hardware and real ARMv6 libraries (Batocera, Recalbox, Raspbian): not verified."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$p" != 0 ]; then
+            echo "::warning title=ARMv6 CPU model not verified::attempted on the arm1176 model: probe exit $p, /bin/true exit $t, ld.so exit $l. $verdict."
+            exit 1
+          fi
+      - name: Size report
+        if: always()
+        env:
+          NAME: ${{ matrix.name }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          {
+            echo "### GUI probe size ($NAME)"
+            echo
+            printf '%s\n' '```'
+            ls -l "dist-gui/$DIR"
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"

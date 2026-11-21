@@ -1,6 +1,7 @@
 # Build output
 /bin/
 /dist/
+/dist-gui/
 /.bin/
 /mothdex
 /mothdex-gui

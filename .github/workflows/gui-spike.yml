@@ -1,0 +1,199 @@
+name: GUI spike
+
+# The SDL2 spike of docs/contracts/cli/gui.md section 2 ("What the spike must prove"), kept afterwards as the GUI
+# smoke test. The arm64, armv7 and armv6 legs are in gui-spike-qemu.yml (they need an action the repository does not allow yet). Read-only token, actions pinned by SHA, no dependency cache. Nothing here publishes anything.
+# It runs only when the GUI code, its scripts or this file change, so do not mark its jobs as required checks.
+#
+# Decision rule (gui.md): a failure on a Tier 1 target (linux amd64, linux arm64, windows amd64) stops the spike and
+# goes to Regente; a failure only on arm32 means v0.3.0 ships without the arm32 GUI. The armv6 leg is best effort
+# and may fail (continue-on-error): it is not a stop.
+on:
+  pull_request:
+    paths:
+      - "internal/ui/gui/**"
+      - "cmd/mothdex-gui/**"
+      - "scripts/gui-probe.sh"
+      - "scripts/check-gui-isolation.sh"
+      - "scripts/check-sdl-constants.sh"
+      - "scripts/sdl2-windows.pin"
+      - ".github/workflows/gui-spike.yml"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static:
+    name: isolation and SDL2 constants
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install the SDL2 headers (libsdl2-dev)
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libsdl2-dev
+      - name: shellcheck the GUI scripts
+        run: shellcheck -s sh scripts/gui-probe.sh scripts/check-gui-isolation.sh scripts/check-sdl-constants.sh
+      - name: mothdex stays free of purego and the GUI packages
+        run: scripts/check-gui-isolation.sh
+      - name: The binding constants and struct layouts equal the SDL2 headers
+        run: |
+          dpkg -s libsdl2-dev | grep '^Version'
+          scripts/check-sdl-constants.sh
+
+  linux-amd64:
+    name: probe (linux/amd64, distro SDL2, dummy driver)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install the distro SDL2 and readelf
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libsdl2-2.0-0 binutils
+          dpkg -s libsdl2-2.0-0 | grep '^Version'
+      - name: Build, readelf and run the probe
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: scripts/gui-probe.sh linux/amd64
+      - name: go test -tags gui ./internal/ui/gui/sdl
+        env:
+          SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1" # a broken libsdl2 install fails here instead of skipping the smoke test
+        run: go test -tags gui -count=1 -v ./internal/ui/gui/sdl
+      - name: Library planting is ignored (a garbage libSDL2-2.0.so.0 in the cwd and next to the probe)
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          # The real distro SDL2 is installed. The probe loads it by soname, so a file of that name in the working
+          # directory or in the probe's own directory must not be picked up (no RPATH, no LD_LIBRARY_PATH).
+          plant=$(mktemp -d)
+          mkdir "$plant/cwd" "$plant/exe"
+          printf 'not an ELF file\n' > "$plant/cwd/libSDL2-2.0.so.0"
+          printf 'not an ELF file\n' > "$plant/exe/libSDL2-2.0.so.0"
+          cp dist-gui/linux_amd64/mothdex-gui-probe "$plant/exe/"
+          out=$(cd "$plant/cwd" && "$plant/exe/mothdex-gui-probe")
+          echo "$out"
+          echo "$out" | grep -q 'probe ok'
+      - name: Cross-build and readelf linux/386 (optional target, not run)
+        continue-on-error: true
+        env:
+          GUI_PROBE_RUN: "0"
+        run: scripts/gui-probe.sh linux/386
+      - name: Size report
+        run: |
+          {
+            echo "### GUI probe sizes (linux)"
+            echo
+            printf '%s\n' '```'
+            find dist-gui -type f -name 'mothdex-gui-probe*' -exec ls -l {} +
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  windows-amd64:
+    name: probe (windows/amd64, pinned SDL2.dll)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fetch SDL2.dll by the pinned URL and verify its SHA-256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = (Get-Content scripts/sdl2-windows.pin | Where-Object { $_ -match '^(url|sha256)=' }) -join "`n" | ConvertFrom-StringData
+          if ($pin.url -notmatch '^https://github\.com/libsdl-org/SDL/releases/download/release-[0-9.]+/SDL2-[0-9.]+-win32-x64\.zip$') { throw "unexpected SDL2 URL: $($pin.url)" }
+          if ($pin.sha256 -notmatch '^[0-9a-f]{64}$') { throw 'the pinned SHA-256 is not 64 lower-case hex digits' }
+          $zip = Join-Path $env:RUNNER_TEMP 'sdl2.zip'
+          Invoke-WebRequest -Uri $pin.url -OutFile $zip -MaximumRedirection 5
+          $got = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLowerInvariant()
+          if ($got -ne $pin.sha256) { throw "SDL2 zip hash mismatch: got $got, pinned $($pin.sha256)" }
+          $dest = 'dist-gui/windows_amd64'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            $entry = $archive.GetEntry('SDL2.dll')
+            if ($null -eq $entry) { throw 'SDL2.dll is not in the archive' }
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $dest 'SDL2.dll'), $true)
+          } finally { $archive.Dispose() }
+          'SDL2.dll sha256: ' + (Get-FileHash -Algorithm SHA256 -Path (Join-Path $dest 'SDL2.dll')).Hash.ToLowerInvariant()
+      - name: Build and run the probe next to SDL2.dll (dummy driver)
+        shell: bash
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: scripts/gui-probe.sh windows/amd64
+      - name: Library planting is ignored (garbage SDL2.dll on PATH and in the cwd; real DLL only beside the exe)
+        shell: pwsh
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $dist = (Resolve-Path 'dist-gui/windows_amd64').Path
+          $exe = Join-Path $dist 'mothdex-gui-probe.exe'
+          $tmp = Join-Path $env:RUNNER_TEMP 'plant'
+          $cwd = Join-Path $tmp 'cwd'; $pathdir = Join-Path $tmp 'pathdir'; $a = Join-Path $tmp 'A'; $b = Join-Path $tmp 'B'
+          New-Item -ItemType Directory -Force -Path $cwd, $pathdir, $a, $b | Out-Null
+          Set-Content -Path (Join-Path $cwd 'SDL2.dll') -Value 'not a PE file'
+          Set-Content -Path (Join-Path $pathdir 'SDL2.dll') -Value 'not a PE file'
+          $savedPath = $env:PATH
+          # 1. The real DLL sits beside the exe; a garbage SDL2.dll is in the working directory and first on PATH.
+          #    The loader must take the one beside the exe.
+          Push-Location $cwd
+          $env:PATH = "$pathdir;$savedPath"
+          $out = (& $exe 2>&1 | Out-String); $code = $LASTEXITCODE
+          $env:PATH = $savedPath; Pop-Location
+          Write-Host $out
+          if ($code -ne 0 -or $out -notmatch 'probe ok') { throw "case 1: exit $code, the DLL beside the exe was not used" }
+          # 2. The exe has no DLL beside it; the real one is in the working directory and on PATH. LOAD_LIBRARY_SEARCH_
+          #    APPLICATION_DIR|SYSTEM32 must not look there: the probe has to report SDL2 not found (exit 1).
+          Copy-Item $exe $a
+          Copy-Item (Join-Path $dist 'SDL2.dll') $b
+          Push-Location $b
+          $env:PATH = "$b;$savedPath"
+          $out = (& (Join-Path $a 'mothdex-gui-probe.exe') 2>&1 | Out-String); $code = $LASTEXITCODE
+          $env:PATH = $savedPath; Pop-Location
+          Write-Host $out
+          if ($code -ne 1) { throw "case 2: expected exit 1 (SDL2 not found), got ${code}: a DLL outside the application and system folders was loaded" }
+          exit 0 # the last native command exited 1 on purpose: do not let PowerShell hand that to the step
+      - name: go test -tags gui, run from the folder that holds SDL2.dll
+        shell: bash
+        env:
+          SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1"
+        run: |
+          go test -c -tags gui -trimpath -o dist-gui/windows_amd64/sdl.test.exe ./internal/ui/gui/sdl
+          cd dist-gui/windows_amd64 && ./sdl.test.exe -test.v -test.count=1
+      - name: Size report
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### GUI probe size (windows/amd64)"
+            echo
+            printf '%s\n' '```'
+            ls -l dist-gui/windows_amd64
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"
