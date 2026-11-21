@@ -163,8 +163,9 @@ func (d *Downloader) copyToDest(ctx context.Context, j *jobState) (string, *Erro
 		_ = dst.Close()
 		return "", &Error{Code: CodeInternal, Message: "cannot reopen the staging file", Err: err}
 	}
-	defer func() { _ = src.Close() }()
-	if _, err := copyCtx(ctx, dst, src, math.MaxInt64); err != nil {
+	_, err = copyCtx(ctx, dst, src, math.MaxInt64)
+	_ = src.Close() // closed before the staging file is removed: Windows cannot remove an open file
+	if err != nil {
 		_ = dst.Close()
 		if ctx.Err() != nil {
 			return "", canceled(ctx)

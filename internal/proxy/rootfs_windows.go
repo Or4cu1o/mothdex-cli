@@ -48,3 +48,9 @@ func linkUnsupported(err error) bool {
 
 // syncDirHandle: a directory cannot be flushed on Windows; MOVEFILE_WRITE_THROUGH covers it.
 func syncDirHandle(*os.File) error { return nil }
+
+// checkTempDir and checkPrivateDir: Windows has no mode bits; the per-user temp directory ACL
+// is the protection (not verified on a real box).
+func checkTempDir(string) error { return nil }
+
+func checkPrivateDir(string) error { return nil }
