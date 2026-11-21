@@ -3,7 +3,7 @@
 Status: v1.1 (T-6; E-M2 deviations recorded in UX-sync, Decisions D24) · Owner: Bússola · Implementer: Vitral · Risk: Medium
 Services: [`app-service.md`](../contracts/cli/app-service.md) only (Catalog, Downloads, History, Config, Cache). Stack: Bubble Tea v2 + Bubbles +
 Lip Gloss (PLAN §9). Wording, color roles, units and progress/Warming rules come from [`cli-conventions.md`](cli-conventions.md); link
-ranking from [`prefer-syntax.md`](prefer-syntax.md). Gamepad GUI is out of scope (E-M3).
+ranking from [`prefer-syntax.md`](prefer-syntax.md). Gamepad GUI is out of scope here: see [`gui.md`](gui.md) (E-M3).
 
 ## 1. Layout and navigation model
 
