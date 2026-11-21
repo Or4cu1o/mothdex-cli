@@ -369,3 +369,23 @@ func TestAFailedRetryPutsTheJobsBack(t *testing.T) {
 		t.Fatal("r works again once the network is back")
 	}
 }
+
+func TestEntryShowsThePlatformNameFromTheCachedList(t *testing.T) {
+	svc := &fakeSvc{platforms: func() ([]mothdex.Platform, error) {
+		return []mothdex.Platform{{ID: "gbc", Name: "Game Boy Color"}, {ID: "nes", Name: "Nintendo\x1b[2J"}}, nil
+	}}
+	h := newHarness(t, svc)
+	h.search("zelda")
+	h.keys("enter") // the default entry is on gbc
+	if v := h.view(); !strings.Contains(v, "Platform gbc (Game Boy Color)") {
+		t.Fatalf("id and name:\n%s", v)
+	}
+
+	failing := &fakeSvc{platforms: func() ([]mothdex.Platform, error) { return nil, &app.Error{Code: app.CodeNetwork, Message: "down"} }}
+	h = newHarness(t, failing)
+	h.search("zelda")
+	h.keys("enter")
+	if v := h.view(); !strings.Contains(v, "Platform gbc ·") {
+		t.Fatalf("with no list the id stands alone:\n%s", v)
+	}
+}

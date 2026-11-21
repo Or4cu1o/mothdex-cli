@@ -63,10 +63,11 @@ type (
 		total int64
 		ok    bool
 	}
-	historyMsg  struct{ recs []app.HistoryRecord }
-	jobsMsg     struct{ jobs []app.JobSnapshot }
-	prefsMsg    struct{ pref app.Preference }
-	enqueuedMsg struct {
+	historyMsg   struct{ recs []app.HistoryRecord }
+	jobsMsg      struct{ jobs []app.JobSnapshot }
+	platformsMsg struct{ names map[string]string }
+	prefsMsg     struct{ pref app.Preference }
+	enqueuedMsg  struct {
 		reqs []app.DownloadRequest
 		ids  []app.JobID
 		jobs []app.JobSnapshot
@@ -102,6 +103,7 @@ type shared struct {
 	pageSize int
 	confirm  bool
 	boxart   bool
+	names    map[string]string
 }
 
 // screenView is what a screen draws: the body lines, the text in the separator, and an optional
@@ -141,6 +143,7 @@ type model struct {
 	pageSize int // the settings the TUI applies at once (interface.page_size ...)
 	confirm  bool
 	boxart   bool
+	names    map[string]string // platform id to name, for the Entry screen
 	spin     int
 	spinning bool
 	warming  bool
@@ -163,7 +166,7 @@ func newModel(e *env, first screen) model {
 func (m model) rt() *shared {
 	return &shared{
 		env: m.env, w: m.w, h: m.h, tier: tier(m.w, m.h), prefs: m.prefs, done: m.done, book: m.book,
-		dbTotal: m.dbTotal, dbKnown: m.dbKnown, spin: m.spin, pageSize: m.pageSize, confirm: m.confirm, boxart: m.boxart,
+		dbTotal: m.dbTotal, dbKnown: m.dbKnown, spin: m.spin, pageSize: m.pageSize, confirm: m.confirm, boxart: m.boxart, names: m.names,
 	}
 }
 
@@ -171,7 +174,7 @@ func (m model) top() screen { return m.stack[len(m.stack)-1] }
 
 // Init starts the first screen, the event subscription and the two small loads the UI needs.
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.start, m.waitEvent(), m.loadDBInfo(), m.loadHistory(), m.loadJobs())
+	return tea.Batch(m.start, m.waitEvent(), m.loadDBInfo(), m.loadHistory(), m.loadJobs(), m.loadPlatformNames())
 }
 
 func (m model) waitEvent() tea.Cmd {
@@ -199,6 +202,23 @@ func (m model) loadHistory() tea.Cmd {
 			return historyMsg{}
 		}
 		return historyMsg{recs: recs}
+	}
+}
+
+// loadPlatformNames reads the platform list (the service caches it) so the Entry screen can show
+// "gbc (Game Boy Color)". A failure leaves the ids alone.
+func (m model) loadPlatformNames() tea.Cmd {
+	e := m.env
+	return func() tea.Msg {
+		res, err := e.svc.Platforms(e.ctx, app.PlatformFilter{})
+		if err != nil {
+			return platformsMsg{}
+		}
+		names := make(map[string]string, len(res.Value))
+		for _, p := range res.Value {
+			names[clean(p.ID)] = clean(p.Name)
+		}
+		return platformsMsg{names: names}
 	}
 }
 
@@ -252,6 +272,11 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case historyMsg:
 		m.done = withDone(m.done, msg.recs)
+		return m, nil
+	case platformsMsg:
+		if msg.names != nil {
+			m.names = msg.names
+		}
 		return m, nil
 	case jobsMsg:
 		for _, j := range msg.jobs {
