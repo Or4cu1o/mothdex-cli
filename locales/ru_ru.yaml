@@ -343,6 +343,7 @@ ui:
         many: '{filter} · записей: {count}'
         other: '{filter} · записей: {count}'
       only_failed: 'Снова в очередь можно поставить только неудачные загрузки.'
+      already_queued: 'Уже поставлено в очередь снова.'
       overwrite: 'Перезаписать? [y/N]'
       export_to: 'Экспорт в:'
       detail_help: 'd снова в очередь (ошибка)  esc закрыть'

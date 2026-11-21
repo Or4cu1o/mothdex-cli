@@ -327,6 +327,7 @@ ui:
         one: '{filter} · {count} registro'
         other: '{filter} · {count} registros'
       only_failed: 'Solo las descargas fallidas pueden ponerse en cola otra vez.'
+      already_queued: 'Ya se puso en cola otra vez.'
       overwrite: '¿Sobrescribir? [s/N]'
       export_to: 'Exportar a:'
       detail_help: 'd volver a poner en cola (fallo)  esc cierra'

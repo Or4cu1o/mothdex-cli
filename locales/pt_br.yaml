@@ -327,6 +327,7 @@ ui:
         one: '{filter} · {count} registro'
         other: '{filter} · {count} registros'
       only_failed: 'Só downloads com falha podem voltar para a fila.'
+      already_queued: 'Já foi colocado na fila de novo.'
       overwrite: 'Sobrescrever? [s/N]'
       export_to: 'Exportar para:'
       detail_help: 'd recolocar na fila (falha)  esc fecha'
