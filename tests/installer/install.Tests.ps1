@@ -19,6 +19,7 @@ $script:message = ''
 $base = 'https://github.com/Or4cu1o/mothdex-cli/releases/'
 $global:fakeBase = $base
 $global:fakeHttpUrl = $null
+$global:fakeNoFinal = $false
 $global:fakeRelease = $release
 
 function Check([string]$What, [bool]$Ok) {
@@ -38,6 +39,7 @@ function Invoke-WebRequest {
   $src = Join-Path $global:fakeRelease ($rel -replace '/', '\')
   if (-not (Test-Path -LiteralPath $src)) { throw "404 $Uri" }
   Copy-Item -LiteralPath $src -Destination $OutFile
+  if ($global:fakeNoFinal) { return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ } } }
   if ($PassThru) { return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = [uri]$Uri } } }
 }
 
@@ -176,8 +178,13 @@ $serverAsync = $serverShell.BeginInvoke()
 $global:fakeHttpUrl = "http://127.0.0.1:$port/file"
 Invoke-Install @{ Version = '1.2.3'; BinDir = (Join-Path $root 'viahttp') }
 $global:fakeHttpUrl = $null
+$global:fakeNoFinal = $false
 Check 'a download that ended on http is refused' ($script:threw -and $script:message -match 'not https' -and (-not (Test-Path (Join-Path $root 'viahttp\mothdex.exe'))))
 $http.Stop(); $serverShell.Dispose()
+$global:fakeNoFinal = $true
+Invoke-Install @{ Version = '1.2.3'; BinDir = (Join-Path $root 'nofinal') }
+$global:fakeNoFinal = $false
+Check 'an unreadable final address is refused (fail closed)' ($script:threw -and $script:message -match 'could not be read' -and (-not (Test-Path (Join-Path $root 'nofinal\mothdex.exe'))))
 
 # 6. checksum mismatch installs nothing (TH-33)
 $target = Join-Path $root 'bad'

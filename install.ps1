@@ -64,9 +64,11 @@ function Get-Remote([string]$Url, [string]$Dest) {
     if ($inner.PSObject.Properties['ResponseUri']) { $final = $inner.ResponseUri }
     elseif ($inner.PSObject.Properties['RequestMessage'] -and $inner.RequestMessage) { $final = $inner.RequestMessage.RequestUri }
   }
-  if ($final -and $final.Scheme -ne 'https') {
+  # Fail closed: an unreadable final address is refused like a non-https one.
+  if ((-not $final) -or ($final.Scheme -ne 'https')) {
     Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue
-    Fail "refusing $Url : it was redirected to $final, which is not https"
+    if ($final) { Fail "refusing $Url : it was redirected to $final, which is not https" }
+    Fail "refusing $Url : the final address of the download could not be read"
   }
 }
 
