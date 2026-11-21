@@ -161,6 +161,8 @@ English source strings (Forja owns the YAML):
 |---|---|---|
 | `errors.usage` | `Invalid usage: {detail}` | `Run "mothdex {command} --help".` |
 | `errors.invalid_config` | `Invalid setting {key}={value} (from {source}).` | `Run "mothdex config reset {key}".` |
+| `errors.invalid_request` | `Invalid request: {detail}.` | `Check the slug, filters and values you passed.` |
+| `errors.unmapped_platform` | `No folder is set for platform {platform}.` | `Pass -o <dir>, or set profile.folders.{platform} in the configuration.` |
 | `errors.confirmation_required` | `This command needs confirmation.` | `Add --force to skip the prompt.` |
 | `errors.no_session` | `There is no previous search to refer to.` | `Run "mothdex search <text>" first, or use --slug.` |
 | `errors.index_out_of_range` | `Result #{index} does not exist (last search has {count}).` | `Pick a number between 1 and {count}.` |
@@ -170,12 +172,14 @@ English source strings (Forja owns the YAML):
 | `errors.upstream` | `The server had a problem (HTTP {status}).` | `Try again in a few minutes.` |
 | `errors.api_incompatible` | `The server answered in a format this version does not understand.` | `Update mothdex.` |
 | `errors.untrusted_url` | `Refusing to download from {host}.` | `Only {allowed} is trusted.` |
+| `errors.untrusted_redirect` | `The server redirected to {host}, which is not trusted.` | `Nothing was sent there. Try again later; if it persists, report it.` |
 | `errors.size_mismatch` | `The downloaded file has the wrong size ({got} of {expected}).` | `Try again, or choose another link with --link.` |
 | `errors.integrity` | `The downloaded file is corrupt (archive check failed).` | `Try again, or choose another link with --link.` |
 | `errors.permission_denied` | `Cannot write to {path}.` | `Pick another folder with -o, or fix its permissions.` |
 | `errors.disk_full` | `Not enough free space in {path} (needs {needed}).` | `Free some space or choose another folder with -o.` |
 | `errors.exists` | `{path} already exists.` | `Set download.on_exists to rename or overwrite.` |
-| `errors.path_rejected` | `The server sent an unsafe file name.` | `Nothing was written. Choose another link with --link.` |
+| `errors.path_rejected` | `Refusing to write to {path}.` | `Nothing was written. Choose another folder with -o, or check profile.folders.` |
+| `errors.unsafe_name` | `Refusing to save {name}: its file type can run code.` | `Nothing was written. Choose another link with --link, or pass --allow-executable if you trust it.` |
 | `errors.canceled` | `Canceled.` | (none) |
 | `errors.internal` | `Unexpected error.` | `Details are in {log_path}. Please report it.` |
 
