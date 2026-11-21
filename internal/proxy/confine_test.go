@@ -88,7 +88,7 @@ func TestConfinerRefusesALinkOutsideTheRoot(t *testing.T) {
 	c := &Confiner{FS: rfs}
 	for _, dest := range []string{filepath.Join(root, "snes"), filepath.Join(root, "snes", "sub")} {
 		if _, err := c.Resolve(dest); codeOf(err) != CodePathRejected {
-			t.Errorf("%s: want dest_outside_root, got %v", dest, err)
+			t.Errorf("%s: want path_rejected, got %v", dest, err)
 		}
 	}
 	if entries, _ := os.ReadDir(target); len(entries) != 0 {

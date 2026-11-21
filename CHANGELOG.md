@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `internal/proxy`: `finalize` and `Cleanup` split into smaller steps, `FS.Open` returns a `ReadFile` with `Stat`
+  (no type assertion), `Result.Path` documented as absolute; test helpers use `bytes.Reader`, the memory-backed
+  directory test asserts on `/dev/shm` when it is tmpfs, and stale `dest_outside_root` wording is gone.
 - Downloader contract (T-17 architecture pass): same-device staging inside the destdir (no double write), the
   batch keeps finalized names so `overwrite` never replaces them, `Retry-After` capped at 15 min, absolute
   `Record.Path`, and what the app service needs from the downloader (ids at submission, per-job cancel).
