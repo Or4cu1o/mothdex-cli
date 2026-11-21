@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
-  and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does.
+  and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does; the tag check is the
+  last step before the release is created, and `publish` refuses to upload files that `checksums.txt` does not list.
 
 ### Added
 

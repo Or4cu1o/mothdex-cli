@@ -50,8 +50,9 @@ What was and was not checked while preparing this page is at the end.
      18 files in `checksums.txt`).
    - `attest`: GitHub build provenance for every file in `checksums.txt` and for `checksums.txt` itself.
    - `publish` (**waits for the `release` environment: the owner approves it in the Actions run**): re-checks the
-     checksums, checks that `v0.1.0` still resolves to the built commit, runs `gh attestation verify` on every file (signer workflow,
-     `refs/tags/v0.1.0`, `--source-digest` of the commit, no self-hosted runner), then
+     checksums, runs `gh attestation verify` on every file (signer workflow, `refs/tags/v0.1.0`, `--source-digest` of the commit, no
+     self-hosted runner), checks that the files to upload are exactly those in `checksums.txt` plus itself and its bundle,
+     checks as its last step that `v0.1.0` still resolves to the built commit, then
      `gh release create v0.1.0 --verify-tag --generate-notes` with the 18 archives and SBOMs, `checksums.txt` and
      `checksums.txt.sigstore.json`. A tag with `-` becomes a pre-release.
 8. **Approve** the `release` environment only after `build` and `attest` are green and you have read the `build` log
