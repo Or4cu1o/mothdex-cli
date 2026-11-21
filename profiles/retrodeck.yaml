@@ -1,7 +1,7 @@
 # Source: docs/research/T15b-platform-folders.md (Sonda, checked 2026-11-20) for folders; T1e for paths and probes.
 # Verified flags: true = confirmed in the cited source, false (or omitted) = unverified or inferred, to be confirmed by the
 # community beta. Unmapped on purpose (unmapped: error, the user picks -o <dir> or profile.folders.<id>): arcade ids
-# (profiles.md §5), ids with no system in this frontend, and pc (pending: its folder windows is a launcher folder).
+# (profiles.md §5), ids with no system in this frontend, and pc (D19: its folder windows is a launcher folder).
 schema: 1
 id: retrodeck
 name: RetroDECK

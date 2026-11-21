@@ -170,7 +170,7 @@ Rules for the map (D18):
   whose emulator matches its romset. The platform id alone cannot pick that folder, so a wrong guess would put games
   where they never start. The user chooses with `-o <dir>` or `profile.folders.<id>`, and `unmapped: error`
   explains this.
-- **`pc` is unmapped for now** (pending decision, OQ-PRO-4). D18 says `pc` → `windows` where it exists (Batocera,
+- **`pc` is unmapped in v0.1** (Regente decision D19, OQ-PRO-4). D18 says `pc` → `windows` where it exists (Batocera,
   RetroBat, ES-DE), but `windows` is a launcher folder (T-16 CR-3: RetroBat runs `.exe`/`.bat`/`.lnk` from
   `roms\windows`), so the loader rejects that value and downloads into it need `--allow-executable` (downloader §6.2).
   EmuELEC and Recalbox have no Windows system (D18: none).
@@ -193,7 +193,4 @@ Env: `MOTHDEX_PROFILE_ID`, `MOTHDEX_PROFILE_ROM_ROOT`, … (config.md §4 rule).
 - OQ-PRO-1: moved to Risks & Backlog (device verification by the community beta, D4).
 - OQ-PRO-2: accepted. ES-DE maps `md` to `megadrive`; users can override per folder.
 - OQ-PRO-3: moved to Risks & Backlog (ROCKNIX and muOS, post-1.0 with PortMaster).
-
-## Open questions
-
-- OQ-PRO-4 (T-15c, Regente/Sentinela): `pc` → `windows` (D18) conflicts with the launcher-folder rule (CR-3). Options: keep `pc` unmapped (current); or allow a mapped folder that is a launcher folder only for archive formats (`zip`, `7z`) with `--allow-executable` still required; or an explicit per-profile exception. Proposed: keep unmapped for v0.1.
+- OQ-PRO-4 (D19): `pc` stays unmapped in v0.1. D18's `pc` → `windows` conflicts with the launcher-folder rule (CR-3); users who want it pass `-o` and `--allow-executable`.
