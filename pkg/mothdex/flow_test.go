@@ -358,3 +358,16 @@ func TestRedirectWithoutLocationIsUntrustedRedirect(t *testing.T) {
 		t.Fatalf("err %v after %d requests, want KindUntrustedRedirect once", err, h.hits.Load())
 	}
 }
+
+// Crivo minor: the refused host comes from a server-controlled Location, so control and format
+// characters (bidi override) never reach the message.
+func TestRefusedRedirectMessageDropsFormatCharacters(t *testing.T) {
+	h := newHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "http://ex%E2%80%AEample.com/x")
+		w.WriteHeader(http.StatusFound)
+	}))
+	_, err := h.client.Info(context.Background())
+	if !IsUntrustedRedirect(err) || strings.ContainsRune(err.Error(), rune(0x202E)) {
+		t.Fatalf("err %q must be untrusted_redirect without U+202E", err)
+	}
+}

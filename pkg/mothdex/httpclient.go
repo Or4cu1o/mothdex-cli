@@ -75,7 +75,7 @@ func (e *refusedRedirect) Is(target error) bool { return target == errRedirectRe
 // sameHostRedirects follows a redirect only within the origin of the original request (same
 // scheme, host and effective port) and for at most three hops.
 func sameHostRedirects(req *http.Request, via []*http.Request) error {
-	refuse := &refusedRedirect{host: req.URL.Hostname()}
+	refuse := &refusedRedirect{host: cleanMessage(req.URL.Hostname())}
 	if len(via) > maxRedirects {
 		return refuse
 	}

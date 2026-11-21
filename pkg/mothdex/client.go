@@ -146,6 +146,7 @@ func (c *Client) send(ctx context.Context, op, method, path string, payload []by
 		return nil, transportError(ctx, op, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// 304 is excluded: the client never sends conditional requests, so it cannot occur.
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 && resp.StatusCode != http.StatusNotModified {
 		c.logAttempt(op, method, path, resp.StatusCode, start) // a redirect that was not followed: no Location, or refused
 		return nil, &Error{Kind: KindUntrustedRedirect, Op: op, HTTPStatus: resp.StatusCode, Message: "unfollowed redirect"}
