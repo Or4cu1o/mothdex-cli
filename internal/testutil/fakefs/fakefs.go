@@ -36,6 +36,7 @@ const (
 	OpSync     = "Sync"
 	OpTruncate = "Truncate"
 	OpClose    = "Close"
+	OpRead     = "Read" // every Read of a staging or destination file
 )
 
 // Defaults reported by Free when no volume matches.
@@ -82,6 +83,7 @@ type FS struct {
 	calls      []Call
 	syncs      map[string]int
 	written    int64
+	bytesRead  int64
 	writeLimit int64 // < 0: unlimited
 	writeErr   error
 }
@@ -162,6 +164,13 @@ func (f *FS) Calls() []Call {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]Call(nil), f.calls...)
+}
+
+// BytesRead is the number of bytes read so far through files opened with OpenExcl.
+func (f *FS) BytesRead() int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.bytesRead
 }
 
 // Syncs returns how many times Sync was called on the file called name.
@@ -363,7 +372,16 @@ func (x *file) Write(p []byte) (int, error) {
 	return n, limitErr
 }
 
-func (x *file) Read(p []byte) (int, error)                { return x.f.Read(p) }
+func (x *file) Read(p []byte) (int, error) {
+	if err := x.fs.enter(OpRead, x.name, ""); err != nil {
+		return 0, err
+	}
+	n, err := x.f.Read(p)
+	x.fs.mu.Lock()
+	x.fs.bytesRead += int64(n)
+	x.fs.mu.Unlock()
+	return n, err
+}
 func (x *file) Seek(off int64, whence int) (int64, error) { return x.f.Seek(off, whence) }
 func (x *file) Truncate(size int64) error {
 	if err := x.fs.enter(OpTruncate, x.name, ""); err != nil {

@@ -6,8 +6,11 @@ package proxy_test
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
+	"net/http"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -171,10 +174,15 @@ func TestCase31LengthMismatchOversizeAndDisposition(t *testing.T) {
 			t.Fatalf("%d requests, a size mismatch must not be retried", n)
 		}
 	})
-	t.Run("no Content-Length and one byte too many", func(t *testing.T) {
+	t.Run("no Content-Length and a body far beyond the size", func(t *testing.T) {
 		r := newRig(t, proxy.Config{})
-		r.srv.Script("/f/o", fakeproxy.Oversized(1001))
+		var read atomic.Int64
+		r.rebuild(proxy.Config{}, func(o *proxy.Options) { o.HTTP = countingClient(r.srv.Client(), &read) })
+		r.srv.Script("/f/o", fakeproxy.Oversized(10<<20))
 		wantFailed(t, r.download(r.job("/f/o", "o.zip", 1000)), proxy.CodeSizeMismatch)
+		if got := read.Load(); got > 1<<20 { // size+1 plus one copy buffer, never the 10 MiB on offer
+			t.Fatalf("the downloader read %d bytes of a 1000-byte file: it must abort at byte size+1", got)
+		}
 		if entries, _ := os.ReadDir(r.fs.Path("downloads")); len(entries) != 0 {
 			t.Fatalf("staging not removed: %v", entries)
 		}
@@ -201,15 +209,48 @@ func TestCase32HostileSizesFailBeforeAnyConnection(t *testing.T) {
 	for _, size := range []int64{0, -1, math.MinInt64, math.MaxInt64, 1<<20 + 1} {
 		job := r.job("/f/a", "a.zip", 10)
 		job.Link.Size = size
-		res := r.download(job)
-		if res.State != proxy.StateFailed || res.Err == nil {
-			t.Fatalf("size %d: state %s", size, res.State)
-		}
+		wantFailed(t, r.download(job), proxy.CodeSizeMismatch)
 	}
 	if r.srv.Connections() != 0 {
 		t.Fatalf("%d connections for hostile sizes", r.srv.Connections())
 	}
 	noFinalFile(t, r)
+
+	// The limit is "greater than": a file of exactly max_file_size is accepted.
+	body := fakeproxy.Pattern(1 << 20)
+	r.srv.Script("/f/max", fakeproxy.OK(body))
+	if res := r.download(r.job("/f/max", "max.zip", len(body))); res.State != proxy.StateDone {
+		t.Fatalf("size == max_file_size: %s %v", res.State, res.Err)
+	}
+}
+
+// countingClient wraps a client so that the bytes the downloader reads from bodies are counted.
+func countingClient(c *http.Client, n *atomic.Int64) *http.Client {
+	return &http.Client{Transport: countingTransport{c.Transport, n}, CheckRedirect: c.CheckRedirect}
+}
+
+type countingTransport struct {
+	base http.RoundTripper
+	n    *atomic.Int64
+}
+
+func (c countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := c.base.RoundTrip(req)
+	if err == nil {
+		resp.Body = countingBody{resp.Body, c.n}
+	}
+	return resp, err
+}
+
+type countingBody struct {
+	io.ReadCloser
+	n *atomic.Int64
+}
+
+func (b countingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.n.Add(int64(n))
+	return n, err
 }
 
 // Case 33: a certificate that does not chain to the trust store is never accepted.
