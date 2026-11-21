@@ -214,6 +214,9 @@ var platformIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 // launcherFolders are frontend script folders a download must never land in (profiles.md CR-3).
 var launcherFolders = []string{"ports", "ports_scripts", "windows"}
 
+// LauncherFolders returns the frontend script folders that never receive downloads (a copy).
+func LauncherFolders() []string { return append([]string(nil), launcherFolders...) }
+
 // folderPattern is an allowlist: letters, digits and a few separators. It excludes path
 // separators, ":" (drive and stream syntax) and control characters.
 var folderPattern = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} _+().-]*$`)
@@ -221,10 +224,10 @@ var folderPattern = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} _+().-]*$`)
 // deviceName covers the Windows device names, including COM0/LPT0 and the superscript digits.
 var deviceName = regexp.MustCompile(`^(con|prn|aux|nul|(com|lpt)[0-9¹²³])$`)
 
-// folderName accepts a single plain folder name that is not a launcher folder (profiles.md
+// ValidateFolderName accepts a single plain folder name that is not a launcher folder (profiles.md
 // CR-2, CR-3). A trailing dot or space is rejected because Windows drops it, which would turn
 // "ports." into the launcher folder "ports".
-func folderName(s string) error {
+func ValidateFolderName(s string) error {
 	if !folderPattern.MatchString(s) || strings.HasSuffix(s, ".") || strings.HasSuffix(s, " ") || len(s) > 255 || !filepath.IsLocal(s) {
 		return fmt.Errorf("must be a single plain folder name (letters, digits, space, _ + ( ) . -; no trailing dot or space)")
 	}
@@ -256,7 +259,7 @@ func (folderSetting) parse(raw any) (any, error) {
 		return nil, err
 	}
 	s = strings.TrimSpace(s)
-	return s, folderName(s)
+	return s, ValidateFolderName(s)
 }
 
 func (f folderSetting) bind(c *Config, v any) {

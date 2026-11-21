@@ -1,0 +1,39 @@
+# Source: docs/research/T1e-emulation-systems.md (checked 2026-11-20). Verified flags: true = confirmed in T1e,
+# false (or omitted) = unverified or inferred, to be confirmed by the community beta.
+# Only the 15 platform ids confirmed in T1e section 4 are mapped; every other id is deliberately unmapped (unmapped: error),
+# so the user picks -o <dir> or profile.folders.<id> until its folder name is sourced.
+schema: 1
+id: recalbox
+name: Recalbox
+os: linux
+priority: 80
+detect:
+  all:
+    - { dir: /recalbox/share/roms, verified: false }
+  any:
+    - { file: /recalbox/recalbox.version, verified: false }
+roms:
+  root: /recalbox/share/roms
+  root_verified: true
+  folders_verified: false   # folder = system name in system.ini: inferred
+  layout: per_system
+  unmapped: error
+  folders:
+    32x: sega32x
+    dc: dreamcast
+    gb: gb
+    gba: gba
+    gbc: gbc
+    gg: gamegear
+    md: megadrive
+    n64: n64
+    nes: nes
+    ps1: psx
+    sat: saturn
+    scd: segacd
+    sms: mastersystem
+    snes: snes
+    tg16: pcengine
+bin_dir: { path: /recalbox/share/system/bin, verified: false }
+launcher: { kind: none, verified: true }   # no ports system in Recalbox 10.1.2
+refresh: { kind: manual, verified: false } # no reload API found
