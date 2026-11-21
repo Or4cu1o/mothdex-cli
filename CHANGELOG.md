@@ -7,8 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `internal/history`: JSONL transfer history (`Append`, `List` newest first with a `--failed` filter, damaged lines
+  skipped) and export to txt (120 columns), json (the `--json` envelope) and csv (RFC 4180, control and format
+  characters stripped, formula guard); `ExportTarget` and `WriteExport` give directory naming, format inference and an
+  atomic no-overwrite write. `internal/session`: the last search in the `session` namespace, `Resolve(index)` with
+  `no_session` and `index_out_of_range`. Case 50 covered.
+
+- `pkg/mothdex`: `KindUntrustedRedirect` (`untrusted_redirect`, exit 4) and `IsUntrustedRedirect`. A redirect to another
+  origin (host, scheme or effective port), a fourth hop, or a 3xx without a usable `Location` is refused, not retried,
+  does not open the rate-limit circuit and is never `KindNetwork`; the message names the target host only (T-10c).
+
 ### Changed
 
+- CLI conventions §7: English error strings for `invalid_request`, `unmapped_platform`, `untrusted_redirect` and
+  `unsafe_name`; `path_rejected` now describes a refused destination, not a file name (that is `unsafe_name`).
+- Contracts: `Service.Cover` returns the cached reader and content type (not a path), `internal/cover` owns the
+  cover DNS port (the downloader `Resolver` port is dropped from downloader §8), and cache §4 says how T-20 wires it.
+- `internal/config`: `download.on_exists=overwrite` from the config file or `MOTHDEX_DOWNLOAD_ON_EXISTS` is rejected
+  (exit 2) unless `Options.Force` (`--force`) is set; case 22 is covered.
+- `internal/proxy`: `finalize` and `Cleanup` split into smaller steps, `FS.Open` returns a `ReadFile` with `Stat`
+  (no type assertion), `Result.Path` documented as absolute; test helpers use `bytes.Reader`, the memory-backed
+  directory test asserts on `/dev/shm` when it is tmpfs, and stale `dest_outside_root` wording is gone.
 - Downloader contract (T-17 architecture pass): same-device staging inside the destdir (no double write), the
   batch keeps finalized names so `overwrite` never replaces them, `Retry-After` capped at 15 min, absolute
   `Record.Path`, and what the app service needs from the downloader (ids at submission, per-job cancel).
@@ -45,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   EmuELEC trees, fake release, a second pass as a non-root user) and Pester-style checks for `install.ps1` in CI (`installer.yml`). The launcher is opt-in (`--launcher`, `-Launcher`) in v0.1 because `mothdex tui` does not exist yet;
   wget is used only if it is GNU Wget (busybox wget does not verify TLS); on exFAT/FAT/NTFS share partitions of Batocera
   and Recalbox, root installs get a documented, warned exception to the world-writable refusal.
+- `internal/cover`: cover fetch hardening (T-16 CR-9, cache.md section 4): https only, no connection to loopback,
+  private, link-local, CGNAT, multicast or special addresses (checked after DNS and again in the dialer Control hook),
+  at most 3 redirects each re-checked, 5 MiB cap, Content-Type must agree with the magic bytes (jpeg, png, webp, gif;
+  SVG refused), header-only size check of at most 4096 x 4096. Violations are a cache miss. Cases 47 and 48 covered.
+
 - T-18: tests for T-16 cases 14, 15 (loader side), 22 (configuration half), 44 and 45 in `internal/config` and `internal/library`; the catalog marks 14, 44 and 45 as covered.
 - `internal/library` and `profiles/*.yaml`: system profiles for Batocera, EmuELEC, Recalbox, Lakka, RetroBat, EmuDeck,
   RetroDECK and generic. Detection is a pure function over an injected file tree (priority, ambiguity and any doubt fall

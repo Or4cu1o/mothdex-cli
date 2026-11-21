@@ -15,62 +15,80 @@ import (
 // report Done (CR-5).
 func (d *Downloader) finalize(ctx context.Context, j *jobState) (State, *Error) {
 	d.event(j, StateFinalizing, nil)
+	src, info, err := d.sealStaging(ctx, j)
+	if err != nil {
+		return stateOf(err), err
+	}
+	for {
+		if ctx.Err() != nil {
+			return StateCanceled, canceled(ctx)
+		}
+		perr := d.place(j, src, joinName(j.destRel, j.name))
+		switch {
+		case perr == nil:
+			return d.finishPlacement(j)
+		case errors.Is(perr, syscall.EXDEV) && src != j.tmp:
+			var cerr *Error
+			if src, cerr = d.copyAfterExdev(ctx, j, info); cerr != nil {
+				return stateOf(cerr), cerr
+			}
+		case errors.Is(perr, fs.ErrExist) && !j.overwrite:
+			state, e := d.existsAtFinalize(j)
+			if state != "" || e != nil {
+				return orFailed(state, e), e
+			}
+		case errors.As(perr, new(*notRegularError)):
+			return StateFailed, &Error{Code: CodePathRejected, Message: "the existing target is not a regular file"}
+		default:
+			return StateFailed, writeFailure("cannot place the file", perr)
+		}
+	}
+}
+
+// sealStaging flushes the staging file, checks that its name still is that file, copies it into
+// the destination when it was staged on another device (from the verified descriptor, never the
+// name), and closes it. It returns the name to move and the descriptor's file info.
+func (d *Downloader) sealStaging(ctx context.Context, j *jobState) (string, fs.FileInfo, *Error) {
 	if err := j.file.Sync(); err != nil {
-		return StateFailed, writeFailure("cannot flush the staging file", err)
+		return "", nil, writeFailure("cannot flush the staging file", err)
 	}
 	if err := d.checkStagingName(j); err != nil {
-		return StateFailed, err
+		return "", nil, err
 	}
 	src := j.staging
 	if !j.stageInDest { // staged on another device: copy into the destination, then rename there
-		// The copy reads the descriptor that was verified, never the name (T-17 audit m2).
 		var err *Error
 		if src, err = d.copyToDest(ctx, j, j.file); err != nil {
-			return stateOf(err), err
+			return "", nil, err
 		}
 	}
 	info, _ := j.file.Stat()
 	cerr := j.file.Close()
 	j.file = nil
 	if cerr != nil {
-		return StateFailed, writeFailure("cannot close the staging file", cerr)
+		return "", nil, writeFailure("cannot close the staging file", cerr)
 	}
 	if !j.stageInDest {
 		_ = d.o.Staging.Remove(j.staging) // after the close: Windows cannot remove an open file
 		j.staging = ""
 	}
-	for {
-		if ctx.Err() != nil {
-			return StateCanceled, canceled(ctx)
-		}
-		final := joinName(j.destRel, j.name)
-		err := d.place(j, src, final)
-		switch {
-		case err == nil:
-			return d.finishPlacement(j)
-		case errors.Is(err, syscall.EXDEV) && src != j.tmp:
-			rd, rerr := d.reopenVerified(j, info)
-			if rerr != nil {
-				return StateFailed, rerr
-			}
-			var cerr *Error
-			src, cerr = d.copyToDest(ctx, j, rd)
-			_ = rd.Close()
-			if cerr != nil {
-				return stateOf(cerr), cerr
-			}
-			_ = d.stagingFS(j).Remove(j.staging)
-		case errors.Is(err, fs.ErrExist) && !j.overwrite:
-			state, perr := d.existsAtFinalize(j)
-			if state != "" || perr != nil {
-				return orFailed(state, perr), perr
-			}
-		case errors.As(err, new(*notRegularError)):
-			return StateFailed, &Error{Code: CodePathRejected, Message: "the existing target is not a regular file"}
-		default:
-			return StateFailed, writeFailure("cannot place the file", err)
-		}
+	return src, info, nil
+}
+
+// copyAfterExdev is the rare EXDEV fallback on one device: it reopens the staging name, only if
+// it still is the verified file, and copies it next to the final name.
+func (d *Downloader) copyAfterExdev(ctx context.Context, j *jobState, info fs.FileInfo) (string, *Error) {
+	rd, rerr := d.reopenVerified(j, info)
+	if rerr != nil {
+		return "", rerr
 	}
+	src, cerr := d.copyToDest(ctx, j, rd)
+	_ = rd.Close()
+	if cerr != nil {
+		return "", cerr
+	}
+	_ = d.stagingFS(j).Remove(j.staging)
+	return src, nil
 }
 
 // checkStagingName requires that the staging name still refers to the file the downloader
@@ -223,18 +241,13 @@ func (d *Downloader) existsAtFinalize(j *jobState) (State, *Error) {
 // reopenVerified opens the staging name again and requires it to be the very file that was
 // verified (same file as the descriptor that was closed), for the rare EXDEV fallback on one
 // device. A swapped name is refused.
-func (d *Downloader) reopenVerified(j *jobState, want fs.FileInfo) (io.ReadCloser, *Error) {
+func (d *Downloader) reopenVerified(j *jobState, want fs.FileInfo) (ReadFile, *Error) {
 	rd, err := d.stagingFS(j).Open(j.staging)
 	if err != nil {
 		return nil, &Error{Code: CodeInternal, Message: "cannot reopen the staging file", Err: err}
 	}
-	st, ok := rd.(interface{ Stat() (fs.FileInfo, error) })
-	if !ok || want == nil {
-		_ = rd.Close()
-		return nil, &Error{Code: CodePathRejected, Message: "cannot verify the staging file"}
-	}
-	got, err := st.Stat()
-	if err != nil || !os.SameFile(want, got) {
+	got, err := rd.Stat()
+	if want == nil || err != nil || !os.SameFile(want, got) {
 		_ = rd.Close()
 		return nil, &Error{Code: CodePathRejected, Message: "the staging file was replaced before it was placed"}
 	}

@@ -49,7 +49,7 @@ type FS interface {
 	OpenExcl(name string) (File, error)
 	// Open opens an existing regular file for reading: the verify step and the cross-device copy
 	// read the staging file again through a fresh handle.
-	Open(name string) (io.ReadCloser, error)
+	Open(name string) (ReadFile, error)
 	// Lstat never follows a final symlink.
 	Lstat(name string) (fs.FileInfo, error)
 	MkdirAll(name string, perm fs.FileMode) error
@@ -66,6 +66,13 @@ type FS interface {
 	// File systems that cannot sync a directory (Windows) report success; MOVEFILE_WRITE_THROUGH
 	// covers the rename there.
 	SyncDir(name string) error
+}
+
+// ReadFile is a file opened for reading. Stat lets the downloader check that a name still is the
+// file it verified (os.SameFile).
+type ReadFile interface {
+	io.ReadCloser
+	Stat() (fs.FileInfo, error)
 }
 
 // File is an open staging file. The same descriptor is reused across retries: Truncate(0)

@@ -99,7 +99,7 @@ type Result struct {
 	JobID    string
 	State    State
 	Name     string // sanitized name
-	Path     string // final path of a Done job, relative to the destination root
+	Path     string // final path of a Done job: absolute (DestRoot joined with the name)
 	Bytes    int64
 	SHA256   string
 	Attempts int

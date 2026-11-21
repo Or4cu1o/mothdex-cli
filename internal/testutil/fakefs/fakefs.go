@@ -247,7 +247,7 @@ func (f *FS) OpenExcl(name string) (proxy.File, error) {
 }
 
 // Open implements proxy.FS.
-func (f *FS) Open(name string) (io.ReadCloser, error) {
+func (f *FS) Open(name string) (proxy.ReadFile, error) {
 	if err := f.enter(OpOpen, name, ""); err != nil {
 		return nil, err
 	}

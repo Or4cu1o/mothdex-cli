@@ -21,18 +21,20 @@ const (
 	KindIncompatible
 	KindRateLimited
 	KindCanceled
+	KindUntrustedRedirect // appended last so the numeric values of the other kinds stay stable
 )
 
 var kindNames = map[Kind]string{
-	KindNetwork:        "network",
-	KindNotFound:       "not_found",
-	KindInvalidRequest: "invalid_request",
-	KindUpstream:       "upstream",
-	KindAPI:            "api",
-	KindDecode:         "decode",
-	KindIncompatible:   "api_incompatible",
-	KindRateLimited:    "rate_limited",
-	KindCanceled:       "canceled",
+	KindNetwork:           "network",
+	KindNotFound:          "not_found",
+	KindInvalidRequest:    "invalid_request",
+	KindUpstream:          "upstream",
+	KindAPI:               "api",
+	KindDecode:            "decode",
+	KindIncompatible:      "api_incompatible",
+	KindRateLimited:       "rate_limited",
+	KindCanceled:          "canceled",
+	KindUntrustedRedirect: "untrusted_redirect",
 }
 
 // String returns the stable snake_case name of the kind.
@@ -87,6 +89,10 @@ func IsUpstream(err error) bool { return hasKind(err, KindUpstream) }
 
 // IsNetwork reports whether err is a KindNetwork error.
 func IsNetwork(err error) bool { return hasKind(err, KindNetwork) }
+
+// IsUntrustedRedirect reports whether err is a KindUntrustedRedirect error: the server redirected
+// somewhere the client refuses to follow (api-client 5.1). It is never retried.
+func IsUntrustedRedirect(err error) bool { return hasKind(err, KindUntrustedRedirect) }
 
 // IsCanceled reports whether err is a KindCanceled error.
 func IsCanceled(err error) bool { return hasKind(err, KindCanceled) }
