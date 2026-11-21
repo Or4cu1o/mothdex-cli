@@ -69,7 +69,7 @@ function Invoke-Install([hashtable]$Params) {
   $script:threw = $false
   $script:message = ''
   $global:urls.Clear()
-  try { & $installer @Params *> $null } catch { $script:threw = $true; $script:message = $_.Exception.Message }
+  try { & $installer @Params *> $null } catch { $script:threw = $true; $script:message = ($_.Exception.Message + " @ " + $_.InvocationInfo.PositionMessage + " | " + $_.Exception.GetType().FullName) }
 }
 
 function New-RetroBat([string]$Name) {
