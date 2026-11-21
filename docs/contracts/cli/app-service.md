@@ -112,8 +112,8 @@ type DownloadRequest struct {
   session (best effort), so a later `Ref{Index}` gets `no_session` and never resolves against an older search.
 - **Event delivery.** Each `Events` subscriber has its own queue, so a slow reader never blocks a transfer and never
   loses a state change: only progress ticks of the same job in the same state coalesce into the latest one. The
-  channel closes when `ctx` ends or the service closes. Events after a job's terminal state are dropped. `Jobs` and
-  `Wait` remain the authoritative final picture.
+  channel closes when `ctx` ends or the service closes; events still queued for a reader at that moment are not
+  delivered. Events after a job's terminal state are dropped. `Jobs` and `Wait` remain the authoritative final picture.
 - **Downloadable links first (T-16 CR-1).** Before ranking, links whose URL fails the downloader URL policy
   (downloader §2: `https`, host in `download.allowed_hosts`, …) are removed from the candidates and returned as
   `LinkChoice{Available: false, Reasons: ["host not allowed: <host>"]}` after the ranked ones. UIs show them as
