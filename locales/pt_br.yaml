@@ -15,8 +15,8 @@ errors:
   confirmation_required:
     message: 'Este comando precisa de confirmação.'
     hint: 'Adicione --force para pular a pergunta.'
-    size_hint: 'O arquivo tem {size}, bem maior do que o catálogo informou, então precisa da sua confirmação.'
-    size_hint_cli: 'O arquivo tem {size}, bem maior do que o catálogo informou. Use -f para baixar mesmo assim.'
+    size_hint: 'O arquivo tem {size}; o catálogo indicava {estimate}. Ele precisa da sua confirmação para ser baixado.'
+    size_hint_cli: 'O arquivo tem {size}; o catálogo indicava {estimate}. Use -f para baixar mesmo assim.'
   unmapped_platform:
     message: 'Nenhuma pasta definida para a plataforma {platform}.'
     hint: 'Use -o <pasta>, ou defina profile.folders.{platform} na configuração.'

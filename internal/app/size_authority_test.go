@@ -47,7 +47,7 @@ func TestSizeConsentTravelsWithTheRequest(t *testing.T) {
 	}
 	j := run(0)
 	if j.State != StateFailed || j.Err == nil || j.Err.Code != CodeConfirmationNeeded || j.Expected != 5000 ||
-		j.Err.Args["size"] != int64(5000) || j.Err.Args["hint_key"] == "" {
+		j.Err.Args["size"] != int64(5000) || j.Err.Args["estimate"] != int64(2000) || j.Err.Args["hint_key"] != "errors.confirmation_required.size_hint" {
 		t.Fatalf("%+v err %v", j, j.Err)
 	}
 	if j := run(5000); j.State != StateDone {

@@ -867,6 +867,7 @@ func (d *downloads) withJobArgs(e *Error, m jobMeta, res proxy.Result) *Error {
 	set("needed", m.expected)
 	if e.Code == string(proxy.CodeConfirmationRequired) { // the real size and the way out (downloader.md 3.2 step 6)
 		set("size", res.ContentLength)
+		set("estimate", m.expected) // the catalog size, always above 0 here: a link without one fails in Preflight
 		set("hint_key", "errors.confirmation_required.size_hint")
 	}
 	return e

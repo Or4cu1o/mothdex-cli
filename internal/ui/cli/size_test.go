@@ -22,17 +22,19 @@ func TestForceBecomesConsentAnyPerCommand(t *testing.T) {
 	}
 }
 
-// A job that stops for confirmation at the real size says so with the size and the way out; the
-// exit code is the one of confirmation_required (2).
+// A job that stops for confirmation at the real size says so with both sizes and the way out (the
+// catalog size when there is one); the exit code is the one of confirmation_required (2).
 func TestConfirmationRequiredAtTheRealSize(t *testing.T) {
-	failure := &app.Error{Code: app.CodeConfirmationNeeded, Message: "the real size needs confirmation",
-		Args: map[string]any{"size": int64(2 << 30), "hint_key": "errors.confirmation_required.size_hint"}}
-	f := &fake{wait: func() (app.BatchResult, error) {
-		return app.BatchResult{Failed: 1, Jobs: []app.JobSnapshot{job("a", "failed", failure)}}, nil
-	}}
-	r := exec(t, f, nil, "download", "1")
+	run := func(args map[string]any) *result {
+		failure := &app.Error{Code: app.CodeConfirmationNeeded, Message: "the real size needs confirmation", Args: args}
+		f := &fake{wait: func() (app.BatchResult, error) {
+			return app.BatchResult{Failed: 1, Jobs: []app.JobSnapshot{job("a", "failed", failure)}}, nil
+		}}
+		return exec(t, f, nil, "download", "1")
+	}
+	r := run(map[string]any{"size": int64(2 << 30), "estimate": int64(5 << 20), "hint_key": "errors.confirmation_required.size_hint"})
 	out := r.err.String()
-	if r.code != 2 || !strings.Contains(out, "much larger than the catalog said") || !strings.Contains(out, "2.0 GB") || !strings.Contains(out, "-f") {
+	if r.code != 2 || !strings.Contains(out, "The file is 2.0 GB; the catalog said 5.0 MB.") || !strings.Contains(out, "Add -f") || strings.Contains(out, "much larger") {
 		t.Fatalf("exit %d: %q", r.code, out)
 	}
 }
