@@ -23,13 +23,43 @@ dirty versions). The date is the **commit time** (RFC 3339 UTC), not the build
 time, so builds are reproducible. Format and JSON fields:
 [contracts/cli/cli-output.md](contracts/cli/cli-output.md) section 3.1.
 
+## Installing
+
+Download, read, then run. The installer is never piped to a shell, and it
+downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https.
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
+less install.sh
+sh install.sh --dry-run          # downloads and verifies in a temp dir, installs nothing
+sh install.sh                    # or: --version v0.1.0, --profile, --bin-dir, --launcher, --uninstall
+```
+
+To install a specific version, fetch the installer from that tag (`.../mothdex-cli/vX.Y.Z/install.sh`) so installer and release match.
+
+On Windows, download `install.ps1`, read it, then run `.\install.ps1` (options
+`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-DryRun`, `-Uninstall`).
+Both installers always check the SHA-256 of the archive against `checksums.txt`
+and, when `cosign` (or an authenticated `gh`) is on the machine, the signature
+and provenance with the identity below; a failing check aborts before anything
+is installed. The binary goes to the profile `bin_dir` (mode 0755; on Windows
+`%LocalAppData%\Programs\mothdex` by default), and the launcher (Port), only with `--launcher` (`-Launcher` on Windows; off by default in v0.1 because `mothdex tui` does not exist yet), only to
+the profile launcher folder, from a fixed template with a marker line, so an
+existing file of yours is never overwritten. `install.sh` needs curl (it forces https, redirects included), or GNU wget together with cosign or a logged-in `gh`:
+wget can follow an https to http redirect, so the signature check is what protects that path (busybox wget does not
+verify TLS certificates and is refused). On Windows, an existing `-BinDir` outside `%LocalAppData%` is accepted only when its
+owner is you or an administrator and no other user can write to it; on a Batocera or Recalbox share partition without file permissions (exFAT, FAT, NTFS) the installer, as
+root, accepts the profile's own folders with a warning (see [SECURITY.md](../SECURITY.md)); a RetroBat folder created under `C:\` may let
+Authenticated Users write, which is inherent to that tree (the launcher is the only file placed there).
+
 ## Verifying a download
 
 Every release file is listed in `checksums.txt`, which is signed with cosign
 (keyless, GitHub OIDC) and attested with GitHub artifact attestations.
 
 ```sh
-# 1. Checksums (what install.sh does; cosign is not required on devices)
+# 1. Checksums (what install.sh does: it compares the archive hash with its line in
+#    checksums.txt; cosign is not required on devices)
 sha256sum --check --ignore-missing checksums.txt
 
 # 2. Signature of checksums.txt and who signed it

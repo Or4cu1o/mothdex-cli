@@ -1,0 +1,8 @@
+#!/bin/sh
+# busybox-like wget stand-in: no GNU banner, so the installer must refuse it before downloading anything.
+if [ "${1:-}" = "--version" ]; then
+  echo "BusyBox v1.36.1 multi-call binary." >&2
+  exit 1
+fi
+echo "wget-busybox was used for a download" >>"${FAKE_LOG:-/dev/null}.busybox"
+exit 1

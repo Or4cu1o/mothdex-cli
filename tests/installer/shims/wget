@@ -1,0 +1,11 @@
+#!/bin/sh
+# GNU-wget stand-in for the fallback path: wget [options] -O <dest> <url>; "--version" prints the GNU banner.
+if [ "${1:-}" = "--version" ]; then
+  echo "GNU Wget 1.21.4 built on linux-gnu."
+  exit 0
+fi
+for a in "$@"; do
+  dest=${url:-}
+  url=$a
+done
+exec "$(dirname "$0")/fake-fetch" "$url" "$dest"

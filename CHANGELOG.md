@@ -83,6 +83,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-21b: `install.sh` (POSIX sh; Batocera, EmuELEC, Recalbox, Lakka, generic Linux, macOS) and `install.ps1`
+  (Windows, RetroBat). Downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https, always verifies
+  SHA-256 from `checksums.txt`, and also `cosign verify-blob` or `gh attestation verify` when the tool is present
+  (a present tool that fails aborts). `--version` pinning, `--dry-run`, `--uninstall`, profile `bin_dir`, a fixed
+  launcher template written only to the profile launcher folder (path allow-list, marker, never overwrites a
+  user's file). Tests: shellcheck, 193 container checks (Alpine and Debian, no network, simulated Batocera and
+  EmuELEC trees, fake release, a second pass as a non-root user) and Pester-style checks for `install.ps1` in CI (`installer.yml`). The launcher is opt-in (`--launcher`, `-Launcher`) in v0.1 because `mothdex tui` does not exist yet;
+  wget is used only if it is GNU Wget and a signature tool (cosign or a logged-in gh) is present, because wget can follow an https to http redirect (busybox wget does not verify TLS and is refused); on exFAT/FAT/NTFS share partitions of Batocera
+  and Recalbox, root installs get a documented, warned exception to the world-writable refusal.
 - `internal/cover`: cover fetch hardening (T-16 CR-9, cache.md section 4): https only, no connection to loopback,
   private, link-local, CGNAT, multicast or special addresses (checked after DNS and again in the dialer Control hook),
   at most 3 redirects each re-checked, 5 MiB cap, Content-Type must agree with the magic bytes (jpeg, png, webp, gif;

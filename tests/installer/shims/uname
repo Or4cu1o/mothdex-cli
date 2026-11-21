@@ -1,0 +1,7 @@
+#!/bin/sh
+# uname stand-in: FAKE_UNAME_S and FAKE_UNAME_M choose the system.
+case ${1:-} in
+  -s) printf '%s\n' "${FAKE_UNAME_S:-Linux}" ;;
+  -m) printf '%s\n' "${FAKE_UNAME_M:-x86_64}" ;;
+  *) printf '%s\n' "${FAKE_UNAME_S:-Linux}" ;;
+esac

@@ -1,0 +1,7 @@
+#!/bin/sh
+# gh stand-in: `auth status` exits GH_AUTH_RC (default 0); `attestation verify` records args, exits GH_RC (default 0).
+case $1 in
+  auth) exit "${GH_AUTH_RC:-0}" ;;
+  attestation) printf '%s\n' "$*" >>"$FAKE_LOG.gh"; exit "${GH_RC:-0}" ;;
+esac
+exit 1
