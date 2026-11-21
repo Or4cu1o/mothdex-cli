@@ -273,6 +273,9 @@ func (p Profile) IsLauncherPath(path string) bool {
 	if !isAbsolute(path) {
 		return true // fail closed: a relative or drive-relative path cannot be checked lexically
 	}
+	if (hasDrive(p.Launcher.Dir) || hasDrive(p.ownRoot)) && !hasDrive(path) && !isUNC(path) {
+		return true // "\\RetroBat\\roms" is relative to the current drive on Windows: cannot be compared
+	}
 	target := components(path)
 	if len(target) == 0 {
 		return false
@@ -364,4 +367,15 @@ func trimLongPrefix(p string) string {
 		}
 	}
 	return p
+}
+
+var driveLetter = regexp.MustCompile(`^[A-Za-z]:`)
+
+// hasDrive reports whether a path starts with a drive letter (after any long prefix).
+func hasDrive(p string) bool { return driveLetter.MatchString(trimLongPrefix(p)) }
+
+// isUNC reports whether a path is a \\server\share form, short or long.
+func isUNC(p string) bool {
+	n := strings.ToLower(strings.ReplaceAll(p, "/", `\`))
+	return strings.HasPrefix(n, `\\?\unc\`) || (strings.HasPrefix(n, `\\`) && !strings.HasPrefix(n, `\\?\`) && !strings.HasPrefix(n, `\\.\`))
 }

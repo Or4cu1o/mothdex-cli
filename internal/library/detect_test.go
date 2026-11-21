@@ -353,6 +353,7 @@ func TestIsLauncherPathSeesThroughWindowsSpellings(t *testing.T) {
 		`C:\RetroBat\roms\.\windows\x`: true, "C:\\RetroBat\\roms\\snes\\.. \\windows\\x": true, `C:\RetroBat\roms\windows::$INDEX_ALLOCATION\x`: true, `C:\RetroBat\roms\snes\..\windows\x`: true,
 		`C:\RetroBat\roms\ports\x`: true, `C:\RetroBat\roms\snes`: false, `D:\RetroBat\roms\windows`: false,
 		`C:\RetroBat\roms\windows2`: false,
+		`\RetroBat\roms\windows\x`:  true, `/RetroBat/roms/windows/x`: true, `\RetroBat\roms\snes`: true, `\\srv\share\x`: false,
 	} {
 		if got := p.IsLauncherPath(path); got != want {
 			t.Errorf("IsLauncherPath(%q) = %v, want %v", path, got, want)
