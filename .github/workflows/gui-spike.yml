@@ -75,6 +75,7 @@ jobs:
       - name: go test -tags gui ./internal/ui/gui/sdl
         env:
           SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1" # a broken libsdl2 install fails here instead of skipping the smoke test
         run: go test -tags gui -count=1 -v ./internal/ui/gui/sdl
       - name: Cross-build and readelf linux/386 (optional target, not run)
         continue-on-error: true
@@ -133,6 +134,7 @@ jobs:
         shell: bash
         env:
           SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1"
         run: |
           go test -c -tags gui -trimpath -o dist-gui/windows_amd64/sdl.test.exe ./internal/ui/gui/sdl
           cd dist-gui/windows_amd64 && ./sdl.test.exe -test.v -test.count=1

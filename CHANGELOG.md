@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PR-69 review (Ensaio V1/S1): a test with a fake `api` proves `ReadPixels` and `UpdateTexture` refuse short buffers, a pitch below the row
+  and a rect outside the texture before SDL is called; `GUI_REQUIRE_SDL=1` turns the missing-SDL skip into a failure and is set in the
+  amd64 and Windows test steps.
 - T-52b: CI for the GUI spike (`.github/workflows/gui-spike.yml`, read-only, actions pinned by SHA): the probe and `go test -tags gui`
   on linux amd64 with the distro libsdl2 (dummy driver), on windows amd64 with `SDL2.dll` 2.32.10 fetched by the exact release URL and verified against a
   pinned SHA-256 (`scripts/sdl2-windows.pin`); `readelf` per Linux target, the isolation check and a size report. The arm64, armv7 and armv6 legs (qemu-user, pinned
