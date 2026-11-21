@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Home, Search with the virtual keyboard, pickers, Results with covers, Entry and link chooser, Queue, History,
   Settings, Start menu), errors and empty states, quit and the return to the frontend, the Port behavior, the
   service calls used, the gaps agreed with the T-51 contract, and a three-PR plan.
+- `docs/contracts/cli/gui.md` (T-51): the E-M3 GUI contract, covering the separate `mothdex-gui` binary and its package layout, SDL2 through an own purego binding (with what the spike must prove and the decision rule), Noto Sans with the x/image raster, the pinned GameControllerDB, a single download root (no shared limiter), the exit budget, cover decode caps, the packaging impact, the test plan and the gaps for Forja.
 - `docs/release-v0.1.0-checklist.md` (T-23): the ordered owner steps for the first release (open gates A2 and D1 to D3,
   environment and tag settings, tag, what `release.yml` publishes, verification of the published assets, rollback) and what
   was and was not verified beforehand, including a gap found in `publish` (no tag-to-commit check, no `--source-digest`).
