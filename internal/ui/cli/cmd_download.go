@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
-	"github.com/Or4cu1o/mothdex-cli/internal/history"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 )
 
@@ -218,13 +217,17 @@ func (r *runtime) transfer(ctx context.Context, s *Session, reqs []app.DownloadR
 	return out, batchError(res)
 }
 
-// saveBoxarts writes the cover of every finished job; a failure is a warning, never fatal.
+// saveBoxarts writes the cover of every finished job, named after its file; a failure is a warning,
+// never fatal. After Ctrl+C no cover is fetched: the exit must not wait for the network.
 func (r *runtime) saveBoxarts(ctx context.Context, p *printer, s *Session, res app.BatchResult) {
 	for _, j := range res.Jobs {
 		if j.State != app.StateDone {
 			continue
 		}
-		if _, err := s.Svc.SaveBoxart(context.WithoutCancel(ctx), app.Ref{Slug: j.Slug}, r.g.Output); err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		if _, err := s.Svc.SaveJobBoxart(ctx, j, r.g.Output); err != nil {
 			ae := asAppError(err)
 			if ae.Code != app.CodeNotFound { // an entry without a cover is normal
 				p.warning(p.T("ui.cli.boxart.failed", i18n.Args{"title": clean(j.Title), "code": ae.Code}))
@@ -233,20 +236,36 @@ func (r *runtime) saveBoxarts(ctx context.Context, p *printer, s *Session, res a
 	}
 }
 
-// recordsFor finds the history record of each job (crc, hash and attempts live there).
-func (r *runtime) recordsFor(ctx context.Context, s *Session, jobs []app.JobSnapshot) map[string]history.Record {
-	recs, err := s.Svc.History(context.WithoutCancel(ctx), history.Filter{Limit: len(jobs) + 50})
-	out := map[string]history.Record{}
+// recordsFor finds the history record of each job by its id (crc, hash and attempts live there).
+func (r *runtime) recordsFor(ctx context.Context, s *Session, jobs []app.JobSnapshot) map[string]app.HistoryRecord {
+	out := map[string]app.HistoryRecord{}
+	recs, err := s.Svc.History(context.WithoutCancel(ctx), app.HistoryFilter{})
 	if err != nil {
 		return out
 	}
+	want := make(map[string]bool, len(jobs))
+	for _, j := range jobs {
+		want[string(j.ID)] = true
+	}
 	for _, rec := range recs {
-		out[rec.ID] = rec
+		if want[rec.ID] {
+			out[rec.ID] = rec
+		}
 	}
 	return out
 }
 
-func jobsJSON(jobs []app.JobSnapshot, recs map[string]history.Record) []map[string]any {
+// checkState is the crc/hash value of cli-output section 3: ok, skipped or failed. A job with no
+// history record (the record could not be written) was not verified as far as we can tell.
+func checkState(v string) string {
+	switch v {
+	case "ok", "failed":
+		return v
+	}
+	return "skipped"
+}
+
+func jobsJSON(jobs []app.JobSnapshot, recs map[string]app.HistoryRecord) []map[string]any {
 	out := make([]map[string]any, 0, len(jobs))
 	for _, j := range jobs {
 		rec := recs[string(j.ID)]
@@ -257,29 +276,30 @@ func jobsJSON(jobs []app.JobSnapshot, recs map[string]history.Record) []map[stri
 		out = append(out, map[string]any{
 			"slug": j.Slug, "link_index": j.LinkIndex, "filename": j.Name, "raw_filename": rec.RawName, "path": j.Path,
 			"state": string(j.State), "bytes": j.Bytes, "expected_bytes": j.Expected, "sha256": j.SHA256,
-			"crc": rec.CRC, "hash": rec.Hash, "attempts": j.Attempt, "duration_ms": j.Finished.Sub(j.Started).Milliseconds(), "error": e,
+			"crc": checkState(rec.CRC), "hash": checkState(rec.Hash), "attempts": j.Attempt, "duration_ms": j.Finished.Sub(j.Started).Milliseconds(), "error": e,
 		})
 	}
 	return out
 }
 
-// batchError maps the result to the exit codes: 130 when interrupted, 7 when some jobs failed and
-// others did not, otherwise the code of the first failure.
+// batchError maps the result to the exit codes: 130 when the batch was interrupted (it wins over
+// 7), 7 when some jobs failed and others did not, otherwise the code of the first failure. The
+// per-job lines already printed the failures, so a batch error adds no second error block.
 func batchError(res app.BatchResult) error {
 	var first *app.Error
 	for _, j := range res.Jobs {
-		if j.Err != nil && (j.State == app.StateFailed || j.State == app.StateCanceled) {
+		if j.Err != nil && j.State == app.StateFailed {
 			first = j.Err
 			break
 		}
 	}
 	switch {
-	case res.Cancel > 0 && res.Failed == 0:
-		return &exitError{err: &app.Error{Code: app.CodeCanceled, Message: "canceled"}, code: 130}
+	case res.Cancel > 0:
+		return &exitError{err: &app.Error{Code: app.CodeCanceled, Message: "canceled"}, code: 130, silent: true}
 	case first == nil:
 		return nil
-	case res.Done+res.Skipped > 0:
-		return &exitError{err: first, code: 7}
+	case res.Done+res.Skipped > 0 || res.Failed > 1:
+		return &exitError{err: first, code: 7, silent: true}
 	}
 	return first
 }
@@ -301,7 +321,9 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 			}
 			p.info("%s", p.dim(p.T("ui.cli.download.skipped", i18n.Args{"path": clean(j.Path)})))
 		case app.StateFailed, app.StateCanceled:
-			p.failedLine(title, j.Err)
+			if len(res.Jobs) > 1 {
+				p.failedLine(title, j.Err)
+			}
 		}
 	}
 	if p.g.Quiet && res.Failed == 0 {
@@ -312,14 +334,10 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 
 // failedLine prints one failed job: "x <title>: <message> [code]".
 func (p *printer) failedLine(title string, e *app.Error) {
-	code, msg := app.CodeInternal, ""
-	if e != nil {
-		code, msg = e.Code, e.Message
-		if p.t.Has("errors." + code + ".message") {
-			msg = p.t.T("errors."+code+".message", errorArgs(e))
-		}
+	if e == nil {
+		e = &app.Error{Code: app.CodeInternal}
 	}
-	line := fmt.Sprintf("%s %s: %s [%s]", p.sym("fail"), title, clean(msg), code)
+	line := fmt.Sprintf("%s %s: %s [%s]", p.sym("fail"), title, clean(p.localizedMessage(e, nil)), e.Code)
 	_, _ = fmt.Fprintln(p.err, p.bad(line))
 }
 

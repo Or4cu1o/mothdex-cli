@@ -61,6 +61,13 @@ func (s *Service) fetchCover(ctx context.Context, url string) bool {
 		s.coverMu.Unlock()
 		close(call.done)
 	}()
+	// The previous leader stores the blob before it leaves the flight: a caller that missed the cache
+	// just before that must find it now, not fetch the URL a second time.
+	if rc, e, err := s.o.Cache.GetBlob(cache.NSCovers, cache.KeyCover(url)); err == nil && e.Hit {
+		_ = rc.Close()
+		call.ok = true
+		return true
+	}
 	call.ok = s.o.Covers.Fetch(ctx, url)
 
 	s.coverMu.Lock()

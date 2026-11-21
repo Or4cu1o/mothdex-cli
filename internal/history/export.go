@@ -102,7 +102,7 @@ func CSVCell(s string) string {
 // text before it reaches a terminal or a spreadsheet.
 func StripUntrusted(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' {
 			return -1
 		}
 		return r

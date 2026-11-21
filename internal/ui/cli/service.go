@@ -8,11 +8,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
-	"github.com/Or4cu1o/mothdex-cli/internal/cache"
-	"github.com/Or4cu1o/mothdex-cli/internal/config"
-	"github.com/Or4cu1o/mothdex-cli/internal/history"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
-	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
@@ -27,19 +23,20 @@ type Service interface {
 	Links(ctx context.Context, ref app.Ref, sel app.LinkSelector) ([]app.LinkChoice, error)
 	Cover(ctx context.Context, ref app.Ref) (io.ReadCloser, string, error)
 	SaveBoxart(ctx context.Context, ref app.Ref, destDir string) (string, error)
+	SaveJobBoxart(ctx context.Context, job app.JobSnapshot, destDir string) (string, error)
 	Enqueue(ctx context.Context, reqs []app.DownloadRequest) ([]app.JobID, error)
 	Events(ctx context.Context) <-chan app.Event
 	Cancel(id app.JobID) error
 	Wait(ctx context.Context) (app.BatchResult, error)
-	History(ctx context.Context, f history.Filter) ([]history.Record, error)
-	CacheStats() (cache.Stats, error)
+	History(ctx context.Context, f app.HistoryFilter) ([]app.HistoryRecord, error)
+	CacheStats() (app.CacheStats, error)
 	CacheClear(ns ...string) error
-	ConfigGet(key string) (config.Setting, error)
-	ConfigList() ([]config.Setting, error)
+	ConfigGet(key string) (app.Setting, error)
+	ConfigList() ([]app.Setting, error)
 	ConfigSet(key, value string) error
 	ConfigReset(key string) error
-	ActiveProfile() library.ProfileInfo
-	DetectProfile(ctx context.Context) (library.ProfileInfo, error)
+	ActiveProfile() app.ProfileInfo
+	DetectProfile(ctx context.Context) (app.ProfileInfo, error)
 	Close() error
 }
 

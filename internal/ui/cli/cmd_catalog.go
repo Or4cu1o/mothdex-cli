@@ -1,13 +1,10 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
-	"github.com/Or4cu1o/mothdex-cli/internal/history"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -116,7 +112,7 @@ func bestLink(e mothdex.Entry) mothdex.Link {
 	return mothdex.Link{}
 }
 
-func (r *runtime) searchTable(p *printer, page app.SearchPage) {
+func (p *printer) searchTable(page app.SearchPage) {
 	cols := []column{
 		{head: "#", right: true},
 		{head: p.T("ui.labels.title", nil), title: true},
@@ -146,7 +142,7 @@ func (r *runtime) searchHuman(p *printer, page app.SearchPage, text string, page
 		p.info("%s", clean(p.T("ui.cli.search.none", i18n.Args{"text": text})))
 		return
 	}
-	r.searchTable(p, page)
+	p.searchTable(page)
 	foot := p.T("ui.cli.search.footer", i18n.Args{"page": page.Page, "pages": page.TotalPages, "total": page.TotalResults, "size": pageSize})
 	if page.Meta.Cached {
 		foot += " · " + p.T("ui.cli.search.cached", i18n.Args{"age": humanAge(time.Since(page.Meta.FetchedAt))})
@@ -177,18 +173,18 @@ func humanAge(d time.Duration) string {
 // exportSearch writes the results to -e (cli-output.md section 5): json is the envelope, csv has
 // the fixed columns with the formula guard, txt is the plain table at 120 columns.
 func (r *runtime) exportSearch(f searchFlags, page app.SearchPage, results []jsonEntry, data any, m *app.ResultMeta) error {
-	target, format, err := history.ExportTarget(f.export, f.format, "search", time.Now())
+	target, format, err := app.ExportTarget(f.export, f.format, "search", time.Now())
 	if err != nil {
-		return usageErr("search", "%s", err.Error())
+		return err
 	}
 	p := r.printer()
 	render := func(w io.Writer) error {
 		switch format {
-		case history.FormatJSON:
+		case app.FormatJSON:
 			sub := *p
 			sub.out, sub.meta = w, m
 			return sub.writeJSON("search", data, nil)
-		case history.FormatCSV:
+		case app.FormatCSV:
 			return writeSearchCSV(w, results)
 		}
 		sub := *p
@@ -196,27 +192,21 @@ func (r *runtime) exportSearch(f searchFlags, page app.SearchPage, results []jso
 		sub.searchTable(page)
 		return nil
 	}
-	if err := history.WriteExport(target, r.g.Force, render); err != nil {
-		code := app.CodeInvalidRequest
-		if errors.Is(err, history.ErrExists) {
-			code = "exists"
-		}
-		return &app.Error{Code: code, Message: err.Error(), Args: map[string]any{"path": target, "detail": err.Error()}, Cause: err}
+	if err := app.WriteExport(target, r.g.Force, render); err != nil {
+		return err
 	}
 	p.info("%s", p.dim(clean(p.T("ui.cli.export.saved", i18n.Args{"path": target}))))
 	return nil
 }
-
-func (p *printer) searchTable(page app.SearchPage) { (&runtime{}).searchTable(p, page) }
 
 func writeSearchCSV(w io.Writer, results []jsonEntry) error {
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"index", "slug", "title", "platform", "regions", "serial", "links", "best_link_filename", "best_link_size"})
 	for _, e := range results {
 		b := bestLink(e.Entry)
-		_ = cw.Write([]string{strconv.Itoa(e.Index), history.CSVCell(e.Slug), history.CSVCell(e.Title), history.CSVCell(e.Platform),
-			history.CSVCell(strings.Join(e.Regions, ";")), history.CSVCell(e.Serial), strconv.Itoa(len(e.Links)),
-			history.CSVCell(b.Filename), strconv.FormatInt(b.Size, 10)})
+		_ = cw.Write([]string{strconv.Itoa(e.Index), app.CSVCell(e.Slug), app.CSVCell(e.Title), app.CSVCell(e.Platform),
+			app.CSVCell(strings.Join(e.Regions, ";")), app.CSVCell(e.Serial), strconv.Itoa(len(e.Links)),
+			app.CSVCell(b.Filename), strconv.FormatInt(b.Size, 10)})
 	}
 	cw.Flush()
 	return cw.Error()
@@ -417,8 +407,3 @@ func (r *runtime) dbInfoCmd() *cobra.Command {
 		},
 	}
 }
-
-var (
-	_ = bytes.NewBuffer
-	_ = os.Stdout
-)

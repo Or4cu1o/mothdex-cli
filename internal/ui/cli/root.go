@@ -14,8 +14,9 @@ import (
 // exitError carries an exit code that differs from the one of its error code (batch downloads:
 // 7 when some jobs failed, 130 when interrupted).
 type exitError struct {
-	err  error
-	code int
+	err    error
+	code   int
+	silent bool // the per-job lines already said it: no second error block
 }
 
 func (e *exitError) Error() string { return e.err.Error() }
@@ -61,6 +62,17 @@ func (r *runtime) fail(err error) int {
 	ae := asAppError(inner)
 	if !isAppError(inner) {
 		ae = usageFromCobra(inner)
+	}
+	if ae.Code == app.CodeUsage {
+		if _, ok := ae.Args["command"]; !ok {
+			if ae.Args == nil {
+				ae.Args = map[string]any{}
+			}
+			ae.Args["command"] = r.cmd // "" for the root: the hint then says "mothdex --help"
+		}
+	}
+	if ee != nil && ee.silent {
+		return code
 	}
 	if code == 0 {
 		code = ae.ExitCode()
@@ -163,7 +175,10 @@ func (r *runtime) rootCommand() *cobra.Command {
 // commandName is the name used in the --json envelope: the top-level command, so subcommands of
 // cache, config and profile all report that group.
 func commandName(c *cobra.Command) string {
-	for c.HasParent() && c.Parent().HasParent() {
+	if !c.HasParent() {
+		return "" // the root command itself
+	}
+	for c.Parent().HasParent() {
 		c = c.Parent()
 	}
 	return c.Name()

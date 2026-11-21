@@ -123,12 +123,15 @@ func (p *printer) info(format string, a ...any) {
 	_, _ = fmt.Fprintf(p.err, format+"\n", a...)
 }
 
-// warning writes a warning to stderr (shown with --json too, hidden by -q).
+// warning records a warning for the --json envelope and writes it to stderr (also with --json;
+// -q hides it).
 func (p *printer) warning(s string) {
+	s = app.SanitizeText(s)
+	p.warns = append(p.warns, s)
 	if p.g.Quiet {
 		return
 	}
-	_, _ = fmt.Fprintln(p.err, p.warn("warning: "+app.SanitizeText(s)))
+	_, _ = fmt.Fprintln(p.err, p.warn(p.T("ui.cli.warning", nil)+": "+s))
 }
 
 // T translates a key with arguments.
@@ -175,14 +178,19 @@ func (p *printer) envelope(command string, data any, err error) envelope {
 	}
 	if err != nil {
 		ae := asAppError(err)
-		e.Error = &errorBody{Code: ae.Code, Message: englishMessage(ae), Retryable: ae.Retryable, ExitCode: ae.ExitCode(), Details: map[string]any{}}
+		code := ae.ExitCode()
+		var ee *exitError
+		if errors.As(err, &ee) {
+			code = ee.code // the process exit code, not the one of the inner error
+		}
+		e.Error = &errorBody{Code: ae.Code, Message: englishMessage(ae), Retryable: ae.Retryable, ExitCode: code, Details: map[string]any{}}
 	}
 	return e
 }
 
 // writeJSON prints the envelope as one document on stdout.
 func (p *printer) writeJSON(command string, data any, err error) error {
-	enc := json.NewEncoder(p.out)
+	enc := json.NewEncoder(c1Escaper{p.out})
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	return enc.Encode(p.envelope(command, data, err))
@@ -216,13 +224,16 @@ func (p *printer) renderError(err error) {
 	if p.logPath != "" {
 		args["log_path"] = p.logPath
 	}
-	msg := p.t.T("errors."+ae.Code+".message", args)
-	if !p.t.Has("errors."+ae.Code+".message") || unfilled(msg) {
-		msg = englishMessage(ae) // a placeholder with no value: the service's own English text
+	_, _ = fmt.Fprintf(p.err, "%s %s\n", p.bad(p.T("ui.messages.error", nil)+":"), clean(p.localizedMessage(ae, args)))
+	hintKey := "errors." + ae.Code + ".hint"
+	if k, ok := ae.Args["hint_key"].(string); ok {
+		hintKey = k
 	}
-	_, _ = fmt.Fprintf(p.err, "%s %s\n", p.bad(p.T("ui.messages.error", nil)+":"), clean(msg))
-	if p.t.Has("errors." + ae.Code + ".hint") {
-		if hint := p.t.T("errors."+ae.Code+".hint", args); hint != "" && !unfilled(hint) {
+	if ae.Code == app.CodeUsage && ae.Args["command"] == "" {
+		hintKey = "ui.cli.usage_root_hint"
+	}
+	if p.t.Has(hintKey) {
+		if hint := p.t.T(hintKey, args); hint != "" && !unfilled(hint) {
 			_, _ = fmt.Fprintf(p.err, "  %s\n", clean(hint))
 		}
 	}
@@ -230,6 +241,23 @@ func (p *printer) renderError(err error) {
 	if p.g.Verbose && ae.Cause != nil {
 		_, _ = fmt.Fprintf(p.err, "  %s\n", p.dim("cause: "+clean(ae.Cause.Error())))
 	}
+}
+
+// localizedMessage is the message of an error in the interface language. A placeholder with no
+// value falls back to the service's English text, so a raw {name} is never shown.
+func (p *printer) localizedMessage(ae *app.Error, args i18n.Args) string {
+	if args == nil {
+		args = errorArgs(ae)
+	}
+	key := "errors." + ae.Code + ".message"
+	if !p.t.Has(key) {
+		return englishMessage(ae)
+	}
+	msg := p.t.T(key, args)
+	if unfilled(msg) {
+		return englishMessage(ae)
+	}
+	return msg
 }
 
 // unfilled reports a {name} placeholder left in translated text.
@@ -391,4 +419,25 @@ func humanSize(n int64) string {
 		return fmt.Sprintf("%.1f MB", f/(k*k))
 	}
 	return fmt.Sprintf("%.1f GB", f/(k*k*k))
+}
+
+// c1Escaper writes JSON with the C1 control runes U+0080-U+009F as \u00XX escapes. encoding/json
+// escapes C0 but writes C1 raw, and U+009B (CSI) and U+009D (OSC) act as escape sequences on
+// xterm-class terminals. These runes can only occur inside JSON strings, so the rewrite is safe.
+type c1Escaper struct{ w io.Writer }
+
+func (c c1Escaper) Write(p []byte) (int, error) {
+	out := make([]byte, 0, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == 0xC2 && i+1 < len(p) && p[i+1] >= 0x80 && p[i+1] <= 0x9F {
+			out = append(out, fmt.Sprintf("\\u%04x", rune(p[i+1]))...)
+			i++
+			continue
+		}
+		out = append(out, p[i])
+	}
+	if _, err := c.w.Write(out); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }

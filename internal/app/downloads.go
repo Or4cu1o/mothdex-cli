@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +28,6 @@ type DownloadRequest struct {
 	Ref     Ref
 	Link    LinkSelector
 	DestDir string // "" = download.dir if set, else the active profile's folder for the platform
-	Boxart  *bool  // nil = download.boxart; the CLI saves the cover (not done by the service)
 }
 
 // JobSnapshot is the state of a job at one moment.
@@ -99,6 +100,7 @@ type jobMeta struct {
 	expected        int64
 	sourceName, raw string
 	started         time.Time
+	dest, host      string // destination directory and link host, for the named values of failure messages
 }
 
 // downloads is the Downloads capability state of a Service.
@@ -228,7 +230,7 @@ func (s *Service) planFor(ctx context.Context, r DownloadRequest, known map[stri
 		root:   root,
 		mkRoot: mk,
 		entry:  e,
-		meta:   jobMeta{title: e.Title, linkIndex: c.Index, expected: c.Link.Size, sourceName: c.Link.SourceName, raw: c.Link.Filename},
+		meta:   jobMeta{title: e.Title, linkIndex: c.Index, expected: c.Link.Size, sourceName: c.Link.SourceName, raw: c.Link.Filename, dest: dest, host: linkHost(c.Link.URL)},
 	}, nil
 }
 
@@ -428,7 +430,7 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 		if res.Err != nil {
 			var ae *Error
 			if errors.As(wrap(res.Err), &ae) {
-				j.Err = ae
+				j.Err = d.withJobArgs(ae, d.meta[id], res)
 			}
 		}
 		if res.State == proxy.StateDone {
@@ -740,4 +742,35 @@ func (s *Service) closeDownloads() {
 	for _, c := range closers {
 		_ = c.Close()
 	}
+}
+
+// linkHost is the host of a link URL ("" when it does not parse).
+func linkHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// withJobArgs fills the named values the localized failure messages use (path, name, host,
+// allowed, got, expected, needed) from what the service knows about the job, so a UI never shows a
+// raw {placeholder}. The values are cleaned: they come from the API or the file system.
+func (d *downloads) withJobArgs(e *Error, m jobMeta, res proxy.Result) *Error {
+	if e.Args == nil {
+		e.Args = map[string]any{}
+	}
+	set := func(k string, v any) {
+		if _, ok := e.Args[k]; !ok {
+			e.Args[k] = v
+		}
+	}
+	set("path", SanitizeText(m.dest))
+	set("name", SanitizeText(firstNonEmpty(res.Name, m.raw)))
+	set("host", SanitizeText(m.host))
+	set("allowed", SanitizeText(strings.Join(d.env.Download.AllowedHosts, ", ")))
+	set("got", res.Bytes)
+	set("expected", m.expected)
+	set("needed", m.expected)
+	return e
 }

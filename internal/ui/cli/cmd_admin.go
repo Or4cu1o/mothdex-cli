@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
-	"github.com/Or4cu1o/mothdex-cli/internal/history"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 )
 
@@ -29,15 +27,21 @@ func (r *runtime) historyCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return r.exec(func(ctx context.Context, s *Session) (outcome, error) {
-				recs, err := s.Svc.History(ctx, history.Filter{Failed: failed, Limit: limit})
+				recs, err := s.Svc.History(ctx, app.HistoryFilter{Failed: failed, Limit: limit})
 				if err != nil {
 					return outcome{}, err
 				}
 				if recs == nil {
-					recs = []history.Record{}
+					recs = []app.HistoryRecord{}
 				}
 				if export != "" {
-					if err := r.exportHistory(export, format, recs); err != nil {
+					all := recs
+					if limit > 0 { // an export is the whole history, not the page shown
+						if all, err = s.Svc.History(ctx, app.HistoryFilter{Failed: failed}); err != nil {
+							return outcome{}, err
+						}
+					}
+					if err := r.exportHistory(export, format, all); err != nil {
 						return outcome{}, err
 					}
 				}
@@ -53,31 +57,27 @@ func (r *runtime) historyCmd() *cobra.Command {
 	return c
 }
 
-func (r *runtime) exportHistory(path, format string, recs []history.Record) error {
-	target, fm, err := history.ExportTarget(path, format, "history", time.Now())
+func (r *runtime) exportHistory(path, format string, recs []app.HistoryRecord) error {
+	target, fm, err := app.ExportTarget(path, format, "history", time.Now())
 	if err != nil {
-		return usageErr("history", "%s", err.Error())
+		return err
 	}
 	version := ""
 	if r.d.Version != nil {
 		version = r.d.Version().Version
 	}
-	err = history.WriteExport(target, r.g.Force, func(w io.Writer) error {
-		return history.Export(w, fm, recs, history.Meta{CLIVersion: version, FetchedAt: time.Now()})
+	err = app.WriteExport(target, r.g.Force, func(w io.Writer) error {
+		return app.ExportHistory(w, fm, recs, app.HistoryExportMeta{CLIVersion: version, FetchedAt: time.Now()})
 	})
 	if err != nil {
-		code := app.CodeInvalidRequest
-		if errors.Is(err, history.ErrExists) {
-			code = "exists"
-		}
-		return &app.Error{Code: code, Message: err.Error(), Args: map[string]any{"path": target, "detail": err.Error()}, Cause: err}
+		return err
 	}
 	p := r.printer()
 	p.info("%s", p.dim(clean(p.T("ui.cli.export.saved", i18n.Args{"path": target}))))
 	return nil
 }
 
-func (r *runtime) historyHuman(p *printer, recs []history.Record) {
+func (r *runtime) historyHuman(p *printer, recs []app.HistoryRecord) {
 	rows := make([][]string, len(recs))
 	for i, x := range recs {
 		state := x.State

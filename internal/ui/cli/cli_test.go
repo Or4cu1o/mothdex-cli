@@ -14,11 +14,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
-	"github.com/Or4cu1o/mothdex-cli/internal/cache"
-	"github.com/Or4cu1o/mothdex-cli/internal/config"
-	"github.com/Or4cu1o/mothdex-cli/internal/history"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
-	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
@@ -99,16 +95,18 @@ func (f *fake) Cancel(app.JobID) error { return nil }
 
 func (f *fake) Wait(context.Context) (app.BatchResult, error) { return f.wait() }
 
-func (f *fake) History(context.Context, history.Filter) ([]history.Record, error) { return nil, nil }
-func (f *fake) CacheStats() (cache.Stats, error)                                  { return cache.Stats{}, nil }
-func (f *fake) CacheClear(...string) error                                        { return nil }
-func (f *fake) ConfigGet(string) (config.Setting, error)                          { return config.Setting{}, nil }
-func (f *fake) ConfigList() ([]config.Setting, error)                             { return nil, nil }
-func (f *fake) ConfigSet(string, string) error                                    { return nil }
-func (f *fake) ConfigReset(string) error                                          { return nil }
-func (f *fake) ActiveProfile() library.ProfileInfo                                { return library.ProfileInfo{} }
-func (f *fake) DetectProfile(context.Context) (library.ProfileInfo, error) {
-	return library.ProfileInfo{}, nil
+func (f *fake) History(context.Context, app.HistoryFilter) ([]app.HistoryRecord, error) {
+	return nil, nil
+}
+func (f *fake) CacheStats() (app.CacheStats, error)   { return app.CacheStats{}, nil }
+func (f *fake) CacheClear(...string) error            { return nil }
+func (f *fake) ConfigGet(string) (app.Setting, error) { return app.Setting{}, nil }
+func (f *fake) ConfigList() ([]app.Setting, error)    { return nil, nil }
+func (f *fake) ConfigSet(string, string) error        { return nil }
+func (f *fake) ConfigReset(string) error              { return nil }
+func (f *fake) ActiveProfile() app.ProfileInfo        { return app.ProfileInfo{} }
+func (f *fake) DetectProfile(context.Context) (app.ProfileInfo, error) {
+	return app.ProfileInfo{}, nil
 }
 func (f *fake) Close() error { return nil }
 

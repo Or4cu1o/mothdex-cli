@@ -94,7 +94,7 @@ func configError(err error) error {
 	}
 	var ce *config.Error
 	if errors.As(err, &ce) {
-		return &Error{Code: ce.Code(), Message: ce.Reason, Cause: err, Args: map[string]any{"key": ce.Key, "value": ce.Value, "source": string(ce.Source), "detail": ce.Reason}}
+		return &Error{Code: ce.Code(), Message: ce.Reason, Cause: err, Args: map[string]any{"key": ce.Key, "value": ce.Value, "source": firstNonEmpty(string(ce.Source), "config set"), "detail": ce.Reason}}
 	}
 	return wrap(err)
 }
