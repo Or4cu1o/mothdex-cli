@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/testutil`: `fakeresolver` (scripted DNS), `zipfix` (zip bomb, overlapping-member, declared-size and member-count
   fixtures) and `realfs` (real-directory helpers: links and Windows junctions, tree snapshot, case-sensitivity probe) for
   the downloader tests (T-18). gosec is not run on `internal/testutil`.
+- `internal/testutil/fakefs`: `proxy.FS` and `proxy.Finalizer` doubles over a confined temp root with fault injection
+  (ENOSPC mid-write, EXDEV, unsupported no-replace rename and hard link), scripted free space and device ids, hooks
+  between steps, a call log and a Sync spy, for the downloader disk, partial-file and race cases (T-18).
 - `internal/cache`: on-disk cache (search, entry, meta, info, covers, session, state) with canonical request keys,
   per-namespace TTL, sidecar metadata, stale reads, a 200 MB cap with expiry-first then LRU eviction, atomic writes,
   an injected clock and private file modes (0700/0600).
