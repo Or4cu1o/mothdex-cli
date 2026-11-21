@@ -1,0 +1,15 @@
+#!/bin/sh
+# Test double for the network: serves files of $FAKE_RELEASE for the GitHub release URLs of Or4cu1o/mothdex-cli and
+# refuses everything else (any other host, http, other repos). Usage: fake-fetch <url> <dest>
+url=$1
+dest=$2
+printf '%s\n' "$url" >>"$FAKE_LOG"
+prefix=https://github.com/Or4cu1o/mothdex-cli/releases/
+case $url in
+  "$prefix"download/*/*) rel=${url#"$prefix"download/} ;;
+  "$prefix"latest/download/*) rel=latest/${url#"$prefix"latest/download/} ;;
+  *) echo "BLOCKED URL $url" >>"$FAKE_LOG"; exit 22 ;;
+esac
+case $rel in *..*) exit 22 ;; esac
+[ -f "$FAKE_RELEASE/$rel" ] || exit 22
+cp "$FAKE_RELEASE/$rel" "$dest"

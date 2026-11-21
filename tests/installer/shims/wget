@@ -1,0 +1,3 @@
+#!/bin/sh
+# wget stand-in for the fallback path: wget -q -O <dest> <url>
+exec "$(dirname "$0")/fake-fetch" "$4" "$3"
