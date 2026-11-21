@@ -40,7 +40,7 @@ type Downloads interface {
     Events(ctx context.Context) <-chan Event // state changes + throttled progress (≤ 4/s per job); never lossy
     Cancel(id JobID) error
     Wait(ctx context.Context) (BatchResult, error) // returns when the queue is empty
-    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a Done job, named <stem of its file>.<ext>
+    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a job this service finished (looked up by job.ID), named <stem of its file>.<ext>
 }
 
 // Method names carry the capability (one type implements all, so `List`/`Get` cannot repeat; T-20a).
@@ -56,6 +56,7 @@ type Cache interface {
 type Config interface {
     ConfigGet(key string) (Setting, error)
     ConfigList() ([]Setting, error) // effective value + source (default|file|env|flag)
+    ConfigSchema() []SettingSpec    // per key: Kind (string|enum|int|float|bool|duration|size|list), Enum, Min, Max, Env; no file read
     ConfigSet(key, value string) error   // validates, writes the YAML file atomically
     ConfigReset(key string) error        // key or "all"
 }
@@ -160,6 +161,14 @@ type DownloadRequest struct {
   respects `ctx`; cancelling a UI action cancels the request, not the queue (use `Cancel`).
 - **Composition root** is `cmd/mothdex/main.go`: config → logger → i18n → cache → API client → downloader → history → app.
   Tests build the service with fakes for the client and the downloader.
+- **Cover decoding (gui.md section 8, G2).** `app.DecodeCover(r io.Reader, contentType string, maxSide int) (image.Image, error)`
+  decodes a cover that `Cover` returned. It applies the limits of the fetch again (at most `cover.MaxBytes` of input, a type
+  from the allowlist that agrees with `contentType`, at most `cover.MaxPixelSide` per side read from the header before any
+  pixel is decoded; a GIF's first frame size is checked too) and a pixel budget of `cover.MaxDecodePixels` (4 megapixels,
+  also from the header), because the side cap alone still allows 64 to 190 MiB per decode on a handheld. It decodes one
+  frame (the first of an animated GIF; PNG, JPEG, GIF and still WebP; an animated WebP is refused) and scales it down to
+  `maxSide` on the longer side when `maxSide > 0` (never up, straight from the decoded image). A decoder panic is an error.
+  A refusal is an `*Error` (`not_found`) whose Cause is `cover.ErrDecode`. Front ends decode one cover at a time.
 
 ## Resolved questions (Regente, T-2 phase 1)
 

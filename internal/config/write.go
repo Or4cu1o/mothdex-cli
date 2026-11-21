@@ -34,6 +34,11 @@ func Set(path, key, raw string) error {
 	if err != nil {
 		return valueError(key, raw, "", err)
 	}
+	if key == "download.on_exists" && v == "overwrite" {
+		// A stored overwrite would be refused by every later load without --force (case 22): do not write it.
+		return &Error{Kind: KindInvalidValue, Key: key, Value: "overwrite",
+			Reason: "download.on_exists=overwrite cannot be stored: it is only honored with --force on the command line"}
+	}
 	flat, err := readFlat(path)
 	if err != nil {
 		return err

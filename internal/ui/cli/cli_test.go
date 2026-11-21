@@ -98,6 +98,8 @@ func (f *fake) Events(ctx context.Context) <-chan app.Event {
 	return ch
 }
 
+func (f *fake) Jobs() []app.JobSnapshot { return nil }
+
 func (f *fake) Cancel(app.JobID) error { return nil }
 
 func (f *fake) Wait(context.Context) (app.BatchResult, error) { return f.wait() }
@@ -109,6 +111,7 @@ func (f *fake) CacheStats() (app.CacheStats, error)   { return app.CacheStats{},
 func (f *fake) CacheClear(...string) error            { return nil }
 func (f *fake) ConfigGet(string) (app.Setting, error) { return app.Setting{}, nil }
 func (f *fake) ConfigList() ([]app.Setting, error)    { return nil, nil }
+func (f *fake) ConfigSchema() []app.SettingSpec       { return nil }
 func (f *fake) ConfigSet(string, string) error        { return nil }
 func (f *fake) ConfigReset(string) error              { return nil }
 func (f *fake) ActiveProfile() app.ProfileInfo        { return app.ProfileInfo{} }

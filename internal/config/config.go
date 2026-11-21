@@ -30,6 +30,7 @@ type Config struct {
 	Interface Interface
 	Profile   Profile
 	Log       Log
+	GUI       GUI
 }
 
 // API holds the api-client settings.
@@ -96,6 +97,13 @@ type Profile struct {
 	RetroBatPath string
 	Folders      map[string]string // Mothdex platform id -> folder name
 	Refresh      bool
+}
+
+// GUI holds the settings of the handheld front end (gui.md section 8, G2).
+type GUI struct {
+	ConfirmButton string // south | east
+	TextSize      string // normal | large
+	SafeArea      string // auto, or a percentage 0..10
 }
 
 // Log holds the logging settings.

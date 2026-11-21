@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/config"
 )
@@ -67,13 +66,14 @@ func (s *Service) ConfigList() ([]Setting, error) {
 	return res.Settings(), nil
 }
 
+// ConfigSchema lists every key with its kind, allowed values, range and environment variable, in
+// `config list` order. It reads no file, so it works with a broken configuration.
+func (s *Service) ConfigSchema() []SettingSpec { return config.Specs() }
+
 // ConfigSet validates and writes key=value to the config file atomically.
 func (s *Service) ConfigSet(key, value string) error {
 	if s.cfg.File == "" {
 		return newError(CodeInvalidConfig, "there is no config file path")
-	}
-	if key == "download.on_exists" && strings.EqualFold(strings.TrimSpace(value), "overwrite") {
-		return &Error{Code: CodeInvalidConfig, Message: "download.on_exists=overwrite cannot be stored: it is only honored with --force on the command line", Args: map[string]any{"key": key, "value": "overwrite", "source": "config set"}}
 	}
 	return configError(config.Set(s.cfg.File, key, value))
 }

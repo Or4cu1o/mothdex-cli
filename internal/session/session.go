@@ -91,7 +91,7 @@ func (s *Store) Save(l Last) error {
 
 // Clear forgets the last search (best effort): after a failed Save the older session must not
 // answer <n> for a different search.
-func (s *Store) Clear() { _ = s.c.Delete(cache.NSSession, key) }
+func (s *Store) Clear() error { return s.c.Delete(cache.NSSession, key) }
 
 // Load returns the last search, or ErrNoSession.
 func (s *Store) Load() (Last, error) {

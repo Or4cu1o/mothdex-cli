@@ -62,6 +62,11 @@ func ExportHistory(w io.Writer, format string, records []HistoryRecord, meta His
 	return history.Export(w, format, records, meta)
 }
 
+// EscapeC1 wraps w so that the C1 control runes U+0080-U+009F in JSON text are written as \u00XX
+// escapes (case 49): encoding/json writes them raw, and U+009B and U+009D act as escape sequences
+// on xterm-class terminals. Every JSON the CLI writes goes through it.
+func EscapeC1(w io.Writer) io.Writer { return history.C1Escaper{W: w} }
+
 // CSVCell prepares one text cell of a CSV export: control and format characters are removed and a
 // leading = + - @ tab or CR is neutralized (formula injection).
 func CSVCell(s string) string { return history.CSVCell(s) }
