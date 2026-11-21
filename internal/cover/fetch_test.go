@@ -3,8 +3,10 @@ package cover
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"net"
 	"net/http"
@@ -277,11 +279,51 @@ func TestBlockedIPTable(t *testing.T) {
 }
 
 // The dialer Control hook is the last line: it refuses a blocked address even when the
-// resolver step were bypassed.
+// resolver step is bypassed. The target is a live listener on loopback, so only the hook can
+// be what refuses the connection.
 func TestControlHookRefusesBlockedAddresses(t *testing.T) {
-	d := net.Dialer{Control: control}
-	if c, err := d.DialContext(context.Background(), "tcp", "127.0.0.1:9"); err == nil {
-		_ = c.Close()
-		t.Fatal("dialed loopback")
+	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer func() { _ = l.Close() }()
+	c, err := defaultDialer().DialContext(context.Background(), "tcp", l.Addr().String())
+	if err == nil {
+		_ = c.Close()
+	}
+	if !errors.Is(err, errBlocked) {
+		t.Fatalf("dial to loopback: %v, want errBlocked", err)
+	}
+	if err := control("tcp", publicIP+":443", nil); err != nil {
+		t.Fatalf("a public address must pass: %v", err)
+	}
+}
+
+// Production wiring: no proxy (it would skip the guard), TLS 1.2 floor, and the default dialer
+// carries the Control hook.
+func TestProductionTransportHasNoProxyAndTLSFloor(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+	f, err := New(Options{Resolver: publicHost(), Cache: openStore(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, ok := f.client.Transport.(*http.Transport)
+	if !ok || tr.Proxy != nil {
+		t.Fatal("the cover transport must not use a proxy")
+	}
+	if tr.TLSClientConfig == nil || tr.TLSClientConfig.MinVersion != tls.VersionTLS12 || tr.TLSClientConfig.InsecureSkipVerify {
+		t.Fatalf("TLS policy %+v", tr.TLSClientConfig)
+	}
+	if defaultDialer().Control == nil {
+		t.Fatal("the default dialer needs the Control hook")
+	}
+}
+
+func openStore(t *testing.T) cache.Store {
+	t.Helper()
+	s, err := cache.Open(filepath.Join(t.TempDir(), "cache"), cache.Config{Enabled: true}, clock{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }

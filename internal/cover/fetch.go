@@ -82,18 +82,9 @@ func newWith(o Options, h hooks) (*Fetcher, error) {
 	}
 	dial := h.dial
 	if dial == nil {
-		d := &net.Dialer{Timeout: dialTimeout, Control: control}
-		dial = d.DialContext
+		dial = defaultDialer().DialContext
 	}
-	tr := &http.Transport{
-		DialContext:         guardedDial(o.Resolver, dial),
-		TLSClientConfig:     tlsConfig(h.tls),
-		ForceAttemptHTTP2:   true,
-		TLSHandshakeTimeout: dialTimeout,
-		DisableKeepAlives:   true,
-		// Covers go direct: a proxy would connect to the target on our behalf and skip the guard.
-		Proxy: nil,
-	}
+	tr := newTransport(guardedDial(o.Resolver, dial), tlsConfig(h.tls))
 	return &Fetcher{
 		cache: o.Cache,
 		log:   log,
@@ -232,4 +223,21 @@ func (s SystemResolver) LookupIP(ctx context.Context, host string) ([]net.IP, er
 		r = net.DefaultResolver
 	}
 	return r.LookupIP(ctx, "ip", host)
+}
+
+// defaultDialer is the production dialer: its Control hook re-checks the address the socket is
+// about to connect to.
+func defaultDialer() *net.Dialer { return &net.Dialer{Timeout: dialTimeout, Control: control} }
+
+// newTransport builds the cover transport. Covers go direct (Proxy nil): a proxy would connect
+// to the target on our behalf and skip the guard.
+func newTransport(dial func(context.Context, string, string) (net.Conn, error), cfg *tls.Config) *http.Transport {
+	return &http.Transport{
+		DialContext:         dial,
+		TLSClientConfig:     cfg,
+		ForceAttemptHTTP2:   true,
+		TLSHandshakeTimeout: dialTimeout,
+		DisableKeepAlives:   true,
+		Proxy:               nil,
+	}
 }
