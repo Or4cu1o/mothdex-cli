@@ -225,11 +225,11 @@ if ($Uninstall) {
     if ($DryRun) { Write-Output "Would remove $exe" } else { Remove-Item -LiteralPath $exe -Force; Write-Output "Removed $exe" }
   } else { Write-Output "No binary at $exe" }
   if ($launcherDir) {
-    $launcher = Join-Path $launcherDir $LauncherName
-    if (Test-Path -LiteralPath $launcher) {
-      if (Test-HasMarker $launcher) {
-        if ($DryRun) { Write-Output "Would remove $launcher" } else { Remove-Item -LiteralPath $launcher -Force; Write-Output "Removed $launcher" }
-      } else { Write-Warning "keeping $launcher`: it was not created by this installer" }
+    $launcherFile = Join-Path $launcherDir $LauncherName
+    if (Test-Path -LiteralPath $launcherFile) {
+      if (Test-HasMarker $launcherFile) {
+        if ($DryRun) { Write-Output "Would remove $launcherFile" } else { Remove-Item -LiteralPath $launcherFile -Force; Write-Output "Removed $launcherFile" }
+      } else { Write-Warning "keeping $launcherFile`: it was not created by this installer" }
     }
   }
   Write-Output 'Your configuration, cache and ROMs were not touched.'
