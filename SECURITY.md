@@ -26,3 +26,16 @@ attested by GitHub. The exact signer identity and the verification commands are 
 [docs/release.md](docs/release.md#verifying-a-download): the certificate identity
 is the `release.yml` workflow at `refs/tags/vX.Y.Z` of this repository, with issuer
 `https://token.actions.githubusercontent.com`.
+
+The installers (`install.sh`, `install.ps1`) follow the same rule: they read
+only from this repository's GitHub releases, verify the SHA-256 (and the
+signature when cosign or `gh` is present) before installing, and are meant to be
+downloaded and read, never piped to a shell. See
+[docs/release.md](docs/release.md#installing).
+
+One documented exception: on a Batocera or Recalbox share partition formatted
+as exFAT, FAT or NTFS, which has no file permissions, `install.sh` run as root
+accepts a directory that looks world-writable, only inside the profile's own tree
+(`/userdata` or `/recalbox/share`), only when the filesystem type is proven, and
+it prints a warning. On such a partition any process or SMB client that can write
+the folder can replace `mothdex`.

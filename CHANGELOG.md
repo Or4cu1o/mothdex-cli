@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cover fetch leader re-checks the cache, the persisted 429 cooldown seed is clamped to 10 minutes, `CSVCell` also strips
   U+2028/2029, and the UI imports only `app` (export writers and type aliases moved behind it). Catalog case 49 is
   now covered.
+- `docs/qa/T-22-m1-acceptance.md`: the M1 acceptance checklist (T-22) with the evidence source per item, what waits for
+  T-20b, and the plan for the mcp slug charset sample.
 - `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
   platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
   the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`
@@ -58,6 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-16 catalog: cases 51 and 52 (installer launcher path injection and permissions) are now Covered by
+  `tests/installer/cases.sh`, `nonroot.sh` and `install.Tests.ps1`; 51 of 52 cases are Covered, only 49 (terminal
+  escapes in the UI output) is Pending.
 - Contracts follow the T-20a fixes and the T-21 installer: `Events` is never lossy (per-subscriber queue), the
   journal entry carries its destination root and cleanup is per root, a failed session save deletes the stored
   session, and the installer launcher is opt-in (D22) with the root-only FAT share exception (TH-31).
@@ -101,6 +106,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-21b: `install.sh` (POSIX sh; Batocera, EmuELEC, Recalbox, Lakka, generic Linux, macOS) and `install.ps1`
+  (Windows, RetroBat). Downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https, always verifies
+  SHA-256 from `checksums.txt`, and also `cosign verify-blob` or `gh attestation verify` when the tool is present
+  (a present tool that fails aborts). `--version` pinning, `--dry-run`, `--uninstall`, profile `bin_dir`, a fixed
+  launcher template written only to the profile launcher folder (path allow-list, marker, never overwrites a
+  user's file). Tests: shellcheck, 193 container checks (Alpine and Debian, no network, simulated Batocera and
+  EmuELEC trees, fake release, a second pass as a non-root user) and Pester-style checks for `install.ps1` in CI (`installer.yml`). The launcher is opt-in (`--launcher`, `-Launcher`) in v0.1 because `mothdex tui` does not exist yet;
+  wget is used only if it is GNU Wget and a signature tool (cosign or a logged-in gh) is present, because wget can follow an https to http redirect (busybox wget does not verify TLS and is refused); on exFAT/FAT/NTFS share partitions of Batocera
+  and Recalbox, root installs get a documented, warned exception to the world-writable refusal.
 - `internal/cover`: cover fetch hardening (T-16 CR-9, cache.md section 4): https only, no connection to loopback,
   private, link-local, CGNAT, multicast or special addresses (checked after DNS and again in the dialer Control hook),
   at most 3 redirects each re-checked, 5 MiB cap, Content-Type must agree with the magic bytes (jpeg, png, webp, gif;
