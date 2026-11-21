@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   say "not available yet" for now. New strings are `ui.tui.*` (`en_us`, `pt_br`, `es_es`, `ru_ru`). `cli` gains `Deps.TUI`,
   `TUIEnv` and `Service.Jobs`; `internal/ui/uistate` holds the atomic 0600 file writer shared with the Shell history. The
   Charm v2 build is checked for linux 386, armv6 and armv7 by the `goreleaser snapshot` job, which builds those targets.
+- `docs/ux/gui.md` (T-50): UX of the gamepad GUI (`mothdex-gui`, E-M3): size tiers from 640x480 to 1080p (scaled
+  below and above), TV safe area with a calibration view, type scale, spacing and color tokens with measured contrast,
+  positional buttons with an A/B swap and per-controller labels, focus model, every screen with its button map
+  (Home, Search with the virtual keyboard, pickers, Results with covers, Entry and link chooser, Queue, History,
+  Settings, Start menu), errors and empty states, quit and the return to the frontend, the Port behavior, the
+  service calls used, the gaps agreed with the T-51 contract, and a three-PR plan.
 - `app.Service.ConfigSchema() []SettingSpec{Key, Kind, Enum, Min, Max, Env}` (F1, ui.md section 6): the metadata of every configuration key (kind string, enum, int, float, bool, duration, size or list; the allowed values or range; the `MOTHDEX_*` variable) for the TUI Settings screen and Shell completion. It reads no file, so it works with a broken configuration. `config.Specs()` builds it from the schema, and a test checks that every enum value and range bound agrees with the parser.
 - `docs/contracts/cli/gui.md` (T-51): the E-M3 GUI contract, covering the separate `mothdex-gui` binary and its package layout, SDL2 through an own purego binding (with what the spike must prove and the decision rule), Noto Sans with the x/image raster, the pinned GameControllerDB, a single download root (no shared limiter), the exit budget, cover decode caps, the packaging impact, the test plan and the gaps for Forja.
 - `docs/release-v0.1.0-checklist.md` (T-23): the ordered owner steps for the first release (open gates A2 and D1 to D3,
