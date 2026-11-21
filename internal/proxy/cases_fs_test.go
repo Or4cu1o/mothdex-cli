@@ -276,13 +276,21 @@ func TestCase25CaseInsensitiveFileSystem(t *testing.T) {
 	}
 }
 
+// diskFullErr is what a full disk reports on this OS; the classifier is OS-guarded.
+func diskFullErr() error {
+	if runtime.GOOS == "windows" {
+		return fakefs.ErrDiskFullWindows
+	}
+	return fakefs.ErrNoSpace
+}
+
 // Case 34: ENOSPC mid-stream fails the job as disk_full without a retry and frees everything.
 func TestCase34DiskFullMidStream(t *testing.T) {
 	r := newRig(t, proxy.Config{})
 	r.fs.SetVolume(".", 300*mib, 1) // room for exactly one reservation
 	body := fakeproxy.Pattern(100_000)
 	r.srv.Script("/f/a", fakeproxy.OK(body))
-	r.fs.LimitWrites(10_000, fakefs.ErrNoSpace)
+	r.fs.LimitWrites(10_000, diskFullErr())
 
 	res := r.download(r.job("/f/a", "a.zip", len(body)))
 
@@ -293,7 +301,7 @@ func TestCase34DiskFullMidStream(t *testing.T) {
 	stagingEmpty(t, r)
 	noFinalFile(t, r)
 
-	r.fs.LimitWrites(1<<40, fakefs.ErrNoSpace) // the disk has room again
+	r.fs.LimitWrites(1<<40, diskFullErr()) // the disk has room again
 	r.srv.Script("/f/b", fakeproxy.OK(body))
 	if res := r.download(r.job("/f/b", "b.zip", len(body))); res.State != proxy.StateDone {
 		t.Fatalf("the reservation of the failed job was not released: %s %v", res.State, res.Err)
