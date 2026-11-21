@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
+  and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does; the tag check is the
+  last step before the release is created, and `publish` refuses to upload files that `checksums.txt` does not list.
+
 ### Added
 
 - `docs/qa/T-43-shell-acceptance.md` (T-43): Shell acceptance at `b45d433` against shell.md and ui.md with a snapshot binary and a
