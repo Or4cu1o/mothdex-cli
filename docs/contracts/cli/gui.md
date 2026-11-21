@@ -119,7 +119,7 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 - Load order, later overrides earlier:
   1. the embedded DB;
   2. `<DataDir>/gamecontrollerdb.txt`, if present (user fixes; a bad line is skipped with a warn log);
-  3. `SDL_GAMECONTROLLERCONFIG`, which SDL itself applies, so a frontend that sets it for Ports keeps its mapping. Whether the frontends set it is Unverified (T1b OQ1).
+  3. the file named by `SDL_GAMECONTROLLERCONFIG_FILE`, then the lines of `SDL_GAMECONTROLLERCONFIG`, so a frontend that sets them for Ports keeps its mapping. SDL applies these two variables itself, but at `SDL_Init`, before any line we add, so lines added afterwards would replace them (found in the PR-71 review): the GUI reads both variables and adds their lines last. Whether the frontends set them is Unverified (T1b OQ1).
 - Lines whose `platform:` does not match are skipped before calling SDL.
 
 **Mapping.** Buttons map by position, agreed with Bússola:

@@ -225,6 +225,8 @@ func (l *loopState) handle(ev input.Incoming) {
 	case input.IncomingPad:
 		l.apply(gui.ControllerMsg{Type: ev.Pad})
 	case input.IncomingQuit:
-		l.apply(gui.SignalMsg{})
+		l.apply(gui.QuitRequestMsg{})
+	case input.IncomingRedraw:
+		l.apply(gui.RedrawMsg{})
 	}
 }

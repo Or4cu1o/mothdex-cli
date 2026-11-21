@@ -129,6 +129,7 @@ const (
 	IncomingResize                     // the display changed size
 	IncomingPad                        // the pad in hand changed type, for the hint labels
 	IncomingQuit                       // the window was asked to close
+	IncomingRedraw                     // the window was uncovered or restored and must be drawn again
 )
 
 // Incoming is one thing a backend tells the run loop. It carries no SDL types, so the loop and its tests

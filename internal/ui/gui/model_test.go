@@ -800,3 +800,65 @@ func TestDialogButtonsStackWhenTheRowDoesNotFit(t *testing.T) {
 		t.Fatalf("Down moves through stacked buttons: %q", tight.m.dlgFocus)
 	}
 }
+
+// PR-71 review, Major 1: the last job ended while the dialog was open, so Quit when finished has nothing to wait
+// for and must quit at once instead of leaving a pending quit that no event can ever finish.
+func TestQuitWhenFinishedQuitsAtOnceIfTheLastJobEndedUnderTheDialog(t *testing.T) {
+	svc := newFakeService()
+	svc.jobs = []app.JobSnapshot{activeJob("1")}
+	h := started(t, svc, 1280, 720)
+	h.press(input.Back)
+	done := activeJob("1")
+	done.State = app.StateDone
+	h.send(JobMsg{Job: done}) // the download ends while the dialog is open
+	h.advance(200 * time.Millisecond)
+	h.press(input.Right)
+	h.press(input.Confirm) // Quit when finished
+	if h.m.screen != screenExit || h.m.quitPending {
+		t.Fatalf("screen %d, pending %v: with nothing left to wait for the exit sequence starts", h.m.screen, h.m.quitPending)
+	}
+}
+
+// PR-71 review, suggestion 1: closing the window asks like Quit and never cancels downloads on its own.
+func TestClosingTheWindowAsksLikeQuit(t *testing.T) {
+	idle := started(t, newFakeService(), 1280, 720)
+	idle.send(QuitRequestMsg{})
+	if idle.m.screen != screenExit {
+		t.Fatal("with nothing running, closing the window quits")
+	}
+
+	svc := newFakeService()
+	svc.jobs = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
+	busy := started(t, svc, 1280, 720)
+	busy.send(QuitRequestMsg{})
+	if busy.m.screen != screenHome || busy.m.overlay != overlayDialog {
+		t.Fatalf("screen %d overlay %d: with downloads a dialog must ask", busy.m.screen, busy.m.overlay)
+	}
+	busy.mustHave("2 downloads are still running.")
+	if got := svc.order(); len(got) != 0 {
+		t.Fatalf("nothing may be called or canceled before the answer: %v", got)
+	}
+	busy.send(SignalMsg{}) // SIGTERM still goes straight through
+	if busy.m.screen != screenExit {
+		t.Fatal("a signal must not ask")
+	}
+}
+
+func TestAProgressEventDoesNotCopyTheTally(t *testing.T) {
+	var tally jobTally
+	tally, _, _ = tally.apply(app.JobSnapshot{ID: "1", State: app.StateTransferring, Bytes: 10})
+	same, prev, known := tally.apply(app.JobSnapshot{ID: "1", State: app.StateTransferring, Bytes: 20})
+	if !known || prev.Bytes != 10 {
+		t.Fatalf("known %v prev %+v", known, prev)
+	}
+	if &tally.byID == nil || len(same.byID) != 1 {
+		t.Fatal("the tally must keep its job")
+	}
+	changed, _, _ := same.apply(app.JobSnapshot{ID: "1", State: app.StateDone})
+	if done, _, _, _ := changed.summary(); done != 1 {
+		t.Fatalf("a state change is recorded: %d done", done)
+	}
+	if done, _, _, _ := same.summary(); done != 0 {
+		t.Fatal("the earlier tally must not change")
+	}
+}

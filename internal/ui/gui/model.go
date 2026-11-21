@@ -175,6 +175,10 @@ func (m Model) InputConfig() input.Config { return input.Config{ConfirmEast: m.c
 // Done reports that the exit screen has finished and the loop must stop; the exit code is 0.
 func (m Model) Done() bool { return m.done }
 
+// ExitTimedOut reports that the exit sequence used up its budget: Wait or Close did not answer in time, so the
+// service must not be closed again (a second Close would wait as long as the first).
+func (m Model) ExitTimedOut() bool { return m.exit != nil && m.exit.finished && m.exit.res.TimedOut }
+
 // OverlayEpoch changes whenever an overlay opens or closes; the loop releases any held button when it does.
 func (m Model) OverlayEpoch() int { return m.epoch }
 
@@ -198,6 +202,14 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 			return m, nil
 		}
 		return m.startExit(true, true, now)
+	case QuitRequestMsg:
+		if m.screen == screenExit || m.screen == screenSplash {
+			return m, nil
+		}
+		m = m.closeOverlay()
+		return m.askQuit(QuitFromMenu, now)
+	case RedrawMsg:
+		return m, nil
 	case dbInfoMsg:
 		return m.onDBInfo(msg, now)
 	case configMsg:

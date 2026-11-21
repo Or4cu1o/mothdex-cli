@@ -89,6 +89,9 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 	case btnQuit:
 		return m.startExit(false, false, now)
 	case btnWhenFinished:
+		if m.jobs.unfinished() == 0 { // the last job ended while the dialog was open: nothing is left to wait for
+			return m.startExit(false, false, now)
+		}
 		m.quitPending = true
 	case btnCancelQuit:
 		return m.startExit(false, true, now)

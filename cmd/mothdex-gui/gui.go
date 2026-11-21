@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -77,7 +78,7 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	}
 
 	warn := func(msg string) { log.Warn(msg) }
-	mappings := input.LoadMappings(assets.ControllerDB, filepath.Join(sess.DataDir, userMappingsFile), input.SDLPlatform(runtime.GOOS), warn)
+	mappings := input.LoadMappings(assets.ControllerDB, filepath.Join(sess.DataDir, userMappingsFile), input.SDLPlatform(runtime.GOOS), os.Getenv, warn)
 	be, err := sdl.OpenBackend(lib, font, sdl.BackendOptions{
 		Title: "mothdex", Driver: o.driver, Windowed: o.height > 0, Width: o.width, Height: o.height, Mappings: mappings, Log: log,
 	})
@@ -93,12 +94,31 @@ func runGUI(o options, stderr io.Writer) (code int) {
 		Version: buildinfo.Get().Version, LocaleFallback: fallback, Width: w, Height: h, Safe: gui.AutoSafeArea,
 	}, time.Now())
 
-	if _, err := loop.Run(ctx, loop.Config{
+	final, err := loop.Run(ctx, loop.Config{
 		Model: model, Cmds: cmds, Backend: be, Events: sess.Svc, Clock: time.Now, Signals: terminationSignals(), Log: log,
-	}); err != nil {
+	})
+	if err != nil {
 		return fail(exitSDL, err)
 	}
+	if leaveStuck(final.ExitTimedOut(), log, be.Close, os.Exit) {
+		return exitOK // only reached by a test: os.Exit does not return
+	}
 	return exitOK
+}
+
+// leaveStuck ends the process at once when the exit sequence ran out of its budget. A Wait or Close that did
+// not answer in time is still running, and the deferred session close would call Close again and wait as long
+// as the first one, so the frontend would have to kill the Port. It frees SDL, which does not wait on the
+// service, and exits with the code of a normal exit (docs/contracts/cli/gui.md section 5). It reports whether it
+// did, for a test that passes a fake exit.
+func leaveStuck(timedOut bool, log *slog.Logger, closeBackend func(), exit func(int)) bool {
+	if !timedOut {
+		return false
+	}
+	log.Warn("gui: the exit sequence used up its 2 s budget, leaving without closing the service again")
+	closeBackend()
+	exit(exitOK)
+	return true
 }
 
 // terminationSignals is closed on the first SIGTERM or SIGINT: the frontend closing the Port, or Ctrl+C in a
