@@ -271,12 +271,60 @@ func TestBaseURLValidation(t *testing.T) {
 	}
 }
 
-func TestCrossHostRedirectIsRefused(t *testing.T) {
+// A refused redirect is KindUntrustedRedirect (api-client 5.1): never retried, never the 429
+// circuit, never KindNetwork, and the message names the target host only.
+func TestRefusedRedirectIsUntrustedRedirect(t *testing.T) {
+	tests := []struct {
+		name     string
+		location func(base string) string // base is http://127.0.0.1:port
+		hits     int32
+	}{
+		{"other host", func(string) string { return "http://localhost:1/secret/v1/info" }, 1},
+		{"scheme change", func(b string) string { return "https://" + strings.TrimPrefix(b, "http://") + "/secret/v1/info" }, 1},
+		{"other port", func(string) string { return "http://127.0.0.1:1/secret/v1/info" }, 1},
+		{"fourth hop", nil, 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var base string
+			h := newHarness(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.location == nil { // same origin, endless chain: the fourth redirect is refused
+					http.Redirect(w, r, r.URL.Path+"x", http.StatusFound) //nolint:gosec // test server redirecting to its own path
+					return
+				}
+				http.Redirect(w, r, tt.location(base), http.StatusFound)
+			}), WithMaxRetries(3))
+			base = strings.TrimSuffix(h.client.base.String(), "/v1")
+
+			for call := 0; call < 2; call++ { // the second call proves no circuit opened
+				_, err := h.client.Info(context.Background())
+				var e *Error
+				if !errors.As(err, &e) || e.Kind != KindUntrustedRedirect {
+					t.Fatalf("call %d: want KindUntrustedRedirect, got %v", call, err)
+				}
+				if strings.Contains(e.Message, "secret") || e.RetryAfter != 0 {
+					t.Fatalf("message %q must name the host only, and no cooldown", e.Message)
+				}
+			}
+			if got := h.hits.Load(); got != 2*tt.hits {
+				t.Fatalf("%d requests for 2 calls, want %d: a refused redirect is not retried", got, 2*tt.hits)
+			}
+		})
+	}
+}
+
+func TestSameOriginRedirectIsFollowed(t *testing.T) {
 	h := newHarness(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "http://localhost:1/v1/info", http.StatusFound)
+		if r.URL.Path == "/v1/info" {
+			http.Redirect(w, r, "/v1/info2", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"info":{"error":"stop"}}`))
 	}), WithMaxRetries(0))
-	if _, err := h.client.Info(context.Background()); !IsNetwork(err) {
-		t.Fatalf("want KindNetwork for a refused redirect, got %v", err)
+	_, err := h.client.Info(context.Background())
+	if IsUntrustedRedirect(err) || IsNetwork(err) {
+		t.Fatalf("a same-origin redirect must be followed, got %v", err)
 	}
 }
 
@@ -299,5 +347,27 @@ func TestBaseURLErrorsDoNotEchoCredentials(t *testing.T) {
 		if strings.Contains(err.Error(), "TOKEN") || strings.Contains(err.Error(), "pw") || strings.Contains(err.Error(), "S3cret") {
 			t.Errorf("credential echoed: %v", err)
 		}
+	}
+}
+
+func TestRedirectWithoutLocationIsUntrustedRedirect(t *testing.T) {
+	h := newHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusFound) // a 3xx with no Location header
+	}), WithMaxRetries(2))
+	if _, err := h.client.Info(context.Background()); !IsUntrustedRedirect(err) || h.hits.Load() != 1 {
+		t.Fatalf("err %v after %d requests, want KindUntrustedRedirect once", err, h.hits.Load())
+	}
+}
+
+// Crivo minor: the refused host comes from a server-controlled Location, so control and format
+// characters (bidi override) never reach the message.
+func TestRefusedRedirectMessageDropsFormatCharacters(t *testing.T) {
+	h := newHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "http://ex%E2%80%AEample.com/x")
+		w.WriteHeader(http.StatusFound)
+	}))
+	_, err := h.client.Info(context.Background())
+	if !IsUntrustedRedirect(err) || strings.ContainsRune(err.Error(), rune(0x202E)) {
+		t.Fatalf("err %q must be untrusted_redirect without U+202E", err)
 	}
 }
