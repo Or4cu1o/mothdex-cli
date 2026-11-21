@@ -15,7 +15,7 @@ Every GitHub release `vX.Y.Z` (tag with a `v`) contains exactly:
 | `mothdex_<version>_<os>_<arch>.tar.gz` | Linux and macOS archives |
 | `mothdex_<version>_windows_<arch>.zip` | Windows archives |
 | `mothdex_<version>_<os>_<arch>.<ext>.sbom.json` | one SBOM per archive |
-| `checksums.txt` | `sha256  <asset>` for every archive (GNU `sha256sum` format) |
+| `checksums.txt` | `sha256  <asset>` for every archive and SBOM (GNU `sha256sum` format) |
 | `checksums.txt.sigstore.json` | keyless cosign bundle for `checksums.txt` |
 
 - `<version>` is the tag **without** the leading `v` (`0.1.0`, `0.2.0-rc.1`). A tag containing `-` is a pre-release.
@@ -58,17 +58,22 @@ which reports the userland.
 | `Darwin` | `arm64` | `darwin_arm64` |
 | anything else | | stop with `unsupported system: <s>/<m>`; never guess |
 
-Windows does not use `install.sh` (RetroBat and other Windows installs take the zip; package managers come in E-M4).
+Windows does not use `install.sh`. `install.ps1` (T-21b) takes the zip: `PROCESSOR_ARCHITEW6432`, else
+`PROCESSOR_ARCHITECTURE`, maps `AMD64` to `windows_amd64` and `ARM64` to `windows_arm64`; anything else stops with
+`unsupported system: windows/<arch>`. Only the root entry `mothdex.exe` is extracted (exact, case-sensitive name).
+Package managers come in E-M4.
 
 ## 4. Verification by installers
 
 1. Download `checksums.txt` and the archive over `https` from `github.com/Or4cu1o/mothdex-cli/releases/download/<tag>/`.
-2. **Required:** the archive's line in `checksums.txt` must match (`sha256sum -c --ignore-missing`, with an
-   `openssl dgst -sha256` fallback). A mismatch aborts without installing anything.
+2. **Required:** exactly one line of `checksums.txt` names the archive (exact name, optional `*`), and its SHA-256
+   (64 hex) equals the archive's, computed with `sha256sum`, `shasum -a 256` or `openssl dgst -sha256` (busybox has
+   no `--ignore-missing`). A mismatch aborts without installing anything.
 3. **Optional, when `cosign` is available:** `cosign verify-blob --bundle checksums.txt.sigstore.json
    --certificate-identity-regexp '^https://github\.com/Or4cu1o/mothdex-cli/\.github/workflows/release\.yml@refs/tags/v'
    --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt`.
-   Emulation systems have no cosign, so the checksum is the baseline there. GitHub artifact attestations
+   Installers may pin the exact identity `…release.yml@refs/tags/<tag>` (stricter; T-21b does). A present tool
+   that fails aborts before anything is installed. Emulation systems have no cosign, so the checksum is the baseline there. GitHub artifact attestations
    (`gh attestation verify`) are a further optional check.
 4. Install into the profile's `bin_dir` ([`profiles.md`](profiles.md)) after the exec-bit check described there.
 

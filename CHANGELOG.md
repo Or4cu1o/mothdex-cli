@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pt_br`, `es_es` and `ru_ru` are complete (the `errors.<code>.message` and `.hint` table of cli-output section 4 and
   the UI basics); `zh_cn`, `ja_jp` and `hi_in` translate the UI basics and fall back for the rest. A test fails when a
   locale lacks keys it promises, defines keys en_us lacks, or changes placeholders.
+- `internal/log`: the slog logger (T-14). A size-rotated file `mothdex.log` under `paths.logs` (`log.max_size_mb`,
+  `log.max_files` in total, created with mode 0700/0600) and an optional stderr copy (`log.console`), from the `log.*`
+  settings. Standard library only. A log file that cannot be opened never stops the program: `log.New` returns a
+  usable logger plus an error to show once as a warning.
 - `internal/history`: JSONL transfer history (`Append`, `List` newest first with a `--failed` filter, damaged lines
   skipped) and export to txt (120 columns), json (the `--json` envelope) and csv (RFC 4180, control and format
   characters stripped, formula guard); `ExportTarget` and `WriteExport` give directory naming, format inference and an
@@ -27,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Release and profile contracts follow the T-21b installer: `checksums.txt` also lists SBOMs, the exact-line
+  checksum rule, the `install.ps1` architecture mapping, and the RetroBat `bin_dir` in `%LocalAppData%`.
 - CLI conventions §7: English error strings for `invalid_request`, `unmapped_platform`, `untrusted_redirect` and
   `unsafe_name`; `path_rejected` now describes a refused destination, not a file name (that is `unsafe_name`).
 - Contracts: `Service.Cover` returns the cached reader and content type (not a path), `internal/cover` owns the
@@ -87,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only with `--force`), a per-filesystem space ledger, name reservation, in-flight journal and startup cleanup, retry
   policy with injected clock and sleeper, zip CRC and upstream hash checks with caps, fsync of file and directory before
   `Done`, and one history record per job. Adds `golang.org/x/text` and `golang.org/x/sys`.
-- T-18 audit round: case 39 ages the symlink target (a following cleanup would delete it), case 24 asserts casefold collisions on every file system, a finalize fallback chain test (hard link, O_EXCL placeholder, second writer in each step) and a launcher-behind-a-link test on a real detected profile.
+- T-18 audit round: case 39 ages the symlink target (a following cleanup would delete it), case 24 asserts casefold collisions on every file system, a finalize fallback chain test (hard link, O_EXCL placeholder, second writer in each step) and a launcher-behind-a-link test on a real detected profile. The rename-policy subtest runs in both the hard link and the placeholder step, with titles that name the step.
 - T-18: `fakefs` counts reads (`OpRead`, `BytesRead`); the case 31, 32, 41 and 42 tests now prove abort at size+1, the exact size limit, bounded verification reads and a stop right after a cancel.
 - T-18: tests for 40 of the 52 T-16 threat-model cases against the downloader (`internal/proxy/cases_*_test.go`):
   URL policy, redirects, gzip, sizes, TLS, platform injection, symlink and junction destinations, launcher folders,
