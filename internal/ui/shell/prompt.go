@@ -12,7 +12,7 @@ const allPlatforms = "all"
 
 // promptText is `mothdex> ` with no search yet, and `mothdex[<platform|all>:<n>]> ` after one,
 // where n is the number of results on the page. It is plain text: the line editor refuses a prompt
-// with control characters, so it cannot be dimmed (ui.md section 5, D5). Text from the user's own
+// with control characters, so it cannot be dimmed (a deviation from shell.md section 2). Text from the user's own
 // query is cleaned for the same reason.
 func promptText(page app.SearchPage, haveSearch bool) string {
 	if !haveSearch {

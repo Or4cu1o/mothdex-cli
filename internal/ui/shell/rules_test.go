@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strconv"
@@ -290,4 +291,26 @@ func TestEntryLinksKeepOnlyWordsThatCanBeTyped(t *testing.T) {
 	if !reflect.DeepEqual(formats, []string{"gbc", "zip"}) || !reflect.DeepEqual(sources, []string{"Myrient"}) {
 		t.Errorf("formats %q sources %q", formats, sources)
 	}
+}
+
+func TestCompletionIdsFromTheServerAreCleanedBeforeTheyReachTheTerminal(t *testing.T) {
+	r := newRig(t, false)
+	r.sh.o.Service = hostileService{}
+	src := r.sh.sources(context.Background())
+	for name, got := range map[string][]string{"platforms": src.platforms(), "regions": src.regions()} {
+		if want := []string{"snes", "n]0;es"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: %q, want %q (a space, an empty id and the control bytes must go)", name, got, want)
+		}
+	}
+}
+
+// hostileService answers the lists Tab reads with ids that carry terminal escapes.
+type hostileService struct{ fakeService }
+
+func (hostileService) Platforms(context.Context, app.PlatformFilter) (app.Result[[]mothdex.Platform], error) {
+	return app.Result[[]mothdex.Platform]{Value: []mothdex.Platform{{ID: "snes"}, {ID: "n\x1b]0;es"}, {ID: "has space"}, {ID: ""}}}, nil
+}
+
+func (hostileService) Regions(context.Context) (app.Result[[]mothdex.Region], error) {
+	return app.Result[[]mothdex.Region]{Value: []mothdex.Region{{ID: "snes"}, {ID: "n\x1b]0;es"}, {ID: "a,b"}, {ID: "\x07"}}}, nil
 }

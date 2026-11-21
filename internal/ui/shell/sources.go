@@ -55,7 +55,7 @@ func (s *Shell) sources(ctx context.Context) completionSources {
 		for i, p := range res.Value {
 			ids[i] = p.ID
 		}
-		return ids, err
+		return typable(ids), err
 	})
 	regions := timed(func(c context.Context) ([]string, error) {
 		res, err := s.o.Service.Regions(c)
@@ -63,7 +63,7 @@ func (s *Shell) sources(ctx context.Context) completionSources {
 		for i, r := range res.Value {
 			ids[i] = r.ID
 		}
-		return ids, err
+		return typable(ids), err
 	})
 	keys := timed(func(context.Context) ([]string, error) {
 		list, err := s.o.Service.ConfigList()
@@ -103,25 +103,24 @@ func (s *Shell) entryLinks() (langs, formats, sources []string) {
 	if !ok {
 		return nil, nil, nil
 	}
-	// typable cleans a server value and reports whether it can be typed as one word.
-	typable := func(v string) (string, bool) {
-		v = app.SanitizeText(v)
-		return v, v != "" && !strings.ContainsAny(v, " ,\t")
-	}
 	for _, l := range e.Links {
 		for _, extra := range l.Extras {
-			for _, tok := range strings.FieldsFunc(extra, func(r rune) bool { return r == ',' || r == ' ' }) {
-				if v, ok := typable(tok); ok {
-					langs = append(langs, v)
-				}
-			}
+			langs = append(langs, typable(strings.FieldsFunc(extra, func(r rune) bool { return r == ',' || r == ' ' }))...)
 		}
-		if v, ok := typable(l.Format); ok {
-			formats = append(formats, v)
-		}
-		if v, ok := typable(l.SourceName); ok {
-			sources = append(sources, v)
-		}
+		formats = append(formats, typable([]string{l.Format})...)
+		sources = append(sources, typable([]string{l.SourceName})...)
 	}
 	return langs, formats, sources
+}
+
+// typable cleans server values before they reach the terminal as completion candidates (case 49)
+// and keeps only those that can be typed as one word: no space, comma or empty value.
+func typable(values []string) []string {
+	var out []string
+	for _, v := range values {
+		if v = app.SanitizeText(v); v != "" && !strings.ContainsAny(v, " ,\t") {
+			out = append(out, v)
+		}
+	}
+	return out
 }
