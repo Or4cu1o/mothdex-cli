@@ -264,10 +264,12 @@ ui:
       will_quit: 'Выход после завершения загрузок'
       badge_active: '{active}'
       badge_queued: '{active} · в очереди {queued}'
+      will_quit_short: 'Ожидается выход'
     hint:
       menu: 'Меню'
       open: 'Открыть'
       quit: 'Выход'
+      continue: 'Продолжить'
     menu:
       home: 'Главная'
       queue: 'Очередь'

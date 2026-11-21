@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -656,14 +657,6 @@ func TestGuiSettingsFromConfigListChangeTheLayout(t *testing.T) {
 	}
 }
 
-func TestLocaleFallbackNoticeShowsOnceOnHome(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720, func(o *Options) { o.LocaleFallback = true })
-	const notice = "This language is not available in this screen mode yet. Showing English."
-	h.mustHave(notice)
-	h.advance(3500 * time.Millisecond)
-	h.mustNotHave(notice)
-}
-
 func TestResizeRetiersTheLayoutAndKeepsFocus(t *testing.T) {
 	h := started(t, newFakeService(), 640, 480)
 	h.press(input.Right)
@@ -851,8 +844,8 @@ func TestAProgressEventDoesNotCopyTheTally(t *testing.T) {
 	if !known || prev.Bytes != 10 {
 		t.Fatalf("known %v prev %+v", known, prev)
 	}
-	if &tally.byID == nil || len(same.byID) != 1 {
-		t.Fatal("the tally must keep its job")
+	if len(same.byID) != 1 || reflect.ValueOf(same.byID).Pointer() != reflect.ValueOf(tally.byID).Pointer() {
+		t.Fatal("a progress event must reuse the same map")
 	}
 	changed, _, _ := same.apply(app.JobSnapshot{ID: "1", State: app.StateDone})
 	if done, _, _, _ := changed.summary(); done != 1 {

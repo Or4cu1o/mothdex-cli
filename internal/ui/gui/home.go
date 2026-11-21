@@ -22,6 +22,9 @@ const (
 
 var homeTiles = []string{tileSearch, tilePlatforms, tileRandom, tileQueue, tileHistory, tileSettings}
 
+// footerLines is how many lines the Home footer may take; the layout always reserves them.
+const footerLines = 2
+
 const (
 	regionTiles = 0
 	regionChips = 1
@@ -63,7 +66,7 @@ func (m Model) homeGeometry() homeGeom {
 		cols, rows = 2, 3
 	}
 
-	footerH := LineHeight(met.Secondary)
+	footerH := footerLines * LineHeight(met.Secondary) // the layout reserves both lines
 	chipH := LineHeight(met.Body) + 2*gap
 	g := homeGeom{footerTop: c.Bottom() - footerH}
 	tw := min(met.TileW, (c.W-(cols-1)*gap)/cols)
@@ -72,7 +75,7 @@ func (m Model) homeGeometry() homeGeom {
 	// row is dropped only when even small tiles would not leave it any (and in compact when the screen has
 	// fewer than 7 rows of space).
 	crowded := met.Tier == Compact && c.H < 7*met.Row1
-	minTile := 2 * LineHeight(met.Body)
+	minTile := 2*LineHeight(met.Body) + gap // a label may wrap to two lines
 	tileHeight := func(withRecent bool) int {
 		reserved := footerH + gap
 		if withRecent {
@@ -161,8 +164,8 @@ func (m Model) hintsHome() []hint {
 }
 
 // footer is the line at the bottom of Home and the color it takes.
-func (m Model) footer() (string, bool) {
-	root := app.SanitizeText(m.profile.RomRoot)
+func (m Model) footer(p painter) (string, bool) {
+	root := shortenPath(p, m.metrics.Secondary, app.SanitizeText(m.profile.RomRoot), m.metrics.ContentRect().W)
 	name := app.SanitizeText(m.profile.Name)
 	switch {
 	case m.db == dbFailed:
@@ -186,7 +189,11 @@ func (m Model) drawHome(p painter) {
 				label += "  " + strconv.Itoa(n)
 			}
 		}
-		p.centered(t.rect, met.Body, colText, p.fit(met.Body, label, t.rect.W-2*met.Unit))
+		size, lines := tileLabel(p, label, t.rect.W-2*met.Unit)
+		top := t.rect.Y + (t.rect.H-len(lines)*LineHeight(size))/2
+		for i, line := range lines {
+			p.text(t.rect.X+(t.rect.W-p.width(size, line))/2, top+i*LineHeight(size), size, colText, line)
+		}
 	}
 	if g.showRecent {
 		top := g.recentTop + (LineHeight(met.Body)+2*met.Unit-LineHeight(met.Secondary))/2
@@ -196,11 +203,33 @@ func (m Model) drawHome(p painter) {
 			p.centered(c.rect, met.Body, colText, c.label)
 		}
 	}
-	text, warn := m.footer()
+	text, warn := m.footer(p)
 	color := colDim
 	if warn {
 		color = colWarn
 	}
 	c := met.ContentRect()
-	p.text(c.X, g.footerTop, met.Secondary, color, p.fit(met.Secondary, text, c.W))
+	for i, line := range p.wrap(met.Secondary, text, c.W, footerLines) {
+		p.text(c.X, g.footerTop+i*LineHeight(met.Secondary), met.Secondary, color, line)
+	}
+}
+
+// tileLabel chooses how a tile label is drawn: at the body size, wrapped to at most two lines at its spaces. A
+// single word wider than the tile is never split in the middle: the label drops to the secondary size, then to
+// the minimum one (docs/ux/gui.md section 1.3), and only if even that does not fit is it cut.
+func tileLabel(p painter, label string, maxW int) (size int, lines []string) {
+	met := p.m
+	for _, size := range []int{met.Body, met.Secondary, met.Minimum} {
+		lines = p.wrap(size, label, maxW, 2)
+		if wrappedWhole(lines, label) {
+			return size, lines
+		}
+	}
+	return met.Minimum, lines
+}
+
+// wrappedWhole reports whether wrapping only broke the text at its spaces: no word was cut or split.
+func wrappedWhole(lines []string, text string) bool {
+	return strings.Join(strings.Fields(strings.Join(lines, " ")), " ") == strings.Join(strings.Fields(text), " ") &&
+		len(strings.Fields(strings.Join(lines, " "))) == len(strings.Fields(text))
 }

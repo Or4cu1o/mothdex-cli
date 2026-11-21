@@ -174,7 +174,7 @@ func (m Model) dialogGeometry() dialogGeom {
 	for i, b := range d.buttons {
 		var r rect
 		if stacked {
-			r = rect{X: x, Y: y + i*(btnH+u), W: widest, H: btnH}
+			r = rect{X: x, Y: y + i*(btnH+u), W: inner, H: btnH}
 		} else {
 			r = rect{X: x, Y: y, W: widths[i], H: btnH}
 			x += widths[i] + u

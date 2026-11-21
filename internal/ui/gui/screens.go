@@ -6,6 +6,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 )
 
 // spinnerShown is true once a wait has lasted long enough to show a spinner: cached answers never flash it.
@@ -25,9 +26,9 @@ func (m Model) drawSplash(p painter, now time.Time) {
 	w := p.width(met.Body, line)
 	x := s.X + (s.W-w)/2
 	p.text(x, top, met.Body, colDim, line)
-	if spinnerShown(m.start, now) {
+	if spinnerShown(m.start, now) { // on the right of the text, as on the exit screen
 		r := LineHeight(met.Body) / 3
-		p.spinner(x-u-r, top+LineHeight(met.Body)/2, r, now)
+		p.spinner(x+w+u+r, top+LineHeight(met.Body)/2, r, now)
 	}
 
 	info := m.o.Version + " · " + app.SanitizeText(m.profile.Name)
@@ -93,9 +94,28 @@ func (m Model) drawExit(p painter, now time.Time) {
 		}
 	}
 
+	if e != nil && e.finished && e.res.Batch.RefreshWarning != "" {
+		m.drawContinueHint(p) // during the notice, one hint tells that A skips the wait
+	}
+
 	last := m.tr("ui.gui.exit.closing", nil)
 	if m.profile.ID != "generic" {
 		last = m.tr("ui.gui.exit.returning", map[string]any{"frontend": app.SanitizeText(m.profile.Name)})
 	}
 	p.centered(rect{X: s.X, Y: s.Bottom() - 6*u - lh, W: s.W, H: lh}, met.Body, colDim, p.fit(met.Body, last, s.W-4*u))
+}
+
+// drawContinueHint draws the single hint of the exit notice, (A) Continue, centered at the bottom of the safe
+// rectangle: the exit screen has no hint bar otherwise (docs/ux/gui.md section 5.13).
+func (m Model) drawContinueHint(p painter) {
+	met := m.metrics
+	size := met.Secondary
+	h := max(met.HintBar-met.Unit, 20)
+	label := input.Hint(input.Confirm, m.pad, m.cfg.confirmEast)
+	word := m.tr("ui.gui.hint.continue", nil)
+	total := p.pillWidth(h, label) + met.Unit/2 + p.width(size, word)
+	x := met.Safe.X + (met.Safe.W-total)/2
+	y := met.Safe.Bottom() - met.Unit - h
+	x += p.pill(x, y, h, label) + met.Unit/2
+	p.text(x, y+(h-LineHeight(size))/2, size, colDim, word)
 }

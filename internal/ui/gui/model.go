@@ -23,6 +23,7 @@ const (
 	spinnerFrame  = 60 * time.Millisecond  // how often a visible spinner is redrawn
 	spinnerPeriod = time.Second            // one turn per second
 	toastFor      = 3 * time.Second
+	noticeFor     = 6 * time.Second        // the language notice has a whole sentence to read
 	dialogIgnore  = 150 * time.Millisecond // input right after a dialog opens is ignored (a held button)
 	exitMinShow   = time.Second            // the exit screen stays at least this long
 	exitNotice    = 4 * time.Second        // and this long after Close when the refresh needs the person's hand
@@ -273,7 +274,7 @@ func (m Model) goHome(now time.Time) Model {
 	m.focus = tileSearch
 	if m.o.LocaleFallback && !m.noticeShown {
 		m.noticeShown = true
-		m = m.withToast(m.tr("ui.gui.locale_fallback", nil), toastWarn, now)
+		m = m.withToastFor(m.tr("ui.gui.locale_fallback", nil), toastWarn, noticeFor, now)
 	}
 	return m
 }
@@ -370,8 +371,25 @@ func latest(a, b time.Time) time.Time {
 }
 
 func (m Model) withToast(text string, kind toastKind, now time.Time) Model {
-	m.toast = toast{text: text, kind: kind, until: now.Add(toastFor)}
+	return m.withToastFor(text, kind, toastFor, now)
+}
+
+func (m Model) withToastFor(text string, kind toastKind, d time.Duration, now time.Time) Model {
+	m.toast = toast{text: text, kind: kind, until: now.Add(d)}
 	return m
+}
+
+// focusRect is where the focused element of the screen is, for keeping toasts off it.
+func (m Model) focusRect() (rect, bool) {
+	if m.screen != screenHome || m.overlay != overlayNone {
+		return rect{}, false
+	}
+	for _, e := range m.homeElements() {
+		if e.ID == m.focus {
+			return e.Rect, true
+		}
+	}
+	return rect{}, false
 }
 
 // NextWake is when the model next needs a frame or a Tick with no input: a toast ending, the Splash timeout,

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PR-71 review rounds (Crivo, Bússola): Quit when finished quits at once when the last job ended under the dialog; `SDL_GAMECONTROLLERCONFIG`
+  and `SDL_GAMECONTROLLERCONFIG_FILE` are read in Go and added after the embedded database and the user file so they win (SDL applies them
+  at `SDL_Init`, before our lines, which would have replaced them; `gui.md` and the contract say so now); when the exit sequence runs out of
+  its 2 s budget the process leaves without calling `Close` again; closing the window asks like Quit; window shown/exposed/restored redraw;
+  `-h` exits 0; a progress event no longer copies the job tally. UX (gui.md v1.1): the top bar keeps its title and uses the short pending-quit
+  text (`ui.gui.bar.will_quit_short`) when the full one does not fit, Offline and the badge are never cut; the Home footer wraps to two lines
+  and a long ROM folder is shortened in the middle; tile labels wrap and a long single word drops to a smaller size instead of being split;
+  toasts take at most 60 % of the width, wrap to two lines, stay off the focused element, and the language notice stays 6 s; stacked dialog
+  buttons fill the panel; hint pills have air around words; the Splash spinner is on the right; the exit notice shows `(A) Continue`.
 - T-54 (GUI PR 1, Medium; the SDL binding stays under the High review of the spike): `mothdex-gui` now runs. Foundation, Splash,
   Home, the Start menu, the quit dialogs of docs/ux/gui.md section 5.13, the exit screen and SIGTERM, with the screens behind the
   tiles (Search, Platforms, Random, Queue, History, Settings) saying "not available yet" until the next pull requests.
