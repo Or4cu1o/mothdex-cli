@@ -57,6 +57,11 @@ if [ "$goos" = linux ]; then
 		echo "the arm interpreter must be /lib/ld-linux-armhf.so.3, got ${interp:-none}" >&2
 		exit 2
 	fi
+	# No RPATH or RUNPATH: either one would add a search directory to the dlopen of the SDL2 soname.
+	if readelf -d "$bin" | grep -E "RPATH|RUNPATH" >/dev/null; then
+		echo "the probe carries an RPATH or RUNPATH" >&2
+		exit 2
+	fi
 	# Only libc-family libraries may be needed: SDL2 itself is found by dlopen at run time.
 	if readelf -d "$bin" | grep NEEDED | grep -v -E "lib(c|dl|pthread|m|rt|resolv)\.so" >/dev/null; then
 		echo "the probe needs a library besides the libc family" >&2
