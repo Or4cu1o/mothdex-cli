@@ -15,6 +15,8 @@ errors:
   confirmation_required:
     message: 'Эта команда требует подтверждения.'
     hint: 'Добавьте --force, чтобы пропустить вопрос.'
+    size_hint: 'Размер файла {size}, в каталоге указано {estimate}. Для загрузки нужно ваше подтверждение.'
+    size_hint_cli: 'Размер файла {size}, в каталоге указано {estimate}. Добавьте -f, чтобы всё равно скачать.'
   unmapped_platform:
     message: 'Для платформы {platform} не задана папка.'
     hint: 'Укажите -o <папка> или задайте profile.folders.{platform} в настройках.'
@@ -158,6 +160,7 @@ ui:
         one: 'Загрузка: {count} файл'
         other: 'Загрузка: файлов {count}'
       link_chosen: 'Выбрана ссылка {index} ({why}, 1 из {count}).'
+      size_drift: '{title}: прокси сообщает {real}, а каталог указывал {catalog}; размер в каталоге лишь оценка.'
       confirm: 'Скачать файлов: {count} ({size}) в {dest} ?  [y/N]'
       dest_default: 'папка библиотеки'
       connecting: 'Подключение...'

@@ -25,9 +25,14 @@ const (
 	DefaultHeaderTimeout   = 60 * time.Second
 	DefaultFirstByte       = 10 * time.Minute
 	DefaultIdleTimeout     = 5 * time.Minute
-	progressInterval       = 250 * time.Millisecond // 4 events per second
-	copyBuffer             = 256 << 10
+	// DefaultConfirmBytes is the size above which a download needs confirmation (500 MiB, cli-conventions 6).
+	DefaultConfirmBytes = int64(500) << 20
+	progressInterval    = 250 * time.Millisecond // 4 events per second
+	copyBuffer          = 256 << 10
 )
+
+// ConsentAny in Job.SizeConsent skips the confirmation at the real size (the -f flag of one command).
+const ConsentAny int64 = -1
 
 // OnExists is the policy for a final name that already exists.
 type OnExists string
@@ -57,6 +62,11 @@ type Config struct {
 
 	AllowExecutable bool // --allow-executable
 	Force           bool // --force: the only way to OnExistsOverwrite
+
+	// ConfirmDownloads is interface.confirm_downloads: the size confirmation of downloader.md 3.2
+	// step 6 applies only when it is on. ConfirmBytes is the threshold, default DefaultConfirmBytes.
+	ConfirmDownloads bool
+	ConfirmBytes     int64
 }
 
 // Options holds everything that touches the outside world.
@@ -92,6 +102,9 @@ type Job struct {
 	Slug     string
 	Platform string // Mothdex platform id
 	DestDir  string // absolute, from library.Profile.DestDir or -o
+	// SizeConsent is the consent for the real size (downloader.md 3.2 step 6): 0 is the default rule,
+	// ConsentAny skips the confirmation, a value above 0 is the exact Content-Length accepted.
+	SizeConsent int64
 }
 
 // Result is the outcome of one job. Exactly one terminal State is reported per job.
@@ -103,7 +116,11 @@ type Result struct {
 	Bytes    int64
 	SHA256   string
 	Attempts int
-	Err      *Error // nil unless State is Failed or Canceled
+	// ContentLength is the pinned Content-Length (0 if no attempt passed the header checks);
+	// SizeDrift reports that it differs from link.size by more than 1.5x or 0.5x (downloader.md 3.2 step 7).
+	ContentLength int64
+	SizeDrift     bool
+	Err           *Error // nil unless State is Failed or Canceled
 	// HistoryErr is set when the history record could not be written.
 	HistoryErr error
 }
@@ -155,6 +172,7 @@ func New(o Options) (*Downloader, error) {
 		cfg.UserAgent = mothdex.DefaultUserAgent("")
 	}
 	cfg.MaxFileSize = defaultInt64(cfg.MaxFileSize, DefaultMaxFileSize)
+	cfg.ConfirmBytes = defaultInt64(cfg.ConfirmBytes, DefaultConfirmBytes)
 	cfg.Concurrency = min(max(defaultInt(cfg.Concurrency, DefaultConcurrency), 1), maxConcurrency)
 	cfg.MaxAttempts = defaultInt(cfg.MaxAttempts, DefaultMaxAttempts)
 	if cfg.NotFoundRetries < 0 {
@@ -342,6 +360,8 @@ type jobState struct {
 	lastEmit    time.Time
 	transferAt  time.Time
 	transferred int64
+	cl          int64 // the pinned Content-Length, 0 until an attempt passes the header checks (3.2)
+	drift       bool
 }
 
 // run takes one job to its terminal state: it never leaves a staging file behind, releases
@@ -368,13 +388,14 @@ func (d *Downloader) run(ctx context.Context, j *jobState) Result {
 func (d *Downloader) finish(j *jobState, state State, derr *Error) Result {
 	d.cleanupJob(j, state)
 	finished := d.o.Clock.Now()
-	res := Result{JobID: j.id, State: state, Name: j.name, Bytes: j.bytes, SHA256: j.sum, Attempts: j.attempts, Err: derr}
+	res := Result{JobID: j.id, State: state, Name: j.name, Bytes: j.bytes, SHA256: j.sum, Attempts: j.attempts, Err: derr,
+		ContentLength: j.cl, SizeDrift: j.drift}
 	if state == StateDone {
 		res.Path = d.finalPath(j)
 	}
 	rec := Record{JobID: j.id, Slug: j.job.Slug, Platform: j.job.Platform, State: state, RawName: j.rawName,
 		Name: j.name, Path: res.Path, Bytes: j.bytes, SHA256: j.sum, CRC: j.crc, Hash: j.hash,
-		Attempts: j.attempts, Started: j.started, Finished: finished}
+		Attempts: j.attempts, CatalogSize: j.job.Link.Size, ContentLength: j.cl, Started: j.started, Finished: finished}
 	if derr != nil {
 		rec.Code = derr.Code
 	}
@@ -461,7 +482,7 @@ func joinName(dir, name string) string {
 
 // event reports a state change; progress events go through progress.
 func (d *Downloader) event(j *jobState, s State, err *Error) {
-	d.emit(Event{JobID: j.id, State: s, Attempt: j.attempts, Bytes: j.transferred, Expected: j.job.Link.Size, Err: err})
+	d.emit(Event{JobID: j.id, State: s, Attempt: j.attempts, Bytes: j.transferred, Expected: j.expected(), Err: err})
 }
 
 func (d *Downloader) emit(ev Event) {
@@ -485,7 +506,16 @@ func (d *Downloader) progress(j *jobState) {
 		rate = int64(float64(j.transferred) / el.Seconds())
 	}
 	d.emit(Event{JobID: j.id, State: StateTransferring, Attempt: j.attempts, Bytes: j.transferred,
-		Expected: j.job.Link.Size, RateBps: rate})
+		Expected: j.expected(), RateBps: rate})
+}
+
+// expected is the size the transfer is held to: the pinned Content-Length once known, else the
+// catalog estimate (a preflight value only, downloader.md 3.2).
+func (j *jobState) expected() int64 {
+	if j.cl > 0 {
+		return j.cl
+	}
+	return j.job.Link.Size
 }
 
 // stagingFS is the file system holding the job's staging file.

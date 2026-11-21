@@ -15,6 +15,8 @@ errors:
   confirmation_required:
     message: 'Este comando precisa de confirmação.'
     hint: 'Adicione --force para pular a pergunta.'
+    size_hint: 'O arquivo tem {size}; o catálogo indicava {estimate}. Ele precisa da sua confirmação para ser baixado.'
+    size_hint_cli: 'O arquivo tem {size}; o catálogo indicava {estimate}. Use -f para baixar mesmo assim.'
   unmapped_platform:
     message: 'Nenhuma pasta definida para a plataforma {platform}.'
     hint: 'Use -o <pasta>, ou defina profile.folders.{platform} na configuração.'
@@ -154,6 +156,7 @@ ui:
         one: 'Baixando {count} arquivo'
         other: 'Baixando {count} arquivos'
       link_chosen: 'Link {index} escolhido ({why}, 1 de {count}).'
+      size_drift: '{title}: o proxy informa {real}, mas o catálogo dizia {catalog}; o tamanho do catálogo é só uma estimativa.'
       confirm: 'Baixar {count} arquivos ({size}) para {dest} ?  [s/N]'
       dest_default: 'a pasta da biblioteca'
       connecting: 'Conectando...'

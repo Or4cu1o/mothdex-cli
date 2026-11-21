@@ -91,7 +91,7 @@ staging file.
 1. **Encoding:** `Content-Encoding` empty or `identity` (§2), checked first, because `Content-Length` is now the only
    length.
 2. **Length present and strict:** `resp.ContentLength` (Go parses the header; chunked or missing gives `-1`) must be
-   `≥ 1`. The raw header must be ASCII digits only and parse with `strconv.ParseInt(v, 10, 64)` to the same value.
+   `≥ 1`. The raw header must be ASCII digits with no leading zero (the same rule as mothdex-mcp, `/^[1-9][0-9]*$/`) and parse with `strconv.ParseInt(v, 10, 64)` to the same value.
    Missing, chunked, `0`, or malformed → `Failed(size_mismatch)`, not retryable. Call the value `cl`.
 3. **Cap:** `cl > download.max_file_size` → `Failed(size_mismatch)`, not retryable.
 4. **Pin across retries:** the first attempt that passes step 2 pins `cl` for the job. A later attempt with a

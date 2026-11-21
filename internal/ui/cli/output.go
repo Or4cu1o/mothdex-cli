@@ -231,6 +231,9 @@ func (p *printer) renderError(err error) {
 	if k, ok := ae.Args["hint_key"].(string); ok {
 		hintKey = k
 	}
+	if hintKey == "errors.confirmation_required.size_hint" {
+		hintKey += "_cli" // only the command line and the Shell have -f; other UIs use the neutral text
+	}
 	if ae.Code == app.CodeUsage && ae.Args["command"] == "" {
 		hintKey = "ui.cli.usage_root_hint"
 	}
@@ -274,7 +277,7 @@ func errorArgs(e *app.Error) i18n.Args {
 	for k, v := range e.Args {
 		a[k] = v
 	}
-	for _, k := range []string{"got", "expected", "needed"} { // byte counts read as sizes
+	for _, k := range []string{"got", "expected", "needed", "size", "estimate"} { // byte counts read as sizes
 		if n, ok := byteCount(e.Args[k]); ok {
 			a[k] = humanSize(n)
 		}

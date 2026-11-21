@@ -173,7 +173,7 @@ func Open(_ context.Context, o Options) (*Session, error) {
 		env := app.Env{
 			TempDir: paths.Temp, DataDir: paths.Data, Profile: info, History: hist, Concurrency: cfg.Download.Concurrency,
 			Download: app.DownloadConfig{AllowedHosts: cfg.Download.AllowedHosts, Concurrency: cfg.Download.Concurrency, OnExists: cfg.Download.OnExists,
-				SkipVerify: !cfg.Download.Verify, AllowExecutable: allowExec, Force: force, Dir: cfg.Download.Dir},
+				SkipVerify: !cfg.Download.Verify, AllowExecutable: allowExec, Force: force, Dir: cfg.Download.Dir, Confirm: cfg.Interface.ConfirmDownloads},
 		}
 		if cfg.Profile.Refresh {
 			env.Refresh = func(ctx context.Context) error { return info.Profile.Refresh(ctx, library.NewRefreshClient()) }

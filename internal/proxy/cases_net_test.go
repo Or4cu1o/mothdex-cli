@@ -165,26 +165,22 @@ func TestCase30GzipDespiteIdentityIsAnIntegrityFailure(t *testing.T) {
 
 // Case 31: length and size rules, and a server-chosen name that is never used.
 func TestCase31LengthMismatchOversizeAndDisposition(t *testing.T) {
-	t.Run("Content-Length differs from the link size", func(t *testing.T) {
-		r := newRig(t, proxy.Config{})
-		body := fakeproxy.Pattern(1000)
-		r.srv.Script("/f/l", fakeproxy.LengthMismatch(body, 2000))
-		wantFailed(t, r.download(r.job("/f/l", "l.zip", len(body))), proxy.CodeSizeMismatch)
-		if n := len(r.srv.Requests()); n != 1 {
-			t.Fatalf("%d requests, a size mismatch must not be retried", n)
+	t.Run("Content-Length far from the link size is a drift warning, not an error (T-27)", func(t *testing.T) {
+		for name, c := range map[string]struct {
+			body  int
+			drift bool
+		}{"double": {2000, true}, "half": {400, true}, "one unit off": {1100, false}} {
+			r := newRig(t, proxy.Config{})
+			body := fakeproxy.Pattern(c.body)
+			r.srv.Script("/f/l", fakeproxy.OK(body))
+			res := r.download(r.job("/f/l", "l.zip", 1000))
+			if res.State != proxy.StateDone || res.SizeDrift != c.drift || res.ContentLength != int64(c.body) {
+				t.Fatalf("%s: %+v err %v", name, res, res.Err)
+			}
+			if rec := r.history.recs[0]; rec.CatalogSize != 1000 || rec.ContentLength != int64(c.body) {
+				t.Fatalf("%s: history must record both sizes: %+v", name, rec)
+			}
 		}
-	})
-	t.Run("no Content-Length and a body far beyond the size", func(t *testing.T) {
-		r := newRig(t, proxy.Config{})
-		var read atomic.Int64
-		r.rebuild(proxy.Config{}, func(o *proxy.Options) { o.HTTP = countingClient(r.srv.Client(), &read) })
-		r.srv.Script("/f/o", fakeproxy.Oversized(10<<20))
-		wantFailed(t, r.download(r.job("/f/o", "o.zip", 1000)), proxy.CodeSizeMismatch)
-		if got := read.Load(); got > 1<<20 { // size+1 plus one copy buffer, never the 10 MiB on offer
-			t.Fatalf("the downloader read %d bytes of a 1000-byte file: it must abort at byte size+1", got)
-		}
-		stagingEmpty(t, r)
-		noFinalFile(t, r)
 	})
 	t.Run("Content-Disposition is ignored", func(t *testing.T) {
 		r := newRig(t, proxy.Config{})
