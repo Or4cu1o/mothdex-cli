@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -145,6 +146,10 @@ func (c *Client) send(ctx context.Context, op, method, path string, payload []by
 		return nil, transportError(ctx, op, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 && resp.StatusCode != http.StatusNotModified {
+		c.logAttempt(op, method, path, resp.StatusCode, start) // a redirect that was not followed: no Location, or refused
+		return nil, &Error{Kind: KindUntrustedRedirect, Op: op, HTTPStatus: resp.StatusCode, Message: "unfollowed redirect"}
+	}
 	body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	c.logAttempt(op, method, path, resp.StatusCode, start)
 	if rerr != nil {
@@ -186,6 +191,10 @@ func (c *Client) logAttempt(op, method, path string, status int, start time.Time
 func transportError(ctx context.Context, op string, err error) *Error {
 	if cerr := ctx.Err(); cerr != nil {
 		return canceledError(op, cerr)
+	}
+	var refused *refusedRedirect
+	if errors.Is(err, errRedirectRefused) && errors.As(err, &refused) { // before the network branch
+		return &Error{Kind: KindUntrustedRedirect, Op: op, Message: "redirect to " + refused.host + " refused", Err: errRedirectRefused}
 	}
 	return &Error{Kind: KindNetwork, Op: op, Message: err.Error(), Err: err}
 }

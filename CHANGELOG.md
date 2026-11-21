@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/mothdex`: `KindUntrustedRedirect` (`untrusted_redirect`, exit 4) and `IsUntrustedRedirect`. A redirect to another
+  origin (host, scheme or effective port), a fourth hop, or a 3xx without a usable `Location` is refused, not retried,
+  does not open the rate-limit circuit and is never `KindNetwork`; the message names the target host only (T-10c).
+
 ### Changed
 
 - Downloader contract (T-17 architecture pass): same-device staging inside the destdir (no double write), the

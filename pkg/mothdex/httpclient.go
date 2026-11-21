@@ -3,10 +3,10 @@ package mothdex
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const maxRedirects = 3
@@ -61,13 +61,39 @@ func newDefaultHTTPClient() *http.Client {
 	return &http.Client{Transport: clone, CheckRedirect: sameHostRedirects}
 }
 
+// errRedirectRefused is the sentinel CheckRedirect returns; net/http wraps it in a *url.Error, so
+// the classifier uses errors.Is, before the transport-error branch (api-client 5.1).
+var errRedirectRefused = errors.New("redirect refused")
+
+// refusedRedirect carries the host of the refused target (never the full URL, which may hold
+// credentials or a token) and matches errRedirectRefused.
+type refusedRedirect struct{ host string }
+
+func (e *refusedRedirect) Error() string        { return "redirect to " + e.host + " refused" }
+func (e *refusedRedirect) Is(target error) bool { return target == errRedirectRefused }
+
+// sameHostRedirects follows a redirect only within the origin of the original request (same
+// scheme, host and effective port) and for at most three hops.
 func sameHostRedirects(req *http.Request, via []*http.Request) error {
+	refuse := &refusedRedirect{host: req.URL.Hostname()}
 	if len(via) > maxRedirects {
-		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		return refuse
 	}
 	first := via[0].URL
-	if req.URL.Host != first.Host || req.URL.Scheme != first.Scheme {
-		return errors.New("redirect to a different host or scheme refused")
+	if !strings.EqualFold(req.URL.Scheme, first.Scheme) || !strings.EqualFold(req.URL.Hostname(), first.Hostname()) ||
+		effectivePort(req.URL) != effectivePort(first) {
+		return refuse
 	}
 	return nil
+}
+
+// effectivePort is the explicit port, or the default of the scheme.
+func effectivePort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if strings.EqualFold(u.Scheme, "http") {
+		return "80"
+	}
+	return "443"
 }
