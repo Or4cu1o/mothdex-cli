@@ -26,7 +26,7 @@ type Catalog interface {
     Regions(ctx context.Context) (Result[[]mothdex.Region], error)
     DBInfo(ctx context.Context) (Result[mothdex.DBInfo], error)
     Links(ctx context.Context, ref Ref, sel LinkSelector) ([]LinkChoice, error) // ranked, pure rule after fetch
-    Cover(ctx context.Context, ref Ref) (path string, err error)                 // via the `covers` cache
+    Cover(ctx context.Context, ref Ref) (img io.ReadCloser, contentType string, err error) // covers cache; nil img = no cover
 }
 
 type Downloads interface {

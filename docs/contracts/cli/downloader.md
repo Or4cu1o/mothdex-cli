@@ -226,7 +226,6 @@ Everything that touches the outside world is an injected port (`internal/proxy/p
 | `FS` | confined file system with `os.Root` semantics: `OpenExcl` (create-exclusive, no-follow, `0600`), `Open` (read an existing regular file again: verify and the EXDEV copy), `Lstat`, `MkdirAll`, `Remove`, `ReadDir`, `Link` (`fs.ErrExist`, or `errors.ErrUnsupported`), `Free` (free bytes plus device id, for the ledger and the EXDEV decision) and `SyncDir` (the §3 `fsync` of the destdir; it reports success where a directory cannot be synced, e.g. Windows, where `MOVEFILE_WRITE_THROUGH` covers it) |
 | `File` | the staging handle: read, write, seek, `Truncate`, `Sync`, `Close`; reused across retries (§3) |
 | `Finalizer` | `Rename(fs, from, to, replace)`: no-replace per OS (§6.3); `fs.ErrExist`, `ErrUnsupported` or `EXDEV`; `replace=true` only for `--force` after the `Lstat` check |
-| `Resolver` | `LookupIP` for the cover SSRF guard (cache.md §4) |
 | `Journal` | the in-flight journal (§6.4): `Add` and `Entries` plus clearing an entry at the terminal state, over `{job_id, staging, dest_dir, started_at}` |
 | `History` | `Append(Record)`, exactly once per job at its terminal state |
 

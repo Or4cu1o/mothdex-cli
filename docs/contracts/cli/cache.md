@@ -79,6 +79,12 @@ Options are variadic, so a plain call takes the defaults (T-12, Crivo suggestion
   each re-checked; body ≤ 5 MiB; `Content-Type` **and** magic bytes must agree on `jpeg|png|webp|gif` (SVG and
   anything else are rejected); `image.DecodeConfig` must report ≤ 4096 × 4096 px before any full decode. The blob is
   only stored in the cache, never written elsewhere. Any violation is a cache miss with a debug log, never an error.
+  The policy lives in `internal/cover` (`Fetcher.Fetch(ctx, url) bool`), which owns its DNS port (`cover.Resolver`,
+  production adapter `cover.SystemResolver`); the downloader has no resolver. `Service.Cover` (app-service §1) reads
+  `GetBlob(covers, KeyCover(cover_url))`, and on a miss calls `Fetch` once and reads again, outside the download pool.
+  It returns the cached reader and the stored type (taken from the magic bytes), or a nil reader when the entry has no
+  usable cover; only the entry lookup can return an error. Concurrent calls for one URL share a single fetch, and a
+  refused URL is not fetched again in the same process. Consumers decode one frame only.
 
 ## 5. Concurrency
 
