@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
@@ -70,8 +71,9 @@ type Service struct {
 }
 
 type coverCall struct {
-	done chan struct{}
-	ok   bool
+	done    chan struct{}
+	ok      bool
+	waiters atomic.Int32 // callers that joined this fetch; read by tests to know all are inside
 }
 
 // New returns a Service. Client, Cache and Clock are required.

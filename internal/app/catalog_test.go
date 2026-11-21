@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -338,8 +339,20 @@ func TestCoverFromCacheThenFetchSingleflightAndNegativeCache(t *testing.T) {
 			_ = rc.Close()
 		}()
 	}
-	for fc.calls.Load() == 0 {
-		time.Sleep(time.Millisecond)
+	// Barrier (Ensaio F1): open the gate only when the first fetch runs and the other four callers
+	// have joined it, so no caller can arrive after it finished and start a second fetch.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		s.coverMu.Lock()
+		call := s.coverFlight["https://img.test/a.png"]
+		s.coverMu.Unlock()
+		if call != nil && call.waiters.Load() == 4 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the callers never joined the single fetch")
+		}
+		runtime.Gosched()
 	}
 	close(fc.gate)
 	wg.Wait()
@@ -493,5 +506,24 @@ func TestFailedSessionSaveDropsTheEarlierSession(t *testing.T) {
 	}
 	if _, err := s.Entry(context.Background(), Ref{Index: 1}); code(err) != CodeNoSession {
 		t.Fatalf("the earlier session survived: %v", err)
+	}
+}
+
+// Alicerce (production race): a caller that missed the cache just before the previous leader
+// stored the cover and left the flight becomes the new leader; it must find the stored cover
+// instead of fetching the URL a second time.
+func TestNewCoverLeaderRechecksTheCacheBeforeFetching(t *testing.T) {
+	fc := &fakeCovers{ok: true}
+	s := newSvc(t, &fakeClient{}, func(o *Options) { o.Covers = fc })
+	fc.store = s.o.Cache
+	const url = "https://img.test/late.png"
+	if err := s.o.Cache.PutBlob(cache.NSCovers, cache.KeyCover(url), strings.NewReader("PNGDATA"), "image/png", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+	if !s.fetchCover(context.Background(), url) {
+		t.Fatal("a stored cover counts as fetched")
+	}
+	if fc.calls.Load() != 0 {
+		t.Fatalf("%d fetches although the cover was already stored", fc.calls.Load())
 	}
 }
