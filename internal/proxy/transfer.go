@@ -210,7 +210,7 @@ func (d *Downloader) checkLength(j *jobState, resp *http.Response) *attemptErr {
 		return fatal(CodeConfirmationRequired, "the real size needs confirmation", nil)
 	}
 	link := j.job.Link.Size
-	j.drift = cl > link+link/2 || cl < link/2 // beyond 1.5x or below 0.5x of the catalog estimate, integer math
+	j.drift = cl > link+link/2 || cl < link/2+link%2 // beyond 1.5x or below 0.5x (cl*2 < link) of the catalog estimate, integer math
 	return nil
 }
 

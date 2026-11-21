@@ -37,6 +37,11 @@ func TestSizeDriftEdges(t *testing.T) {
 		{"exactly 0.5x is not drift", 10, 5, false},
 		{"just below 0.5x is drift", 10, 4, true},
 		{"equal sizes are not drift", 10, 10, false},
+		{"odd catalog size: 2 is below 2.5", 5, 2, true},
+		{"odd catalog size: 3 is above 2.5", 5, 3, false},
+		{"odd catalog size: 3 is below 3.5", 7, 3, true},
+		{"odd catalog size: 8 is above 7.5", 5, 8, true},
+		{"odd catalog size: 7 is below 7.5", 5, 7, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := newRig(t, proxy.Config{})
