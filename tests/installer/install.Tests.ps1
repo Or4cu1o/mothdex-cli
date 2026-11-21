@@ -18,6 +18,7 @@ $global:urls = New-Object System.Collections.ArrayList
 $script:message = ''
 $base = 'https://github.com/Or4cu1o/mothdex-cli/releases/'
 $global:fakeBase = $base
+$global:fakeHttpUrl = $null
 $global:fakeRelease = $release
 
 function Check([string]$What, [bool]$Ok) {
