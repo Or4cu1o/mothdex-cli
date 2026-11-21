@@ -14,7 +14,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $script:pass = 0
 $script:fail = 0
-$script:urls = New-Object System.Collections.ArrayList
+$global:urls = New-Object System.Collections.ArrayList
 $script:message = ''
 $base = 'https://github.com/Or4cu1o/mothdex-cli/releases/'
 
@@ -25,7 +25,7 @@ function Check([string]$What, [bool]$Ok) {
 # Network double: only release URLs of Or4cu1o/mothdex-cli, served from $release.
 function Invoke-WebRequest {
   param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing, [int]$MaximumRedirection)
-  [void]$script:urls.Add($Uri)
+  [void]$global:urls.Add($Uri)
   if (-not $Uri.StartsWith($base, [StringComparison]::Ordinal)) { throw "BLOCKED URL $Uri" }
   $rel = $Uri.Substring($base.Length) -replace '^download/', '' -replace '^latest/download/', 'latest/'
   $src = Join-Path $release ($rel -replace '/', '\')
@@ -66,7 +66,7 @@ New-Item -ItemType Directory -Path $env:LOCALAPPDATA | Out-Null
 function Invoke-Install([hashtable]$Params) {
   $script:threw = $false
   $script:message = ''
-  $script:urls.Clear()
+  $global:urls.Clear()
   try { & $installer @Params *> $null } catch { $script:threw = $true; $script:message = $_.Exception.Message }
 }
 
@@ -83,7 +83,7 @@ Invoke-Install @{ Version = 'v1.2.3'; RetroBatPath = '' }
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\mothdex\mothdex.exe'
 Check 'default install succeeds' (-not $script:threw)
 Check 'binary under LocalAppData' (Test-Path $exe)
-Check 'only GitHub release URLs used' (@($script:urls | Where-Object { -not $_.StartsWith($base) }).Count -eq 0)
+Check 'only GitHub release URLs used' (@($global:urls | Where-Object { -not $_.StartsWith($base) }).Count -eq 0)
 Remove-Item (Split-Path $exe) -Recurse -Force -ErrorAction SilentlyContinue
 
 # 2. RetroBat: launcher with the fixed template (TH-30)
@@ -132,7 +132,7 @@ foreach ($bad in '1.2.3; calc', '..\..\x', '1.2', 'v1.2.3/../v2') {
 Check 'no binary after bad versions' (-not (Test-Path (Join-Path $root 'badver\mothdex.exe')))
 Invoke-Install @{ BinDir = (Join-Path $root 'latest') }
 Check 'latest resolves to 1.2.3' ((-not $script:threw) -and (Test-Path (Join-Path $root 'latest\mothdex.exe')) -and
-  (@($script:urls | Where-Object { $_ -like '*/download/v1.2.3/*' }).Count -ge 2))
+  (@($global:urls | Where-Object { $_ -like '*/download/v1.2.3/*' }).Count -ge 2))
 
 # 8. dry run and uninstall
 $rb3 = New-RetroBat 'RetroBat3'
