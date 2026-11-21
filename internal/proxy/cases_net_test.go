@@ -183,9 +183,7 @@ func TestCase31LengthMismatchOversizeAndDisposition(t *testing.T) {
 		if got := read.Load(); got > 1<<20 { // size+1 plus one copy buffer, never the 10 MiB on offer
 			t.Fatalf("the downloader read %d bytes of a 1000-byte file: it must abort at byte size+1", got)
 		}
-		if entries, _ := os.ReadDir(r.fs.Path("downloads")); len(entries) != 0 {
-			t.Fatalf("staging not removed: %v", entries)
-		}
+		stagingEmpty(t, r)
 		noFinalFile(t, r)
 	})
 	t.Run("Content-Disposition is ignored", func(t *testing.T) {

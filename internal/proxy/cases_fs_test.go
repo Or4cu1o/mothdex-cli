@@ -518,7 +518,19 @@ func TestCase39StartupCleanup(t *testing.T) {
 }
 
 // Case 40: a retry writes through the descriptor it already holds, never through the path.
-func TestCase40RetryNeverWritesThroughASwappedPath(t *testing.T) {
+func TestCase40RetryNeverWritesThroughASwappedPath(t *testing.T) { swapStagingDuringRetry(t, false) }
+
+// TestCase40FinalStateAfterASwappedPath is the strict half of case 40: after the swap the job
+// must end Done with a regular final file equal to the body, or Failed with no final entry.
+// It fails today: the downloader renames the staging name without checking that it is still the
+// file behind its descriptor (T-17 review, Minor 5). Remove the Skip with the fix.
+func TestCase40FinalStateAfterASwappedPath(t *testing.T) {
+	t.Skip("known downloader defect: the swapped staging symlink is finalized (T-17 review, Minor 5)")
+	swapStagingDuringRetry(t, true)
+}
+
+func swapStagingDuringRetry(t *testing.T, strict bool) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("an open file cannot be unlinked on Windows, so the path swap cannot happen")
 	}
@@ -549,7 +561,19 @@ func TestCase40RetryNeverWritesThroughASwappedPath(t *testing.T) {
 	if !swapped {
 		t.Fatal("the retry state was never reached")
 	}
-	t.Logf("result after the swap: %s %v", res.State, res.Err)
+	if strict {
+		final := r.fs.Path("roms/snes/a.zip")
+		info, lerr := os.Lstat(final)
+		switch {
+		case res.State == proxy.StateFailed && lerr != nil:
+		case res.State == proxy.StateDone && lerr == nil && info.Mode().IsRegular():
+			if got, _ := os.ReadFile(final); !bytes.Equal(got, body) { //nolint:gosec // test path
+				t.Fatalf("final file has %d bytes, want the %d downloaded", len(got), len(body))
+			}
+		default:
+			t.Fatalf("state %s, final entry %v (%v): want Done with a regular file or Failed with none", res.State, info, lerr)
+		}
+	}
 	if got, _ := os.ReadFile(victim); string(got) != "precious" { //nolint:gosec // test path
 		t.Fatalf("the symlink target was written: %d bytes", len(got))
 	}
