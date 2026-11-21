@@ -465,3 +465,27 @@ func TestFailedSharedBuildLeavesNoEntryAndRootCanRecover(t *testing.T) {
 		t.Fatalf("a build after Close must not keep handles: %v", err)
 	}
 }
+
+// Sentinela S2: when a later -o root cannot be opened, the directories this call created for the
+// earlier ones do not stay on disk, and nothing is queued.
+func TestEnqueueRemovesRootsItCreatedWhenALaterRootFails(t *testing.T) {
+	r := newDLRig(t, DownloadConfig{})
+	first := filepath.Join(r.out, "a", "b")
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reqs := []DownloadRequest{
+		{Ref: Ref{Slug: "game"}, DestDir: first},
+		{Ref: Ref{Slug: "game"}, DestDir: filepath.Join(blocker, "sub")}, // cannot be created under a file
+	}
+	if _, err := r.svc.Enqueue(context.Background(), reqs); code(err) != "path_rejected" {
+		t.Fatalf("%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(r.out, "a")); err == nil {
+		t.Fatal("the first root stayed on disk")
+	}
+	if jobs := r.svc.Jobs(); len(jobs) != 0 {
+		t.Fatalf("%d jobs queued", len(jobs))
+	}
+}

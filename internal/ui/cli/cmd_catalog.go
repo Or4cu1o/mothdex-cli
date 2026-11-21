@@ -87,8 +87,15 @@ func (r *runtime) runSearch(ctx context.Context, s *Session, text string, f sear
 		"results":        results,
 	}
 	out := outcome{data: data, meta: &page.Meta}
-	if page.Dropped > 0 {
-		out.warn = func(p *printer) { p.warning(p.T("ui.cli.search.dropped", i18n.Args{"n": page.Dropped})) }
+	if page.Dropped > 0 || page.SessionStale {
+		out.warn = func(p *printer) {
+			if page.Dropped > 0 {
+				p.warning(p.T("ui.cli.search.dropped", i18n.Args{"n": page.Dropped}))
+			}
+			if page.SessionStale {
+				p.warning(p.T("ui.cli.search.session_stale", nil))
+			}
+		}
 	}
 	out.human = func(p *printer) {
 		r.searchHuman(p, page, text, pageSize, f.page)
@@ -164,6 +171,10 @@ func (p *printer) searchTable(page app.SearchPage) {
 func (r *runtime) searchHuman(p *printer, page app.SearchPage, text string, pageSize, asked int) {
 	if page.PastLastPage {
 		p.warning(p.T("ui.cli.search.past_last", i18n.Args{"asked": asked, "shown": page.Page}))
+	}
+	if len(page.Results) == 0 && page.Dropped > 0 { // the query matched: the "try fewer words" hint would mislead
+		p.info("%s", p.T("ui.cli.search.all_dropped", i18n.Args{"n": page.Dropped}))
+		return
 	}
 	if len(page.Results) == 0 {
 		p.info("%s", clean(p.T("ui.cli.search.none", i18n.Args{"text": text})))

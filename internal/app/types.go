@@ -88,6 +88,7 @@ type SearchPage struct {
 	Page, TotalPages, TotalResults int
 	PastLastPage                   bool // the API clamped the requested page
 	Dropped                        int  // results hidden because their slug fails mothdex.ValidSlug
+	SessionStale                   bool // the session could be neither saved nor cleared: an index may refer to an earlier search
 	Meta                           ResultMeta
 }
 

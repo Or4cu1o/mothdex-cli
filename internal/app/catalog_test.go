@@ -526,3 +526,26 @@ func TestNewCoverLeaderRechecksTheCacheBeforeFetching(t *testing.T) {
 		t.Fatalf("%d fetches although the cover was already stored", fc.calls.Load())
 	}
 }
+
+type failingSessionDelete struct{ failingSession }
+
+func (f failingSessionDelete) Delete(ns, key string) error {
+	if ns == cache.NSSession {
+		return errors.New("read-only")
+	}
+	return f.Store.Delete(ns, key)
+}
+
+// Sentinela: when the session can be neither saved nor cleared the page says so, instead of letting
+// <n> silently resolve against an earlier search.
+func TestSearchReportsAStaleSession(t *testing.T) {
+	c := &fakeClient{search: mothdex.SearchResponse{Results: entries("a"), CurrentPage: 1, TotalPages: 1, TotalResults: 1}}
+	s := newSvc(t, c, func(o *Options) { o.Cache = failingSessionDelete{failingSession{o.Cache}} })
+	if p, err := s.Search(context.Background(), SearchQuery{Text: "x"}); err != nil || !p.SessionStale {
+		t.Fatalf("%+v %v", p, err)
+	}
+	s = newSvc(t, c, func(o *Options) { o.Cache = failingSession{o.Cache} })
+	if p, _ := s.Search(context.Background(), SearchQuery{Text: "x"}); p.SessionStale {
+		t.Fatal("a cleared session is not stale")
+	}
+}
