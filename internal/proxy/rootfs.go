@@ -3,7 +3,6 @@ package proxy
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -49,7 +48,7 @@ func (r *RootFS) OpenExcl(name string) (File, error) {
 }
 
 // Open implements FS.
-func (r *RootFS) Open(name string) (io.ReadCloser, error) {
+func (r *RootFS) Open(name string) (ReadFile, error) {
 	f, err := r.root.Open(name)
 	if err != nil {
 		return nil, err
