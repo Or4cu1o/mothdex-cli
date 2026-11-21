@@ -178,11 +178,19 @@ valid_path() {
   return 0
 }
 
-# Directory not world-writable and owned by the installing user or root.
+# Directory not world-writable and owned by the installing user or root; and no ancestor (of the physical path) that
+# other users can write to, unless it has the sticky bit (like /tmp): they could rename the directory away.
 dir_safe() {
   if [ -n "$(find "$1" -maxdepth 0 -perm -0002 2>/dev/null)" ]; then return 1; fi
   uid=$(id -u)
-  [ -n "$(find "$1" -maxdepth 0 \( -user "$uid" -o -user 0 \) 2>/dev/null)" ]
+  [ -n "$(find "$1" -maxdepth 0 \( -user "$uid" -o -user 0 \) 2>/dev/null)" ] || return 1
+  real=$(cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
+  anc=$real
+  while [ "$anc" != / ]; do
+    anc=$(dirname "$anc")
+    if [ -n "$(find "$anc" -maxdepth 0 -perm -0002 ! -perm -1000 2>/dev/null)" ]; then return 1; fi
+  done
+  return 0
 }
 
 # Filesystems without Unix permission bits: every directory looks world-writable there.
@@ -203,10 +211,12 @@ fat_exception_ok() {
     recalbox) root=/recalbox/share ;;
     *) return 1 ;;
   esac
-  case "$1/" in "$root"/*) ;; *) return 1 ;; esac
   [ ! -L "$1" ] || return 1
-  [ -n "$(find "$1" -maxdepth 0 -user 0 2>/dev/null)" ] || return 1
-  fat_fs "$1"
+  # the physical path (symlinked parents resolved) must be inside the profile tree
+  real=$(cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
+  case "$real/" in "$root"/*) ;; *) return 1 ;; esac
+  [ -n "$(find "$real" -maxdepth 0 -user 0 2>/dev/null)" ] || return 1
+  fat_fs "$real"
 }
 
 # dir_safe, or the exception above with a warning.
@@ -292,6 +302,8 @@ sha256_of() {
 
 # The latest non-pre-release version, read from the latest release's checksums.txt (names carry the version).
 resolve_latest() {
+  # wget cannot refuse an https to http redirect, so a redirect could roll "latest" back to an older, signed release
+  command -v curl >/dev/null 2>&1 || die "without curl the latest version cannot be trusted: pass --version vX.Y.Z (or install curl)"
   fetch "$BASE/latest/download/checksums.txt" "$TMP/latest-checksums.txt" || die "could not find the latest release"
   found=$(sed -n "s/^[0-9a-fA-F]*[ *]*mothdex_\\(.*\\)_${TARGET}\\.tar\\.gz\$/\\1/p" "$TMP/latest-checksums.txt")
   [ -n "$found" ] || die "the latest release has no archive for $TARGET"

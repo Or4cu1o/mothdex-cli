@@ -56,7 +56,18 @@ function Get-Remote([string]$Url, [string]$Dest) {
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   } catch { }
-  Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing -MaximumRedirection 5 | Out-Null
+  $response = Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing -MaximumRedirection 5 -PassThru
+  # Windows PowerShell 5.1 can follow an https to http redirect: check where the file really came from.
+  $final = $null
+  $inner = $response.BaseResponse
+  if ($inner) {
+    if ($inner.PSObject.Properties['ResponseUri']) { $final = $inner.ResponseUri }
+    elseif ($inner.PSObject.Properties['RequestMessage'] -and $inner.RequestMessage) { $final = $inner.RequestMessage.RequestUri }
+  }
+  if ($final -and $final.Scheme -ne 'https') {
+    Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue
+    Fail "refusing $Url : it was redirected to $final, which is not https"
+  }
 }
 
 function Test-Version([string]$Value) { return $Value -match '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$' }

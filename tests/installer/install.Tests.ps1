@@ -26,13 +26,18 @@ function Check([string]$What, [bool]$Ok) {
 
 # Network double: only release URLs of Or4cu1o/mothdex-cli, served from $release.
 function Invoke-WebRequest {
-  param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing, [int]$MaximumRedirection)
+  param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing, [int]$MaximumRedirection, [switch]$PassThru)
   [void]$global:urls.Add($Uri)
+  if ($global:fakeHttpUrl) {
+    # a REAL request to a local http listener: the response a redirect to http would produce on PowerShell 5.1 or 7
+    return Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $global:fakeHttpUrl -OutFile $OutFile -UseBasicParsing -PassThru
+  }
   if (-not $Uri.StartsWith($global:fakeBase, [StringComparison]::Ordinal)) { throw "BLOCKED URL $Uri" }
   $rel = $Uri.Substring($global:fakeBase.Length) -replace '^download/', '' -replace '^latest/download/', 'latest/'
   $src = Join-Path $global:fakeRelease ($rel -replace '/', '\')
   if (-not (Test-Path -LiteralPath $src)) { throw "404 $Uri" }
   Copy-Item -LiteralPath $src -Destination $OutFile
+  if ($PassThru) { return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = [uri]$Uri } } }
 }
 
 function New-Tag([string]$Tag, [bool]$BadChecksum) {
@@ -151,6 +156,27 @@ $junction = Join-Path $root 'junction'
 New-Item -ItemType Junction -Path $junction -Target $target2 | Out-Null
 Invoke-Install @{ Version = '1.2.3'; BinDir = $junction }
 Check 'junction BinDir is refused' ($script:threw -and (-not (Test-Path (Join-Path $target2 'mothdex.exe'))))
+
+# 5c. generic inherit-only ACE (GA on Users) is refused; a download that ends on http is refused (real response)
+$inherit = Join-Path $root 'inherit-only'
+New-Item -ItemType Directory -Path $inherit | Out-Null
+& icacls.exe $inherit /grant '*S-1-5-32-545:(OI)(IO)(GA)' | Out-Null
+Invoke-Install @{ Version = '1.2.3'; BinDir = $inherit }
+Check 'existing folder with an inherit-only generic-all ACE is refused' ($script:threw -and (-not (Test-Path (Join-Path $inherit 'mothdex.exe'))))
+
+$tcp = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+$tcp.Start(); $port = $tcp.LocalEndpoint.Port; $tcp.Stop()
+$http = [Net.HttpListener]::new()
+$http.Prefixes.Add("http://127.0.0.1:$port/")
+$http.Start()
+$serverShell = [PowerShell]::Create()
+[void]$serverShell.AddScript({ param($l) for ($i = 0; $i -lt 4; $i++) { $c = $l.GetContext(); $b = [Text.Encoding]::ASCII.GetBytes('x'); $c.Response.OutputStream.Write($b, 0, 1); $c.Response.Close() } }).AddArgument($http)
+$serverAsync = $serverShell.BeginInvoke()
+$global:fakeHttpUrl = "http://127.0.0.1:$port/file"
+Invoke-Install @{ Version = '1.2.3'; BinDir = (Join-Path $root 'viahttp') }
+$global:fakeHttpUrl = $null
+Check 'a download that ended on http is refused' ($script:threw -and $script:message -match 'not https' -and (-not (Test-Path (Join-Path $root 'viahttp\mothdex.exe'))))
+$http.Stop(); $serverShell.Dispose()
 
 # 6. checksum mismatch installs nothing (TH-33)
 $target = Join-Path $root 'bad'
