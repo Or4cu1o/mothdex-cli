@@ -32,6 +32,10 @@ type runtime struct {
 	cmd  string // command name used in the --json envelope
 
 	jsonDone bool // the envelope was already written (a partial batch result)
+
+	// run is set when the line comes from the Shell: the session is already open and belongs to the
+	// Shell, the command tree has no shell, tui or gui, and some flags are start-up only.
+	run *Runner
 }
 
 // Execute runs the command line and returns the process exit code. It prints every error itself.
@@ -105,7 +109,9 @@ func usageErr(command, format string, a ...any) *app.Error {
 func (r *runtime) printer() *printer {
 	if r.p == nil {
 		var t *i18n.Translator
-		if r.d.Translator != nil {
+		if r.run != nil {
+			t = r.run.s.T
+		} else if r.d.Translator != nil {
 			t = r.d.Translator(r.g.Lang)
 		}
 		r.p = newPrinter(r.d, &r.g, t)
@@ -116,6 +122,13 @@ func (r *runtime) printer() *printer {
 // open builds the service once, after the flags are parsed.
 func (r *runtime) open() (*Session, error) {
 	if r.sess != nil {
+		return r.sess, nil
+	}
+	if r.run != nil { // the Shell opened the session once, and reported its warnings then
+		r.sess = r.run.s
+		p := r.printer()
+		p.setColor(r.sess.Color)
+		p.logPath = r.sess.LogPath
 		return r.sess, nil
 	}
 	s, err := r.d.Open(r.ctx, r.g)
@@ -144,6 +157,9 @@ func (r *runtime) rootCommand() *cobra.Command {
 			if r.g.Version {
 				return r.runVersion()
 			}
+			if r.shellOnBareRoot() {
+				return r.runShell()
+			}
 			r.cmd = "help"
 			return cmd.Help()
 		},
@@ -163,12 +179,19 @@ func (r *runtime) rootCommand() *cobra.Command {
 		r.cmd = commandName(c)
 		return usageErr(r.cmd, "%s", err.Error())
 	})
-	root.PersistentPreRun = func(c *cobra.Command, _ []string) { r.cmd = commandName(c); r.g.Command = r.cmd }
+	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error {
+		r.cmd = commandName(c)
+		r.g.Command = r.cmd
+		return r.rejectStartupFlags(c)
+	}
 	root.AddCommand(
 		r.searchCmd(), r.infoCmd(), r.randomCmd(), r.downloadCmd(), r.boxartCmd(),
 		r.platformsCmd(), r.regionsCmd(), r.dbInfoCmd(), r.historyCmd(), r.cacheCmd(),
-		r.configCmd(), r.profileCmd(), r.versionCmd(), r.soonCmd("shell"), r.soonCmd("tui"), r.soonCmd("gui"),
+		r.configCmd(), r.profileCmd(), r.versionCmd(),
 	)
+	if r.run == nil { // the Shell never runs shell, tui or gui
+		root.AddCommand(r.shellCmd(), r.soonCmd("tui"), r.soonCmd("gui"))
+	}
 	return root
 }
 

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/ui/shell` (T-41): the interactive Shell. `mothdex shell`, or `mothdex` with no arguments on a terminal, opens a
+  REPL over the same command tree as the CLI (`cli.Runner`: a fresh cobra tree per line, one open session), with a
+  banner (entries, or `offline`, and the profile), the `mothdex[<platform|all>:<n>]> ` prompt, `n`, `p`, `page`, `sort`
+  and `last` over the last search, a bare number as `info`, `d <#>` as `download`, index ranges (`download 2-4`, at most
+  100), `help`, `clear`, `exit`/`quit`, did-you-mean for a mistyped command, Tab completion (commands, flags, platform
+  and region ids, `--prefer`, config keys and values, cache namespaces, export paths, entry numbers), a history file
+  `<paths.data>/shell_history` (mode 0600, written atomically, last writer wins when two Shells run at once, no lines with a
+  leading space or a `config set` of a key ending in `token`, `key` or `url`, or whose value has credentials in an address), and an inline link chooser for `download <#>` when an entry has several downloadable
+  links. Ctrl+C cancels the running command and not the Shell; two at an empty prompt within 2 s leave with 130.
+  `--config`, `--lang`, `--allow-executable` and `-j` are refused inside the Shell, and `mothdex -f shell` opens the
+  service with overwrites and executables off. `cmd/mothdex/signals.go` routes SIGINT to the Shell while it runs;
+  `cli.Session` gains `DataDir`, `NoColor`, `UTF8` and `Log`, `cli.Deps` gains `Shell` and `Interrupts`. New strings
+  are `ui.shell.*` (`en_us`, `pt_br`, `es_es`, `ru_ru`; the other locales fall back). Line editing is
+  `peterh/liner` v1.2.3 (MIT) behind a small `lineEditor` interface. The prompt is plain text, because liner refuses
+  control characters in it. `tui` and `gui` still print "not available yet".
 - `internal/ui/cli` and `cmd/mothdex` (T-20b): the command line. cobra commands `search`, `info`, `random`, `download`,
   `boxart`, `platforms`, `regions`, `db-info`, `history`, `cache stats|clear`, `config list|get|set|reset`,
   `profile show|detect` and `version` (`shell`, `tui`, `gui` print "not available yet"). Human tables with the 80/60

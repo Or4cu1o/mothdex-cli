@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +67,7 @@ func (r *runtime) runSearch(ctx context.Context, s *Session, text string, f sear
 	if err != nil {
 		return outcome{}, err
 	}
+	newSearch := r.notePage(page)
 	pageSize := f.pageSize
 	if pageSize < 1 {
 		pageSize = s.PageSize
@@ -84,13 +86,34 @@ func (r *runtime) runSearch(ctx context.Context, s *Session, text string, f sear
 		"results":        results,
 	}
 	out := outcome{data: data, meta: &page.Meta}
-	out.human = func(p *printer) { r.searchHuman(p, page, text, pageSize, f.page) }
+	out.human = func(p *printer) {
+		r.searchHuman(p, page, text, pageSize, f.page)
+		if newSearch {
+			p.info("%s", p.dim(p.T("ui.shell.indexes_now", nil)))
+		}
+	}
 	if f.export != "" {
 		if err := r.exportSearch(f, page, results, data, &page.Meta); err != nil {
 			return outcome{}, err
 		}
 	}
 	return out, nil
+}
+
+// notePage remembers the page for the Shell (n, p, last, the prompt) and reports whether it starts a
+// different search from the one shown before: the old indexes stop being valid (shell.md section 3).
+func (r *runtime) notePage(page app.SearchPage) (newSearch bool) {
+	if r.run == nil {
+		return false
+	}
+	prev, had := r.run.LastPage()
+	r.run.setPage(page)
+	return had && !sameSearch(prev.Query, page.Query)
+}
+
+// sameSearch compares what is searched; paging and sorting do not change it.
+func sameSearch(a, b app.SearchQuery) bool {
+	return a.Text == b.Text && a.Serial == b.Serial && slices.Equal(a.Platforms, b.Platforms) && slices.Equal(a.Regions, b.Regions)
 }
 
 func nonNil(s []string) []string {
@@ -143,19 +166,47 @@ func (r *runtime) searchHuman(p *printer, page app.SearchPage, text string, page
 		return
 	}
 	p.searchTable(page)
-	foot := p.T("ui.cli.search.footer", i18n.Args{"page": page.Page, "pages": page.TotalPages, "total": page.TotalResults, "size": pageSize})
+	footKey := "ui.cli.search.footer"
+	if r.run != nil {
+		footKey = "ui.shell.search.footer"
+	}
+	foot := p.T(footKey, i18n.Args{"page": page.Page, "pages": page.TotalPages, "total": page.TotalResults, "size": pageSize})
 	if page.Meta.Cached {
 		foot += " · " + p.T("ui.cli.search.cached", i18n.Args{"age": humanAge(time.Since(page.Meta.FetchedAt))})
+	}
+	if r.run != nil { // inside the Shell the next steps are its own shortcuts, on the same line
+		for _, key := range shellNav(page) {
+			foot += " · " + p.T(key, nil)
+		}
 	}
 	p.info("%s", p.dim(foot))
 	if page.Meta.Stale {
 		p.info("%s", p.warn(p.T("ui.cli.search.stale", nil)))
+	}
+	if r.run != nil {
+		return
 	}
 	hint := p.T("ui.cli.search.hint", i18n.Args{"text": text, "next": page.Page + 1})
 	if page.Page >= page.TotalPages {
 		hint = p.T("ui.cli.search.hint_last", nil)
 	}
 	p.info("%s", p.dim(clean(hint)))
+}
+
+// shellNav are the i18n keys of the shortcuts the footer offers inside the Shell: none for a single
+// page (shell.md section 2), otherwise paging as far as it goes, then info and download.
+func shellNav(page app.SearchPage) []string {
+	if page.TotalPages <= 1 {
+		return nil
+	}
+	var keys []string
+	if page.Page < page.TotalPages {
+		keys = append(keys, "ui.shell.search.next")
+	}
+	if page.Page > 1 {
+		keys = append(keys, "ui.shell.search.prev")
+	}
+	return append(keys, "ui.shell.search.info", "ui.shell.search.download")
 }
 
 func humanAge(d time.Duration) string {
@@ -234,6 +285,9 @@ func (r *runtime) infoCmd() *cobra.Command {
 				res, err := s.Svc.Entry(ctx, ref)
 				if err != nil {
 					return outcome{}, err
+				}
+				if r.run != nil {
+					r.run.setEntry(res.Value)
 				}
 				var choices []app.LinkChoice
 				if set || preferActive(s.Prefer) {
