@@ -216,6 +216,9 @@ func (d detector) rootAndWarning(p Profile, res probeResult) (root, warn string)
 	if d.cfg.ROMRoot == "" {
 		return own, ""
 	}
+	if !isAbsolute(d.cfg.ROMRoot) {
+		return own, fmt.Sprintf("profile.rom_root %q must be an absolute path: ignored", d.cfg.ROMRoot)
+	}
 	launcherDir, _ := v.expand(p.Launcher.Dir)
 	probe := p
 	probe.Launcher.Dir, probe.ownRoot = launcherDir, own

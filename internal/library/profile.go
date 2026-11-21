@@ -263,8 +263,16 @@ var driveRooted = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 // equivalent spellings give the same answer. Comparison is per component (never a string prefix) and ignores
 // case and look-alike letters (portſ). The preflight applies it to -o and profile.rom_root,
 // and DestDir to every result (T-16 case 15, downloader 6.2 G3). Use it on the resolved
-// profile from ProfileInfo.
+// profile from ProfileInfo. A path that is not absolute (relative, or drive-relative such as
+// C:RetroBat) is reported as a launcher path, because it cannot be compared; callers make the
+// path absolute first.
 func (p Profile) IsLauncherPath(path string) bool {
+	if path == "" {
+		return false // unset, nothing to check
+	}
+	if !isAbsolute(path) {
+		return true // fail closed: a relative or drive-relative path cannot be checked lexically
+	}
 	target := components(path)
 	if len(target) == 0 {
 		return false
@@ -287,9 +295,7 @@ func (p Profile) IsLauncherPath(path string) bool {
 // and sees through spellings the OS treats as the same folder: "." and ".." components, the
 // Windows \\?\ and \\.\ prefixes, and trailing dots or spaces on a component.
 func components(p string) []string {
-	for _, prefix := range []string{`\\?\`, `\\.\`, `//?/`, `//./`} {
-		p = strings.TrimPrefix(p, prefix)
-	}
+	p = trimLongPrefix(p)
 	var out []string
 	for i, c := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
 		c = strings.TrimRight(c, " ") // Win32 drops trailing spaces before it looks at "." and ".."
@@ -341,4 +347,21 @@ func (p Profile) checkMatchUse() error {
 		}
 	}
 	return errors.New("${MATCH} is used but no probe can yield a path")
+}
+
+// isAbsolute accepts /x, \x (including UNC and the long prefixes) and X:\x or X:/x.
+func isAbsolute(p string) bool {
+	return strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) || driveRooted.MatchString(p)
+}
+
+// trimLongPrefix drops the Windows long and device prefixes; the long UNC form
+// (\\?\UNC\srv\share) maps to its short form (\\srv\share), whose components are the same.
+func trimLongPrefix(p string) string {
+	lower := strings.ToLower(strings.ReplaceAll(p, "/", `\`))
+	for _, prefix := range []string{`\\?\unc\`, `\\?\`, `\\.\`} {
+		if strings.HasPrefix(lower, prefix) {
+			return p[len(prefix):]
+		}
+	}
+	return p
 }

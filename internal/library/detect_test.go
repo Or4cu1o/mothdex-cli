@@ -366,3 +366,31 @@ func TestPlainUserFoldersAreNotLauncherFolders(t *testing.T) {
 		t.Fatalf("a PC games folder named windows must be accepted on generic: %q %v", info.RomRoot, info.Warnings)
 	}
 }
+
+func TestRelativeAndDriveRelativePathsFailClosed(t *testing.T) {
+	info := detect(t, testEnv(map[string]string{"usr/share/batocera/batocera.version": "40", "userdata/roms/.keep": ""}), Config{})
+	for _, path := range []string{"ports", "roms/ports", "./ports", "../roms/ports", "C:RetroBat", ""} {
+		if path == "" {
+			continue
+		}
+		if !info.Profile.IsLauncherPath(path) {
+			t.Errorf("IsLauncherPath(%q) must be true (cannot be verified)", path)
+		}
+	}
+	rel := detect(t, testEnv(map[string]string{"usr/share/batocera/batocera.version": "40", "userdata/roms/.keep": ""}), Config{ROMRoot: "roms/ports"})
+	if rel.RomRoot != "/userdata/roms" || !strings.Contains(strings.Join(rel.Warnings, "|"), "absolute") {
+		t.Fatalf("a relative rom_root must be ignored with a warning: %q %v", rel.RomRoot, rel.Warnings)
+	}
+}
+
+func TestLongUNCFormMatchesTheShortForm(t *testing.T) {
+	p := Profile{Launcher: Launcher{Dir: `\\srv\share\roms\windows`}, OS: "windows"}
+	for path, want := range map[string]bool{
+		`\\srv\share\roms\windows\x`: true, `\\?\UNC\srv\share\roms\windows\x`: true, `//?/unc/srv/share/roms/windows`: true,
+		`\\srv\share\roms\snes`: false, `\\srv2\share\roms\windows`: false,
+	} {
+		if got := p.IsLauncherPath(path); got != want {
+			t.Errorf("IsLauncherPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
