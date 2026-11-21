@@ -129,10 +129,13 @@ func open(_ context.Context, g cli.Globals) (*cli.Session, error) {
 		return nil, wrapInternal(err)
 	}
 	if g.Downloads {
+		// The Shell opens the service once for many commands, so -f and --allow-executable given at
+		// start-up must not allow overwrites or executables for the whole session (ui.md section 2.1).
+		force, allowExec := g.Force && !g.Shell, g.AllowExecutable && !g.Shell
 		env := app.Env{
 			TempDir: paths.Temp, DataDir: paths.Data, Profile: info, History: hist, Concurrency: cfg.Download.Concurrency,
 			Download: app.DownloadConfig{AllowedHosts: cfg.Download.AllowedHosts, Concurrency: cfg.Download.Concurrency, OnExists: cfg.Download.OnExists,
-				SkipVerify: !cfg.Download.Verify, AllowExecutable: g.AllowExecutable, Force: g.Force, Dir: cfg.Download.Dir},
+				SkipVerify: !cfg.Download.Verify, AllowExecutable: allowExec, Force: force, Dir: cfg.Download.Dir},
 		}
 		if cfg.Profile.Refresh {
 			env.Refresh = func(ctx context.Context) error { return info.Profile.Refresh(ctx, library.NewRefreshClient()) }
@@ -144,7 +147,9 @@ func open(_ context.Context, g cli.Globals) (*cli.Session, error) {
 	return &cli.Session{
 		Svc: svc, T: tr, Prefer: preference(cfg.Download.Prefer), Boxart: cfg.Download.Boxart, Confirm: cfg.Interface.ConfirmDownloads,
 		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings, LogPath: filepath.Join(paths.Logs, mlog.FileName),
-		Close: func() { _ = svc.Close(); _ = closeLog.Close() },
+		Close:   func() { _ = svc.Close(); _ = closeLog.Close() },
+		DataDir: paths.Data, UTF8: cli.IsUTF8(os.Getenv), Log: logger,
+		NoColor: g.NoColor || cfg.Interface.Color == "never" || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 	}, nil
 }
 

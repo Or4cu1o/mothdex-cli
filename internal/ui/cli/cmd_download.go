@@ -99,23 +99,43 @@ func (r *runtime) runDownload(ctx context.Context, s *Session, args []string, f 
 		return outcome{}, usageErr("download", "--link applies to one entry")
 	}
 	sel := app.LinkSelector{Index: f.link, Prefer: pref}
+	ask := r.chooserApplies(f, pref, len(refs))
 	reqs := make([]app.DownloadRequest, len(refs))
 	var total int64
 	for i, ref := range refs {
-		choices, err := s.Svc.Links(ctx, ref, sel)
+		rsel := sel
+		choices, err := s.Svc.Links(ctx, ref, rsel)
 		if err != nil {
 			return outcome{}, err
 		}
-		if len(choices) > 0 && choices[0].Available {
-			total += choices[0].Link.Size
+		if ask {
+			n, err := r.chooseLink(ctx, p, s, ref, choices)
+			if err != nil {
+				return outcome{}, err
+			}
+			rsel.Index = n
+		}
+		if size, ok := linkSize(choices, rsel.Index); ok {
+			total += size
 			r.announceLink(p, choices, preferActive(pref) || f.link != 0)
 		}
-		reqs[i] = app.DownloadRequest{Ref: ref, Link: sel, DestDir: r.g.Output}
+		reqs[i] = app.DownloadRequest{Ref: ref, Link: rsel, DestDir: r.g.Output}
 	}
 	if err := r.confirm(p, s, len(reqs), total); err != nil {
 		return outcome{}, err
 	}
 	return r.transfer(ctx, s, reqs, f)
+}
+
+// linkSize is the size of the link the download will use: the one asked for by number, otherwise
+// the top-ranked one. ok is false when it cannot be downloaded.
+func linkSize(choices []app.LinkChoice, index int) (int64, bool) {
+	for _, c := range choices {
+		if (index == 0 || c.Index == index) && c.Available {
+			return c.Link.Size, true
+		}
+	}
+	return 0, false
 }
 
 // announceLink prints "Link 2 chosen (...)" on stderr (prefer-syntax.md section 5).
@@ -138,19 +158,42 @@ func (r *runtime) confirm(p *printer, s *Session, count int, total int64) error 
 	if !s.Confirm || r.g.Force || (count <= 1 && total <= confirmBytes) {
 		return nil
 	}
-	if r.g.JSON || r.g.Quiet || r.d.IsTerminal == nil || !r.d.IsTerminal(r.d.Stdin) {
+	if r.g.JSON || r.g.Quiet || !r.canPrompt() {
 		return &app.Error{Code: app.CodeConfirmationNeeded, Message: "this command needs confirmation"}
 	}
 	dest := r.g.Output
 	if dest == "" {
 		dest = p.T("ui.cli.download.dest_default", nil)
 	}
-	_, _ = fmt.Fprintf(p.err, "%s ", clean(p.T("ui.cli.download.confirm", i18n.Args{"count": count, "size": humanSize(total), "dest": dest})))
-	line, _ := bufio.NewReader(r.d.Stdin).ReadString('\n')
+	line, _ := r.readAnswer(clean(p.T("ui.cli.download.confirm", i18n.Args{"count": count, "size": humanSize(total), "dest": dest})) + " ")
 	if !p.isYes(strings.TrimSpace(line)) {
 		return &app.Error{Code: app.CodeCanceled, Message: "canceled"}
 	}
 	return nil
+}
+
+// canPrompt is true when a person can answer: stdin is a terminal, or the Shell says it is.
+func (r *runtime) canPrompt() bool {
+	if r.run != nil {
+		return r.run.interactive
+	}
+	return r.isTTY(r.d.Stdin)
+}
+
+// readAnswer asks one question. Inside the Shell the line editor reads it (and prints the label);
+// otherwise the label goes to stderr and the answer comes from stdin.
+func (r *runtime) readAnswer(label string) (string, error) {
+	if r.run != nil {
+		if hook := r.run.promptHook(); hook != nil {
+			return hook(label)
+		}
+	}
+	_, _ = fmt.Fprint(r.printer().err, label)
+	line, err := bufio.NewReader(r.d.Stdin).ReadString('\n')
+	if line == "" && err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(line), nil
 }
 
 func (p *printer) isYes(answer string) bool {

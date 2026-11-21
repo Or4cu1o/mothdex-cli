@@ -292,11 +292,14 @@ func (r *runtime) runVersion() error {
 
 func (r *runtime) soonCmd(name string) *cobra.Command {
 	return &cobra.Command{Use: name, Short: "Not available yet", Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return r.local(func(_ *printer) (any, func(*printer), error) {
-				return map[string]any{"available": false}, func(p *printer) {
-					_, _ = fmt.Fprintln(p.out, p.T("ui.cli.soon", i18n.Args{"name": name}))
-				}, nil
-			})
-		}}
+		RunE: func(*cobra.Command, []string) error { return r.soon(name) }}
+}
+
+// soon is the answer of a command that is not built yet.
+func (r *runtime) soon(name string) error {
+	return r.local(func(_ *printer) (any, func(*printer), error) {
+		return map[string]any{"available": false}, func(p *printer) {
+			_, _ = fmt.Fprintln(p.out, p.T("ui.cli.soon", i18n.Args{"name": name}))
+		}, nil
+	})
 }

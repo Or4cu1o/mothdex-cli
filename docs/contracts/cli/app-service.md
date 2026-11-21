@@ -6,7 +6,9 @@ The **only** API the four UIs (CLI, Shell, TUI, GUI) call. Business rules live h
 UIs format, prompt and render, nothing else. UIs may import `pkg/mothdex` **types** (Entry, Link, …) as DTOs,
 but never call `mothdex.Client`, the cache, the downloader or the config loader directly. Every type in the
 service's signatures is declared in `app` (aliases of internal types are fine: `HistoryRecord = history.Record`,
-`State = proxy.State`), so UI packages import only `app` and `pkg/mothdex`; only the composition root imports internals.
+`State = proxy.State`), so UI packages import only `app` and `pkg/mothdex` (plus the UI infrastructure `internal/i18n`
+and `internal/buildinfo`); only the composition root imports the other internals. File exports go through `app`
+(`ExportTarget`, `WriteExport`, `ExportHistory`, `CSVCell`, formats `FormatTXT|JSON|CSV`), never `internal/history`.
 
 > Layout note: this adds `internal/app/` to PLAN §2.2. Announced to Guindaste (T-3).
 
@@ -145,7 +147,7 @@ type DownloadRequest struct {
   `<title>.<ext>` in the destination `Enqueue` would use. The write goes through the confined destination root: staged
   and published without replacing (O_EXCL, link or copy), an existing file is kept and its path returned, launcher
   folders are refused (`path_rejected`). An entry without a usable cover is `not_found`. Whether to call it after a
-  download (`download.boxart`, `--boxart`) is the UI's choice; a failure is a warning and never fails the job.
+  download (`download.boxart`, `--boxart`, `Done` jobs only, never after an interrupt) is the UI's choice; a failure is a warning and never fails the job.
 - **Export** (`ExportTarget`, `WriteExport`, `ExportHistory`, `CSVCell`): the txt/json/csv writers of cli-output §5 live
   in the service so Shell and TUI share one path. A write failure is `exists`, `path_rejected`, `permission_denied` or
   `disk_full` (exit 6) with the target path, never the temporary name.
