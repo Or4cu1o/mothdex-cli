@@ -17,6 +17,8 @@ $script:fail = 0
 $global:urls = New-Object System.Collections.ArrayList
 $script:message = ''
 $base = 'https://github.com/Or4cu1o/mothdex-cli/releases/'
+$global:fakeBase = $base
+$global:fakeRelease = $release
 
 function Check([string]$What, [bool]$Ok) {
   if ($Ok) { $script:pass++ } else { $script:fail++; Write-Output "FAIL: $What [last error: $($script:message)]" }
@@ -26,9 +28,9 @@ function Check([string]$What, [bool]$Ok) {
 function Invoke-WebRequest {
   param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing, [int]$MaximumRedirection)
   [void]$global:urls.Add($Uri)
-  if (-not $Uri.StartsWith($base, [StringComparison]::Ordinal)) { throw "BLOCKED URL $Uri" }
-  $rel = $Uri.Substring($base.Length) -replace '^download/', '' -replace '^latest/download/', 'latest/'
-  $src = Join-Path $release ($rel -replace '/', '\')
+  if (-not $Uri.StartsWith($global:fakeBase, [StringComparison]::Ordinal)) { throw "BLOCKED URL $Uri" }
+  $rel = $Uri.Substring($global:fakeBase.Length) -replace '^download/', '' -replace '^latest/download/', 'latest/'
+  $src = Join-Path $global:fakeRelease ($rel -replace '/', '\')
   if (-not (Test-Path -LiteralPath $src)) { throw "404 $Uri" }
   Copy-Item -LiteralPath $src -Destination $OutFile
 }
