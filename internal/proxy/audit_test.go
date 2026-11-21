@@ -89,7 +89,7 @@ func TestLyingEndRecordIsCaughtByWalkingTheDirectory(t *testing.T) {
 
 	// The central directory ends where the zip64 end record started: recompute its size.
 	rec := bytes.LastIndex(z[:loc], []byte{0x50, 0x4b, 0x06, 0x06})
-	cdStart := int(binary.LittleEndian.Uint64(z[rec+48:])) //nolint:gosec // a few MB
+	cdStart := int(binary.LittleEndian.Uint64(z[rec+48:]))        //nolint:gosec // a few MB
 	binary.LittleEndian.PutUint32(z[at+12:], uint32(rec-cdStart)) //nolint:gosec // a few MB
 
 	err := zipDirectoryWithinLimits(bytesAt(z), int64(len(z)))
