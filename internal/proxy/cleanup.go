@@ -31,7 +31,10 @@ func (d *Downloader) Cleanup(ctx context.Context) error {
 	}
 	jerrs, err := d.cleanJournaled(ctx, now)
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return err
+		}
+		return errors.Join(append(errs, err)...) // keep the staging errors when the journal fails
 	}
 	return errors.Join(append(errs, jerrs...)...)
 }
