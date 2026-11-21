@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/ui/tui` (T-42, part 2 of 2): History and Settings, and the downloads that depend on them. History (`H`): every record
+  newest first, `f` for failed only (the service filter), `/` to filter by title, details with the localized error, `d` to
+  queue a failed download again, `e` to export (txt, json or csv by the extension, with an `Overwrite? [y/N]` question), and a
+  reload when a job ends. Settings (`S`): the curated table of tui.md section 7 from `ConfigList` with a static kind and range
+  per key until the app layer exposes the schema (gap F1); space toggles, Enter edits (an enum opens a list, a number shows its
+  range and an invalid value is refused in place), Backspace resets, a row set by the environment or a flag is read-only and
+  says which, and `Clear cache` asks first. The page size, the confirmation, the cover and the link preference apply at once;
+  the others say "applies on next start". With `interface.confirm_downloads` on, a batch or a file over 500 MB asks before it
+  is queued (cli-conventions section 6). With `download.boxart` on, the cover of a finished file is saved after its `Done`
+  event (`SaveJobBoxart`; a failure is a warning). Review of part 1: the "past the last page" and "hidden results" notes share
+  one toast, and a failed retry puts the jobs back in the Queue.
 - `internal/ui/tui` (T-42, part 1 of 2): the full-screen terminal UI on Bubble Tea v2.1.2, Bubbles v2.2.2 and Lip Gloss
   v2.1.1. `mothdex tui` opens the frame of tui.md section 1 (title bar with the live queue summary, status bar with the keys
   of the screen, a toast for 3 s, `?` help) and the screens Search (query, platform and region pickers that fall back to typed

@@ -100,14 +100,35 @@ type resultsScreen struct {
 	cur    int
 	top    int
 	marks  marks
+	ask    *pendingBatch // a batch waiting for the "Download N files?" answer
+}
+
+// pendingBatch is a download request that interface.confirm_downloads holds back until the user says y.
+type pendingBatch struct {
+	reqs []app.DownloadRequest
+	text string
+}
+
+// confirmBytes is the size above which one file also asks (cli-conventions section 6).
+const confirmBytes = 500 << 20
+
+// needsConfirm is the rule of cli-conventions section 6: with interface.confirm_downloads on, ask when
+// more than one file is queued or the total is above 500 MB.
+func needsConfirm(confirm bool, files int, bytes int64) bool {
+	return confirm && (files > 1 || bytes > confirmBytes)
 }
 
 func newResults(q app.SearchQuery, random bool) resultsScreen {
 	return resultsScreen{q: q, random: random, st: loadLoading, marks: marks{}}
 }
 
-func (resultsScreen) id() screenID             { return scResults }
-func (resultsScreen) focus() focusKind         { return focusNone }
+func (resultsScreen) id() screenID { return scResults }
+func (s resultsScreen) focus() focusKind {
+	if s.ask != nil {
+		return focusPrompt
+	}
+	return focusNone
+}
 func (s resultsScreen) loading() bool          { return s.st == loadLoading }
 func (s resultsScreen) query() app.SearchQuery { return s.q }
 
@@ -192,15 +213,23 @@ func (s resultsScreen) onSearch(msg searchDoneMsg, rt *shared) (screen, tea.Cmd)
 		s.rows[i] = row{index: r.Index, e: r.Entry}
 	}
 	s.settle(keep, len(s.rows) == 0)
-	var cmds []tea.Cmd
-	if msg.page.PastLastPage {
-		note := rt.T("ui.cli.search.past_last", i18n.Args{"asked": s.q.Page, "shown": msg.page.Page})
-		cmds = append(cmds, toastCmd(note, toastWarn))
+	if note := pageNotes(rt, s.q.Page, msg.page); note != "" {
+		return s, toastCmd(note, toastWarn)
 	}
-	if msg.page.Dropped > 0 { // results hidden by the slug rule must not vanish silently (ui.md F2)
-		cmds = append(cmds, toastCmd(rt.T("ui.cli.search.dropped", i18n.Args{"n": msg.page.Dropped}), toastWarn))
+	return s, nil
+}
+
+// pageNotes joins what the user must know about a page into one toast: a page past the last one, and
+// results the slug rule hid (ui.md F2). A second toast would replace the first at once.
+func pageNotes(rt *shared, asked int, page app.SearchPage) string {
+	var notes []string
+	if page.PastLastPage {
+		notes = append(notes, rt.T("ui.cli.search.past_last", i18n.Args{"asked": asked, "shown": page.Page}))
 	}
-	return s, tea.Batch(cmds...)
+	if page.Dropped > 0 {
+		notes = append(notes, rt.T("ui.cli.search.dropped", i18n.Args{"n": page.Dropped}))
+	}
+	return strings.Join(notes, " ")
 }
 
 func (s resultsScreen) onRandom(msg randomDoneMsg, rt *shared) (screen, tea.Cmd) {
@@ -250,6 +279,14 @@ func (s resultsScreen) slugAt() string {
 func rowsH(rt *shared) int { return max(rt.h-4, 1) }
 
 func (s resultsScreen) onKey(ev keyEv, rt *shared) (screen, tea.Cmd) {
+	if s.ask != nil {
+		batch := s.ask
+		s.ask = nil
+		if ev.a == actYes {
+			return s, enqueueCmd(rt.env, batch.reqs)
+		}
+		return s, nil
+	}
 	if s.st == loadLoading {
 		if ev.a == actBack { // Esc cancels the request and returns to Search
 			if s.cancel != nil {
@@ -339,8 +376,18 @@ func (s resultsScreen) download(rt *shared) (screen, tea.Cmd) {
 		return s, nil
 	}
 	reqs := make([]app.DownloadRequest, len(slugs))
+	size := map[string]int64{}
+	for _, r := range s.rows {
+		size[r.e.Slug] = bestLink(r.e).Size
+	}
+	var total int64
 	for i, slug := range slugs {
 		reqs[i] = app.DownloadRequest{Ref: app.Ref{Slug: slug}, Link: app.LinkSelector{Prefer: rt.prefs}}
+		total += size[slug]
+	}
+	if needsConfirm(rt.confirm, len(reqs), total) {
+		s.ask = &pendingBatch{reqs: reqs, text: rt.N("ui.tui.confirm_download", len(reqs), i18n.Args{"size": humanSize(total)})}
+		return s, nil
 	}
 	return s, enqueueCmd(rt.env, reqs)
 }
@@ -411,7 +458,11 @@ func (s resultsScreen) view(rt *shared, w, h int) screenView {
 	if rt.tier == tierShort {
 		foot = ""
 	}
-	return screenView{body: s.rowLines(rt, w, h), footer: foot}
+	sv := screenView{body: s.rowLines(rt, w, h), footer: foot}
+	if s.ask != nil {
+		sv.status, sv.prompt = render(rt.st.warn, s.ask.text), true
+	}
+	return sv
 }
 
 // errorBody is the in-place error state: the message, the hint and the code.

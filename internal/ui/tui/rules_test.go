@@ -48,6 +48,8 @@ func kp(name string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyBackspace}
 	case "ctrl+c":
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+	case "ctrl+u":
+		return tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
 	}
 	r := []rune(name)
 	return tea.KeyPressMsg{Code: r[0], Text: name}
