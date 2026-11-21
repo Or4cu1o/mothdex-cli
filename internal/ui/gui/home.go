@@ -25,6 +25,7 @@ var homeTiles = []string{tileSearch, tilePlatforms, tileRandom, tileQueue, tileH
 const (
 	regionTiles = 0
 	regionChips = 1
+	regionKeys  = 2 // the keys of the virtual keyboard; chips above them are region 0
 )
 
 type tileBox struct {
