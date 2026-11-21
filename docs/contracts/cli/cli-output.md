@@ -41,7 +41,7 @@ Entries and links use the API v1 field names exactly (api-client §1), so `data`
 
 | Command | `data` |
 |---|---|
-| `search` | `{query:{text,platforms,regions,serial,sort}, page, page_size, total_pages, total_results, past_last_page, results:[{index, …Entry}]}` |
+| `search` | `{query:{text,platforms,regions,serial,sort}, page, page_size, total_pages, total_results, past_last_page, dropped, results:[{index, …Entry}]}` (`dropped`: results hidden by the slug rule, app-service §3) |
 | `info` | `{entry: Entry}` |
 | `random` | `{entries: [Entry]}` |
 | `platforms` | `{platforms: [{id, name, brand, class}]}` sorted by id |

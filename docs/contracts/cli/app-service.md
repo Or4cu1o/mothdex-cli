@@ -79,6 +79,7 @@ type SearchPage struct {
     Query SearchQuery; Results []IndexedEntry
     Page, TotalPages, TotalResults int // normalized: no results => Page=1, TotalPages=0
     PastLastPage bool                  // API clamped the requested page
+    Dropped int                        // results hidden by the slug rule (§3)
     Meta ResultMeta
 }
 type Result[T any] struct { Value T; Meta ResultMeta }
@@ -107,6 +108,12 @@ type DownloadRequest struct {
 - **UI-owned state.** The Shell command history (`<paths.data>/shell_history`) and similar UI conveniences belong to
   the UI that uses them, not to the service.
 
+- **Unsafe slugs (api-client §2, slug rule).** `Search` drops results whose slug fails `mothdex.ValidSlug`
+  **before** numbering and before the session is saved, so `<index>` always matches what was shown and the session
+  only holds valid slugs. `SearchPage.Dropped` (int, additive) counts them, and the CLI adds the warning
+  `"{n} results were hidden because their slug has an unexpected form."` to `warnings[]` (and stderr). `Entry`
+  returns `api_incompatible` when the answered slug fails the rule. `Random` counts such an answer as a failed
+  attempt (within its 2N budget), and returns `api_incompatible` only when no valid entry was found.
 - **Session.** `Search` saves `{query, page, slugs}` in cache namespace `session`. `Ref{Index}` resolves against it;
   no session or an index out of range gives `KindNotFound` with code `no_session` / `index_out_of_range`.
   The session is a convenience: a failed save does not fail `Search`, but the service then deletes the stored

@@ -43,6 +43,7 @@ func (s *Service) fetchCover(ctx context.Context, url string) bool {
 		return false
 	}
 	if call, ok := s.coverFlight[url]; ok {
+		call.waiters.Add(1)
 		s.coverMu.Unlock()
 		select {
 		case <-call.done:
