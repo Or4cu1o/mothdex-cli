@@ -246,7 +246,8 @@ try {
   Move-Item -LiteralPath $new -Destination $exe -Force
   Write-Output "Installed $exe $Version ($signature)"
   if ($launcherDir) { Install-Launcher $launcherDir $exe }
-  & $exe --version
+  $check = Invoke-Native $exe @('--version')
+  if ($check.Code -eq 0) { Write-Output $check.Output } else { Write-Warning "$exe --version exited with $($check.Code); the file is installed." }
   Write-Output "Add $BinDir to your PATH to run 'mothdex' directly."
 } finally {
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
