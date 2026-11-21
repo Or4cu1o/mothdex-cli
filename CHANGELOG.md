@@ -79,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- App service contract (T-20b): `SaveJobBoxart` (cover named after the downloaded file) and `SaveBoxart` (`boxart`
+  command) replace `DownloadRequest.Boxart`; exports go through `app`; UIs may also import `internal/i18n` and
+  `internal/buildinfo`.
 - Contracts: one slug rule for both repos (`^[a-z0-9][a-z0-9-]{0,255}$`, `mothdex.ValidSlug`). `Entry` refuses other
   slugs locally, search drops entries with an unsafe slug before numbering (`dropped` in `search` JSON, a warning), and a
   single-entry answer with one is `api_incompatible`.
