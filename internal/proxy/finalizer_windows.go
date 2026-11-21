@@ -4,8 +4,11 @@ package proxy
 
 import (
 	"errors"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -16,6 +19,18 @@ import (
 // root directory that was confined and checked (CR-13) before the job started; the residual
 // race with a local attacker who can swap directories is documented in the threat model.
 func renameNoReplace(r *RootFS, from, to string) error {
+	if strings.ContainsAny(from+to, `\:`) {
+		return &os.LinkError{Op: "movefileex", Old: from, New: to, Err: fs.ErrInvalid}
+	}
+	// MoveFileEx walks paths, so make the confined root vouch for both parent directories first:
+	// os.Root refuses a link that leaves the root. This is a check, not an anchor (T-16 residual).
+	for _, name := range []string{from, to} {
+		d, err := r.root.Open(path.Dir(name))
+		if err != nil {
+			return err
+		}
+		_ = d.Close()
+	}
 	src, err := windows.UTF16PtrFromString(filepath.Join(r.dir, filepath.FromSlash(from)))
 	if err != nil {
 		return err

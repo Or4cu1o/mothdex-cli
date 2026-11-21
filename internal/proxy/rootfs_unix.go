@@ -40,3 +40,28 @@ func linkUnsupported(err error) bool {
 }
 
 func syncDirHandle(d *os.File) error { return d.Sync() }
+
+// checkTempDir refuses a group- or world-writable directory without the sticky bit.
+func checkTempDir(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0 {
+		return errors.New("proxy: the temp directory is writable by other users and has no sticky bit")
+	}
+	return nil
+}
+
+// checkPrivateDir requires a directory owned by the current user with no group or other access.
+func checkPrivateDir(dir string) error {
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	sys, ok := info.Sys().(*syscall.Stat_t)
+	if !info.IsDir() || !ok || int(sys.Uid) != os.Geteuid() || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("proxy: the staging directory is not private to the current user")
+	}
+	return nil
+}
