@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- CLI conventions §7: English error strings for `invalid_request`, `unmapped_platform`, `untrusted_redirect` and
+  `unsafe_name`; `path_rejected` now describes a refused destination, not a file name (that is `unsafe_name`).
 - Contracts: `Service.Cover` returns the cached reader and content type (not a path), `internal/cover` owns the
   cover DNS port (the downloader `Resolver` port is dropped from downloader §8), and cache §4 says how T-20 wires it.
 - `internal/config`: `download.on_exists=overwrite` from the config file or `MOTHDEX_DOWNLOAD_ON_EXISTS` is rejected
