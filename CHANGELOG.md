@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/i18n` and `locales/`: embedded locales plus an optional external folder (per-key override), automatic
+  detection (`LC_ALL`, `LC_MESSAGES`, `LANG`; the Windows preferred UI languages), `interface.language` resolution
+  (exact, same language, en_us), named `{placeholders}`, CLDR plural forms, and a per-key fallback to en_us. `en_us`,
+  `pt_br`, `es_es` and `ru_ru` are complete (the `errors.<code>.message` and `.hint` table of cli-output section 4 and
+  the UI basics); `zh_cn`, `ja_jp` and `hi_in` translate the UI basics and fall back for the rest. A test fails when a
+  locale lacks keys it promises, defines keys en_us lacks, or changes placeholders.
+
 - `pkg/mothdex`: `KindUntrustedRedirect` (`untrusted_redirect`, exit 4) and `IsUntrustedRedirect`. A redirect to another
   origin (host, scheme or effective port), a fourth hop, or a 3xx without a usable `Location` is refused, not retried,
   does not open the rate-limit circuit and is never `KindNetwork`; the message names the target host only (T-10c).

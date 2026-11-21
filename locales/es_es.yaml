@@ -1,0 +1,120 @@
+# es_es: keys missing here fall back to en_us.
+locale:
+  name: 'Español (España)'
+  iso_code: 'es-ES'
+errors:
+  usage:
+    message: 'Uso no válido: {detail}'
+    hint: 'Ejecuta "mothdex {command} --help".'
+  invalid_config:
+    message: 'Ajuste no válido {key}={value} (origen: {source}).'
+    hint: 'Ejecuta "mothdex config reset {key}".'
+  invalid_request:
+    message: 'La solicitud no es válida: {detail}'
+    hint: 'Revisa los valores indicados.'
+  confirmation_required:
+    message: 'Este comando necesita confirmación.'
+    hint: 'Añade --force para omitir la pregunta.'
+  unmapped_platform:
+    message: 'No hay carpeta conocida para la plataforma {platform}.'
+    hint: 'Define profile.folders.{platform} en la configuración.'
+  no_session:
+    message: 'No hay una búsqueda anterior a la que referirse.'
+    hint: 'Ejecuta primero "mothdex search <texto>", o usa --slug.'
+  index_out_of_range:
+    message: 'El resultado n.º {index} no existe (la última búsqueda tiene {count}).'
+    hint: 'Elige un número entre 1 y {count}.'
+  not_found:
+    message: 'No se encontró ninguna entrada para {ref}.'
+    hint: 'Revisa la ortografía o busca con menos palabras.'
+  network:
+    message: 'No se puede conectar con el servidor de Mothdex.'
+    hint: 'Revisa tu conexión.'
+  rate_limited:
+    message: 'El servidor nos pidió ir más despacio.'
+    hint: 'Espera {retry_after} e inténtalo de nuevo.'
+  upstream:
+    message: 'El servidor tuvo un problema (HTTP {status}).'
+    hint: 'Inténtalo de nuevo en unos minutos.'
+  api_incompatible:
+    message: 'El servidor respondió en un formato que esta versión no entiende.'
+    hint: 'Actualiza mothdex.'
+  untrusted_url:
+    message: 'Se rechaza descargar desde {host}.'
+    hint: 'Solo {allowed} es de confianza.'
+  untrusted_redirect:
+    message: 'El servidor redirigió la solicitud a {host}, y se rechazó.'
+    hint: 'Inténtalo más tarde. Si persiste, infórmalo.'
+  size_mismatch:
+    message: 'El archivo descargado tiene un tamaño incorrecto ({got} de {expected}).'
+    hint: 'Inténtalo de nuevo, o elige otro enlace con --link.'
+  integrity:
+    message: 'El archivo descargado está dañado (falló la verificación del archivo).'
+    hint: 'Inténtalo de nuevo, o elige otro enlace con --link.'
+  permission_denied:
+    message: 'No se puede escribir en {path}.'
+    hint: 'Elige otra carpeta con -o, o corrige sus permisos.'
+  disk_full:
+    message: 'No hay espacio libre suficiente en {path} (necesita {needed}).'
+    hint: 'Libera espacio o elige otra carpeta con -o.'
+  exists:
+    message: '{path} ya existe.'
+    hint: 'Define download.on_exists como rename u overwrite.'
+  path_rejected:
+    message: 'El servidor envió un nombre de archivo inseguro.'
+    hint: 'No se escribió nada. Elige otro enlace con --link.'
+  unsafe_name:
+    message: 'El nombre de archivo {name} no se puede usar con seguridad.'
+    hint: 'No se escribió nada. Elige otro enlace con --link.'
+  canceled:
+    message: 'Cancelado.'
+    hint: ''
+  internal:
+    message: 'Error inesperado.'
+    hint: 'Los detalles están en {log_path}. Por favor, infórmalo.'
+ui:
+  messages:
+    yes: 'Sí'
+    no: 'No'
+    ok: 'OK'
+    cancel: 'Cancelar'
+    done: 'Hecho'
+    loading: 'Cargando...'
+    confirm: '¿Seguro? (s/N)'
+    goodbye: '¡Hasta luego!'
+  status:
+    idle: 'Inactivo'
+    queued: 'En cola'
+    downloading: 'Descargando'
+    verifying: 'Verificando'
+    done: 'Completado'
+    skipped: 'Omitido'
+    failed: 'Falló'
+    canceled: 'Cancelado'
+  units:
+    b: 'B'
+    kb: 'KB'
+    mb: 'MB'
+    gb: 'GB'
+    tb: 'TB'
+  labels:
+    title: 'Título'
+    platform: 'Plataforma'
+    region: 'Región'
+    size: 'Tamaño'
+    links: 'Enlaces'
+  search:
+    searching: 'Buscando...'
+    no_results: 'No se encontraron resultados'
+    found:
+      one: 'Se encontró {count} resultado'
+      other: 'Se encontraron {count} resultados'
+  download:
+    starting: 'Iniciando la descarga...'
+    completed: 'Descarga completada'
+    summary: '{done} descargados, {skipped} omitidos, {failed} con error en {elapsed}'
+    speed: 'Velocidad: {speed}'
+    eta: 'Restante: {eta}'
+    files:
+      one: '{count} archivo'
+      other: '{count} archivos'

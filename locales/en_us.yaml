@@ -1,0 +1,120 @@
+# en_us: source of truth; every other locale falls back to it key by key.
+locale:
+  name: 'English'
+  iso_code: 'en-US'
+errors:
+  usage:
+    message: 'Invalid usage: {detail}'
+    hint: 'Run "mothdex {command} --help".'
+  invalid_config:
+    message: 'Invalid setting {key}={value} (from {source}).'
+    hint: 'Run "mothdex config reset {key}".'
+  invalid_request:
+    message: 'The request is not valid: {detail}'
+    hint: 'Check the values you passed.'
+  confirmation_required:
+    message: 'This command needs confirmation.'
+    hint: 'Add --force to skip the prompt.'
+  unmapped_platform:
+    message: 'No folder is known for platform {platform}.'
+    hint: 'Set profile.folders.{platform} in the configuration.'
+  no_session:
+    message: 'There is no previous search to refer to.'
+    hint: 'Run "mothdex search <text>" first, or use --slug.'
+  index_out_of_range:
+    message: 'Result #{index} does not exist (last search has {count}).'
+    hint: 'Pick a number between 1 and {count}.'
+  not_found:
+    message: 'No entry found for {ref}.'
+    hint: 'Check the spelling or search with fewer words.'
+  network:
+    message: 'Cannot reach the Mothdex server.'
+    hint: 'Check your connection.'
+  rate_limited:
+    message: 'The server asked us to slow down.'
+    hint: 'Wait {retry_after} and try again.'
+  upstream:
+    message: 'The server had a problem (HTTP {status}).'
+    hint: 'Try again in a few minutes.'
+  api_incompatible:
+    message: 'The server answered in a format this version does not understand.'
+    hint: 'Update mothdex.'
+  untrusted_url:
+    message: 'Refusing to download from {host}.'
+    hint: 'Only {allowed} is trusted.'
+  untrusted_redirect:
+    message: 'The server redirected the request to {host}, which was refused.'
+    hint: 'Try again later. If it persists, report it.'
+  size_mismatch:
+    message: 'The downloaded file has the wrong size ({got} of {expected}).'
+    hint: 'Try again, or choose another link with --link.'
+  integrity:
+    message: 'The downloaded file is corrupt (archive check failed).'
+    hint: 'Try again, or choose another link with --link.'
+  permission_denied:
+    message: 'Cannot write to {path}.'
+    hint: 'Pick another folder with -o, or fix its permissions.'
+  disk_full:
+    message: 'Not enough free space in {path} (needs {needed}).'
+    hint: 'Free some space or choose another folder with -o.'
+  exists:
+    message: '{path} already exists.'
+    hint: 'Set download.on_exists to rename or overwrite.'
+  path_rejected:
+    message: 'The server sent an unsafe file name.'
+    hint: 'Nothing was written. Choose another link with --link.'
+  unsafe_name:
+    message: 'The file name {name} cannot be used safely.'
+    hint: 'Nothing was written. Choose another link with --link.'
+  canceled:
+    message: 'Canceled.'
+    hint: ''
+  internal:
+    message: 'Unexpected error.'
+    hint: 'Details are in {log_path}. Please report it.'
+ui:
+  messages:
+    yes: 'Yes'
+    no: 'No'
+    ok: 'OK'
+    cancel: 'Cancel'
+    done: 'Done'
+    loading: 'Loading...'
+    confirm: 'Are you sure? (y/N)'
+    goodbye: 'Goodbye!'
+  status:
+    idle: 'Idle'
+    queued: 'Queued'
+    downloading: 'Downloading'
+    verifying: 'Verifying'
+    done: 'Done'
+    skipped: 'Skipped'
+    failed: 'Failed'
+    canceled: 'Canceled'
+  units:
+    b: 'B'
+    kb: 'KB'
+    mb: 'MB'
+    gb: 'GB'
+    tb: 'TB'
+  labels:
+    title: 'Title'
+    platform: 'Platform'
+    region: 'Region'
+    size: 'Size'
+    links: 'Links'
+  search:
+    searching: 'Searching...'
+    no_results: 'No results found'
+    found:
+      one: 'Found {count} result'
+      other: 'Found {count} results'
+  download:
+    starting: 'Starting download...'
+    completed: 'Download completed'
+    summary: '{done} downloaded, {skipped} skipped, {failed} failed in {elapsed}'
+    speed: 'Speed: {speed}'
+    eta: 'ETA: {eta}'
+    files:
+      one: '{count} file'
+      other: '{count} files'
