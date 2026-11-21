@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SHA-256 from `checksums.txt`, and also `cosign verify-blob` or `gh attestation verify` when the tool is present
   (a present tool that fails aborts). `--version` pinning, `--dry-run`, `--uninstall`, profile `bin_dir`, a fixed
   launcher template written only to the profile launcher folder (path allow-list, marker, never overwrites a
-  user's file). Tests: shellcheck, 156 container checks (Alpine and Debian, no network, simulated Batocera and
+  user's file). Tests: shellcheck, 193 container checks (Alpine and Debian, no network, simulated Batocera and
   EmuELEC trees, fake release, a second pass as a non-root user) and Pester-style checks for `install.ps1` in CI (`installer.yml`). The launcher is opt-in (`--launcher`, `-Launcher`) in v0.1 because `mothdex tui` does not exist yet;
   wget is used only if it is GNU Wget (busybox wget does not verify TLS); on exFAT/FAT/NTFS share partitions of Batocera
   and Recalbox, root installs get a documented, warned exception to the world-writable refusal.
