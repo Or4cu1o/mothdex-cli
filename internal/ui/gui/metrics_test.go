@@ -172,3 +172,16 @@ func TestLineHeightIsOneAndAQuarterTimesTheSize(t *testing.T) {
 		}
 	}
 }
+
+func TestLanguagesTheFontCannotDrawFallBackToEnglish(t *testing.T) {
+	for _, l := range []string{"zh_cn", "ja_jp", "hi_in"} {
+		if !NeedsEnglish(l) {
+			t.Errorf("%s needs a font this screen mode lacks", l)
+		}
+	}
+	for _, l := range []string{"en_us", "pt_br", "es_es", "ru_ru", "xx_yy", ""} {
+		if NeedsEnglish(l) {
+			t.Errorf("%s must be drawn as it is", l)
+		}
+	}
+}

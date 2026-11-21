@@ -1,6 +1,8 @@
 package input
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -355,5 +357,39 @@ func TestMappingLinesKeepsOnlyUsableLinesForThePlatform(t *testing.T) {
 	}
 	if SDLPlatform("linux") != "Linux" || SDLPlatform("windows") != "Windows" || SDLPlatform("darwin") != "Mac OS X" {
 		t.Error("platform names")
+	}
+}
+
+func TestLoadMappingsReadsTheEmbeddedDatabaseThenTheUsersFile(t *testing.T) {
+	const embedded = "03000000deadbeef0000000000000001,Pad B,a:b0,platform:Linux,\nbroken line\n03000000deadbeef0000000000000002,Win only,a:b0,platform:Windows,\n"
+	dir := t.TempDir()
+	user := filepath.Join(dir, "gamecontrollerdb.txt")
+	if err := os.WriteFile(user, []byte("# mine\n03000000deadbeef0000000000000001,Pad B fixed,a:b1,platform:Linux,\nnot a mapping\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []string
+	warn := func(s string) { warnings = append(warnings, s) }
+
+	got := LoadMappings(embedded, user, "Linux", warn)
+	want := []string{
+		"03000000deadbeef0000000000000001,Pad B,a:b0,platform:Linux,",
+		"03000000deadbeef0000000000000001,Pad B fixed,a:b1,platform:Linux,", // later wins in SDL
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("lines %q, want %q", got, want)
+	}
+	if len(warnings) != 2 || !strings.HasPrefix(warnings[0], "controller database: skipped a malformed line") || !strings.HasPrefix(warnings[1], "gamecontrollerdb.txt: skipped a malformed line") {
+		t.Fatalf("warnings %q: one for the broken embedded line, then one for the user's", warnings)
+	}
+
+	// No user file and a missing one keep the embedded lines; an unreadable one (a directory) also warns.
+	for path, wantWarnings := range map[string]int{"": 1, filepath.Join(dir, "missing.txt"): 1, dir: 2} {
+		warnings = nil
+		if got := LoadMappings(embedded, path, "Linux", warn); len(got) != 1 {
+			t.Errorf("%q: %q", path, got)
+		}
+		if len(warnings) != wantWarnings {
+			t.Errorf("%q: %d warnings %q, want %d", path, len(warnings), warnings, wantWarnings)
+		}
 	}
 }

@@ -1,6 +1,11 @@
 package input
 
-import "strings"
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"strings"
+)
 
 // SDLPlatform is the name SDL_GameControllerDB uses for an operating system, as in `platform:Linux`.
 func SDLPlatform(goos string) string {
@@ -63,4 +68,40 @@ func isGUID(s string) bool {
 
 func isHexDigit(r rune) bool {
 	return r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F'
+}
+
+// LoadMappings returns the controller mapping lines to give SDL, in the order of docs/contracts/cli/gui.md
+// section 4: the embedded database first, then the user's file, so a later line for the same pad replaces an
+// earlier one. SDL itself applies SDL_GAMECONTROLLERCONFIG after these. Lines for another platform are
+// dropped; a malformed line, and an unreadable user file other than a missing one, are reported to warn and
+// skipped.
+func LoadMappings(embedded, userFile, platform string, warn func(msg string)) []string {
+	lines, bad := MappingLines(embedded, platform)
+	for _, l := range bad {
+		warn("controller database: skipped a malformed line: " + truncateForLog(l))
+	}
+	if userFile == "" {
+		return lines
+	}
+	data, err := os.ReadFile(userFile) //nolint:gosec // the user's own file under paths.data
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return lines
+	case err != nil:
+		warn("controller database: cannot read " + userFile + ": " + err.Error())
+		return lines
+	}
+	user, bad := MappingLines(string(data), platform)
+	for _, l := range bad {
+		warn("gamecontrollerdb.txt: skipped a malformed line: " + truncateForLog(l))
+	}
+	return append(lines, user...)
+}
+
+func truncateForLog(s string) string {
+	const limit = 60
+	if r := []rune(s); len(r) > limit {
+		return string(r[:limit]) + "…"
+	}
+	return s
 }
