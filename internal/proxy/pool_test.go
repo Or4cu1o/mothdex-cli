@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
+	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakefs"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeproxy"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/realfs"
 )
@@ -149,5 +150,22 @@ func TestFinalizedNamesCountAsExistingForSkipAndRename(t *testing.T) {
 				t.Fatalf("states %s, %s; want done, %s", res[0].State, res[1].State, want)
 			}
 		})
+	}
+}
+
+// Alicerce residual: history records absolute paths, so DestRoot is required and absolute.
+func TestNewRequiresAnAbsoluteDestRoot(t *testing.T) {
+	r := newRig(t, proxy.Config{})
+	for _, root := range []string{"", "roms", "./roms"} {
+		o := proxy.Options{
+			HTTP: r.srv.Client(), Clock: r.clock, Sleeper: r.clock, Rand: zeroRand{},
+			Staging: r.fs, Dest: r.fs, Finalizer: fakefs.Finalizer{},
+			Confine: func(d string) (string, error) { return d, nil },
+			History: r.history, Journal: r.journal, DestRoot: root,
+			Config: proxy.Config{Platforms: map[string]bool{"snes": true}},
+		}
+		if _, err := proxy.New(o); err == nil {
+			t.Errorf("DestRoot %q must be refused", root)
+		}
 	}
 }
