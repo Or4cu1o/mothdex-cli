@@ -880,3 +880,49 @@ func failureFor(st app.State) *app.Error {
 	}
 	return nil
 }
+
+// Retry on a failed Results replaces the screen: the stack does not grow, and B goes back to where it came from.
+func TestRetryOnResultsDoesNotStackScreens(t *testing.T) {
+	svc := zeldaService(3)
+	svc.SearchErr = &app.Error{Code: app.CodeNetwork, Message: "down"}
+	h := started(t, svc, 1280, 720)
+	searchFor(t, h, "zelda")
+	depth := len(h.m.back)
+	h.press(input.Confirm) // fails again
+	h.press(input.Confirm)
+	if len(h.m.back) != depth {
+		t.Fatalf("stack depth %d, want %d: a retry must not stack screens", len(h.m.back), depth)
+	}
+	svc.SearchErr = nil
+	h.press(input.Confirm)
+	h.mustHave("Zelda 001")
+	h.press(input.Back)
+	if h.m.screen != screenSearch {
+		t.Fatalf("B returns to Search, got %d", h.m.screen)
+	}
+}
+
+// Y on Results reached from a recent search (no Search screen below) shows Search filled in, and B goes Home.
+func TestEditSearchFromARecentChipReturnsToHome(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "tui_state"), []byte(`{"recent":["zelda"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := started(t, zeldaService(3), 1280, 720, func(o *Options) { o.DataDir = dir })
+	h.press(input.Down)
+	h.press(input.Down) // the chip
+	h.press(input.Confirm)
+	if h.m.screen != screenResults {
+		t.Fatalf("screen %d", h.m.screen)
+	}
+	h.press(input.Info)
+	if h.m.screen != screenSearch || h.m.search.field.String() != "zelda" {
+		t.Fatalf("screen %d text %q", h.m.screen, h.m.search.field.String())
+	}
+	for i := 0; i < 6; i++ {
+		h.press(input.Back) // five deletions, then leave
+	}
+	if h.m.screen != screenHome {
+		t.Fatalf("screen %d: B returns to Home", h.m.screen)
+	}
+}

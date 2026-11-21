@@ -247,8 +247,9 @@ func (m Model) onResultsAction(a input.Action, now time.Time) (Model, []Cmd) {
 	s := m.results
 	if s.phase == loadFailed {
 		switch a {
-		case input.Confirm:
-			return m.startResults(s.query, s.random, now) // a retry is a new search on a fresh screen
+		case input.Confirm: // a retry is a new search on a fresh screen, not one more screen on the stack
+			m = m.leave()
+			return m.startResults(s.query, s.random, now)
 		case input.Back:
 			return m.leave(), nil
 		}
