@@ -21,7 +21,7 @@ var (
 	// configEnums are the values of the settings that take a fixed set. Static until the app
 	// layer exposes the config schema (ui.md section 5, gap F1).
 	configEnums = map[string][]string{
-		"download.on_exists": {"skip", "rename", "overwrite"},
+		"download.on_exists": {"skip", "rename"}, // overwrite is refused as a setting by the service
 		"interface.color":    {"auto", "always", "never"},
 	}
 )

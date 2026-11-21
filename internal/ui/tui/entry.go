@@ -350,7 +350,7 @@ func (s entryScreen) view(rt *shared, w, h int) screenView {
 	e := s.entry
 	lines := []string{
 		render(st.heading, clean(e.Title)),
-		rt.T("ui.tui.entry.facts", i18n.Args{"platform": orDash(clean(e.Platform)), "regions": orDash(clean(strings.Join(e.Regions, ","))), "serial": orDash(clean(e.Serial))}),
+		rt.T("ui.tui.entry.facts", i18n.Args{"platform": platformLabel(rt, e.Platform), "regions": orDash(clean(strings.Join(e.Regions, ","))), "serial": orDash(clean(e.Serial))}),
 		"",
 	}
 	head := rt.T("ui.cli.info.links", nil)
@@ -369,6 +369,15 @@ func (s entryScreen) view(rt *shared, w, h int) screenView {
 		sv.status, sv.prompt = render(st.warn, s.confirm.text), true
 	}
 	return sv
+}
+
+// platformLabel is the platform id and, when the list is known, its name: "gbc (Game Boy Color)".
+func platformLabel(rt *shared, id string) string {
+	id = clean(id)
+	if name := rt.names[id]; name != "" && name != id {
+		return id + " (" + name + ")"
+	}
+	return orDash(id)
 }
 
 func orDash(s string) string {
