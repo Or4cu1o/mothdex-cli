@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/qa/T-43-shell-acceptance.md` (T-43): Shell acceptance at `b45d433` against shell.md and ui.md with a snapshot binary and a
   local fixture API (banner, paging, ranges and overflow inputs, link chooser, per-line flags, Tab, history mode, Ctrl+C and Ctrl+D,
   script mode and SIGINT), the findings S1 to S5 and the list of what was not verified.
+- `docs/contracts/cli/gui.md` (T-51): the E-M3 GUI contract, covering the separate `mothdex-gui` binary and its package layout, SDL2 through an own purego binding (with what the spike must prove and the decision rule), Noto Sans with the x/image raster, the pinned GameControllerDB, a single download root (no shared limiter), the exit budget, cover decode caps, the packaging impact, the test plan and the gaps for Forja.
 - `docs/release-v0.1.0-checklist.md` (T-23): the ordered owner steps for the first release (open gates A2 and D1 to D3,
   environment and tag settings, tag, what `release.yml` publishes, verification of the published assets, rollback) and what
   was and was not verified beforehand, including a gap found in `publish` (no tag-to-commit check, no `--source-digest`).
@@ -88,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
+  three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry
+  that has more than one link; Ctrl+C never exits the Shell (only `exit`, `quit` and Ctrl+D leave); the TUI Entry
+  screen shows the platform id and name.
 - App service contract (T-20b): `SaveJobBoxart` (cover named after the downloaded file) and `SaveBoxart` (`boxart`
   command) replace `DownloadRequest.Boxart`; exports go through `app`; UIs may also import `internal/i18n` and
   `internal/buildinfo`.

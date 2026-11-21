@@ -1,6 +1,6 @@
 # UX: TUI (full screen)
 
-Status: draft v1 (T-6) · Owner: Bússola · Implementer: Vitral · Risk: Medium
+Status: v1.1 (T-6; E-M2 deviations recorded in UX-sync, Decisions D24) · Owner: Bússola · Implementer: Vitral · Risk: Medium
 Services: [`app-service.md`](../contracts/cli/app-service.md) only (Catalog, Downloads, History, Config, Cache). Stack: Bubble Tea v2 + Bubbles +
 Lip Gloss (PLAN §9). Wording, color roles, units and progress/Warming rules come from [`cli-conventions.md`](cli-conventions.md); link
 ranking from [`prefer-syntax.md`](prefer-syntax.md). Gamepad GUI is out of scope (E-M3).
@@ -32,7 +32,7 @@ Navigation map:
 
 ```
 Search ─Enter─▶ Results ─Enter─▶ Entry detail ─d / Enter on link─▶ (queued, toast)
-   │               ▲                  └─ L ─▶ Link chooser (only when >1 link or to override)
+   │               ▲                  (the Entry link list is the link chooser; no separate overlay)
    └ Q Queue · H History · S Settings (overlay screens, Esc returns)
 ```
 
@@ -48,13 +48,17 @@ Search ─Enter─▶ Results ─Enter─▶ Entry detail ─d / Enter on link�
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Focus starts in the Search field. `Tab`/`Shift+Tab` cycle fields; `Enter` in any field runs `Catalog.Search`.
+- Focus starts in the Search field. `Tab`/`Shift+Tab` cycle fields. `Enter` on the Platform or Region field opens its
+  picker; `Enter` on the query or Sort runs `Catalog.Search` (D24).
+- `Esc` inside the query field leaves the field and moves focus to the `Random` button, so letters work as commands
+  again (D24).
 - Platform and Region are pickers: a filterable list overlay (type to filter, `Space` toggles multi-select, `Enter`
   confirms). Values from `Platforms`/`Regions` (lazy, cached). Shows `(loading…)` then the list; on failure `Couldn't load the list. Enter the id manually.`
   and the field becomes free text.
 - `Recent`: the last 5 query texts, UI-owned (`<paths.data>/tui_state`), `↓` from the field selects, `Enter` runs.
 - `Random` (button, key `r` when focus is not in a text field) calls `Catalog.Random` with the current filters, Count 10,
-  and opens Results with them (no paging; header says `Random picks`).
+  and opens Results with them (no paging; header says `Random picks`). Random picks are not in the session, so their
+  `#` column shows `-` (D24).
 - Empty search text with no filters is allowed only with at least one platform or region; otherwise inline error
   `Type something or pick a platform.` (no network call).
 
@@ -77,9 +81,9 @@ Search ─Enter─▶ Results ─Enter─▶ Entry detail ─d / Enter on link�
 - `>` marks the cursor row; `[x]` marked rows. The footer counts marks: `2 marked`.
 - `Enter` opens Entry detail. `d` downloads: the marked rows, or the cursor row when nothing is marked. A row with
   several links uses the default ranked link (config `download.prefer`) and the toast names it; to choose, open the
-  entry and press `L`.
+  entry and pick from its link list.
 - `n`/`p` or `PgDn`/`PgUp` page via `Search` with the new page (cache first, so paging back is instant); marks are
-  kept per page and cleared on a new search. `s` cycles sort `relevance → title → size` (current page only, labeled so).
+  kept per page and cleared on a new search. `s` cycles sort `relevance → title → size` (current page only, labeled `sort: title (this page)`).
 - States: **loading** (`Searching…` spinner, input still responsive, `Esc` cancels the context); **empty**
   (`No results for "xyz". Try fewer words, or remove filters.` with `/` to edit); **error** (message + hint from
   `errors.<code>`, `r` retries); **stale** (`stale: served from cache` in warn color).
@@ -103,14 +107,18 @@ Search ─Enter─▶ Results ─Enter─▶ Entry detail ─d / Enter on link�
 ```
 
 - Data: `Catalog.Entry` for the metadata and `Catalog.Links` (ranked with the active preference) for the list; `*` is
-  the default winner, the last column is `Reasons` (dim). Cursor starts on the winner.
+  the default winner, the last column is `Reasons` (dim). Cursor starts on the winner. This list is the link chooser:
+  there is no separate `L` overlay (D24).
+- The platform line shows the id and the name, `gbc (Game Boy Color)`, with the name from the cached `Platforms` list
+  the pickers already load; the id alone only when that list is unavailable (D24-review).
 - `Enter` or `d` downloads the **highlighted** link (`LinkSelector{Index}`); `D` downloads the default winner without
   moving. The toast confirms `Queued: Link's Awakening DX (link 1)`; the user stays on the screen (to queue more).
 - `Left/Right` or `[`/`]` move to the previous/next entry in the Results list without going back.
 - Preference tweak: `P` opens a small overlay to set `lang`, `format`, `source`, `size` for this session only
   (same keys as `--prefer`, prefer-syntax §1); persisting is done in Settings. The list re-ranks immediately.
-- Cover: terminals cannot show images reliably, so the cover is not rendered. `c` calls `Catalog.Cover` and shows the
-  cached file path in a toast (`Cover saved: <path>`), usable by external viewers. (Revisit with Kitty/Sixel only after v1.0.)
+- Cover: terminals cannot show images reliably, so the cover is not rendered. `c` saves it with `SaveBoxart` into the
+  folder a download of this entry would use, and shows that path in a toast (`Cover saved: <path>`), usable by external
+  viewers; the cache layout stays private to the service (D24, ui.md D1). (Revisit with Kitty/Sixel only after v1.0.)
 - Already downloaded (history says `Done` for this slug and link): the row shows `✔ downloaded` (dim) and download asks
   `Already downloaded. Download again? [y/N]` (respects `download.on_exists`).
 - An entry with no links: `No links available for this entry.` and download keys are disabled.
@@ -220,10 +228,11 @@ Global (when no text field is focused unless noted):
 | `x` | cancel job · `X` cancel all |
 | `?` | help overlay listing every key for the screen |
 | `Ctrl+C`, `q` (root only) | quit (with confirmation when jobs are active) |
-| `Ctrl+L` | redraw |
+| `Ctrl+L` | redraw (the framework already redraws on every update) |
 | In text fields | `Ctrl+A/E` start/end, `Ctrl+U` clear, `Ctrl+W` delete word, `Enter` submit, `Esc` leave field |
 
-Mouse: optional enhancement (click to focus/select, wheel to scroll); nothing requires it. Vim keys are aliases only,
+Mouse: optional enhancement (click to focus/select, wheel to scroll); nothing requires it, and v0.2 ships without it
+(D24). The text cursor does not blink. Vim keys are aliases only,
 the arrow keys always work. No single-letter key is destructive; destructive actions need `X`, `Clear`, or a prompt.
 
 ## 9. Small terminals and resilience
