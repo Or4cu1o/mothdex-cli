@@ -1,0 +1,336 @@
+//go:build gui
+
+package sdl
+
+import (
+	"context"
+	"runtime"
+	"slices"
+	"strconv"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/assets"
+	gdraw "github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/loop"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
+	"github.com/Or4cu1o/mothdex-cli/locales"
+	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
+)
+
+// These tests need a system SDL2 and run on the dummy video driver with the software renderer: no display and
+// no pad. They are the headless render check of docs/ux/gui.md section 10 (PR 1) and skip where SDL2 is
+// missing, unless GUI_REQUIRE_SDL=1 (the CI jobs that install libsdl2).
+
+// Colors the model draws with (docs/ux/gui.md section 1.5).
+var (
+	colorBG        = [3]uint8{0x0F, 0x13, 0x17}
+	colorSurface   = [3]uint8{0x1A, 0x20, 0x27}
+	colorFocusBG   = [3]uint8{0x12, 0x34, 0x47}
+	colorFocusRing = [3]uint8{0x5C, 0xC8, 0xFF}
+)
+
+var testEpoch = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+
+type fakeService struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (f *fakeService) record(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
+func (f *fakeService) order() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.calls)
+}
+
+func (f *fakeService) DBInfo(context.Context) (app.Result[mothdex.DBInfo], error) {
+	return app.Result[mothdex.DBInfo]{Value: mothdex.DBInfo{TotalEntries: 1284019}}, nil
+}
+func (f *fakeService) ConfigList() ([]app.Setting, error) { return nil, nil }
+func (f *fakeService) Jobs() []app.JobSnapshot            { return nil }
+func (f *fakeService) Cancel(id app.JobID) error          { f.record("cancel:" + string(id)); return nil }
+func (f *fakeService) Wait(context.Context) (app.BatchResult, error) {
+	f.record("wait")
+	return app.BatchResult{}, nil
+}
+func (f *fakeService) Close() error { f.record("close"); return nil }
+func (f *fakeService) ActiveProfile() app.ProfileInfo {
+	return app.ProfileInfo{ID: "batocera", Name: "Batocera", RomRoot: "/userdata/roms"}
+}
+
+// headless opens a hidden software window of w x h on the dummy driver, or skips the test.
+func headless(t *testing.T, w, h int) (*Backend, *text.Font) {
+	t.Helper()
+	runtime.LockOSThread() // SDL calls stay on one OS thread
+	t.Cleanup(runtime.UnlockOSThread)
+	lib, err := Open()
+	skipWithoutSDL(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := lib.Version(); !v.AtLeast(MinimumVersion()) {
+		t.Fatalf("SDL %s is older than the minimum %s", v, MinimumVersion())
+	}
+	font, err := text.Parse(assets.NotoSans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	be, err := OpenBackend(lib, font, BackendOptions{Driver: "dummy", Windowed: true, Width: w, Height: h, Hidden: true, Software: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(be.Close)
+	return be, font
+}
+
+func guiOptions(t *testing.T, font *text.Font, svc gui.Service, w, h int) gui.Options {
+	t.Helper()
+	bundle, err := i18n.Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gui.Options{Service: svc, T: bundle.New("en_us"), Font: font, Clock: gui.SystemClock(), DataDir: t.TempDir(), Version: "0.3.0", Width: w, Height: h, Safe: gui.AutoSafeArea}
+}
+
+// homeModel returns the model on Home for a display of w x h, with the service answers applied.
+func homeModel(t *testing.T, font *text.Font, w, h int, svc gui.Service) gui.Model {
+	t.Helper()
+	m, cmds := gui.New(guiOptions(t, font, svc, w, h), testEpoch)
+	for _, cmd := range cmds {
+		m, _ = m.Update(cmd(), testEpoch)
+	}
+	return m
+}
+
+func layoutOf(m gui.Model) gdraw.Layout {
+	mt := m.Metrics()
+	return gdraw.Layout{W: mt.W, H: mt.H, Scale: mt.Scale, Fit: mt.FitLogical}
+}
+
+func expectPixel(t *testing.T, be *Backend, x, y int, want [3]uint8, what string) {
+	t.Helper()
+	r, g, b, _, err := be.Pixel(x, y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := [3]uint8{r, g, b}; got != want {
+		t.Errorf("%s: pixel (%d,%d) is %v, want %v", what, x, y, got, want)
+	}
+}
+
+// Home drawn by the real renderer: background, the safe margin, the top bar, the focused tile with its ring
+// and some text, at the three sizes of the done criterion.
+func TestHomeRendersAtThreeSizes(t *testing.T) {
+	for _, size := range [][2]int{{640, 480}, {1280, 720}, {1920, 1080}} {
+		w, h := size[0], size[1]
+		t.Run(strconv.Itoa(w)+"x"+strconv.Itoa(h), func(t *testing.T) {
+			be, font := headless(t, w, h)
+			if gw, gh := be.Size(); gw != w || gh != h {
+				t.Fatalf("window is %dx%d, want %dx%d", gw, gh, w, h)
+			}
+			m := homeModel(t, font, w, h, &fakeService{})
+			var list gdraw.List
+			m.Render(testEpoch, &list)
+			if err := be.Draw(layoutOf(m), &list); err != nil {
+				t.Fatal(err)
+			}
+
+			safe := m.Metrics().Safe
+			expectPixel(t, be, w-2, h/2, colorBG, "the right edge")
+			if safe.X > 0 {
+				expectPixel(t, be, 3, 3, colorBG, "inside the margin")
+				expectPixel(t, be, safe.X-2, safe.Y+6, colorBG, "just left of the top bar")
+			}
+			expectPixel(t, be, safe.X+safe.W-8, safe.Y+4, colorSurface, "the top bar")
+
+			ringColor := gdraw.Color{R: colorFocusRing[0], G: colorFocusRing[1], B: colorFocusRing[2], A: 0xff}
+			var ring, fill gdraw.Op
+			for i, op := range list.Ops {
+				if op.Kind == gdraw.KindRect && op.Color == ringColor {
+					ring, fill = op, list.Ops[i+1]
+					break
+				}
+			}
+			if ring.Kind != gdraw.KindRect {
+				t.Fatal("no focus ring in the draw list")
+			}
+			expectPixel(t, be, ring.Rect.X+ring.Rect.W/2, ring.Rect.Y, colorFocusRing, "the ring above the focused tile")
+			expectPixel(t, be, fill.Rect.X+fill.Rect.W/2, fill.Rect.Y+3, colorFocusBG, "the focused tile")
+
+			// Text: the label of the focused tile puts light pixels in its middle.
+			x0, y0 := fill.Rect.X+fill.Rect.W/4, fill.Rect.Y+fill.Rect.H/3
+			bw, bh := fill.Rect.W/2, fill.Rect.H/3
+			buf := make([]byte, bw*bh*4)
+			area := Rect{X: int32(x0), Y: int32(y0), W: int32(bw), H: int32(bh)}                           //nolint:gosec // small test coordinates
+			if err := be.lib.ReadPixels(be.ren, area, PixelFormatARGB8888, buf, int32(bw*4)); err != nil { //nolint:gosec // small test sizes
+				t.Fatal(err)
+			}
+			light := 0
+			for i := 0; i < len(buf); i += 4 {
+				if buf[i+2] > 0xC0 && buf[i+1] > 0xC0 { // R and G of a near-white glyph pixel
+					light++
+				}
+			}
+			if light < 20 {
+				t.Errorf("only %d light pixels where the label should be", light)
+			}
+		})
+	}
+}
+
+// A display below 640x480 draws the 640x480 layout letterboxed: the bars are the background, and the layout
+// is scaled, not cropped.
+func TestASmallDisplayIsLetterboxedNotCropped(t *testing.T) {
+	be, font := headless(t, 480, 320)
+	m := homeModel(t, font, 480, 320, &fakeService{})
+	if !m.Metrics().FitLogical || m.Metrics().W != 640 || m.Metrics().H != 480 {
+		t.Fatalf("metrics %+v", m.Metrics())
+	}
+	var list gdraw.List
+	m.Render(testEpoch, &list)
+	if err := be.Draw(layoutOf(m), &list); err != nil {
+		t.Fatal(err)
+	}
+	// 640x480 in 480x320 leaves bars of about 26 px at each side; Clear paints them with the background, but
+	// SDL_RenderReadPixels only reads inside the viewport, so the check is on the scaled layout itself: the
+	// top bar spans its whole width.
+	expectPixel(t, be, 240, 3, colorSurface, "the top bar, scaled")
+	expectPixel(t, be, 440, 3, colorSurface, "the top bar, near its right end")
+}
+
+// Events pushed into SDL come back through Wait and Poll as the loop's events, and Wake ends a Wait.
+func TestEventsRoundTripThroughSDL(t *testing.T) {
+	be, _ := headless(t, 640, 480)
+	push := func(fill func(e *Event)) {
+		e := NewEvent()
+		fill(e)
+		if err := be.lib.PushEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	push(func(e *Event) { *e.Keyboard() = KeyboardEvent{Type: EventKeyDown, Sym: KeycodeEscape} })
+	push(func(e *Event) { *e.Keyboard() = KeyboardEvent{Type: EventKeyDown, Sym: 'x', Repeat: 1} }) // SDL's own repeat: dropped
+	push(func(e *Event) { *e.Keyboard() = KeyboardEvent{Type: EventKeyUp, Sym: 'x'} })
+	push(func(e *Event) { e.SetControllerButton(EventControllerButtonDown, 0, ControllerButtonA, 1) })
+	push(func(e *Event) {
+		*e.ControllerAxis() = ControllerAxisEvent{Type: EventControllerAxisMotion, Axis: ControllerAxisLeftX, Value: 20000}
+	})
+	push(func(e *Event) { e.SetControllerButton(EventControllerButtonDown, 0, 8, 1) }) // a stick click: not used
+	push(func(e *Event) { e.SetType(EventQuit) })
+
+	want := []input.Incoming{
+		{Kind: input.IncomingInput, Input: input.Event{Kind: input.KeyPress, Key: input.KeyEscape}},
+		{Kind: input.IncomingInput, Input: input.Event{Kind: input.KeyRelease, Key: input.KeyRune, Rune: 'x'}},
+		{Kind: input.IncomingInput, Input: input.Event{Kind: input.ButtonPress, Button: input.South}},
+		{Kind: input.IncomingInput, Input: input.Event{Kind: input.AxisMotion, Axis: input.LeftX, Value: 20000}},
+		{Kind: input.IncomingQuit},
+	}
+	first, ok := be.Wait(2 * time.Second)
+	if !ok {
+		t.Fatal("no event came back")
+	}
+	got := []input.Incoming{first}
+	for ev, ok := be.Poll(); ok; ev, ok = be.Poll() {
+		got = append(got, ev)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("events %+v\nwant   %+v", got, want)
+	}
+
+	start := time.Now()
+	be.Wake()
+	if _, ok := be.Wait(5 * time.Second); ok || time.Since(start) > 3*time.Second {
+		t.Fatalf("Wake must end a Wait quickly with no event (ok=%v after %v)", ok, time.Since(start))
+	}
+	start = time.Now()
+	if _, ok := be.Wait(50 * time.Millisecond); ok || time.Since(start) > 2*time.Second {
+		t.Fatalf("a Wait with nothing queued must time out (ok=%v after %v)", ok, time.Since(start))
+	}
+}
+
+// pushOnFrame wraps the real backend for the end-to-end run: it drives time with a fake clock and pushes the
+// next key press into SDL when the frame it was waiting for has been drawn, so no real sleeping is needed.
+type pushOnFrame struct {
+	*Backend
+	now   time.Time
+	steps []pushStep
+}
+
+type pushStep struct {
+	afterText string // the frame must contain this text
+	sym       int32  // the key to press
+}
+
+func (p *pushOnFrame) Clock() time.Time { return p.now }
+
+func (p *pushOnFrame) Present(layout gdraw.Layout, l *gdraw.List) error {
+	if err := p.Backend.Present(layout, l); err != nil {
+		return err
+	}
+	p.now = p.now.Add(200 * time.Millisecond) // past the 150 ms a new dialog ignores input
+	if len(p.steps) > 0 && slices.Contains(l.Texts(), p.steps[0].afterText) {
+		for _, kind := range []uint32{EventKeyDown, EventKeyUp} {
+			e := NewEvent()
+			*e.Keyboard() = KeyboardEvent{Type: kind, Sym: p.steps[0].sym}
+			if err := p.lib.PushEvent(e); err != nil {
+				return err
+			}
+		}
+		p.steps = p.steps[1:]
+	}
+	return nil
+}
+
+// A timed wait advances the fake clock instead of sleeping; an unlimited one waits on SDL for the pushed keys.
+func (p *pushOnFrame) Wait(timeout time.Duration) (input.Incoming, bool) {
+	if timeout >= 0 {
+		p.now = p.now.Add(timeout)
+		return input.Incoming{}, false
+	}
+	return p.Backend.Wait(timeout)
+}
+
+// The whole quit flow of section 5.13 through the real SDL: Escape asks, Right moves to Quit, Enter quits,
+// the exit sequence runs against the fake service and the loop ends.
+func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
+	be, font := headless(t, 1280, 720)
+	svc := &fakeService{}
+	p := &pushOnFrame{Backend: be, now: testEpoch, steps: []pushStep{
+		{afterText: "1,284,019 entries · Batocera · /userdata/roms", sym: KeycodeEscape},
+		{afterText: "Quit and return to Batocera?", sym: KeycodeRight},
+		{afterText: "Quit and return to Batocera?", sym: KeycodeReturn},
+	}}
+	m, cmds := gui.New(guiOptions(t, font, svc, 1280, 720), p.now)
+
+	done := make(chan struct{})
+	go func() { // a guard: a stuck loop fails the test instead of hanging it
+		select {
+		case <-done:
+		case <-time.After(60 * time.Second):
+			t.Error("the loop did not end in 60 s")
+			quit := NewEvent()
+			quit.SetType(EventQuit) // makes the loop leave through the exit sequence instead of waiting for ever
+			_ = be.lib.PushEvent(quit)
+		}
+	}()
+	final, err := loop.Run(context.Background(), loop.Config{Model: m, Cmds: cmds, Backend: p, Clock: p.Clock})
+	close(done)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !final.Done() {
+		t.Fatal("the loop ended before the exit screen was done")
+	}
+	if got := svc.order(); !slices.Equal(got, []string{"wait", "close"}) {
+		t.Fatalf("service calls %v", got)
+	}
+	if len(p.steps) != 0 {
+		t.Fatalf("keys never pushed: %+v", p.steps)
+	}
+}

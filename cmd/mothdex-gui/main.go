@@ -3,13 +3,15 @@
 // Command mothdex-gui is the SDL2 emulator-mode front end, a separate binary built CGO_ENABLED=0 with the
 // gui build tag so that `mothdex` stays fully static (docs/contracts/cli/gui.md section 1).
 //
-// This is the spike: it only probes SDL2. It loads the system library, draws one rectangle on a hidden
-// software window, reads a pixel back, round-trips one event, prints the SDL version and exits.
+//	mothdex-gui [-config file] [-profile id] [-lang xx_yy] [-driver name] [-window WxH]
+//	mothdex-gui -probe [-driver dummy]
 //
-//	mothdex-gui [-driver dummy]
+// With no flags it opens the full screen window and runs the GUI. -probe only checks the SDL2 binding on a
+// hidden window and exits (the CI smoke test). -window opens a window of that size instead of the full
+// screen, for a desktop session.
 //
-// Exit codes follow section 5 of the contract: 0 success, 1 SDL missing, too old, or no display, 3 an
-// internal error (a check of the probe failed).
+// Exit codes follow section 5 of the contract: 0 normal exit or SIGTERM, 1 SDL missing, too old or no
+// display, 2 configuration error, 3 internal error.
 package main
 
 import (
@@ -18,14 +20,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
-
-	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/sdl"
+	"strings"
 )
 
 const (
 	exitOK       = 0
 	exitSDL      = 1
+	exitConfig   = 2
 	exitInternal = 3
 )
 
@@ -34,41 +37,54 @@ func init() {
 	runtime.LockOSThread()
 }
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() { os.Exit(run(os.Args, os.Stdout, os.Stderr)) }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mothdex-gui", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	driver := fs.String("driver", "", "SDL video driver to force, for example dummy (default: SDL_VIDEODRIVER or SDL's choice)")
-	if err := fs.Parse(args); err != nil {
-		return exitInternal
-	}
+// probeName is the start of the executable name that makes the binary probe with no flags: scripts/gui-probe.sh
+// builds it as mothdex-gui-probe, and the CI legs (qemu, the DLL planting checks) run it by that name.
+const probeName = "mothdex-gui-probe"
 
-	rep, err := sdl.Probe(sdl.ProbeOptions{Driver: *driver})
-	if rep.Version != (sdl.Version{}) { // known as soon as the library loaded, even if a later step fails
-		_, _ = fmt.Fprintf(stdout, "SDL %s (needs %s or later, meant for %s or later)", rep.Version, rep.Minimum, rep.Target)
-		if rep.Driver != "" {
-			_, _ = fmt.Fprintf(stdout, ", video driver %s", rep.Driver)
-		}
-		_, _ = fmt.Fprintln(stdout)
-	}
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "mothdex-gui: %v\n", err)
-		return exitCode(err)
-	}
-	for _, step := range rep.Steps {
-		_, _ = fmt.Fprintf(stdout, "ok   %s\n", step)
-	}
-	_, _ = fmt.Fprintf(stdout, "probe ok: %d SDL2 functions, SDL %s\n", len(rep.Functions), rep.Version)
-	return exitOK
+// probeByName reports whether the program was started under the probe's name (with or without .exe).
+func probeByName(arg0 string) bool {
+	return strings.HasPrefix(filepath.Base(strings.ReplaceAll(arg0, "\\", "/")), probeName)
 }
 
-// exitCode maps a probe error to the exit codes of the contract.
-func exitCode(err error) int {
-	for _, e := range []error{sdl.ErrNotFound, sdl.ErrIncompatible, sdl.ErrTooOld, sdl.ErrNoDisplay} {
-		if errors.Is(err, e) {
-			return exitSDL
+type options struct {
+	probe   bool
+	driver  string
+	config  string
+	profile string
+	lang    string
+	width   int
+	height  int // zero: the full screen
+}
+
+// run takes os.Args: the name the program was started under, then its flags.
+func run(argv []string, stdout, stderr io.Writer) int {
+	args := argv[1:]
+	fs := flag.NewFlagSet("mothdex-gui", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var o options
+	var window string
+	fs.BoolVar(&o.probe, "probe", false, "check the SDL2 binding on a hidden window and exit")
+	fs.StringVar(&o.driver, "driver", "", "SDL video driver to force, for example dummy (default: SDL_VIDEODRIVER or SDL's choice)")
+	fs.StringVar(&o.config, "config", "", "configuration file (default: the standard location)")
+	fs.StringVar(&o.profile, "profile", "", "frontend profile id (default: detected)")
+	fs.StringVar(&o.lang, "lang", "", "interface language, such as pt_br (default: interface.language)")
+	fs.StringVar(&window, "window", "", "open a window of WxH pixels instead of the full screen, such as 1280x720")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) { // -h prints the usage and is not a failure
+			return exitOK
+		}
+		return exitInternal
+	}
+	if window != "" {
+		if _, err := fmt.Sscanf(window, "%dx%d", &o.width, &o.height); err != nil || o.width < 160 || o.height < 120 {
+			_, _ = fmt.Fprintf(stderr, "mothdex-gui: -window wants WxH, such as 1280x720\n")
+			return exitInternal
 		}
 	}
-	return exitInternal
+	if o.probe || probeByName(argv[0]) {
+		return runProbe(o.driver, stdout, stderr)
+	}
+	return runGUI(o, stderr)
 }

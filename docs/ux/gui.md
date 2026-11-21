@@ -166,8 +166,9 @@ SDL GameController buttons are read **by position** (SDL_GameControllerDB names:
 
 ### 2.3 Controllers
 
-- Mappings: the embedded SDL_GameControllerDB, then `SDL_GAMECONTROLLERCONFIG` from the frontend, then a user file
-  `<config dir>/gamecontrollerdb.txt` (later entries win). Details in the contract.
+- Mappings: the embedded SDL_GameControllerDB, then a user file `<data dir>/gamecontrollerdb.txt`, then
+  `SDL_GAMECONTROLLERCONFIG` from the frontend (later entries win, so the frontend's mapping for its Ports is kept).
+  Details in the contract.
 - **Any** connected controller drives the GUI (in a two-player TV setup, whoever holds a pad). Hot-plug works at any
   time.
 - No controller at start, or the last one unplugged: a non-blocking notice card
