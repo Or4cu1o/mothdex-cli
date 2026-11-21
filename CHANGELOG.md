@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Release and profile contracts follow the T-21b installer: `checksums.txt` also lists SBOMs, the exact-line
+  checksum rule, the `install.ps1` architecture mapping, and the RetroBat `bin_dir` in `%LocalAppData%`.
 - Contracts: `Service.Cover` returns the cached reader and content type (not a path), `internal/cover` owns the
   cover DNS port (the downloader `Resolver` port is dropped from downloader §8), and cache §4 says how T-20 wires it.
 - `internal/config`: `download.on_exists=overwrite` from the config file or `MOTHDEX_DOWNLOAD_ON_EXISTS` is rejected
