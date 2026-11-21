@@ -129,7 +129,8 @@ Q4 from Vitral: keep **`github.com/peterh/liner` v1.2.3**, as PLAN §9 says.
 
 - `exit`, `quit` and Ctrl+D exit with 0.
 - Piped input exits with the last command's code.
-- Two Ctrl+C presses at an empty prompt within 2 s exit with 130. The Shell's clock is injected, so tests can drive that window.
+- Ctrl+C never exits the Shell (UX-sync, shell §4): it cancels the running command or clears the line and shows
+  `Type exit or press Ctrl+D to leave.` Only `exit`, `quit` and Ctrl+D leave.
 - On exit the launcher returns, and cli closes the Session (`Service.Close` drains or cancels the jobs).
 
 ## 3. TUI (`internal/ui/tui`)
