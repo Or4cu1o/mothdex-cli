@@ -245,7 +245,7 @@ func TestCase24BatchNameCollisions(t *testing.T) {
 					switch res.State {
 					case proxy.StateDone:
 						done++
-						if got, _ := os.ReadFile(r.fs.Path(res.Path)); !bytes.Equal(got, bodies[i]) { //nolint:gosec // test path
+						if got, _ := os.ReadFile(res.Path); !bytes.Equal(got, bodies[i]) { //nolint:gosec // test path
 							t.Fatalf("job %d: its file was overwritten (%s)", i, res.Path)
 						}
 					case proxy.StateSkipped:
@@ -258,6 +258,10 @@ func TestCase24BatchNameCollisions(t *testing.T) {
 				}
 				if len(r.history.recs) != 2 {
 					t.Fatalf("history has %d records, want both outcomes", len(r.history.recs))
+				}
+				// Neither name may be lost to the case-folding or the sanitizing: one file per Done job.
+				if files := realfs.Names(t, r.fs.Path("roms/snes")); len(files) != done {
+					t.Fatalf("%d jobs done but the directory holds %v", done, files)
 				}
 			})
 		}
@@ -466,6 +470,7 @@ func TestCase39StartupCleanup(t *testing.T) {
 	age(notes, 48)
 	link := r.fs.Path("downloads/" + id("c") + ".part")
 	realfs.Symlink(t, victim, link)
+	ageLink(t, link, r.clock.Now().Add(-48*time.Hour))
 	dir := r.fs.Path("downloads/" + id("d") + ".part")
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)

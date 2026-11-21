@@ -28,8 +28,8 @@ func freeSpace(name string) (int64, uint64, error) {
 	if !ok {
 		return 0, 0, errors.New("proxy: no device id on this platform")
 	}
-	free := int64(st.Bavail) * int64(st.Bsize) //nolint:gosec // block counts fit int64
-	return free, uint64(sys.Dev), nil          //nolint:gosec,unconvert // Dev is int32 on some platforms
+	free := int64(st.Bavail) * blockSize(&st) //nolint:gosec // block counts fit int64
+	return free, uint64(sys.Dev), nil         //nolint:gosec,unconvert // Dev is int32 on some platforms
 }
 
 // linkUnsupported recognizes the errors of file systems without hard links (some FUSE and
@@ -47,8 +47,16 @@ func checkTempDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	if info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0 {
+	if info.Mode().Perm()&0o022 == 0 {
+		return nil
+	}
+	if info.Mode()&os.ModeSticky == 0 {
 		return errors.New("proxy: the temp directory is writable by other users and has no sticky bit")
+	}
+	// A shared sticky directory like /tmp is fine when it belongs to us or to root; one that
+	// another user owns lets that user replace our staging directory.
+	if sys, ok := info.Sys().(*syscall.Stat_t); !ok || (int(sys.Uid) != os.Geteuid() && sys.Uid != 0) {
+		return errors.New("proxy: the shared temp directory is owned by another user")
 	}
 	return nil
 }

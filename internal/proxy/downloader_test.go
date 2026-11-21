@@ -59,7 +59,7 @@ func newRig(t *testing.T, cfg proxy.Config) *rig {
 		HTTP: r.srv.Client(), Clock: r.clock, Sleeper: r.clock, Rand: zeroRand{},
 		Staging: r.fs, Dest: r.fs, Finalizer: fakefs.Finalizer{},
 		Confine: func(dir string) (string, error) { return dir, r.fs.MkdirAll(dir, 0o700) },
-		History: r.history, Journal: r.journal, Config: cfg,
+		History: r.history, Journal: r.journal, Config: cfg, DestRoot: r.fs.Dir(),
 		OnEvent: func(e proxy.Event) { r.evMu.Lock(); r.events = append(r.events, e); r.evMu.Unlock() },
 	})
 	if err != nil {

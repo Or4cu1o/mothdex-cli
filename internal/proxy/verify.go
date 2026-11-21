@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/md5"  //nolint:gosec // upstream DATs publish md5 and sha1; this compares, it does not authenticate
 	"crypto/sha1" //nolint:gosec // same reason
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
+	"math"
 	"sync"
 
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
@@ -55,6 +57,10 @@ func (d *Downloader) verify(ctx context.Context, j *jobState) *attemptErr {
 	}
 	var zr *zip.Reader
 	if isZip {
+		if ae := zipDirectoryWithinLimits(ra, j.bytes); ae != nil {
+			j.crc = statusFailed
+			return ae
+		}
 		zr, err = zip.NewReader(ra, j.bytes)
 		if err != nil {
 			j.crc = statusFailed
@@ -248,4 +254,69 @@ func (a *fileAt) ReadAt(p []byte, off int64) (int, error) {
 		err = io.EOF
 	}
 	return n, err
+}
+
+// Limits read from the end-of-central-directory record before archive/zip loads the directory
+// (zip.NewReader keeps every entry in memory and ignores ctx): a million empty members is a
+// 98 MB file that costs hundreds of MB of heap.
+const (
+	maxCentralDirBytes = 64 << 20
+	eocdSize           = 22
+	eocdSig            = 0x06054b50
+	zip64LocatorSig    = 0x07064b50
+	zip64EOCDSig       = 0x06064b50
+	zip64LocatorSize   = 20
+	eocdSearch         = 64<<10 + eocdSize
+)
+
+// zipDirectoryWithinLimits refuses an archive whose member count or central directory size is
+// over the caps. A file where no end record is found is left to zip.NewReader to reject.
+func zipDirectoryWithinLimits(ra io.ReaderAt, size int64) *attemptErr {
+	n := min(size, int64(eocdSearch))
+	tail := make([]byte, n)
+	if _, err := ra.ReadAt(tail, size-n); err != nil && !errors.Is(err, io.EOF) {
+		return fatal(CodeInternal, "cannot read the staging file", err)
+	}
+	pos := -1
+	for i := len(tail) - eocdSize; i >= 0; i-- {
+		if binary.LittleEndian.Uint32(tail[i:]) == eocdSig {
+			pos = i
+			break
+		}
+	}
+	if pos < 0 {
+		return nil
+	}
+	entries := uint64(binary.LittleEndian.Uint16(tail[pos+10:]))
+	cdSize := uint64(binary.LittleEndian.Uint32(tail[pos+12:]))
+	if entries == 0xFFFF || cdSize == 0xFFFFFFFF { // zip64: the real values are in the zip64 record
+		if e, c, ok := readZip64(ra, size-n+int64(pos)); ok {
+			entries, cdSize = e, c
+		}
+	}
+	if entries > zipMaxMembers || cdSize > maxCentralDirBytes {
+		return structural("the zip archive directory is too large", nil)
+	}
+	return nil
+}
+
+// readZip64 reads the entry count and directory size of the zip64 end record that precedes the
+// locator before the classic end record at eocdAt.
+func readZip64(ra io.ReaderAt, eocdAt int64) (entries, cdSize uint64, ok bool) {
+	var loc [zip64LocatorSize]byte
+	if eocdAt < zip64LocatorSize {
+		return 0, 0, false
+	}
+	if _, err := ra.ReadAt(loc[:], eocdAt-zip64LocatorSize); err != nil || binary.LittleEndian.Uint32(loc[:]) != zip64LocatorSig {
+		return 0, 0, false
+	}
+	off := binary.LittleEndian.Uint64(loc[8:])
+	var rec [56]byte
+	if off > math.MaxInt64 {
+		return 0, 0, false
+	}
+	if _, err := ra.ReadAt(rec[:], int64(off)); err != nil || binary.LittleEndian.Uint32(rec[:]) != zip64EOCDSig { //nolint:gosec // checked above
+		return 0, 0, false
+	}
+	return binary.LittleEndian.Uint64(rec[32:]), binary.LittleEndian.Uint64(rec[40:]), true
 }

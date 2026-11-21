@@ -22,6 +22,8 @@ func TestDiskFullIsOSGuarded(t *testing.T) {
 		{"darwin", wrap(112), false},
 		{"windows", wrap(112), true},
 		{"windows", wrap(39), true},
+		{"windows", wrap(1295), true},
+		{"linux", wrap(1295), false},
 		{"windows", wrap(syscall.ENOENT), false},
 		{"linux", wrap(syscall.EACCES), false},
 		{"linux", fs.ErrPermission, false},

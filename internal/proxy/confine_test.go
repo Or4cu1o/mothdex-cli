@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/library"
 )
 
 func codeOf(err error) Code {
@@ -97,5 +99,45 @@ func TestConfinerRefusesALinkOutsideTheRoot(t *testing.T) {
 	t.Cleanup(func() { _ = real.Close() })
 	if _, err := (&Confiner{FS: real}).Resolve(target); err != nil {
 		t.Fatalf("the real path as -o must work: %v", err)
+	}
+}
+
+// A link must not hide a launcher folder (Sentinela M1): the real Profile.IsLauncherPath is
+// lexical, so the Confiner checks the resolved location in the root's own spelling too.
+func TestConfinerSeesLaunchersThroughLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory symlinks need privileges on Windows")
+	}
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	real := filepath.Join(base, "storage", "roms")
+	for _, d := range []string{filepath.Join(real, "ports"), filepath.Join(real, "snes")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// /roms is a link to /storage/roms, as on EmuELEC; the profile speaks of /roms.
+	viaLink := filepath.Join(base, "roms")
+	if err := os.Symlink(real, viaLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(real, "ports"), filepath.Join(real, "psx")); err != nil { // psx -> ports
+		t.Fatal(err)
+	}
+	prof := library.Profile{Launcher: library.Launcher{Kind: "sh", Dir: filepath.Join(viaLink, "ports")}}
+	for name, root := range map[string]string{"root as a real path": real, "root behind a linked parent": viaLink} {
+		rfs, err := OpenRootFS(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = rfs.Close() })
+		c := &Confiner{FS: rfs, IsLauncher: prof.IsLauncherPath, LauncherPaths: []string{prof.Launcher.Dir}}
+		if _, err := c.Resolve(filepath.Join(root, "snes")); err != nil {
+			t.Errorf("%s: a normal folder must pass: %v", name, err)
+		}
+		for _, dest := range []string{filepath.Join(root, "ports"), filepath.Join(root, "psx"), filepath.Join(root, "psx", "sub")} {
+			if _, err := c.Resolve(dest); codeOf(err) != CodePathRejected {
+				t.Errorf("%s: %s must be refused as a launcher location, got %v", name, dest, err)
+			}
+		}
 	}
 }

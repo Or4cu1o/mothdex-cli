@@ -16,6 +16,10 @@ type Confiner struct {
 	// IsLauncher is library.Profile.IsLauncherPath; the check is lexical, so it is applied to
 	// the given path and again to the resolved one. nil disables it.
 	IsLauncher func(abs string) bool
+	// LauncherPaths are the profile's launcher locations as configured (Launcher.Dir and the
+	// ports, ports_scripts and windows folders under the profile's ROM root). They are resolved
+	// through the OS here, so a link on either side cannot hide a launcher folder.
+	LauncherPaths []string
 	// AllowExecutable is the --allow-executable flag: it lifts the launcher-folder refusal.
 	AllowExecutable bool
 }
@@ -38,11 +42,14 @@ func (c *Confiner) Resolve(destdir string) (string, error) {
 	// The directory is created later, when its staging file is (a job that is skipped or
 	// refused for space leaves no empty folder). What exists already is resolved now, so a
 	// link planted in the tree is refused before anything is written.
-	real, err := c.resolveExisting(filepath.Join(c.FS.Dir(), rel))
+	real, realRel, err := c.resolveExisting(filepath.Join(c.FS.Dir(), rel))
 	if err != nil {
 		return "", err
 	}
-	if c.launcher(real) {
+	// The profile paths are lexical, as configured; a link anywhere (snes to ports, or a parent
+	// of the root such as /roms to /storage/roms) makes the resolved path look different. So the
+	// resolved location is also checked in the root's own spelling and as resolved.
+	if c.launcher(real) || c.launcher(filepath.Join(c.FS.Dir(), realRel)) || c.inLauncherPath(real) {
 		return "", launcherRefused()
 	}
 	return filepath.ToSlash(rel), nil
@@ -50,26 +57,44 @@ func (c *Confiner) Resolve(destdir string) (string, error) {
 
 // resolveExisting resolves the longest existing ancestor of dir through the operating system,
 // requires it to be inside the resolved root (code path_rejected),
-// and returns the resolved path with the not yet existing remainder appended.
-func (c *Confiner) resolveExisting(dir string) (string, error) {
+// and returns the resolved path with the not yet existing remainder appended, and that path
+// relative to the resolved root.
+func (c *Confiner) resolveExisting(dir string) (real, realRel string, err error) {
 	realRoot, err := finalPath(c.FS.Dir())
 	if err != nil {
-		return "", &Error{Code: CodeInternal, Message: "cannot resolve the root directory", Err: err}
+		return "", "", &Error{Code: CodeInternal, Message: "cannot resolve the root directory", Err: err}
 	}
 	rest := ""
 	for p := dir; ; p = filepath.Dir(p) {
-		real, err := finalPath(p)
-		if err == nil {
-			if _, ok := within(realRoot, real); !ok {
-				return "", outside()
+		resolved, ferr := finalPath(p)
+		if ferr == nil {
+			full := filepath.Join(resolved, rest)
+			rel, ok := within(realRoot, full)
+			if !ok {
+				return "", "", outside()
 			}
-			return filepath.Join(real, rest), nil
+			return full, rel, nil
 		}
 		if filepath.Dir(p) == p {
-			return "", &Error{Code: CodePathRejected, Message: "cannot resolve the destination directory", Err: err}
+			return "", "", &Error{Code: CodePathRejected, Message: "cannot resolve the destination directory", Err: ferr}
 		}
 		rest = filepath.Join(filepath.Base(p), rest)
 	}
+}
+
+// inLauncherPath reports whether real lies in one of the resolved LauncherPaths.
+func (c *Confiner) inLauncherPath(real string) bool {
+	if c.AllowExecutable {
+		return false
+	}
+	for _, p := range c.LauncherPaths {
+		if resolved, err := finalPath(p); err == nil {
+			if _, ok := within(resolved, real); ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *Confiner) launcher(path string) bool {

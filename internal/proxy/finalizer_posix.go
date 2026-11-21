@@ -14,7 +14,7 @@ import (
 // unsupported wraps the errors that mean "this file system or kernel has no no-replace
 // rename" so that the caller falls back to Link and then to a placeholder.
 func unsupported(op, from, to string, err error) error {
-	if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOSYS) || errors.Is(err, syscall.ENOTSUP) {
+	if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOSYS) || errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP) {
 		err = fmt.Errorf("%w: %w", errors.ErrUnsupported, err)
 	}
 	return &os.LinkError{Op: op, Old: from, New: to, Err: err}

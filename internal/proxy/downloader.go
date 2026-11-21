@@ -75,7 +75,7 @@ type Options struct {
 	Journal Journal
 	// DestRoot is the absolute directory Dest is rooted at; Record.Path and Result.Path are
 	// DestRoot joined with the final name, because history outlives a profile or -o change.
-	// Empty (tests): paths stay relative to Dest.
+	// Required: history records absolute paths.
 	DestRoot string
 	// OnEvent receives state changes and throttled progress. Calls are serialized and run on
 	// the transfer goroutine, so the callback must not block.
@@ -142,6 +142,8 @@ func New(o Options) (*Downloader, error) {
 		return nil, errors.New("proxy: Staging, Dest, Finalizer and Confine are required")
 	case o.History == nil || o.Journal == nil:
 		return nil, errors.New("proxy: History and Journal are required")
+	case !filepath.IsAbs(o.DestRoot):
+		return nil, errors.New("proxy: DestRoot must be the absolute directory Dest is rooted at")
 	case len(o.Config.Platforms) == 0:
 		return nil, errors.New("proxy: Config.Platforms is required (ids from /platforms)")
 	}
@@ -381,13 +383,9 @@ func (d *Downloader) finish(j *jobState, state State, derr *Error) Result {
 	return res
 }
 
-// finalPath is the absolute final path when DestRoot is known, else relative to Dest.
+// finalPath is the absolute final path: DestRoot joined with the name inside Dest.
 func (d *Downloader) finalPath(j *jobState) string {
-	rel := joinName(j.destRel, j.name)
-	if d.o.DestRoot == "" {
-		return rel
-	}
-	return filepath.Join(d.o.DestRoot, filepath.FromSlash(rel))
+	return filepath.Join(d.o.DestRoot, filepath.FromSlash(joinName(j.destRel, j.name)))
 }
 
 // cleanupJob removes the job's files and releases its reservations (idempotent).

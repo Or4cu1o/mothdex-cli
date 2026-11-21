@@ -224,7 +224,7 @@ func checkName(name string) error {
 	if name == "" || name == "." || name == ".." || len(name) > maxNameBytes || !utf8.ValidString(name) ||
 		name != filepath.Base(name) || !filepath.IsLocal(name) ||
 		strings.ContainsAny(name, `<>:"/\|?*`) || strings.ContainsFunc(name, func(r rune) bool {
-		return r < 0x20 || r == 0x7f || unicode.In(r, unicode.Cf, unicode.Co, unicode.Cs)
+		return r < 0x20 || r == 0x7f || unicode.In(r, unicode.Cc, unicode.Cf, unicode.Co, unicode.Cs)
 	}) {
 		return errInvariant
 	}

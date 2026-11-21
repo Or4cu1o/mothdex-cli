@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -20,18 +21,23 @@ func (d *Downloader) finalize(ctx context.Context, j *jobState) (State, *Error) 
 	if err := d.checkStagingName(j); err != nil {
 		return StateFailed, err
 	}
+	src := j.staging
+	if !j.stageInDest { // staged on another device: copy into the destination, then rename there
+		// The copy reads the descriptor that was verified, never the name (T-17 audit m2).
+		var err *Error
+		if src, err = d.copyToDest(ctx, j, j.file); err != nil {
+			return stateOf(err), err
+		}
+	}
+	info, _ := j.file.Stat()
 	cerr := j.file.Close()
 	j.file = nil
 	if cerr != nil {
 		return StateFailed, writeFailure("cannot close the staging file", cerr)
 	}
-
-	src := j.staging
-	if !j.stageInDest { // staged on another device: copy into the destination, then rename there
-		var err *Error
-		if src, err = d.copyToDest(ctx, j); err != nil {
-			return stateOf(err), err
-		}
+	if !j.stageInDest {
+		_ = d.o.Staging.Remove(j.staging) // after the close: Windows cannot remove an open file
+		j.staging = ""
 	}
 	for {
 		if ctx.Err() != nil {
@@ -43,10 +49,17 @@ func (d *Downloader) finalize(ctx context.Context, j *jobState) (State, *Error) 
 		case err == nil:
 			return d.finishPlacement(j)
 		case errors.Is(err, syscall.EXDEV) && src != j.tmp:
+			rd, rerr := d.reopenVerified(j, info)
+			if rerr != nil {
+				return StateFailed, rerr
+			}
 			var cerr *Error
-			if src, cerr = d.copyToDest(ctx, j); cerr != nil {
+			src, cerr = d.copyToDest(ctx, j, rd)
+			_ = rd.Close()
+			if cerr != nil {
 				return stateOf(cerr), cerr
 			}
+			_ = d.stagingFS(j).Remove(j.staging)
 		case errors.Is(err, fs.ErrExist) && !j.overwrite:
 			state, perr := d.existsAtFinalize(j)
 			if state != "" || perr != nil {
@@ -149,15 +162,36 @@ func (d *Downloader) noReplace(src, final string) error {
 	if err != nil {
 		return err
 	}
+	mine, _ := f.Stat()
 	if err := f.Close(); err != nil {
-		_ = d.o.Dest.Remove(final)
+		d.removeIfMine(final, mine)
 		return err
 	}
+	// Replace only our own placeholder: if the name was swapped meanwhile, leave it alone.
+	if !d.isMine(final, mine) {
+		return fs.ErrExist
+	}
 	if err := d.o.Finalizer.Rename(d.o.Dest, src, final, true); err != nil {
-		_ = d.o.Dest.Remove(final)
+		d.removeIfMine(final, mine)
 		return err
 	}
 	return nil
+}
+
+// isMine reports whether name still is the file we created (same file, regular).
+func (d *Downloader) isMine(name string, mine fs.FileInfo) bool {
+	if mine == nil {
+		return false
+	}
+	cur, err := d.o.Dest.Lstat(name)
+	return err == nil && cur.Mode().IsRegular() && os.SameFile(mine, cur)
+}
+
+// removeIfMine removes the placeholder we created, and nothing else.
+func (d *Downloader) removeIfMine(name string, mine fs.FileInfo) {
+	if d.isMine(name, mine) {
+		_ = d.o.Dest.Remove(name)
+	}
 }
 
 // existsAtFinalize applies on_exists again when the final name appeared after Preflight
@@ -186,23 +220,47 @@ func (d *Downloader) existsAtFinalize(j *jobState) (State, *Error) {
 	}
 }
 
-// copyToDest copies the finished staging file into <destdir>/.<jobID>.mothdex-tmp (O_EXCL,
-// 0600), flushes it and removes the staging file. The copy is what the final rename moves, so
-// a crash leaves only the hidden temporary name, never a partial final file.
-func (d *Downloader) copyToDest(ctx context.Context, j *jobState) (string, *Error) {
+// reopenVerified opens the staging name again and requires it to be the very file that was
+// verified (same file as the descriptor that was closed), for the rare EXDEV fallback on one
+// device. A swapped name is refused.
+func (d *Downloader) reopenVerified(j *jobState, want fs.FileInfo) (io.ReadCloser, *Error) {
+	rd, err := d.stagingFS(j).Open(j.staging)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Message: "cannot reopen the staging file", Err: err}
+	}
+	st, ok := rd.(interface{ Stat() (fs.FileInfo, error) })
+	if !ok || want == nil {
+		_ = rd.Close()
+		return nil, &Error{Code: CodePathRejected, Message: "cannot verify the staging file"}
+	}
+	got, err := st.Stat()
+	if err != nil || !os.SameFile(want, got) {
+		_ = rd.Close()
+		return nil, &Error{Code: CodePathRejected, Message: "the staging file was replaced before it was placed"}
+	}
+	return rd, nil
+}
+
+// copyToDest copies the verified file into <destdir>/.<jobID>.mothdex-tmp (O_EXCL, 0600) and
+// flushes it. The copy is what the final rename moves, so a crash leaves only the hidden
+// temporary name, never a partial final file. src is rewound first and must yield exactly the
+// bytes that were downloaded.
+func (d *Downloader) copyToDest(ctx context.Context, j *jobState, src io.Reader) (string, *Error) {
+	if sk, ok := src.(io.Seeker); ok {
+		if _, err := sk.Seek(0, io.SeekStart); err != nil {
+			return "", &Error{Code: CodeInternal, Message: "cannot rewind the staging file", Err: err}
+		}
+	}
 	tmp := joinName(j.destRel, "."+j.id+".mothdex-tmp")
 	dst, err := d.o.Dest.OpenExcl(tmp)
 	if err != nil {
 		return "", writeFailure("cannot create the temporary copy", err)
 	}
 	j.tmp = tmp
-	src, err := d.stagingFS(j).Open(j.staging)
-	if err != nil {
-		_ = dst.Close()
-		return "", &Error{Code: CodeInternal, Message: "cannot reopen the staging file", Err: err}
+	n, err := copyCtx(ctx, dst, src, math.MaxInt64)
+	if err == nil && n != j.bytes {
+		err = io.ErrUnexpectedEOF
 	}
-	_, err = copyCtx(ctx, dst, src, math.MaxInt64)
-	_ = src.Close() // closed before the staging file is removed: Windows cannot remove an open file
 	if err != nil {
 		_ = dst.Close()
 		if ctx.Err() != nil {
@@ -217,6 +275,5 @@ func (d *Downloader) copyToDest(ctx context.Context, j *jobState) (string, *Erro
 	if err := dst.Close(); err != nil {
 		return "", writeFailure("cannot close the temporary copy", err)
 	}
-	_ = d.stagingFS(j).Remove(j.staging)
 	return tmp, nil
 }
