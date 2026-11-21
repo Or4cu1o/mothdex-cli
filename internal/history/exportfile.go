@@ -21,12 +21,14 @@ var ErrFormat = errors.New("history: export format must be txt, json or csv (pas
 // directory gets mothdex-<command>-<UTC yyyymmddThhmmss>.<fmt>; an empty format is inferred from
 // the extension.
 func ExportTarget(path, format, command string, now time.Time) (target, fmtName string, err error) {
+	format = strings.ToLower(format)
 	if info, serr := os.Stat(path); serr == nil && info.IsDir() {
 		if format == "" {
 			return "", "", ErrFormat
 		}
 		path = filepath.Join(path, fmt.Sprintf("mothdex-%s-%s.%s", command, now.UTC().Format("20060102T150405"), format))
 	}
+	format = strings.ToLower(format)
 	if format == "" {
 		format = strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
 	}
@@ -69,6 +71,8 @@ func WriteExport(target string, force bool, render func(io.Writer) error) error 
 	case errors.Is(err, fs.ErrExist):
 		return ErrExists
 	case errors.Is(err, errors.ErrUnsupported), errors.Is(err, os.ErrPermission):
+		// No hard links here (FAT, some network shares): fall back to Lstat then Rename. This has
+		// a small check-then-rename window; it only exists where Link cannot be used.
 		if _, serr := os.Lstat(target); serr == nil {
 			return ErrExists
 		}

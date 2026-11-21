@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
+
+	"golang.org/x/text/width"
 )
 
 // Export formats (cli-output.md section 5).
@@ -75,7 +76,7 @@ func exportCSV(w io.Writer, records []Record) error {
 	}
 	for _, r := range records {
 		row := []string{r.ID, stamp(r.StartedAt), stamp(r.FinishedAt), r.State, r.Slug, r.Title, r.Platform, r.Filename, r.Path,
-			strconv.FormatInt(r.Bytes, 10), r.SHA256, r.CRC, strconv.Itoa(r.Attempts), r.ErrorCode}
+			strconv.FormatInt(r.Bytes, 10), r.SHA256, r.CRC, strconv.Itoa(r.Attempts), r.errorCode()}
 		for i, c := range row {
 			row[i] = csvCell(c)
 		}
@@ -106,6 +107,13 @@ func StripUntrusted(s string) string {
 		}
 		return r
 	}, s)
+}
+
+func (r Record) errorCode() string {
+	if r.Error == nil {
+		return ""
+	}
+	return r.Error.Code
 }
 
 func stamp(t time.Time) string {
@@ -150,19 +158,49 @@ func exportTXT(w io.Writer, records []Record) error {
 	return nil
 }
 
-// fit cuts s to n runes, ending in an ellipsis when it was longer.
+// cells is the display width of s in terminal cells: East Asian wide and fullwidth runes take
+// two, combining marks none (golang.org/x/text/width, already a dependency).
+func cells(s string) int {
+	n := 0
+	for _, r := range s {
+		n += runeCells(r)
+	}
+	return n
+}
+
+func runeCells(r rune) int {
+	if unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) {
+		return 0
+	}
+	if k := width.LookupRune(r).Kind(); k == width.EastAsianWide || k == width.EastAsianFullwidth {
+		return 2
+	}
+	return 1
+}
+
+// fit cuts s to at most n cells, ending in an ellipsis when it was longer.
 func fit(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
+	if cells(s) <= n {
 		return s
 	}
 	if n <= 1 {
-		return string([]rune(s)[:max(n, 0)])
+		return ""
 	}
-	return string([]rune(s)[:n-1]) + "…"
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		if w := runeCells(r); used+w <= n-1 {
+			b.WriteRune(r)
+			used += w
+		} else {
+			break
+		}
+	}
+	return b.String() + "…"
 }
 
 func pad(s string, n int) string {
-	if m := utf8.RuneCountInString(s); m < n {
+	if m := cells(s); m < n {
 		return s + strings.Repeat(" ", n-m)
 	}
 	return s

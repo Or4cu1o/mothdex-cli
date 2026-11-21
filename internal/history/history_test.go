@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -125,7 +126,7 @@ func TestCase50CSVFormulaGuard(t *testing.T) {
 	r.Platform = "\x1b@SUM(A1)"          // ANSI escape hides the @
 	r.Path = "\t=cmd"
 	r.SHA256 = "\r=x"
-	r.ErrorCode = "ok, with comma"
+	r.Error = &Failure{Code: "ok, with comma", Message: "m"}
 	var buf bytes.Buffer
 	if err := Export(&buf, FormatCSV, []Record{r}, Meta{}); err != nil {
 		t.Fatal(err)
@@ -193,10 +194,120 @@ func TestExportJSONEnvelopeAndTXTWidth(t *testing.T) {
 	}
 }
 
+// Crivo minor 1: the JSON record has the fields of a download job plus the history ones
+// (cli-output.md section 3), with error as an object or null.
+func TestJSONRecordHasTheContractFields(t *testing.T) {
+	ok, bad := rec("1", "done"), rec("2", "failed")
+	bad.Error = &Failure{Code: "disk_full", Message: "no space left"}
+	var buf bytes.Buffer
+	if err := Export(&buf, FormatJSON, []Record{ok, bad}, Meta{}); err != nil {
+		t.Fatal(err)
+	}
+	var env struct {
+		Data struct {
+			Records []map[string]any `json:"records"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil || len(env.Data.Records) != 2 {
+		t.Fatal(err)
+	}
+	want := []string{"id", "started_at", "finished_at", "platform", "title", "source_name", "slug", "link_index", "filename", "raw_filename",
+		"path", "state", "bytes", "expected_bytes", "sha256", "crc", "hash", "attempts", "duration_ms", "error"}
+	for _, r := range env.Data.Records {
+		for _, k := range want {
+			if _, present := r[k]; !present {
+				t.Errorf("field %q missing", k)
+			}
+		}
+	}
+	if env.Data.Records[0]["error"] != nil || env.Data.Records[1]["error"].(map[string]any)["code"] != "disk_full" {
+		t.Fatalf("error: %v / %v", env.Data.Records[0]["error"], env.Data.Records[1]["error"])
+	}
+	if ok.DurationMS != 0 {
+		t.Fatal("test record must start without a duration")
+	}
+}
+
+func TestAppendFillsTheDurationAndCapsEveryField(t *testing.T) {
+	s, _ := open(t)
+	r := rec("1", "done")
+	r.Slug = strings.Repeat("s", 1<<20)
+	r.Platform, r.SHA256 = strings.Repeat("p", 5000), strings.Repeat("h", 5000)
+	if err := s.Append(r); err != nil {
+		t.Fatalf("a huge slug must be cut, not lose the record: %v", err)
+	}
+	got, _ := s.List(context.Background(), Filter{})
+	if len(got) != 1 || len(got[0].Slug) > maxShortText || len(got[0].Platform) > maxIDText || got[0].DurationMS != 1000 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// Crivo minor 2: the 120 limit counts terminal cells, so wide (Japanese) names fit too.
+func TestTXTWidthCountsCellsForWideRunes(t *testing.T) {
+	r := rec("1", "done")
+	r.Filename = strings.Repeat("ファイナルファンタジー", 20)
+	var buf bytes.Buffer
+	if err := Export(&buf, FormatTXT, []Record{r}, Meta{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if cells(line) > txtWidth {
+			t.Fatalf("%d cells: %q", cells(line), line)
+		}
+	}
+	if cells("ab") != 2 || cells("日本") != 4 || cells("e\u0301") != 1 {
+		t.Fatal("cells: ascii 1, wide 2, combining 0")
+	}
+}
+
+// Crivo suggestion 3: the export never writes through or over something that is not ours.
+func TestWriteExportDoesNotFollowOrReplaceForeignTargets(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	render := func(w io.Writer) error { _, err := w.Write([]byte("export")); return err }
+	for name, link := range map[string]string{"to file": victim, "dangling": filepath.Join(dir, "absent")} {
+		target := filepath.Join(dir, "link-"+strings.ReplaceAll(name, " ", "-"))
+		if err := os.Symlink(link, target); err != nil {
+			t.Skip("symlinks unavailable")
+		}
+		if err := WriteExport(target, false, render); !errors.Is(err, ErrExists) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "keep" { //nolint:gosec // test path
+		t.Fatalf("victim changed: %q", b)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "absent")); err == nil {
+		t.Fatal("a dangling symlink target was created")
+	}
+}
+
+func TestConcurrentExportsWithoutForceHaveOneWinner(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "out.csv")
+	var wins atomic.Int32
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if WriteExport(target, false, func(w io.Writer) error { _, err := w.Write([]byte("x")); return err }) == nil {
+				wins.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if wins.Load() != 1 {
+		t.Fatalf("%d writers succeeded", wins.Load())
+	}
+}
+
 func TestExportTargetAndAtomicWrite(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 11, 20, 12, 30, 5, 0, time.UTC)
-	if p, f, err := ExportTarget(dir, "csv", "history", now); err != nil || f != "csv" || filepath.Base(p) != "mothdex-history-20261120T123005.csv" {
+	if p, f, err := ExportTarget(dir, "CSV", "history", now); err != nil || f != "csv" || filepath.Base(p) != "mothdex-history-20261120T123005.csv" {
 		t.Fatalf("dir target: %s %s %v", p, f, err)
 	}
 	if _, _, err := ExportTarget(dir, "", "history", now); !errors.Is(err, ErrFormat) {

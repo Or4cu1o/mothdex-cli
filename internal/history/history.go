@@ -7,11 +7,13 @@
 package history
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,6 +26,7 @@ import (
 const (
 	maxLine      = 64 << 10
 	maxShortText = 1024
+	maxIDText    = 128
 	maxPathText  = 4096
 	dirMode      = 0o700
 	fileMode     = 0o600
@@ -36,18 +39,28 @@ type Record struct {
 	FinishedAt time.Time `json:"finished_at"`
 	State      string    `json:"state"`
 	Slug       string    `json:"slug"`
-	Title      string    `json:"title,omitempty"`
+	Title      string    `json:"title"`
 	Platform   string    `json:"platform"`
-	SourceName string    `json:"source_name,omitempty"`
+	SourceName string    `json:"source_name"`
+	LinkIndex  int       `json:"link_index"`
 	Filename   string    `json:"filename"`
-	RawName    string    `json:"raw_filename,omitempty"`
+	RawName    string    `json:"raw_filename"`
 	Path       string    `json:"path"`
 	Bytes      int64     `json:"bytes"`
-	SHA256     string    `json:"sha256,omitempty"`
-	CRC        string    `json:"crc,omitempty"`
-	Hash       string    `json:"hash,omitempty"`
+	Expected   int64     `json:"expected_bytes"`
+	SHA256     string    `json:"sha256"`
+	CRC        string    `json:"crc"`
+	Hash       string    `json:"hash"`
 	Attempts   int       `json:"attempts"`
-	ErrorCode  string    `json:"error_code,omitempty"`
+	DurationMS int64     `json:"duration_ms"`
+	Error      *Failure  `json:"error"`
+}
+
+// Failure is the error object of a failed job: {code, message} (cli-output.md section 3), null
+// when the job did not fail. The message is English and never echoes untrusted input.
+type Failure struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // Filter selects records for List. The zero value selects everything.
@@ -74,6 +87,14 @@ func Open(path string) (*Store, error) {
 // Append writes one record as a single line and syncs it. The downloader treats a failed
 // append as best effort.
 func (s *Store) Append(rec Record) error {
+	rec.ID, rec.State, rec.Slug, rec.Platform = capText(rec.ID, maxIDText), capText(rec.State, maxIDText), capText(rec.Slug, maxShortText), capText(rec.Platform, maxIDText)
+	rec.SHA256, rec.CRC, rec.Hash = capText(rec.SHA256, maxIDText), capText(rec.CRC, maxIDText), capText(rec.Hash, maxIDText)
+	if rec.Error != nil {
+		rec.Error = &Failure{Code: capText(rec.Error.Code, maxIDText), Message: capText(rec.Error.Message, maxShortText)}
+	}
+	if rec.DurationMS == 0 && !rec.StartedAt.IsZero() && rec.FinishedAt.After(rec.StartedAt) {
+		rec.DurationMS = rec.FinishedAt.Sub(rec.StartedAt).Milliseconds()
+	}
 	rec.Title, rec.SourceName, rec.RawName = capText(rec.Title, maxShortText), capText(rec.SourceName, maxShortText), capText(rec.RawName, maxShortText)
 	rec.Filename, rec.Path = capText(rec.Filename, maxShortText), capText(rec.Path, maxPathText)
 	line, err := json.Marshal(rec)
@@ -107,7 +128,7 @@ func (s *Store) Append(rec Record) error {
 // valid records are skipped.
 func (s *Store) List(ctx context.Context, f Filter) ([]Record, error) {
 	s.mu.Lock()
-	data, err := os.ReadFile(s.path)
+	file, err := os.Open(s.path) //nolint:gosec // path comes from paths.data, validated absolute in Open
 	s.mu.Unlock()
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -115,22 +136,26 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Record, error) {
 	if err != nil {
 		return nil, fmt.Errorf("history: read: %w", err)
 	}
+	defer func() { _ = file.Close() }()
 	var out []Record
-	for line := range bytes.SplitSeq(data, []byte{'\n'}) {
+	br := bufio.NewReaderSize(file, maxLine)
+	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if len(line) == 0 || len(line) >= maxLine {
-			continue
+		line, tooLong, err := readLine(br)
+		if len(line) > 0 && !tooLong {
+			var r Record
+			if json.Unmarshal(line, &r) == nil && r.ID != "" && (!f.Failed || r.State == "failed") {
+				out = append(out, r)
+			}
 		}
-		var r Record
-		if json.Unmarshal(line, &r) != nil || r.ID == "" {
-			continue
+		if errors.Is(err, io.EOF) {
+			break
 		}
-		if f.Failed && r.State != "failed" {
-			continue
+		if err != nil {
+			return nil, fmt.Errorf("history: read: %w", err)
 		}
-		out = append(out, r)
 	}
 	slices.Reverse(out)
 	if f.Limit > 0 && len(out) > f.Limit {
@@ -148,4 +173,16 @@ func capText(s string, n int) string {
 		n--
 	}
 	return s[:n]
+}
+
+// readLine returns the next line without its newline. A line longer than the reader buffer is
+// consumed to its end and reported as tooLong, so one oversized line costs one record, not the
+// rest of the file.
+func readLine(br *bufio.Reader) (line []byte, tooLong bool, err error) {
+	line, err = br.ReadSlice('\n')
+	for errors.Is(err, bufio.ErrBufferFull) {
+		tooLong = true
+		_, err = br.ReadSlice('\n')
+	}
+	return bytes.TrimRight(line, "\r\n"), tooLong, err
 }
