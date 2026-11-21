@@ -256,10 +256,12 @@ ui:
       will_quit: 'Saldrá cuando terminen las descargas'
       badge_active: '{active}'
       badge_queued: '{active} · {queued} en cola'
+      will_quit_short: 'Salida pendiente'
     hint:
       menu: 'Menú'
       open: 'Abrir'
       quit: 'Salir'
+      continue: 'Continuar'
     menu:
       home: 'Inicio'
       queue: 'Cola'

@@ -508,10 +508,13 @@ func (b *Backend) translate(e *Event) {
 	case EventQuit:
 		b.pending = append(b.pending, input.Incoming{Kind: input.IncomingQuit})
 	case EventWindow:
-		if ev := e.Window().Event; ev == WindowEventResized || ev == WindowEventSizeChanged {
+		switch ev := e.Window().Event; ev {
+		case WindowEventResized, WindowEventSizeChanged:
 			if w, h := b.Size(); w > 0 && h > 0 {
 				b.pending = append(b.pending, input.Incoming{Kind: input.IncomingResize, W: w, H: h})
 			}
+		case WindowEventShown, WindowEventExposed, WindowEventRestored: // uncovered: draw again
+			b.pending = append(b.pending, input.Incoming{Kind: input.IncomingRedraw})
 		}
 	case EventKeyDown, EventKeyUp:
 		b.translateKey(e)

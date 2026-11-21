@@ -360,20 +360,31 @@ func TestMappingLinesKeepsOnlyUsableLinesForThePlatform(t *testing.T) {
 	}
 }
 
-func TestLoadMappingsReadsTheEmbeddedDatabaseThenTheUsersFile(t *testing.T) {
+func TestLoadMappingsOrderIsEmbeddedUserFileThenTheEnvironment(t *testing.T) {
 	const embedded = "03000000deadbeef0000000000000001,Pad B,a:b0,platform:Linux,\nbroken line\n03000000deadbeef0000000000000002,Win only,a:b0,platform:Windows,\n"
 	dir := t.TempDir()
 	user := filepath.Join(dir, "gamecontrollerdb.txt")
 	if err := os.WriteFile(user, []byte("# mine\n03000000deadbeef0000000000000001,Pad B fixed,a:b1,platform:Linux,\nnot a mapping\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	envFile := filepath.Join(dir, "frontend.txt")
+	if err := os.WriteFile(envFile, []byte("03000000deadbeef0000000000000001,Pad B from file,a:b2,platform:Linux,\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var warnings []string
 	warn := func(s string) { warnings = append(warnings, s) }
+	env := map[string]string{
+		"SDL_GAMECONTROLLERCONFIG_FILE": envFile,
+		"SDL_GAMECONTROLLERCONFIG":      "03000000deadbeef0000000000000001,Pad B from the frontend,a:b3,platform:Linux,\n03000000deadbeef0000000000000009,Other system,a:b0,platform:Mac OS X,",
+	}
+	getenv := func(k string) string { return env[k] }
 
-	got := LoadMappings(embedded, user, "Linux", warn)
-	want := []string{
+	got := LoadMappings(embedded, user, "Linux", getenv, warn)
+	want := []string{ // SDL keeps the last line for a pad: the frontend's wins over the file, the user's file and the embedded one
 		"03000000deadbeef0000000000000001,Pad B,a:b0,platform:Linux,",
-		"03000000deadbeef0000000000000001,Pad B fixed,a:b1,platform:Linux,", // later wins in SDL
+		"03000000deadbeef0000000000000001,Pad B fixed,a:b1,platform:Linux,",
+		"03000000deadbeef0000000000000001,Pad B from file,a:b2,platform:Linux,",
+		"03000000deadbeef0000000000000001,Pad B from the frontend,a:b3,platform:Linux,",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("lines %q, want %q", got, want)
@@ -382,10 +393,11 @@ func TestLoadMappingsReadsTheEmbeddedDatabaseThenTheUsersFile(t *testing.T) {
 		t.Fatalf("warnings %q: one for the broken embedded line, then one for the user's", warnings)
 	}
 
-	// No user file and a missing one keep the embedded lines; an unreadable one (a directory) also warns.
+	// With no environment, no user file and a missing one keep the embedded lines; an unreadable one warns.
+	none := func(string) string { return "" }
 	for path, wantWarnings := range map[string]int{"": 1, filepath.Join(dir, "missing.txt"): 1, dir: 2} {
 		warnings = nil
-		if got := LoadMappings(embedded, path, "Linux", warn); len(got) != 1 {
+		if got := LoadMappings(embedded, path, "Linux", none, warn); len(got) != 1 {
 			t.Errorf("%q: %q", path, got)
 		}
 		if len(warnings) != wantWarnings {

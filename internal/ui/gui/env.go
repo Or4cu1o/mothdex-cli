@@ -63,6 +63,11 @@ type (
 	JobMsg struct{ Job app.JobSnapshot }
 	// SignalMsg is SIGTERM or SIGINT: no dialog, cancel, Wait, Close, exit.
 	SignalMsg struct{}
+	// QuitRequestMsg is a request to close the window (Alt+F4 on a desktop): it asks like Start menu Quit,
+	// so downloads are never canceled without the person's word.
+	QuitRequestMsg struct{}
+	// RedrawMsg says the window must be drawn again with nothing else changed (it was uncovered or restored).
+	RedrawMsg struct{}
 )
 
 // Options is what the composition root gives the model.

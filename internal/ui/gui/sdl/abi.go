@@ -47,6 +47,9 @@ const (
 	EventControllerDeviceAdded   = 0x653
 	EventControllerDeviceRemoved = 0x654
 
+	WindowEventShown       = 1 // SDL_WINDOWEVENT_SHOWN
+	WindowEventExposed     = 3 // SDL_WINDOWEVENT_EXPOSED
+	WindowEventRestored    = 9 // SDL_WINDOWEVENT_RESTORED
 	WindowEventResized     = 5 // SDL_WINDOWEVENT_RESIZED
 	WindowEventSizeChanged = 6 // SDL_WINDOWEVENT_SIZE_CHANGED
 

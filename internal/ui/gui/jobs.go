@@ -12,9 +12,13 @@ type jobTally struct {
 	byID map[app.JobID]app.JobSnapshot
 }
 
-// apply records a snapshot (an event or an entry of Jobs) and returns the previous one, if any.
+// apply records a snapshot (an event or an entry of Jobs) and returns the previous one, if any. The tally
+// counts jobs by state, so an event that only moves a job's progress changes nothing and copies nothing.
 func (t jobTally) apply(j app.JobSnapshot) (jobTally, app.JobSnapshot, bool) {
 	prev, known := t.byID[j.ID]
+	if known && prev.State == j.State {
+		return t, prev, true // only progress changed: counts depend on the state alone, so nothing is copied
+	}
 	next := maps.Clone(t.byID)
 	if next == nil {
 		next = map[app.JobID]app.JobSnapshot{}

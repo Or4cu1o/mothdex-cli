@@ -15,6 +15,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -71,6 +72,9 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.lang, "lang", "", "interface language, such as pt_br (default: interface.language)")
 	fs.StringVar(&window, "window", "", "open a window of WxH pixels instead of the full screen, such as 1280x720")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) { // -h prints the usage and is not a failure
+			return exitOK
+		}
 		return exitInternal
 	}
 	if window != "" {

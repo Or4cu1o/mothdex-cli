@@ -70,32 +70,51 @@ func isHexDigit(r rune) bool {
 	return r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F'
 }
 
+// Environment variables SDL itself reads for controller mappings.
+const (
+	envMappings    = "SDL_GAMECONTROLLERCONFIG"      // mapping lines, one per line
+	envMappingFile = "SDL_GAMECONTROLLERCONFIG_FILE" // a database file
+)
+
 // LoadMappings returns the controller mapping lines to give SDL, in the order of docs/contracts/cli/gui.md
-// section 4: the embedded database first, then the user's file, so a later line for the same pad replaces an
-// earlier one. SDL itself applies SDL_GAMECONTROLLERCONFIG after these. Lines for another platform are
-// dropped; a malformed line, and an unreadable user file other than a missing one, are reported to warn and
-// skipped.
-func LoadMappings(embedded, userFile, platform string, warn func(msg string)) []string {
+// section 4, later lines replacing earlier ones for the same pad: the embedded database, the user's
+// `<paths.data>/gamecontrollerdb.txt`, the file named by SDL_GAMECONTROLLERCONFIG_FILE, and the lines of
+// SDL_GAMECONTROLLERCONFIG, which wins (a frontend that sets it for its Ports keeps its mapping). SDL applies
+// those two variables itself, but at SDL_Init, before these lines are added, so lines added afterwards would
+// replace them: they are read here and added last. Lines for another platform are dropped; a malformed line,
+// and an unreadable file other than a missing one, are reported to warn and skipped.
+func LoadMappings(embedded, userFile, platform string, getenv func(string) string, warn func(msg string)) []string {
 	lines, bad := MappingLines(embedded, platform)
 	for _, l := range bad {
 		warn("controller database: skipped a malformed line: " + truncateForLog(l))
 	}
-	if userFile == "" {
-		return lines
+	add := func(source, text string) {
+		more, bad := MappingLines(text, platform)
+		for _, l := range bad {
+			warn(source + ": skipped a malformed line: " + truncateForLog(l))
+		}
+		lines = append(lines, more...)
 	}
-	data, err := os.ReadFile(userFile) //nolint:gosec // the user's own file under paths.data
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return lines
-	case err != nil:
-		warn("controller database: cannot read " + userFile + ": " + err.Error())
-		return lines
+	for _, f := range []struct{ source, path string }{
+		{"gamecontrollerdb.txt", userFile},
+		{envMappingFile, getenv(envMappingFile)},
+	} {
+		if f.path == "" {
+			continue
+		}
+		data, err := os.ReadFile(f.path) //nolint:gosec // the user's own file, or the one the frontend names
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			warn("controller database: cannot read " + f.path + ": " + err.Error())
+		default:
+			add(f.source, string(data))
+		}
 	}
-	user, bad := MappingLines(string(data), platform)
-	for _, l := range bad {
-		warn("gamecontrollerdb.txt: skipped a malformed line: " + truncateForLog(l))
+	if env := getenv(envMappings); env != "" {
+		add(envMappings, env)
 	}
-	return append(lines, user...)
+	return lines
 }
 
 func truncateForLog(s string) string {

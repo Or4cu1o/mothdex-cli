@@ -256,10 +256,12 @@ ui:
       will_quit: 'Will quit when downloads finish'
       badge_active: '{active}'
       badge_queued: '{active} · {queued} queued'
+      will_quit_short: 'Quit pending'
     hint:
       menu: 'Menu'
       open: 'Open'
       quit: 'Quit'
+      continue: 'Continue'
     menu:
       home: 'Home'
       queue: 'Queue'

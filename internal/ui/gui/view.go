@@ -137,7 +137,7 @@ type hint struct {
 // brand (empty on Home).
 func (m Model) drawFrame(p painter, screen string, hints []hint) {
 	m.drawTopBar(p, screen)
-	m.drawHintBar(p, hints)
+	m.drawHintBar(p, hints, true)
 }
 
 func (m Model) queueBadge() string {
@@ -151,27 +151,85 @@ func (m Model) queueBadge() string {
 	return ""
 }
 
+// topBarItem is something on the right of the top bar. Arrow items draw a down arrow before their text.
+type topBarItem struct {
+	s     string
+	c     draw.Color
+	arrow bool
+}
+
+// topBarItems chooses what the right of the top bar shows so that it leaves the title at least minTitle pixels
+// (docs/ux/gui.md section 4, PR-71 review M1): Offline and the queue badge are never cut; the pending-quit
+// notice switches to its short text when the full one does not fit, and is cut with an ellipsis only if even
+// that does not. They are returned in reading order with the total width they take.
+func (m Model) topBarItems(p painter, avail int) ([]topBarItem, int) {
+	met := m.metrics
+	gap := 2 * met.Unit
+	size := met.Secondary
+	var fixedBefore, fixedAfter []topBarItem
+	if m.offline {
+		fixedBefore = append(fixedBefore, topBarItem{s: m.tr("ui.gui.bar.offline", nil), c: colWarn})
+	}
+	if badge := m.queueBadge(); badge != "" {
+		fixedAfter = append(fixedAfter, topBarItem{s: badge, c: colAccent, arrow: true})
+	}
+	widthOf := func(it topBarItem) int {
+		if it.arrow {
+			return p.arrowLabelWidth(size, it.s)
+		}
+		return p.width(size, it.s)
+	}
+	total := func(items []topBarItem) int {
+		w := 0
+		for i, it := range items {
+			w += widthOf(it)
+			if i > 0 {
+				w += gap
+			}
+		}
+		return w
+	}
+	assemble := func(notice string) []topBarItem {
+		items := append([]topBarItem{}, fixedBefore...)
+		if notice != "" {
+			items = append(items, topBarItem{s: notice, c: colWarn})
+		}
+		return append(items, fixedAfter...)
+	}
+	if !m.quitPending {
+		items := assemble("")
+		return items, total(items)
+	}
+	for _, key := range []string{"ui.gui.bar.will_quit", "ui.gui.bar.will_quit_short"} {
+		if items := assemble(m.tr(key, nil)); total(items) <= avail {
+			return items, total(items)
+		}
+	}
+	// Even the short text does not fit: cut only that item, to what is left after the fixed ones.
+	rest := total(assemble("x")) - p.width(size, "x")
+	room := max(avail-rest-gap, 0)
+	items := assemble(p.fit(size, m.tr("ui.gui.bar.will_quit_short", nil), room))
+	return items, total(items)
+}
+
 func (m Model) drawTopBar(p painter, screen string) {
 	met := m.metrics
 	bar := met.TopBarRect()
 	p.l.Fill(bar, 0, colSurface)
 	pad := 2 * met.Unit
 
-	type item struct {
-		s     string
-		c     draw.Color
-		arrow bool // a down arrow comes before the text
+	title := brand
+	if screen != "" {
+		title += crumb + screen
 	}
-	var right []item // in reading order, left to right
-	if m.offline {
-		right = append(right, item{s: m.tr("ui.gui.bar.offline", nil), c: colWarn})
+	// The title always keeps the width of the screen's own name, and the right side takes the rest.
+	minTitle := min(p.width(met.Title, title), p.width(met.Title, brand))
+	if screen != "" {
+		minTitle = min(p.width(met.Title, title), p.width(met.Title, brand+crumb+"…"))
 	}
-	if m.quitPending {
-		right = append(right, item{s: m.tr("ui.gui.bar.will_quit", nil), c: colWarn})
-	}
-	if badge := m.queueBadge(); badge != "" {
-		right = append(right, item{s: badge, c: colAccent, arrow: true})
-	}
+	avail := max(bar.W-2*pad-minTitle-pad, 0)
+	right, _ := m.topBarItems(p, avail)
+
 	x := bar.Right() - pad
 	for i := len(right) - 1; i >= 0; i-- {
 		if right[i].arrow {
@@ -180,25 +238,28 @@ func (m Model) drawTopBar(p painter, screen string) {
 		}
 		x = p.rightAligned(x, bar.Y, bar.H, met.Secondary, right[i].c, right[i].s) - pad
 	}
-
-	title := brand
-	if screen != "" {
-		title += crumb + screen
-	}
 	title = p.fit(met.Title, title, max(x-(bar.X+pad), 0))
 	p.text(bar.X+pad, bar.Y+(bar.H-LineHeight(met.Title))/2, met.Title, colText, title)
 }
 
+// pillWidth is how wide a pill for label is: a disc for a one-letter label, and a pill with 1u of air at each
+// end for a word.
+func (p painter) pillWidth(h int, label string) int {
+	if len([]rune(label)) > 1 {
+		return max(h, p.width(p.m.Secondary, label)+2*p.m.Unit)
+	}
+	return max(h, p.width(p.m.Secondary, label)+p.m.Unit)
+}
+
 // pill draws a button label on a dark disc (a pill for a longer label) and returns its width.
 func (p painter) pill(x, y, h int, label string) int {
-	size := p.m.Secondary
-	w := max(h, p.width(size, label)+p.m.Unit)
+	w := p.pillWidth(h, label)
 	p.l.Fill(rect{X: x, Y: y, W: w, H: h}, h/2, colBG)
-	p.centered(rect{X: x, Y: y, W: w, H: h}, size, colText, label)
+	p.centered(rect{X: x, Y: y, W: w, H: h}, p.m.Secondary, colText, label)
 	return w
 }
 
-func (m Model) drawHintBar(p painter, hints []hint) {
+func (m Model) drawHintBar(p painter, hints []hint, withStart bool) {
 	met := m.metrics
 	bar := met.HintBarRect()
 	p.l.Fill(bar, 0, colSurface)
@@ -209,9 +270,11 @@ func (m Model) drawHintBar(p painter, hints []hint) {
 
 	// Start Menu, at the left; compact keeps the disc and drops the word.
 	x := bar.X + pad
-	x += p.pill(x, y, h, input.PositionLabel(input.Start, m.pad)) + met.Unit/2
-	if met.Tier != Compact {
-		p.text(x, bar.Y+(bar.H-LineHeight(size))/2, size, colDim, m.tr("ui.gui.hint.menu", nil))
+	if withStart {
+		x += p.pill(x, y, h, input.PositionLabel(input.Start, m.pad)) + met.Unit/2
+		if met.Tier != Compact {
+			p.text(x, bar.Y+(bar.H-LineHeight(size))/2, size, colDim, m.tr("ui.gui.hint.menu", nil))
+		}
 	}
 
 	limit := maxHints
@@ -228,7 +291,7 @@ func (m Model) drawHintBar(p painter, hints []hint) {
 	for _, hnt := range hints {
 		label := input.Hint(hnt.role, m.pad, m.cfg.confirmEast)
 		items = append(items, placed{label, hnt.label})
-		total += max(h, p.width(size, label)+met.Unit) + met.Unit/2 + p.width(size, hnt.label) + gap
+		total += p.pillWidth(h, label) + met.Unit/2 + p.width(size, hnt.label) + gap
 	}
 	x = bar.Right() - pad - (total - gap)
 	for _, it := range items {
@@ -250,20 +313,53 @@ func (k toastKind) color() draw.Color {
 	return colAccent
 }
 
-// drawToast draws the one-line toast under the top bar, right-aligned: the surface with a stripe in the
-// color of its state.
+// toastMaxPercent is how much of the safe width a toast may take, so it does not cover the screen.
+const toastMaxPercent = 60
+
+// toastLines are the lines of the toast text: wrapped to two lines inside 60 % of the safe width, the second
+// ending in an ellipsis if the text still does not fit.
+func (m Model) toastLines(p painter) []string {
+	met := m.metrics
+	inner := met.Safe.W*toastMaxPercent/100 - toastStripe - 2*met.Unit
+	return p.wrap(met.Secondary, m.toast.text, max(inner, 40), 2)
+}
+
+// toastRect places the toast right-aligned under the top bar, and above the hint bar instead when it would
+// cover the focused element (section 3: focus is always visible).
+func (m Model) toastRect(p painter, lines []string) rect {
+	met := m.metrics
+	size := met.Secondary
+	w := toastStripe + 2*met.Unit
+	widest := 0
+	for _, l := range lines {
+		widest = max(widest, p.width(size, l))
+	}
+	w += widest
+	h := len(lines)*LineHeight(size) + met.Unit
+	r := rect{X: met.Safe.Right() - 2*met.Unit - w, Y: met.TopBarRect().Bottom() + met.Unit/2, W: w, H: h}
+	if focus, ok := m.focusRect(); ok && intersects(r, focus.Inset(-met.Ring)) {
+		r.Y = met.HintBarRect().Y - met.Unit/2 - h
+	}
+	return r
+}
+
+func intersects(a, b rect) bool {
+	return a.X < b.Right() && b.X < a.Right() && a.Y < b.Bottom() && b.Y < a.Bottom()
+}
+
+// drawToast draws the toast under the top bar, right-aligned: the surface with a stripe in the color of its
+// state, at most two lines.
 func (m Model) drawToast(p painter, now time.Time) {
 	if m.toast.text == "" || !now.Before(m.toast.until) {
 		return
 	}
 	met := m.metrics
 	size := met.Secondary
-	maxW := m.metrics.Safe.W - 4*met.Unit
-	s := p.fit(size, m.toast.text, maxW-toastStripe-2*met.Unit)
-	w := p.width(size, s) + toastStripe + 2*met.Unit
-	h := LineHeight(size) + met.Unit
-	r := rect{X: met.Safe.Right() - 2*met.Unit - w, Y: met.TopBarRect().Bottom() + met.Unit/2, W: w, H: h}
+	lines := m.toastLines(p)
+	r := m.toastRect(p, lines)
 	p.l.Fill(r, 0, colSurface)
 	p.l.Fill(rect{X: r.X, Y: r.Y, W: toastStripe, H: r.H}, 0, m.toast.kind.color())
-	p.text(r.X+toastStripe+met.Unit, r.Y+(r.H-LineHeight(size))/2, size, colText, s)
+	for i, line := range lines {
+		p.text(r.X+toastStripe+met.Unit, r.Y+met.Unit/2+i*LineHeight(size), size, colText, line)
+	}
 }
