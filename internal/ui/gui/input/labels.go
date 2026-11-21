@@ -119,3 +119,23 @@ func Hint(role Action, t ControllerType, confirmEast bool) string {
 	}
 	return PositionLabel(b, t)
 }
+
+// IncomingKind is what a backend reports to the run loop.
+type IncomingKind int
+
+// Kinds of Incoming.
+const (
+	IncomingInput  IncomingKind = iota // a button, stick or key event for the Mapper
+	IncomingResize                     // the display changed size
+	IncomingPad                        // the pad in hand changed type, for the hint labels
+	IncomingQuit                       // the window was asked to close
+)
+
+// Incoming is one thing a backend tells the run loop. It carries no SDL types, so the loop and its tests
+// do not need SDL.
+type Incoming struct {
+	Kind  IncomingKind
+	Input Event          // IncomingInput
+	W, H  int            // IncomingResize: the new size in pixels
+	Pad   ControllerType // IncomingPad
+}
