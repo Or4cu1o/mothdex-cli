@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/contracts/cli/gui.md` (T-51): the E-M3 GUI contract, covering the separate `mothdex-gui` binary and its package layout, SDL2 through an own purego binding (with what the spike must prove and the decision rule), Noto Sans with the x/image raster, the pinned GameControllerDB, a single download root (no shared limiter), the exit budget, cover decode caps, the packaging impact, the test plan and the gaps for Forja.
 - `docs/qa/T-22-m1-acceptance.md` (T-22): M1 acceptance run at `ebe6a54` with evidence per item (installer against the
   snapshot archive, mcp slug charset sample, command section C through the real binary and the package tests), the open
   items, the live download check, and findings F3 (`/dev/null` stdin is treated as a terminal), F4 and F5.
