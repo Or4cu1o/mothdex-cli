@@ -69,3 +69,37 @@ func (r *runtime) runShell() error {
 	}
 	return &exitError{err: &app.Error{Code: app.CodeCanceled, Message: "the shell ended"}, code: code, silent: true}
 }
+
+func (r *runtime) tuiCmd() *cobra.Command {
+	return &cobra.Command{
+		Use: "tui", Short: "Start the full-screen terminal UI", Args: cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			if r.d.TUI == nil {
+				return r.soon("tui")
+			}
+			if r.g.JSON {
+				return usageErr("tui", "--json cannot be used with the TUI")
+			}
+			if !r.isTTY(r.d.Stdin) || !r.isTTY(r.d.Stdout) {
+				return usageErr("tui", "%s", r.printer().T("ui.tui.needs_terminal", nil))
+			}
+			return r.runTUI()
+		},
+	}
+}
+
+// runTUI opens the service once (like the Shell: Force and AllowExecutable stay off) and hands the
+// session to the TUI launcher.
+func (r *runtime) runTUI() error {
+	r.cmd, r.g.Command = "tui", "tui"
+	r.g.Downloads, r.g.Shell = true, true
+	s, err := r.open()
+	if err != nil {
+		return err
+	}
+	code := r.d.TUI(r.ctx, TUIEnv{Session: s, Stdin: r.d.Stdin, Stdout: r.d.Stdout, Stderr: r.d.Stderr, Interrupts: r.d.Interrupts})
+	if code == 0 {
+		return nil
+	}
+	return &exitError{err: &app.Error{Code: app.CodeCanceled, Message: "the TUI ended"}, code: code, silent: true}
+}

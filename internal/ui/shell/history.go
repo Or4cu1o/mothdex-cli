@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/uistate"
 )
 
 const (
@@ -114,38 +116,7 @@ func (h historyStore) save(lines []string) {
 	if h.path == "" {
 		return
 	}
-	if err := writeAtomic(h.path, []byte(strings.Join(lines, "\n")+"\n")); err != nil {
+	if err := uistate.WriteAtomic(h.path, []byte(strings.Join(lines, "\n")+"\n")); err != nil {
 		h.warn("cannot write the shell history", err)
 	}
-}
-
-func writeAtomic(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, ".shell_history-*") // created with mode 0600
-	if err != nil {
-		return err
-	}
-	_, werr := tmp.Write(data)
-	cerr := tmp.Close()
-	if err := firstErr(werr, cerr); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return nil
-}
-
-func firstErr(errs ...error) error {
-	for _, e := range errs {
-		if e != nil {
-			return e
-		}
-	}
-	return nil
 }

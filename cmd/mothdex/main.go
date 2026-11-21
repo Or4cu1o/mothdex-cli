@@ -18,6 +18,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/shell"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/tui"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 )
 
@@ -50,6 +51,7 @@ func deps(stdin io.Reader, stdout, stderr io.Writer) cli.Deps {
 		Width:      terminalWidth,
 		Getenv:     os.Getenv,
 		Shell:      shell.Run,
+		TUI:        tui.Run,
 	}
 }
 
