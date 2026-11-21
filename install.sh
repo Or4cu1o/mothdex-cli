@@ -200,6 +200,7 @@ bin_dir_usable() {
     if [ "$DRY_RUN" -eq 1 ]; then return 0; fi
     mkdir -p "$1" || return 1
   fi
+  if [ -L "$1" ]; then die "refusing bin_dir '$1': it is a symbolic link"; fi
   dir_safe "$1" || die "refusing bin_dir '$1': it is world-writable or owned by another user"
   if [ "$DRY_RUN" -eq 1 ]; then return 0; fi
   can_exec_in "$1"
@@ -207,15 +208,21 @@ bin_dir_usable() {
 
 # --- download and verification ---------------------------------------------------------------------------------
 
-# Only URLs built from $BASE are ever passed in. curl is forced to https, including on redirects.
+# Only URLs built from $BASE are ever passed in. curl is forced to https, including on redirects. wget is used only
+# when it is GNU Wget (https only); busybox wget does not validate TLS certificates, so it is refused.
+gnu_wget() {
+  wget --version 2>/dev/null | head -n 1 | grep -q 'GNU Wget'
+}
+
 fetch() {
   if command -v curl >/dev/null 2>&1; then
     curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry 2 --connect-timeout 20 --max-time 600 \
       -o "$2" "$1"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$2" "$1"
+    gnu_wget || die "this wget is not GNU Wget (busybox wget does not verify TLS certificates): install curl and run again"
+    wget -q --https-only --secure-protocol=TLSv1_2 --max-redirect=5 --timeout=60 -O "$2" "$1"
   else
-    die "curl or wget is required"
+    die "curl or GNU wget is required"
   fi
 }
 
@@ -223,7 +230,7 @@ valid_version() {
   case $1 in
     '' | *[!0-9A-Za-z.-]*) return 1 ;;
   esac
-  printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.]*)?$'
+  printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'
 }
 
 sha256_of() {
@@ -349,6 +356,9 @@ do_uninstall() {
     if [ "$DRY_RUN" -eq 1 ]; then say "Would remove $bin"; else rm -f "$bin"; say "Removed $bin"; fi
   else
     say "No binary at $bin"
+    if [ -z "$BIN_DIR_OPT" ] && [ -n "${HOME:-}" ] && [ -f "$HOME/.local/bin/mothdex" ] && [ "$HOME/.local/bin" != "$BIN_DIR" ]; then
+      warn "found $HOME/.local/bin/mothdex (the fallback used when $BIN_DIR cannot run programs); remove it with: sh install.sh --uninstall --bin-dir $HOME/.local/bin"
+    fi
   fi
   if [ -n "$LAUNCHER_DIR" ] && [ -e "$LAUNCHER_DIR/$LAUNCHER_NAME" ]; then
     if has_marker "$LAUNCHER_DIR/$LAUNCHER_NAME"; then

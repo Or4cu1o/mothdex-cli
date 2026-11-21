@@ -59,7 +59,7 @@ function Get-Remote([string]$Url, [string]$Dest) {
   Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing -MaximumRedirection 5 | Out-Null
 }
 
-function Test-Version([string]$Value) { return $Value -match '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.]*)?$' }
+function Test-Version([string]$Value) { return $Value -match '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$' }
 
 # Absolute drive path of only letters, digits, space and _ \ . : ( ) + - (TH-30): safe inside the quoted .bat line.
 function Test-LauncherPath([string]$Path) {
@@ -69,6 +69,34 @@ function Test-LauncherPath([string]$Path) {
 function Test-ReparsePoint([string]$Path) {
   $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
   return ($null -ne $item) -and (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+# BinDir must be an absolute drive path without '..' segments; returns the normalized full path (TH-31).
+function Resolve-BinDir([string]$Path) {
+  if (($Path -notmatch '^[A-Za-z]:\\') -or ($Path -match '(^|[\\/])\.\.([\\/]|$)') -or ($Path.IndexOfAny([IO.Path]::GetInvalidPathChars()) -ge 0)) {
+    Fail "BinDir '$Path' is not allowed: use an absolute drive path without '..'"
+  }
+  return [IO.Path]::GetFullPath($Path).TrimEnd('\')
+}
+
+function Test-UnderPath([string]$Path, [string]$Parent) {
+  return ($Path.TrimEnd('\') + '\').StartsWith($Parent.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
+}
+
+# An existing folder outside %LocalAppData% is used only if its owner is this user, Administrators, SYSTEM or
+# TrustedInstaller and no other principal can write to it (TH-31). It is verified, never rewritten.
+function Test-FolderTrusted([string]$Dir) {
+  $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  $trusted = @($me, 'S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+  $acl = Get-Acl -LiteralPath $Dir
+  if ($trusted -notcontains $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value) { return $false }
+  $writeMask = [Security.AccessControl.FileSystemRights]'WriteData,AppendData,Delete,DeleteSubdirectoriesAndFiles,ChangePermissions,TakeOwnership'
+  foreach ($rule in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+    if ($rule.AccessControlType -ne 'Allow') { continue }
+    if ($trusted -contains $rule.IdentityReference.Value) { continue }
+    if (($rule.FileSystemRights -band $writeMask) -ne 0) { return $false }
+  }
+  return $true
 }
 
 function Get-TargetArch {
@@ -179,7 +207,12 @@ function Install-Launcher([string]$LauncherDir, [string]$Exe) {
 $arch = Get-TargetArch
 $retrobat = Find-RetroBat
 if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\mothdex' }
-$BinDir = $BinDir.TrimEnd('\')
+$BinDir = Resolve-BinDir $BinDir
+$binInLocalAppData = Test-UnderPath $BinDir ([IO.Path]::GetFullPath($env:LOCALAPPDATA))
+if (Test-ReparsePoint $BinDir) { Fail "refusing BinDir '$BinDir': it is a junction or symbolic link" }
+if ((-not $binInLocalAppData) -and (Test-Path -LiteralPath $BinDir) -and (-not (Test-FolderTrusted $BinDir))) {
+  Fail "refusing BinDir '$BinDir': it exists, and its owner is not you or an administrator, or another user can write to it"
+}
 $exe = Join-Path $BinDir 'mothdex.exe'
 $launcherDir = ''
 if ($retrobat -and -not $NoLauncher) { $launcherDir = Join-Path $retrobat 'roms\windows' }
@@ -239,8 +272,10 @@ try {
     return
   }
 
-  if (-not (Test-Path -LiteralPath $BinDir)) { New-Item -ItemType Directory -Path $BinDir | Out-Null }
-  if (-not $BinDir.StartsWith($env:LOCALAPPDATA, [StringComparison]::OrdinalIgnoreCase)) { Protect-Folder $BinDir }
+  if (-not (Test-Path -LiteralPath $BinDir)) {
+    New-Item -ItemType Directory -Path $BinDir | Out-Null
+    if (-not $binInLocalAppData) { Protect-Folder $BinDir }
+  }
   $new = Join-Path $BinDir ".mothdex.new.$PID.exe"
   Copy-Item -LiteralPath $staged -Destination $new -Force
   Move-Item -LiteralPath $new -Destination $exe -Force

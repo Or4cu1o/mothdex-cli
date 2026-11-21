@@ -35,6 +35,8 @@ sh install.sh --dry-run          # downloads and verifies in a temp dir, install
 sh install.sh                    # or: --version v0.1.0, --profile, --bin-dir, --no-launcher, --uninstall
 ```
 
+To install a specific version, fetch the installer from that tag (`.../mothdex-cli/vX.Y.Z/install.sh`) so installer and release match.
+
 On Windows, download `install.ps1`, read it, then run `.\install.ps1` (options
 `-Version`, `-RetroBatPath`, `-BinDir`, `-NoLauncher`, `-DryRun`, `-Uninstall`).
 Both installers always check the SHA-256 of the archive against `checksums.txt`
@@ -43,7 +45,10 @@ and provenance with the identity below; a failing check aborts before anything
 is installed. The binary goes to the profile `bin_dir` (mode 0755; on Windows
 `%LocalAppData%\Programs\mothdex` by default), and the launcher (Port) only to
 the profile launcher folder, from a fixed template with a marker line, so an
-existing file of yours is never overwritten.
+existing file of yours is never overwritten. `install.sh` needs curl, or GNU wget (busybox wget does not verify
+TLS certificates and is refused). On Windows, an existing `-BinDir` outside `%LocalAppData%` is accepted only when its
+owner is you or an administrator and no other user can write to it; a RetroBat folder created under `C:\` may let
+Authenticated Users write, which is inherent to that tree (the launcher is the only file placed there).
 
 ## Verifying a download
 

@@ -401,6 +401,28 @@ PATH=/tmp/nocurl:$BASE_PATH inst --version v1.2.3
 check "wget fallback works" rc_is 0
 check "installed through wget" test -x /home/u/.local/bin/mothdex
 
+reset wget-busybox-refused
+mkdir -p /tmp/nocurl2
+cp "$OPTIONAL/wget-busybox" /tmp/nocurl2/wget
+cp "$SHIMS/uname" /tmp/nocurl2/
+PATH=/tmp/nocurl2:$BASE_PATH inst --version v1.2.3
+check "busybox wget refused" rc_not0
+check "explains why" out_has "not GNU Wget"
+check "nothing installed (busybox wget)" absent /home/u/.local/bin/mothdex
+check "busybox wget never downloaded" absent "$FAKE_LOG.busybox"
+
+reset symlink-bin-dir
+mkdir -p /tmp/realbin
+ln -s /tmp/realbin /tmp/linkbin
+inst --version v1.2.3 --bin-dir /tmp/linkbin
+check "symlink bin_dir refused" rc_not0
+check "says symbolic link" out_has "symbolic link"
+
+reset hyphen-in-prerelease
+make_tag v2.1.0-rc-1
+inst --version 2.1.0-rc-1
+check "hyphen inside a pre-release identifier is accepted" rc_is 0
+
 reset help-and-bad-options
 inst --help
 check "help exits 0" rc_is 0

@@ -120,6 +120,33 @@ Check 'inheritance removed' (-not ($acl -match '\(I\)'))
 Check 'Users have no write' (-not ($acl -match 'BUILTIN\\Users:[^\n]*\((F|M|W)\)'))
 Check 'Authenticated Users and Everyone absent' (-not ($acl -match 'Authenticated Users|Everyone'))
 
+# 5b. BinDir validation (TH-31): relative, '..', sibling with the LocalAppData prefix, foreign write ACE, junction
+foreach ($badDir in 'relative\bin', ($root + '\x\..\..\y')) {
+  Invoke-Install @{ Version = '1.2.3'; BinDir = $badDir }
+  Check "refuses BinDir '$badDir'" $script:threw
+}
+$sibling = Join-Path $root 'Local2\bin'
+Invoke-Install @{ Version = '1.2.3'; BinDir = $sibling }
+$sibAcl = (& icacls.exe $sibling) -join "`n"
+Check 'prefix sibling of LocalAppData gets the explicit ACL' ((-not $script:threw) -and (-not ($sibAcl -match '\(I\)')))
+$shared = Join-Path $root 'shared'
+New-Item -ItemType Directory -Path $shared | Out-Null
+& icacls.exe $shared /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null
+Invoke-Install @{ Version = '1.2.3'; BinDir = $shared }
+Check 'existing folder with a foreign write ACE is refused' ($script:threw -and (-not (Test-Path (Join-Path $shared 'mothdex.exe'))))
+$mine = Join-Path $root 'mine'
+New-Item -ItemType Directory -Path $mine | Out-Null
+$me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+& icacls.exe $mine /inheritance:r /grant:r "*${me}:(OI)(CI)F" | Out-Null
+Invoke-Install @{ Version = '1.2.3'; BinDir = $mine }
+Check 'existing folder that only you can write is accepted' ((-not $script:threw) -and (Test-Path (Join-Path $mine 'mothdex.exe')))
+$target2 = Join-Path $root 'junction-target'
+New-Item -ItemType Directory -Path $target2 | Out-Null
+$junction = Join-Path $root 'junction'
+New-Item -ItemType Junction -Path $junction -Target $target2 | Out-Null
+Invoke-Install @{ Version = '1.2.3'; BinDir = $junction }
+Check 'junction BinDir is refused' ($script:threw -and (-not (Test-Path (Join-Path $target2 'mothdex.exe'))))
+
 # 6. checksum mismatch installs nothing (TH-33)
 $target = Join-Path $root 'bad'
 Invoke-Install @{ Version = 'v1.1.0'; BinDir = $target }
