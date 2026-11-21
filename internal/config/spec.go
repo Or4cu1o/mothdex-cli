@@ -5,6 +5,7 @@ import (
 	"net"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ type setting interface {
 	parse(raw any) (any, error)
 	bind(c *Config, v any)
 	out(v any) any
+	spec() SettingSpec
 }
 
 // spec is the generic implementation: ptr points at the Config field of the key.
@@ -31,10 +33,21 @@ type spec[T any] struct {
 	ptr     func(*Config) *T
 	render  func(T) any
 	skipEnv bool
+	meta    SettingSpec // Kind, Enum, Min and Max; Key and Env are filled by spec()
 }
 
 func (s spec[T]) key() string { return s.k }
 func (s spec[T]) noEnv() bool { return s.skipEnv }
+
+func (s spec[T]) spec() SettingSpec {
+	m := s.meta
+	m.Enum = slices.Clone(m.Enum)
+	m.Key = s.k
+	if !s.skipEnv {
+		m.Env = envName(s.k)
+	}
+	return m
+}
 
 func (s spec[T]) defaultValue() any {
 	v, err := s.parser(s.def)
@@ -58,7 +71,7 @@ func (s spec[T]) out(v any) any {
 // --- constructors -------------------------------------------------------------------------
 
 func text(k, def string, ptr func(*Config) *string, checks ...func(string) error) setting {
-	return spec[string]{k: k, def: def, ptr: ptr, parser: func(raw any) (string, error) {
+	return spec[string]{k: k, def: def, ptr: ptr, meta: SettingSpec{Kind: KindString}, parser: func(raw any) (string, error) {
 		s, err := asString(raw)
 		if err != nil {
 			return "", err
@@ -68,18 +81,20 @@ func text(k, def string, ptr func(*Config) *string, checks ...func(string) error
 }
 
 func oneOf(k, def string, ptr func(*Config) *string, allowed ...string) setting {
-	return text(k, def, ptr, func(s string) error {
+	t := text(k, def, ptr, func(s string) error {
 		for _, a := range allowed {
 			if s == a {
 				return nil
 			}
 		}
 		return fmt.Errorf("must be one of: %s", strings.Join(allowed, ", "))
-	})
+	}).(spec[string])
+	t.meta = SettingSpec{Kind: KindEnum, Enum: slices.Clone(allowed)}
+	return t
 }
 
 func integer(k string, def, lo, hi int, ptr func(*Config) *int) setting {
-	return spec[int]{k: k, def: def, ptr: ptr, parser: func(raw any) (int, error) {
+	return spec[int]{k: k, def: def, ptr: ptr, meta: SettingSpec{Kind: KindInt, Min: strconv.Itoa(lo), Max: strconv.Itoa(hi)}, parser: func(raw any) (int, error) {
 		n, err := asInt(raw)
 		if err != nil {
 			return 0, err
@@ -93,18 +108,18 @@ func integer(k string, def, lo, hi int, ptr func(*Config) *int) setting {
 
 // rate is the only clamped numeric key (contract: "clamped 1..10").
 func rate(k string, def, lo, hi float64, ptr func(*Config) *float64) setting {
-	return spec[float64]{k: k, def: def, ptr: ptr, parser: func(raw any) (float64, error) {
+	return spec[float64]{k: k, def: def, ptr: ptr, meta: SettingSpec{Kind: KindFloat, Min: strconv.FormatFloat(lo, 'f', -1, 64), Max: strconv.FormatFloat(hi, 'f', -1, 64)}, parser: func(raw any) (float64, error) {
 		f, err := asFloat(raw)
 		return min(max(f, lo), hi), err
 	}}
 }
 
 func boolean(k string, def bool, ptr func(*Config) *bool) setting {
-	return spec[bool]{k: k, def: def, ptr: ptr, parser: asBool}
+	return spec[bool]{k: k, def: def, ptr: ptr, meta: SettingSpec{Kind: KindBool}, parser: asBool}
 }
 
 func duration(k string, def, lo, hi time.Duration, ptr func(*Config) *time.Duration) setting {
-	return spec[time.Duration]{k: k, def: def, ptr: ptr,
+	return spec[time.Duration]{k: k, def: def, ptr: ptr, meta: SettingSpec{Kind: KindDuration, Min: lo.String(), Max: hi.String()},
 		render: func(d time.Duration) any { return d.String() },
 		parser: func(raw any) (time.Duration, error) {
 			d, err := asDuration(raw)
@@ -119,7 +134,7 @@ func duration(k string, def, lo, hi time.Duration, ptr func(*Config) *time.Durat
 }
 
 func size(k string, def int64, ptr func(*Config) *int64) setting {
-	return spec[int64]{k: k, def: def, ptr: ptr,
+	return spec[int64]{k: k, def: def, ptr: ptr, meta: SettingSpec{Kind: KindSize, Min: "1"},
 		render: func(n int64) any { return formatSize(n) },
 		parser: func(raw any) (int64, error) {
 			n, err := asSize(raw)
@@ -131,7 +146,7 @@ func size(k string, def int64, ptr func(*Config) *int64) setting {
 }
 
 func list(k string, def []string, ptr func(*Config) *[]string, item func(string) (string, error)) setting {
-	return spec[[]string]{k: k, def: def, ptr: ptr, parser: func(raw any) ([]string, error) {
+	return spec[[]string]{k: k, def: def, ptr: ptr, meta: SettingSpec{Kind: KindList}, parser: func(raw any) ([]string, error) {
 		items, err := asList(raw)
 		if err != nil {
 			return nil, err
@@ -249,7 +264,10 @@ func ValidateFolderName(s string) error {
 // folderSetting is the dynamic key profile.folders.<platform id>.
 type folderSetting struct{ id string }
 
-func (f folderSetting) key() string     { return folderPrefix + f.id }
+func (f folderSetting) key() string { return folderPrefix + f.id }
+func (f folderSetting) spec() SettingSpec {
+	return SettingSpec{Key: f.key(), Kind: KindString, Env: envName(f.key())}
+}
 func (folderSetting) noEnv() bool       { return true }
 func (folderSetting) defaultValue() any { return "" }
 func (folderSetting) out(v any) any     { return v }

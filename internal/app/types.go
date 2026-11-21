@@ -24,6 +24,8 @@ type (
 	HistoryRecord = history.Record
 	// Setting is one effective configuration value with its source.
 	Setting = config.Setting
+	// SettingSpec describes a configuration key for Settings screens and completion (kind, enum, range, env).
+	SettingSpec = config.SettingSpec
 	// ProfileInfo is the resolved frontend profile.
 	ProfileInfo = library.ProfileInfo
 	// CacheStats reports the cache per namespace.
