@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/ui/tui` (T-42, part 1 of 2): the full-screen terminal UI on Bubble Tea v2.1.2, Bubbles v2.2.2 and Lip Gloss
+  v2.1.1. `mothdex tui` opens the frame of tui.md section 1 (title bar with the live queue summary, status bar with the keys
+  of the screen, a toast for 3 s, `?` help) and the screens Search (query, platform and region pickers that fall back to typed
+  ids, sort, the last 5 queries in `<paths.data>/tui_state`, Random), Results (marks per page, `n`/`p` paging, `s` sort,
+  loading with Esc to cancel, empty and error states with `r` retry, `/` back to Search with the fields filled), Entry (the
+  ranked link list is the chooser, `d` the highlighted link, `D` the best one, an "already downloaded" question, `P` for a
+  session preference, `c` for the cover, left and right for the neighbours in the list) and Queue (`Q`: live states with the
+  Warming counter on a UI timer, `x`/`X` cancel, `r` retry a failed job from its request, `c` hide finished, details with `y`
+  to copy the path). Small terminals follow section 9: columns drop below 80, the secondary parts hide below 20 rows, and
+  below 60x16 a notice replaces the screen until it grows back. `--no-color` leaves only bold, faint and reverse, and a
+  non-UTF-8 locale gets the `+-|` frame. A `[y/N]` question accepts the localized "yes" initial. Every server string is cleaned
+  before it is drawn (case 49). The key map is a pure reducer, tested as a table. History and Settings (`H`, `S`) are part 2 and
+  say "not available yet" for now. New strings are `ui.tui.*` (`en_us`, `pt_br`, `es_es`, `ru_ru`). `cli` gains `Deps.TUI`,
+  `TUIEnv` and `Service.Jobs`; `internal/ui/uistate` holds the atomic 0600 file writer shared with the Shell history. The
+  Charm v2 build is checked for linux 386, armv6 and armv7 by the `goreleaser snapshot` job, which builds those targets.
 - `docs/ux/gui.md` (T-50): UX of the gamepad GUI (`mothdex-gui`, E-M3): size tiers from 640x480 to 1080p (scaled
   below and above), TV safe area with a calibration view, type scale, spacing and color tokens with measured contrast,
   positional buttons with an A/B swap and per-controller labels, focus model, every screen with its button map
