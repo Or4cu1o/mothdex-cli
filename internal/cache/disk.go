@@ -63,7 +63,7 @@ func (s *store) paths(ns, key string, info nsInfo) (data, meta string) {
 }
 
 func readMeta(path string) (Meta, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: path is built from a validated namespace and key
+	raw, err := readShared(path)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -114,13 +114,23 @@ const (
 	renameBackoff  = 5 * time.Millisecond
 )
 
+// readShared reads a whole cache file through openShared, so the read never blocks a rename over it.
+func readShared(path string) ([]byte, error) {
+	f, err := openShared(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(f)
+}
+
 // replaceFile renames src over dst. On Windows a file that a reader has open cannot be
 // replaced and the rename fails with "access denied" for a moment, so it is retried briefly
 // (a few milliseconds of real time; the cache is best effort and a failed Put is not fatal).
 func replaceFile(src, dst string) error {
 	var err error
 	for attempt := 0; attempt < renameAttempts; attempt++ {
-		if err = os.Rename(src, dst); err == nil || runtime.GOOS != "windows" {
+		if err = renameOver(src, dst); err == nil || runtime.GOOS != "windows" {
 			return err
 		}
 		time.Sleep(time.Duration(attempt+1) * renameBackoff)
