@@ -10,14 +10,14 @@ errors:
     message: 'Configuração inválida {key}={value} (origem: {source}).'
     hint: 'Execute "mothdex config reset {key}".'
   invalid_request:
-    message: 'A requisição não é válida: {detail}'
-    hint: 'Confira os valores informados.'
+    message: 'Requisição inválida: {detail}.'
+    hint: 'Confira o slug, os filtros e os valores informados.'
   confirmation_required:
     message: 'Este comando precisa de confirmação.'
     hint: 'Adicione --force para pular a pergunta.'
   unmapped_platform:
-    message: 'Não há pasta conhecida para a plataforma {platform}.'
-    hint: 'Defina profile.folders.{platform} na configuração.'
+    message: 'Nenhuma pasta definida para a plataforma {platform}.'
+    hint: 'Use -o <pasta>, ou defina profile.folders.{platform} na configuração.'
   no_session:
     message: 'Não há busca anterior para referenciar.'
     hint: 'Execute "mothdex search <texto>" primeiro, ou use --slug.'
@@ -43,8 +43,8 @@ errors:
     message: 'Download recusado de {host}.'
     hint: 'Só {allowed} é confiável.'
   untrusted_redirect:
-    message: 'O servidor redirecionou a requisição para {host}, o que foi recusado.'
-    hint: 'Tente de novo mais tarde. Se persistir, relate o problema.'
+    message: 'O servidor redirecionou para {host}, que não é confiável.'
+    hint: 'Nada foi enviado para lá. Tente de novo mais tarde; se persistir, relate o problema.'
   size_mismatch:
     message: 'O arquivo baixado tem tamanho errado ({got} de {expected}).'
     hint: 'Tente de novo, ou escolha outro link com --link.'
@@ -61,11 +61,11 @@ errors:
     message: '{path} já existe.'
     hint: 'Defina download.on_exists como rename ou overwrite.'
   path_rejected:
-    message: 'O servidor enviou um nome de arquivo inseguro.'
-    hint: 'Nada foi gravado. Escolha outro link com --link.'
+    message: 'Recusando gravar em {path}.'
+    hint: 'Nada foi gravado. Escolha outra pasta com -o, ou confira profile.folders.'
   unsafe_name:
-    message: 'O nome de arquivo {name} não pode ser usado com segurança.'
-    hint: 'Nada foi gravado. Escolha outro link com --link.'
+    message: 'Recusando salvar {name}: o tipo de arquivo pode executar código.'
+    hint: 'Nada foi gravado. Escolha outro link com --link, ou use --allow-executable se confiar nele.'
   canceled:
     message: 'Cancelado.'
     hint: ''

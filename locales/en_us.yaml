@@ -10,14 +10,14 @@ errors:
     message: 'Invalid setting {key}={value} (from {source}).'
     hint: 'Run "mothdex config reset {key}".'
   invalid_request:
-    message: 'The request is not valid: {detail}'
-    hint: 'Check the values you passed.'
+    message: 'Invalid request: {detail}.'
+    hint: 'Check the slug, filters and values you passed.'
   confirmation_required:
     message: 'This command needs confirmation.'
     hint: 'Add --force to skip the prompt.'
   unmapped_platform:
-    message: 'No folder is known for platform {platform}.'
-    hint: 'Set profile.folders.{platform} in the configuration.'
+    message: 'No folder is set for platform {platform}.'
+    hint: 'Pass -o <dir>, or set profile.folders.{platform} in the configuration.'
   no_session:
     message: 'There is no previous search to refer to.'
     hint: 'Run "mothdex search <text>" first, or use --slug.'
@@ -43,8 +43,8 @@ errors:
     message: 'Refusing to download from {host}.'
     hint: 'Only {allowed} is trusted.'
   untrusted_redirect:
-    message: 'The server redirected the request to {host}, which was refused.'
-    hint: 'Try again later. If it persists, report it.'
+    message: 'The server redirected to {host}, which is not trusted.'
+    hint: 'Nothing was sent there. Try again later; if it persists, report it.'
   size_mismatch:
     message: 'The downloaded file has the wrong size ({got} of {expected}).'
     hint: 'Try again, or choose another link with --link.'
@@ -61,11 +61,11 @@ errors:
     message: '{path} already exists.'
     hint: 'Set download.on_exists to rename or overwrite.'
   path_rejected:
-    message: 'The server sent an unsafe file name.'
-    hint: 'Nothing was written. Choose another link with --link.'
+    message: 'Refusing to write to {path}.'
+    hint: 'Nothing was written. Choose another folder with -o, or check profile.folders.'
   unsafe_name:
-    message: 'The file name {name} cannot be used safely.'
-    hint: 'Nothing was written. Choose another link with --link.'
+    message: 'Refusing to save {name}: its file type can run code.'
+    hint: 'Nothing was written. Choose another link with --link, or pass --allow-executable if you trust it.'
   canceled:
     message: 'Canceled.'
     hint: ''

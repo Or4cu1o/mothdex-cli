@@ -10,14 +10,14 @@ errors:
     message: 'Ajuste no válido {key}={value} (origen: {source}).'
     hint: 'Ejecuta "mothdex config reset {key}".'
   invalid_request:
-    message: 'La solicitud no es válida: {detail}'
-    hint: 'Revisa los valores indicados.'
+    message: 'Solicitud no válida: {detail}.'
+    hint: 'Revisa el slug, los filtros y los valores indicados.'
   confirmation_required:
     message: 'Este comando necesita confirmación.'
     hint: 'Añade --force para omitir la pregunta.'
   unmapped_platform:
-    message: 'No hay carpeta conocida para la plataforma {platform}.'
-    hint: 'Define profile.folders.{platform} en la configuración.'
+    message: 'No hay carpeta definida para la plataforma {platform}.'
+    hint: 'Pasa -o <carpeta>, o define profile.folders.{platform} en la configuración.'
   no_session:
     message: 'No hay una búsqueda anterior a la que referirse.'
     hint: 'Ejecuta primero "mothdex search <texto>", o usa --slug.'
@@ -43,8 +43,8 @@ errors:
     message: 'Se rechaza descargar desde {host}.'
     hint: 'Solo {allowed} es de confianza.'
   untrusted_redirect:
-    message: 'El servidor redirigió la solicitud a {host}, y se rechazó.'
-    hint: 'Inténtalo más tarde. Si persiste, infórmalo.'
+    message: 'El servidor redirigió a {host}, que no es de confianza.'
+    hint: 'No se envió nada allí. Inténtalo más tarde; si persiste, infórmalo.'
   size_mismatch:
     message: 'El archivo descargado tiene un tamaño incorrecto ({got} de {expected}).'
     hint: 'Inténtalo de nuevo, o elige otro enlace con --link.'
@@ -61,11 +61,11 @@ errors:
     message: '{path} ya existe.'
     hint: 'Define download.on_exists como rename u overwrite.'
   path_rejected:
-    message: 'El servidor envió un nombre de archivo inseguro.'
-    hint: 'No se escribió nada. Elige otro enlace con --link.'
+    message: 'Se rechaza escribir en {path}.'
+    hint: 'No se escribió nada. Elige otra carpeta con -o, o revisa profile.folders.'
   unsafe_name:
-    message: 'El nombre de archivo {name} no se puede usar con seguridad.'
-    hint: 'No se escribió nada. Elige otro enlace con --link.'
+    message: 'Se rechaza guardar {name}: su tipo de archivo puede ejecutar código.'
+    hint: 'No se escribió nada. Elige otro enlace con --link, o pasa --allow-executable si confías en él.'
   canceled:
     message: 'Cancelado.'
     hint: ''
