@@ -36,6 +36,7 @@ type Service interface {
 	CacheClear(ns ...string) error
 	ConfigGet(key string) (app.Setting, error)
 	ConfigList() ([]app.Setting, error)
+	ConfigSchema() []app.SettingSpec
 	ConfigSet(key, value string) error
 	ConfigReset(key string) error
 	ActiveProfile() app.ProfileInfo

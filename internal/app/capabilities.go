@@ -67,6 +67,10 @@ func (s *Service) ConfigList() ([]Setting, error) {
 	return res.Settings(), nil
 }
 
+// ConfigSchema lists every key with its kind, allowed values, range and environment variable, in
+// `config list` order. It reads no file, so it works with a broken configuration.
+func (s *Service) ConfigSchema() []SettingSpec { return config.Specs() }
+
 // ConfigSet validates and writes key=value to the config file atomically.
 func (s *Service) ConfigSet(key, value string) error {
 	if s.cfg.File == "" {
