@@ -122,6 +122,8 @@ func TestShortBuffersNeverReachSDL(t *testing.T) {
 		{"UpdateTexture, one byte short", lib.UpdateTexture(tex, nil, make([]byte, 63), 16)},
 		{"UpdateTexture, pitch below the row", lib.UpdateTexture(tex, nil, make([]byte, 256), 15)},
 		{"UpdateTexture, rect outside", lib.UpdateTexture(tex, &Rect{X: 2, Y: 2, W: 4, H: 4}, make([]byte, 256), 16)},
+		{"UpdateTexture, past the right edge only", lib.UpdateTexture(tex, &Rect{X: 2, Y: 0, W: 4, H: 4}, make([]byte, 256), 16)},
+		{"UpdateTexture, past the bottom edge only", lib.UpdateTexture(tex, &Rect{X: 0, Y: 2, W: 4, H: 4}, make([]byte, 256), 16)},
 		{"UpdateTexture, negative origin", lib.UpdateTexture(tex, &Rect{X: -1, W: 2, H: 2}, make([]byte, 256), 16)},
 	}
 	for _, r := range refused {
