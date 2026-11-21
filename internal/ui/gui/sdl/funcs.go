@@ -24,6 +24,11 @@ var TargetVersion = Version{2, 0, 18}
 
 // api holds the SDL2 functions the spike calls, each as a Go function with the C signature. Types follow
 // the purego rules: pointers, ints and floats only; a C string is a Go string; SDL_bool is an int32.
+//
+// A C string returned as a Go string (getError, getCurrentVideoDriver) is a copy: purego v0.11.3 builds it
+// with internal/strings.GoString, which ends in string(unsafe.Slice(ptr, n)) and so allocates. What SDL
+// returns can change on the next call, and the Go string is not affected. A purego bump must keep this
+// true (re-read GoString).
 type api struct {
 	getVersion               func(v *Version)
 	init                     func(flags uint32) int32

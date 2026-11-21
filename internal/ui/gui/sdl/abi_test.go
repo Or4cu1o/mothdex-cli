@@ -118,3 +118,62 @@ func TestTheMinimumVersionIsWithinTheTarget(t *testing.T) {
 		t.Fatalf("the functions need SDL %s, newer than the target %s", MinimumVersion(), TargetVersion)
 	}
 }
+
+// SDL reads or writes pitch*(h-1)+w*bytes bytes through the pointer it is given, so a shorter slice would
+// corrupt or over-read the Go heap. checkBuffer refuses it before SDL is called (PR-69 review M1).
+func TestCheckBufferRefusesWhatSDLWouldOverrun(t *testing.T) {
+	tests := []struct {
+		name          string
+		w, h, pitch   int32
+		bpp           int32
+		have          int
+		wantErrSubstr string // empty: accepted
+	}{
+		{"exact size", 64, 48, 256, 4, 64 * 48 * 4, ""},
+		{"the last row needs no padding", 10, 3, 64, 4, 64*2 + 10*4, ""},
+		{"one byte short", 64, 48, 256, 4, 64*48*4 - 1, "too small"},
+		{"short by a row", 64, 48, 256, 4, 64 * 47 * 4, "too small"},
+		{"a one-byte buffer for a block", 64, 48, 256, 4, 1, "too small"},
+		{"an empty buffer", 4, 4, 16, 4, 0, "too small"},
+		{"pitch smaller than a row", 64, 48, 255, 4, 1 << 20, "pitch"},
+		{"zero width", 0, 48, 256, 4, 1 << 20, "empty"},
+		{"zero height", 64, 0, 256, 4, 1 << 20, "empty"},
+		{"negative width", -1, 48, 256, 4, 1 << 20, "empty"},
+		{"unknown pixel size", 64, 48, 256, 0, 1 << 20, "pixel size"},
+		// int32 inputs whose product overflows 32 bits: the check must still say "too small"
+		{"huge block, small buffer", 1 << 30, 1 << 30, 1 << 30, 4, 1 << 20, "pitch"},
+		{"huge height, small buffer", 4, 1 << 30, 16, 4, 1 << 20, "too small"},
+		{"max pitch and height", 4, 1<<31 - 1, 1<<31 - 1, 4, 1 << 20, "too small"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkBuffer(tc.w, tc.h, tc.pitch, tc.bpp, tc.have)
+			switch {
+			case tc.wantErrSubstr == "" && err != nil:
+				t.Fatalf("refused a good buffer: %v", err)
+			case tc.wantErrSubstr != "" && err == nil:
+				t.Fatalf("accepted a buffer SDL would overrun (%d bytes for %dx%d pitch %d)", tc.have, tc.w, tc.h, tc.pitch)
+			case tc.wantErrSubstr != "" && !strings.Contains(err.Error(), tc.wantErrSubstr):
+				t.Fatalf("error %q does not mention %q", err, tc.wantErrSubstr)
+			}
+		})
+	}
+}
+
+func TestBytesPerPixelOfTheFormatsTheBindingUses(t *testing.T) {
+	tests := map[string]struct {
+		format uint32
+		want   int32
+	}{
+		"ARGB8888, 4 bytes": {PixelFormatARGB8888, 4},
+		"ABGR8888, 4 bytes": {0x16762004, 4},
+		"RGB565, 2 bytes":   {0x15151002, 2},
+		"no format":         {0, 0},
+		"a FourCC format (YV12) has no pixel size": {0x32315659, 0},
+	}
+	for name, tc := range tests {
+		if got := bytesPerPixel(tc.format); got != tc.want {
+			t.Errorf("%s: bytesPerPixel(%#x) = %d, want %d", name, tc.format, got, tc.want)
+		}
+	}
+}

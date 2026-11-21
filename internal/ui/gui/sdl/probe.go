@@ -73,13 +73,20 @@ func Probe(opts ProbeOptions) (Report, error) {
 	pass("version")
 
 	if opts.Driver != "" {
+		// The result of SetHint is not the test: SDL says no when SDL_VIDEODRIVER is already set in the
+		// environment at a higher priority, even to the same value. What matters is the driver in use.
 		lib.SetHint("SDL_VIDEODRIVER", opts.Driver)
 	}
+	// SDL_Quit is safe after a failed SDL_Init, and Init with several subsystems can fail after the video
+	// part came up, so the cleanup is registered first.
+	defer lib.Quit()
 	if err := lib.Init(InitVideo | InitGameController); err != nil {
 		return fail("init", err)
 	}
-	defer lib.Quit()
 	rep.Driver = lib.CurrentVideoDriver()
+	if opts.Driver != "" && rep.Driver != opts.Driver {
+		return fail("driver", fmt.Errorf("the video driver %q was asked for and SDL chose %q", opts.Driver, rep.Driver))
+	}
 	pass("init")
 
 	if _, err := lib.AddControllerMapping(mapping); err != nil {
@@ -147,7 +154,7 @@ func uploadAtlas(lib *Library, ren Renderer) (Texture, error) {
 	const side int32 = 4
 	t, err := lib.CreateTexture(ren, PixelFormatARGB8888, TextureAccessStatic, side, side)
 	if err != nil {
-		return 0, err
+		return Texture{}, err
 	}
 	px := make([]byte, side*side*4)
 	for i := 0; i < len(px); i += 4 {
@@ -155,7 +162,7 @@ func uploadAtlas(lib *Library, ren Renderer) (Texture, error) {
 	}
 	if err := lib.UpdateTexture(t, nil, px, side*4); err != nil {
 		lib.DestroyTexture(t)
-		return 0, err
+		return Texture{}, err
 	}
 	return t, nil
 }
@@ -178,7 +185,7 @@ func draw(lib *Library, ren Renderer, atlas Texture) error {
 
 func readBack(lib *Library, ren Renderer) ([]byte, error) {
 	buf := make([]byte, surfaceW*surfaceH*4)
-	if err := lib.ReadPixels(ren, nil, PixelFormatARGB8888, buf, surfaceW*4); err != nil {
+	if err := lib.ReadPixels(ren, Rect{W: surfaceW, H: surfaceH}, PixelFormatARGB8888, buf, surfaceW*4); err != nil {
 		return nil, err
 	}
 	return buf, nil
