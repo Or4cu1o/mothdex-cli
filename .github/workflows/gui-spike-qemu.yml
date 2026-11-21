@@ -40,6 +40,8 @@ jobs:
             dir: linux_arm64
             goarch: arm64
             goarm: ""
+            deb_arch: arm64
+            qemu_bin: qemu-aarch64
             experimental: false
           - name: linux/armv7
             target: linux/arm/7
@@ -47,6 +49,8 @@ jobs:
             dir: linux_armv7
             goarch: arm
             goarm: "7"
+            deb_arch: armhf
+            qemu_bin: qemu-arm
             experimental: false
           - name: linux/armv6 (best effort)
             target: linux/arm/6
@@ -54,6 +58,8 @@ jobs:
             dir: linux_armv6
             goarch: arm
             goarm: "6"
+            deb_arch: armhf
+            qemu_bin: qemu-arm
             experimental: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,17 +84,25 @@ jobs:
           [ "$GOARCH" = arm ] && ldflags="-I /lib/ld-linux-armhf.so.3"
           CGO_ENABLED=0 GOOS=linux go test -c -tags gui -trimpath ${ldflags:+-ldflags "$ldflags"} \
             -o "dist-gui/$DIR/sdl.test" ./internal/ui/gui/sdl
-      - name: Install qemu-user-static and binfmt-support (distro packages, no third-party action)
+      - name: Install qemu-user from the runner distro (no third-party action)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
-          dpkg -s qemu-user-static | grep '^Version'
-          update-binfmts --display | grep -E '^qemu-(arm|aarch64) ' || true
-      - name: The foreign-architecture Debian image runs in a container (binfmt works)
+          # Ubuntu 26.04 has no qemu-user-static: qemu-user plus qemu-user-binfmt instead.
+          if apt-cache policy qemu-user-static | grep -q 'Candidate: [0-9]'; then
+            pkgs=(qemu-user-static binfmt-support)
+          else
+            pkgs=(qemu-user qemu-user-binfmt)
+          fi
+          sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
+          qemu-aarch64 --version | head -1 || qemu-aarch64-static --version | head -1
+      - name: Path 1, binfmt - does the foreign-architecture Debian image run in a container?
+        id: binfmt
+        continue-on-error: true
         env:
           PLATFORM: ${{ matrix.platform }}
         run: docker run --rm --platform "$PLATFORM" "$DEBIAN_IMAGE" uname -m
-      - name: Run the probe and the package tests in the Debian image with its libsdl2
+      - name: Path 1, binfmt - probe and package tests in the Debian image with its libsdl2
+        if: steps.binfmt.outcome == 'success'
         env:
           PLATFORM: ${{ matrix.platform }}
           DIR: ${{ matrix.dir }}
@@ -103,22 +117,60 @@ jobs:
               /gui/mothdex-gui-probe
               /gui/sdl.test -test.v -test.count=1
             '
-      - name: armv6 CPU model (qemu arm1176) with the same libsdl2, best effort
+      - name: Path 2, no binfmt - build a sysroot (pinned Debian image plus the libsdl2 packages of the target)
+        if: steps.binfmt.outcome != 'success'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DEB_ARCH: ${{ matrix.deb_arch }}
+        run: |
+          # The foreign image is only exported (docker create, never run); the target-architecture .deb files are
+          # downloaded by a native container of the same pinned image and unpacked on top. Nothing runs under binfmt.
+          mkdir -p sysroot debs
+          cid=$(docker create --platform "$PLATFORM" "$DEBIAN_IMAGE" true)
+          docker export "$cid" | tar -x -C sysroot
+          docker rm "$cid" >/dev/null
+          docker run --rm -e DEB_ARCH -e DEBIAN_FRONTEND=noninteractive -v "$PWD/debs:/debs" "$DEBIAN_IMAGE" sh -ec '
+            dpkg --add-architecture "$DEB_ARCH"
+            apt-get update -qq
+            mkdir -p /debs/partial
+            apt-get install -y -qq --download-only --no-install-recommends -o Dir::Cache::archives=/debs "libsdl2-2.0-0:$DEB_ARCH"
+            chmod -R a+rX /debs
+          '
+          for deb in debs/*.deb; do dpkg-deb -x "$deb" sysroot; done
+          find debs -name 'libsdl2*' -o -name 'libc6*'
+          find sysroot -name 'libSDL2-2.0.so.0*' | head -3
+      - name: Path 2, no binfmt - probe and package tests with qemu-user and the sysroot
+        if: steps.binfmt.outcome != 'success'
+        env:
+          QEMU_BIN: ${{ matrix.qemu_bin }}
+          DIR: ${{ matrix.dir }}
+          SDL_VIDEODRIVER: dummy
+        run: |
+          "$QEMU_BIN" -L sysroot "dist-gui/$DIR/mothdex-gui-probe"
+          "$QEMU_BIN" -L sysroot "dist-gui/$DIR/sdl.test" -test.v -test.count=1
+      - name: armv6 CPU model (qemu arm1176) with the armhf libsdl2, best effort
         if: matrix.goarm == '6'
         continue-on-error: true
         env:
           PLATFORM: ${{ matrix.platform }}
           DIR: ${{ matrix.dir }}
+          BINFMT: ${{ steps.binfmt.outcome }}
+          QEMU_BIN: ${{ matrix.qemu_bin }}
+          SDL_VIDEODRIVER: dummy
         run: |
-          # Only the probe runs under QEMU_CPU: apt and the Debian armhf libraries need an ARMv7 CPU, so a
+          # Only the probe runs on the arm1176 model: apt and the Debian armhf libraries are built for ARMv7, so a
           # SIGILL inside libsdl2 here is a limit of the technique (Debian armhf is not built for ARMv6).
-          docker run --rm --platform "$PLATFORM" \
-            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
-            "$DEBIAN_IMAGE" sh -ec '
-              apt-get update -qq
-              apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
-              QEMU_CPU=arm1176 /gui/mothdex-gui-probe
-            '
+          if [ "$BINFMT" = success ]; then
+            docker run --rm --platform "$PLATFORM" \
+              -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
+              "$DEBIAN_IMAGE" sh -ec '
+                apt-get update -qq
+                apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
+                QEMU_CPU=arm1176 /gui/mothdex-gui-probe
+              '
+          else
+            "$QEMU_BIN" -cpu arm1176 -L sysroot "dist-gui/$DIR/mothdex-gui-probe"
+          fi
       - name: Size report
         if: always()
         env:
