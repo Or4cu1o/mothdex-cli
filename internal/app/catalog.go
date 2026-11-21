@@ -56,7 +56,9 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchPage, error)
 	last := session.Last{Query: session.Query{Text: q.Text, Platforms: q.Platforms, Regions: q.Regions, Serial: q.Serial, Sort: string(q.Sort)}, Page: page.Page, Slugs: slugs}
 	if err := s.session.Save(last); err != nil {
 		// The older session must not survive: <n> would resolve against a different search.
-		s.session.Clear()
+		if s.session.Clear() != nil {
+			page.SessionStale = true // both failed: <n> may still resolve against an earlier search
+		}
 	}
 	return page, nil
 }

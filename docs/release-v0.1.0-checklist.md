@@ -50,11 +50,24 @@ What was and was not checked while preparing this page is at the end.
      18 files in `checksums.txt`).
    - `attest`: GitHub build provenance for every file in `checksums.txt` and for `checksums.txt` itself.
    - `publish` (**waits for the `release` environment: the owner approves it in the Actions run**): re-checks the
-     checksums, runs `gh attestation verify` on every file (signer workflow, `refs/tags/v0.1.0`), then
+     checksums, runs `gh attestation verify` on every file (signer workflow, `refs/tags/v0.1.0`, `--source-digest` of the commit, no
+     self-hosted runner), checks that the files to upload are exactly those in `checksums.txt` plus itself and its bundle,
+     checks as its last step that `v0.1.0` still resolves to the built commit, then
      `gh release create v0.1.0 --verify-tag --generate-notes` with the 18 archives and SBOMs, `checksums.txt` and
      `checksums.txt.sigstore.json`. A tag with `-` becomes a pre-release.
 8. **Approve** the `release` environment only after `build` and `attest` are green and you have read the `build` log
    (the `checksums.txt` that goreleaser prints, and `verify-dist: ok (version 0.1.0 ..., 9 targets)`).
+
+### Optional rehearsal on a pre-release tag (Ensaio, PR-62-test)
+
+The `v*` ruleset forbids moving or deleting tags, so a wrong assumption that fails closed on the real run would burn
+`v0.1.0`. A rehearsal on an annotated tag such as `v0.1.0-rc.1` (a tag with `-` is published as a pre-release) proves what
+the fake-`gh` tests cannot: (a) `GITHUB_SHA` on an annotated tag push equals the peeled commit, so the tag check passes;
+(b) the runner's `gh` accepts `--source-digest` and `--deny-self-hosted-runners` and verifies the real attestations;
+(c) the upload-set step passes on a real dist with SBOMs and the bundle; (d) `GITHUB_TOKEN` can read `git/ref/tags` and
+`git/tags`; (e) the release is created as a pre-release. It cannot prove the tag-moved failure (needs a throwaway repo or
+an admin bypass) or the final non-pre-release path. Creating the tag is **OWNER OK**; the rc tag and its release stay
+afterwards (immutable), so the first real release is `v0.1.0`.
 
 ## 3. Verify the published release
 
@@ -118,8 +131,6 @@ here; the CI jobs `release-check` and `goreleaser snapshot` are the evidence); `
 `verify-blob`, `gh attestation verify`, the `environment` approval flow and `--verify-tag` against a real release; the
 installer against a real release, macOS, and real Batocera, Recalbox and RetroBat hardware.
 
-**Gap found, not changed here (High, CI, separate PR with Sentinela):** `release.yml` `publish` verifies attestations by
-signer workflow and tag only. mothdex-mcp's workflow also checks that the tag still resolves to the commit that was built
-(annotated tags followed) and passes `--source-digest "$GITHUB_SHA" --deny-self-hosted-runners`. Porting those two steps
-closes the window between `build` and `gh release create`; the tag ruleset closes it too, so the port is recommended
-before the tag but not blocking when the ruleset is on.
+**Gap closed by T-24:** `publish` used to verify attestations by signer workflow and tag only; it now also checks that the
+tag still resolves to the built commit and passes `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does.
+Not verified until the first tag run.
