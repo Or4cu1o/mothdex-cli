@@ -172,6 +172,12 @@ func TestRankingRules(t *testing.T) {
 			if fmt.Sprint(got) != fmt.Sprint(tt.want) {
 				t.Fatalf("%v, want %v", got, tt.want)
 			}
+			ranked := rankLinks(links, tt.pref, []string{"proxy.mothdex.net"})
+			for i := 1; i < len(ranked); i++ {
+				if ranked[i-1].Score <= ranked[i].Score {
+					t.Fatalf("Score must fall with the rank: %+v", ranked)
+				}
+			}
 		})
 	}
 	if got := rankLinks([]mothdex.Link{link("Demo", "zip", "A", goodURL, 1)}, Preference{}, []string{"proxy.mothdex.net"}); len(got) != 1 {

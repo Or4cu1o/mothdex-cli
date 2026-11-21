@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,12 +23,14 @@ type instantSleeper struct{}
 func (instantSleeper) Sleep(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 
 type dlRig struct {
-	svc     *Service
-	srv     *fakeproxy.Server
-	out     string
-	hist    *history.Store
-	refresh *atomic.Int32
-	client  *fakeClient
+	svc        *Service
+	srv        *fakeproxy.Server
+	refreshErr error        // returned by the refresh hook
+	missing    atomic.Int32 // refreshes that ran before the downloaded file existed
+	out        string
+	hist       *history.Store
+	refresh    *atomic.Int32
+	client     *fakeClient
 }
 
 func newDLRig(t *testing.T, dc DownloadConfig) *dlRig {
@@ -58,7 +61,13 @@ func newDLRig(t *testing.T, dc DownloadConfig) *dlRig {
 	dc.AllowedHosts = []string{"proxy.mothdex.net"}
 	if err := svc.EnableDownloads(Env{
 		TempDir: t.TempDir(), DataDir: filepath.Join(t.TempDir(), "data"), History: r.hist, Download: dc,
-		Refresh:  func(context.Context) error { r.refresh.Add(1); return nil },
+		Refresh: func(context.Context) error {
+			r.refresh.Add(1)
+			if _, err := os.Stat(filepath.Join(r.out, "game.zip")); err != nil {
+				r.missing.Add(1) // a refresh must run after the file landed
+			}
+			return r.refreshErr
+		},
 		httpDoer: srv.Client(), sleeper: instantSleeper{},
 	}); err != nil {
 		t.Fatal(err)
@@ -105,6 +114,20 @@ func TestCase46RefreshOncePerBatch(t *testing.T) {
 	r2 := newDLRig(t, DownloadConfig{OnExists: "rename"})
 	if res = r2.run(t, "game", "game", "bad"); res.Done != 2 || res.Failed != 1 || r2.refresh.Load() != 1 {
 		t.Fatalf("a mixed batch refreshes once: %+v, %d refreshes", res, r2.refresh.Load())
+	}
+	if r.missing.Load() != 0 || r2.missing.Load() != 0 {
+		t.Fatal("the refresh hook ran before the finished file existed")
+	}
+}
+
+// Ensaio: a failing refresh hook is a sanitised warning in the result, never an error, and the
+// batch stays Done.
+func TestFailingRefreshHookIsASanitisedWarning(t *testing.T) {
+	r := newDLRig(t, DownloadConfig{})
+	r.refreshErr = errors.New("hook said \x1b]52;c;ZXZpbA==\x07no\x1b[2J\n")
+	res := r.run(t, "game")
+	if res.Done != 1 || res.RefreshWarning == "" || strings.ContainsAny(res.RefreshWarning, "\x1b\x07\n") {
+		t.Fatalf("%+v", res)
 	}
 }
 
