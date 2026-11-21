@@ -138,3 +138,23 @@ func TestWriteExportMapsFailures(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// Alicerce: SaveJobBoxart looks the job up by its ID; a snapshot with a forged Path or Slug, or an
+// unknown ID, cannot steer where the cover goes.
+func TestSaveJobBoxartTrustsOnlyTheServicesRecord(t *testing.T) {
+	r := boxartRig(t, nil)
+	res := r.run(t, "game")
+	job := res.Jobs[0]
+	forged := job
+	forged.Path = filepath.Join(r.out, "elsewhere", "evil.zip")
+	forged.Slug = "nocover"
+	path, err := r.svc.SaveJobBoxart(context.Background(), forged, r.out)
+	if err != nil || filepath.Dir(path) != filepath.Dir(job.Path) || strings.Contains(path, "evil") {
+		t.Fatalf("%q %v", path, err)
+	}
+	unknown := job
+	unknown.ID = "not-a-job"
+	if _, err := r.svc.SaveJobBoxart(context.Background(), unknown, r.out); code(err) != CodeInvalidRequest {
+		t.Fatalf("an unknown job: %v", err)
+	}
+}

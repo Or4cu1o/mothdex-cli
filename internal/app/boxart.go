@@ -39,16 +39,18 @@ func (s *Service) SaveBoxart(ctx context.Context, ref Ref, destDir string) (stri
 
 // SaveJobBoxart writes the cover of a finished download next to its file, named after the file
 // (<stem of the final name>.<ext>) so a frontend pairs them by stem. destDir is the -o the job was
-// queued with ("" for the profile rule). Only a Done job has a cover to save.
+// queued with ("" for the profile rule). Only a job this service finished (looked up by its ID) has a
+// cover to save: a forged snapshot cannot choose the folder or the entry.
 func (s *Service) SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (string, error) {
 	d := s.dl
 	if d == nil {
 		return "", newError(CodeInternal, "downloads are not enabled")
 	}
-	if job.State != StateDone || job.Path == "" {
-		return "", newError(CodeInvalidRequest, "only a finished download has a cover to save")
+	done, ok := d.doneJob(job.ID) // the path and the entry come from what this service recorded, not from the caller
+	if !ok {
+		return "", newError(CodeInvalidRequest, "only a download finished by this service has a cover to save")
 	}
-	entry, err := s.Entry(ctx, Ref{Slug: job.Slug})
+	entry, err := s.Entry(ctx, Ref{Slug: done.slug})
 	if err != nil {
 		return "", err
 	}
@@ -56,8 +58,8 @@ func (s *Service) SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir st
 	if err != nil {
 		return "", err
 	}
-	stem := strings.TrimSuffix(filepath.Base(job.Path), filepath.Ext(job.Path))
-	return s.saveCover(ctx, entry.Value, root, filepath.Dir(job.Path), mk, func(ext string) string { return stem + ext })
+	stem := strings.TrimSuffix(filepath.Base(done.path), filepath.Ext(done.path))
+	return s.saveCover(ctx, entry.Value, root, filepath.Dir(done.path), mk, func(ext string) string { return stem + ext })
 }
 
 // saveCover writes the entry's cover into dest through the confined root: the cover comes from the
