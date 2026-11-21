@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/qa/T-22-m1-acceptance.md` (T-22): M1 acceptance run at `ebe6a54` with evidence per item (installer against the
+  snapshot archive, mcp slug charset sample, command section C through the real binary and the package tests), the open
+  items, the live download check, and findings F3 (`/dev/null` stdin is treated as a terminal), F4 and F5.
 - `internal/ui/shell` (T-41): the interactive Shell. `mothdex shell`, or `mothdex` with no arguments on a terminal, opens a
   REPL over the same command tree as the CLI (`cli.Runner`: a fresh cobra tree per line, one open session), with a
   banner (entries, or `offline`, and the profile), the `mothdex[<platform|all>:<n>]> ` prompt, `n`, `p`, `page`, `sort`
