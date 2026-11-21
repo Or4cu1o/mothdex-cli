@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,7 +35,7 @@ type JobSnapshot struct {
 	Title     string
 	Platform  string
 	LinkIndex int
-	State     proxy.State
+	State     State
 	Attempt   int
 	Bytes     int64
 	Expected  int64
@@ -101,13 +102,14 @@ type jobMeta struct {
 
 // downloads is the Downloads capability state of a Service.
 type downloads struct {
-	env  Env
-	mu   sync.Mutex
-	dls  map[string]*proxy.Downloader // by absolute destination root
-	jobs map[JobID]*JobSnapshot
-	meta map[JobID]jobMeta
-	subs map[int]chan Event
-	next int
+	env     Env
+	mu      sync.Mutex
+	dls     map[string]*proxy.Downloader // by absolute destination root
+	closers []io.Closer                  // the os.Root handles the downloaders hold
+	jobs    map[JobID]*JobSnapshot
+	meta    map[JobID]jobMeta
+	subs    map[int]chan Event
+	next    int
 
 	doneSinceWait int
 	active        int           // jobs queued or running
@@ -194,7 +196,10 @@ func (s *Service) planFor(ctx context.Context, r DownloadRequest, known map[stri
 	if err != nil {
 		return plan{}, err
 	}
-	if len(choices) == 0 || !choices[0].Available {
+	if len(choices) == 0 {
+		return plan{}, newError(CodeNotFound, "the entry has no links")
+	}
+	if !choices[0].Available {
 		return plan{}, newError(CodeUntrustedURL, "no link on the allowed download host list")
 	}
 	entryRes, err := s.Entry(ctx, r.Ref)
@@ -203,7 +208,7 @@ func (s *Service) planFor(ctx context.Context, r DownloadRequest, known map[stri
 	}
 	e, c := entryRes.Value, choices[0]
 	if !known[e.Platform] {
-		return plan{}, newError(CodeUnmappedPlatform, "the platform is not in the platform list")
+		return plan{}, newError(string(proxy.CodePathRejected), "the platform is not in the platform list") // downloader 6.2
 	}
 	root, dest, err := s.dl.destination(r.DestDir, e.Platform)
 	if err != nil {
@@ -254,22 +259,24 @@ func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Do
 	if dl, ok := d.dls[root]; ok {
 		return dl, nil
 	}
-	dl, err := d.build(root, known)
+	dl, closers, err := d.build(root, known)
 	if err != nil {
 		return nil, err
 	}
 	d.dls[root] = dl
+	d.closers = append(d.closers, closers...)
 	return dl, nil
 }
 
-func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader, error) {
+func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader, []io.Closer, error) {
 	staging, err := proxy.OpenStagingFS(d.env.TempDir)
 	if err != nil {
-		return nil, &Error{Code: CodeInternal, Message: "cannot open the staging directory", Cause: err}
+		return nil, nil, &Error{Code: CodeInternal, Message: "cannot open the staging directory", Cause: err}
 	}
 	dest, err := proxy.OpenRootFS(root)
 	if err != nil {
-		return nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
+		_ = staging.Close()
+		return nil, nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
 	}
 	prof := d.env.Profile
 	var launchers []string
@@ -286,7 +293,7 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 	if cfg.OnExists == string(proxy.OnExistsOverwrite) && !cfg.Force {
 		_ = staging.Close()
 		_ = dest.Close()
-		return nil, newError(CodeInvalidConfig, "download.on_exists=overwrite needs --force") // exit 2, not an internal error
+		return nil, nil, newError(CodeInvalidConfig, "download.on_exists=overwrite needs --force") // exit 2, not an internal error
 	}
 	dl, err := proxy.New(proxy.Options{
 		HTTP: d.httpClient(), Clock: sysClock{}, Sleeper: d.sleeper(), Rand: sysRand{},
@@ -301,11 +308,11 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 	if err != nil {
 		_ = staging.Close()
 		_ = dest.Close()
-		return nil, wrap(err)
+		return nil, nil, wrap(err)
 	}
 	// Startup cleanup of what a crashed run left behind; a failure is not fatal for the command.
 	_ = dl.Cleanup(d.ctx)
-	return dl, nil
+	return dl, []io.Closer{staging, dest}, nil
 }
 
 func (d *downloads) httpClient() proxy.HTTPDoer {
@@ -355,9 +362,8 @@ func (d *downloads) onEvent(e proxy.Event) {
 	if e.Expected > 0 {
 		j.Expected = e.Expected
 	}
-	snap, subs := *j, d.subscribers()
+	d.publish(*j)
 	d.mu.Unlock()
-	publish(subs, snap)
 }
 
 // collect waits for the terminal result of one job, finalizes its snapshot and publishes it.
@@ -378,30 +384,24 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 		}
 		snap = *j
 	}
-	subs := d.subscribers()
+	if d.jobs[id] != nil {
+		d.publish(snap)
+	}
 	d.active--
 	if d.active == 0 && d.idle != nil {
 		close(d.idle)
 		d.idle = nil
 	}
 	d.mu.Unlock()
-	publish(subs, snap)
 }
 
-// subscribers copies the subscriber channels; the caller holds d.mu.
-func (d *downloads) subscribers() []chan Event {
-	subs := make([]chan Event, 0, len(d.subs))
+// publish sends a snapshot to every subscriber. The caller holds d.mu, so a channel cannot be
+// closed under the send; the sends never block (a slow UI loses a tick).
+func (d *downloads) publish(snap JobSnapshot) {
 	for _, c := range d.subs {
-		subs = append(subs, c)
-	}
-	return subs
-}
-
-func publish(subs []chan Event, snap JobSnapshot) {
-	for _, c := range subs {
 		select {
 		case c <- Event{Job: snap}:
-		default: // a slow UI loses a tick, never blocks the transfer
+		default:
 		}
 	}
 }
@@ -458,7 +458,10 @@ func (s *Service) Events(ctx context.Context) <-chan Event {
 	go func() {
 		<-ctx.Done()
 		d.mu.Lock()
-		delete(d.subs, id)
+		if c, ok := d.subs[id]; ok { // Close may have closed it already
+			delete(d.subs, id)
+			close(c)
+		}
 		d.mu.Unlock()
 	}()
 	return out
@@ -513,6 +516,7 @@ func (s *Service) Wait(ctx context.Context) (BatchResult, error) {
 			res.Cancel++
 		}
 		delete(d.jobs, id)
+		delete(d.meta, id)
 	}
 	refresh := d.doneSinceWait > 0
 	d.doneSinceWait = 0
@@ -587,5 +591,16 @@ func (s *Service) closeDownloads() {
 	if d := s.dl; d != nil {
 		d.cancel()
 		_ = d.waitIdle(context.Background())
+		d.mu.Lock()
+		for id, c := range d.subs {
+			delete(d.subs, id)
+			close(c)
+		}
+		closers := d.closers
+		d.closers = nil
+		d.mu.Unlock()
+		for _, c := range closers {
+			_ = c.Close()
+		}
 	}
 }

@@ -120,7 +120,7 @@ func wrap(err error) error {
 	if errors.As(err, &pe) {
 		return &Error{Code: string(pe.Code), Message: pe.Message, Cause: err}
 	}
-	if errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Code: CodeCanceled, Cause: err}
 	}
 	return &Error{Code: CodeInternal, Cause: err}

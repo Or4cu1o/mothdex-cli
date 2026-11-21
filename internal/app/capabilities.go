@@ -4,14 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Or4cu1o/mothdex-cli/internal/cache"
 	"github.com/Or4cu1o/mothdex-cli/internal/config"
-	"github.com/Or4cu1o/mothdex-cli/internal/history"
-	"github.com/Or4cu1o/mothdex-cli/internal/library"
 )
 
 // History lists the transfer history, newest first (history.Filter{Failed} for --failed).
-func (s *Service) History(ctx context.Context, f history.Filter) ([]history.Record, error) {
+func (s *Service) History(ctx context.Context, f HistoryFilter) ([]HistoryRecord, error) {
 	if s.hist == nil {
 		return nil, newError(CodeInternal, "history is not enabled")
 	}
@@ -20,7 +17,7 @@ func (s *Service) History(ctx context.Context, f history.Filter) ([]history.Reco
 }
 
 // CacheStats reports items and bytes per namespace.
-func (s *Service) CacheStats() (cache.Stats, error) {
+func (s *Service) CacheStats() (CacheStats, error) {
 	st, err := s.o.Cache.Stats()
 	return st, wrap(err)
 }
@@ -51,17 +48,17 @@ func (s *Service) loadConfig() (config.Result, error) {
 }
 
 // ConfigGet returns one effective value with its source.
-func (s *Service) ConfigGet(key string) (config.Setting, error) {
+func (s *Service) ConfigGet(key string) (Setting, error) {
 	res, err := s.loadConfig()
 	if err != nil {
-		return config.Setting{}, err
+		return Setting{}, err
 	}
 	st, gerr := res.Get(key)
 	return st, configError(gerr)
 }
 
 // ConfigList returns every effective value.
-func (s *Service) ConfigList() ([]config.Setting, error) {
+func (s *Service) ConfigList() ([]Setting, error) {
 	res, err := s.loadConfig()
 	if err != nil {
 		return nil, err
@@ -99,17 +96,23 @@ func configError(err error) error {
 }
 
 // ActiveProfile is the profile resolved at startup.
-func (s *Service) ActiveProfile() library.ProfileInfo { return s.profile }
+func (s *Service) ActiveProfile() ProfileInfo {
+	s.profMu.RLock()
+	defer s.profMu.RUnlock()
+	return s.profile
+}
 
 // DetectProfile re-runs detection for `profile detect`.
-func (s *Service) DetectProfile(ctx context.Context) (library.ProfileInfo, error) {
+func (s *Service) DetectProfile(ctx context.Context) (ProfileInfo, error) {
 	if s.detect == nil {
-		return s.profile, nil
+		return s.ActiveProfile(), nil
 	}
 	info, err := s.detect(ctx)
 	if err != nil {
-		return library.ProfileInfo{}, wrap(err)
+		return ProfileInfo{}, wrap(err)
 	}
+	s.profMu.Lock()
 	s.profile = info
+	s.profMu.Unlock()
 	return info, nil
 }

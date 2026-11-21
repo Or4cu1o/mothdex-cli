@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
+	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
 	"github.com/Or4cu1o/mothdex-cli/internal/session"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -155,16 +156,22 @@ func (s *Service) Links(ctx context.Context, ref Ref, sel LinkSelector) ([]LinkC
 	if len(pref.Languages)+len(pref.Formats)+len(pref.Sources) == 0 && pref.Size == SizeNone {
 		pref = s.o.Prefer
 	}
-	ranked := rankLinks(res.Value.Links, pref, s.o.AllowedHosts)
-	if sel.Index == 0 {
-		return ranked, nil
+	if sel.Index != 0 {
+		return s.explicitLink(res.Value.Links, sel.Index)
 	}
-	i := slices.IndexFunc(ranked, func(c LinkChoice) bool { return c.Index == sel.Index })
-	switch {
-	case i < 0:
+	return rankLinks(res.Value.Links, pref, s.o.AllowedHosts), nil
+}
+
+// explicitLink resolves --link n against every link of the entry (an explicit index wins over the
+// Game-only filter and any preference); the URL policy still applies: an off-allowlist link is
+// untrusted_url (T-16 case 28).
+func (s *Service) explicitLink(links []mothdex.Link, index int) ([]LinkChoice, error) {
+	if index < 1 || index > len(links) {
 		return nil, newError(CodeInvalidRequest, "link number out of range")
-	case !ranked[i].Available:
+	}
+	l := links[index-1]
+	if _, err := proxy.CheckURL(l.URL, s.o.AllowedHosts); err != nil {
 		return nil, newError(CodeUntrustedURL, "the link is not on the allowed download host list")
 	}
-	return ranked[i : i+1], nil
+	return []LinkChoice{{Index: index, Link: l, Score: 1, Available: true}}, nil
 }

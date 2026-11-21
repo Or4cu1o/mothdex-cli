@@ -167,8 +167,12 @@ func TestEnqueueValidatesEverythingBeforeQueueingAny(t *testing.T) {
 	if _, err := r.svc.Enqueue(ctx, []DownloadRequest{{Ref: Ref{Slug: "off"}, DestDir: r.out}}); code(err) != CodeUntrustedURL {
 		t.Fatalf("off-allowlist: %v", err)
 	}
-	if _, err := r.svc.Enqueue(ctx, []DownloadRequest{{Ref: Ref{Slug: "unk"}, DestDir: r.out}}); code(err) != CodeUnmappedPlatform {
-		t.Fatalf("unknown platform: %v", err)
+	if _, err := r.svc.Enqueue(ctx, []DownloadRequest{{Ref: Ref{Slug: "unk"}, DestDir: r.out}}); code(err) != "path_rejected" {
+		t.Fatalf("a platform missing from /platforms is path_rejected (downloader 6.2): %v", err)
+	}
+	r.client.entries["nolinks"] = mothdex.Entry{Slug: "nolinks", Platform: "snes"}
+	if _, err := r.svc.Enqueue(ctx, []DownloadRequest{{Ref: Ref{Slug: "nolinks"}, DestDir: r.out}}); code(err) != CodeNotFound {
+		t.Fatalf("an entry without links is not_found: %v", err)
 	}
 	if _, err := r.svc.Enqueue(ctx, nil); code(err) != CodeInvalidRequest {
 		t.Fatal("empty batch")
@@ -214,5 +218,26 @@ func TestOverwriteWithoutForceIsAConfigError(t *testing.T) {
 	r2 := newDLRig(t, DownloadConfig{OnExists: "overwrite", Force: true})
 	if res := r2.run(t, "game"); res.Done != 1 {
 		t.Fatalf("with --force: %+v", res)
+	}
+}
+
+// Alicerce m2: the Events channel closes when its context ends, and when the service closes.
+func TestEventsChannelClosesWithItsContextAndTheService(t *testing.T) {
+	r := newDLRig(t, DownloadConfig{})
+	ctx, cancel := context.WithCancel(context.Background())
+	ev := r.svc.Events(ctx)
+	cancel()
+	select {
+	case _, ok := <-ev:
+		if ok {
+			t.Fatal("unexpected event")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the channel was never closed: a UI ranging over it would hang")
+	}
+	ev2 := r.svc.Events(context.Background())
+	r.run(t, "game") // sends while another subscriber closes: must not panic under -race
+	_ = r.svc.Close()
+	for range ev2 { // drains and ends because Close closed it
 	}
 }

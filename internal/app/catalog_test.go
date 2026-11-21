@@ -410,3 +410,33 @@ func TestErrorCodesAndExitCodes(t *testing.T) {
 		t.Fatal("download codes map to 5 and 6")
 	}
 }
+
+// Alicerce m3: an explicit --link n resolves against every link, not only the ranked Game ones.
+func TestExplicitLinkIndexWinsOverTheGameFilter(t *testing.T) {
+	c := &fakeClient{entries: map[string]mothdex.Entry{"e": {Slug: "e", Links: []mothdex.Link{
+		link("Game", "zip", "A", goodURL, 10),
+		link("Demo", "zip", "A", goodURL, 20),
+	}}}}
+	s := newSvc(t, c)
+	got, err := s.Links(context.Background(), Ref{Slug: "e"}, LinkSelector{Index: 2})
+	if err != nil || len(got) != 1 || got[0].Index != 2 || got[0].Link.Type != "Demo" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+// Alicerce m5 and s4: concurrent profile reads and detection are race free; a deadline is a cancel.
+func TestProfileIsRaceFreeAndDeadlineIsCanceled(t *testing.T) {
+	s := newSvc(t, &fakeClient{}, func(o *Options) {
+		o.Detect = func(context.Context) (ProfileInfo, error) { return ProfileInfo{ID: "x"}, nil }
+	})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = s.DetectProfile(context.Background()) }()
+		go func() { defer wg.Done(); _ = s.ActiveProfile() }()
+	}
+	wg.Wait()
+	if code(wrap(context.DeadlineExceeded)) != CodeCanceled {
+		t.Fatal("a deadline maps to canceled")
+	}
+}
