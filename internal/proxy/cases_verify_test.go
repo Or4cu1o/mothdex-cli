@@ -3,14 +3,17 @@ package proxy_test
 // T-16 catalog cases for verification (41 to 43) and the Sanitize invariants (12).
 
 import (
+	"context"
 	"errors"
 	"math/rand/v2"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
+	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakefs"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeproxy"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/zipfix"
 )
@@ -32,6 +35,11 @@ func TestCase41ZipBombs(t *testing.T) {
 			r := verifyRig(t)
 			r.srv.Script("/f/z", fakeproxy.OK(body))
 			wantFailed(t, r.download(r.job("/f/z", "z.zip", len(body))), proxy.CodeIntegrity)
+			// Bounded work: two attempts (one integrity retry) read the file a few times, never
+			// the gigabytes the archive declares.
+			if got, ceiling := r.fs.BytesRead(), 4*int64(len(body))+64<<10; got > ceiling {
+				t.Fatalf("verification read %d bytes of a %d-byte file (ceiling %d)", got, len(body), ceiling)
+			}
 			stagingEmpty(t, r)
 			noFinalFile(t, r)
 			if got := r.history.recs[len(r.history.recs)-1].CRC; got != "failed" {
@@ -41,20 +49,58 @@ func TestCase41ZipBombs(t *testing.T) {
 	}
 }
 
-// Case 42: a cancel during the CRC pass returns Canceled, not an integrity failure.
+// countReads is the number of Read calls the fake file system has seen.
+func countReads(r *rig) int {
+	n := 0
+	for _, c := range r.fs.Calls() {
+		if c.Op == fakefs.OpRead {
+			n++
+		}
+	}
+	return n
+}
+
+// Case 42: a cancel in the middle of the CRC pass stops the reading at once and returns
+// Canceled, not an integrity failure.
 func TestCase42CancelDuringZipCRC(t *testing.T) {
-	r, ctx := cancelOn(t, proxy.Config{}, proxy.StateVerifying)
 	members := map[string][]byte{}
 	for _, n := range []string{"a.bin", "b.bin", "c.bin", "d.bin"} {
 		members[n] = fakeproxy.Pattern(2 << 20)
 	}
 	body := zipfix.Valid(members)
+
+	full := verifyRig(t) // calibration: how many reads a complete verification takes
+	full.srv.Script("/f/z", fakeproxy.OK(body))
+	if res := full.download(full.job("/f/z", "z.zip", len(body))); res.State != proxy.StateDone {
+		t.Fatalf("calibration run: %s %v", res.State, res.Err)
+	}
+	total := countReads(full)
+	if total < 20 {
+		t.Fatalf("only %d reads: the archive is too small to cancel in the middle", total)
+	}
+
+	r := verifyRig(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	seen, stopAt := 0, total/2
+	var tick func()
+	tick = func() {
+		if seen++; seen == stopAt {
+			cancel()
+			return
+		}
+		r.fs.Before(fakefs.OpRead, "*", tick)
+	}
+	r.fs.Before(fakefs.OpRead, "*", tick)
 	r.srv.Script("/f/z", fakeproxy.OK(body))
 
 	res := r.dl.Download(ctx, r.job("/f/z", "z.zip", len(body)))
 
 	if res.State != proxy.StateCanceled || res.Err == nil || res.Err.Code != proxy.CodeCanceled {
 		t.Fatalf("state %s err %v", res.State, res.Err)
+	}
+	if after := countReads(r); after > stopAt+2 {
+		t.Fatalf("%d reads happened after the cancel at read %d (a complete run takes %d)", after-stopAt, stopAt, total)
 	}
 	stagingEmpty(t, r)
 	noFinalFile(t, r)
@@ -132,20 +178,28 @@ func sanitizeInvariants(t *testing.T, raw string) {
 		}
 	}
 	stem := strings.ToUpper(strings.SplitN(got, ".", 2)[0])
-	for _, reserved := range []string{"CON", "PRN", "AUX", "NUL", "COM1", "LPT1"} {
-		if strings.TrimRight(stem, " ") == reserved {
-			fail("Windows reserved device name")
-		}
+	if reservedDevice[strings.TrimRight(stem, " ")] {
+		fail("Windows reserved device name")
 	}
 	if again, err := proxy.Sanitize(got, opts...); err != nil || again != got {
 		fail("not idempotent")
 	}
 }
 
+// reservedDevice is every Windows device name of downloader.md 5.9, digits 1 to 9 and the
+// superscript digits included.
+var reservedDevice = func() map[string]bool {
+	m := map[string]bool{"CON": true, "PRN": true, "AUX": true, "NUL": true, "CONIN$": true, "CONOUT$": true}
+	for _, d := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³"} {
+		m["COM"+d], m["LPT"+d] = true, true
+	}
+	return m
+}()
+
 // Case 12 (property): random strings built from hostile pieces keep every invariant.
 func TestCase12SanitizeInvariantsOnRandomInput(t *testing.T) {
 	pieces := []string{"..", "/", `\`, ":", "CON", "nul", ".", " ", "\x00", "\x1b[2J", "\u202e", "\u200b", "\uff58", "\uff0f", "é", "é",
-		"😀", "あ", "COM1", "aux.", ".sh", "-", "<", "|", "$DATA", strings.Repeat("a", 120)}
+		"😀", "あ", "COM1", "lpt9", "COM²", "CONIN$", "conout$", "aux.", ".sh", "-", "<", "|", "$DATA", strings.Repeat("a", 120)}
 	rng := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // a fixed seed: the test must be reproducible
 	for range 20000 {
 		var b strings.Builder

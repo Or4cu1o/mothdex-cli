@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only with `--force`), a per-filesystem space ledger, name reservation, in-flight journal and startup cleanup, retry
   policy with injected clock and sleeper, zip CRC and upstream hash checks with caps, fsync of file and directory before
   `Done`, and one history record per job. Adds `golang.org/x/text` and `golang.org/x/sys`.
+- T-18: `fakefs` counts reads (`OpRead`, `BytesRead`); the case 31, 32, 41 and 42 tests now prove abort at size+1, the exact size limit, bounded verification reads and a stop right after a cancel.
 - T-18: tests for 40 of the 52 T-16 threat-model cases against the downloader (`internal/proxy/cases_*_test.go`):
   URL policy, redirects, gzip, sizes, TLS, platform injection, symlink and junction destinations, launcher folders,
   on_exists races, disk full, cross-device copy, cancel, startup cleanup, zip bombs and the Sanitize invariants

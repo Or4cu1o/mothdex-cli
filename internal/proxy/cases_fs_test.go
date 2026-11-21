@@ -6,7 +6,9 @@ package proxy_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -39,7 +41,11 @@ func plant(t *testing.T, r *rig, name, data string) string {
 
 func stagingEmpty(t *testing.T, r *rig) {
 	t.Helper()
-	if entries, _ := os.ReadDir(r.fs.Path("downloads")); len(entries) != 0 {
+	entries, err := os.ReadDir(r.fs.Path("downloads"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
 		t.Fatalf("staging not empty: %v", entries)
 	}
 }
@@ -155,6 +161,9 @@ func TestCase20SkipLeavesNoStagingFile(t *testing.T) {
 	if res := r.download(r.job("/f/x", "x.zip", 10)); res.State != proxy.StateSkipped {
 		t.Fatalf("state %s", res.State)
 	}
+	if r.srv.Connections() != 0 {
+		t.Fatal("a skipped job must not connect")
+	}
 	if got, _ := os.ReadFile(r.fs.Path("roms/snes/x.zip")); string(got) != "mine" {
 		t.Fatal("the existing file changed")
 	}
@@ -255,6 +264,12 @@ func TestCase24BatchNameCollisions(t *testing.T) {
 				}
 				if policy == proxy.OnExistsRename && done != 2 {
 					t.Fatalf("rename: %d jobs done, want 2", done)
+				}
+				if policy == proxy.OnExistsSkip && done < 1 {
+					t.Fatalf("skip: %d jobs done, at least one must write its file", done)
+				}
+				if policy == proxy.OnExistsSkip && name != "case" && done != 1 {
+					t.Fatalf("skip: %d jobs done, want exactly one (the names collide)", done)
 				}
 				if len(r.history.recs) != 2 {
 					t.Fatalf("history has %d records, want both outcomes", len(r.history.recs))
@@ -383,7 +398,7 @@ func TestCase37CrossDeviceCopyPath(t *testing.T) {
 			t.Fatal("the temporary copy was left behind")
 		}
 	})
-	t.Run("a failing rename never leaves a partial final name", func(t *testing.T) {
+	t.Run("a rename that keeps failing never leaves a partial final name or a copy", func(t *testing.T) {
 		r := newRig(t, proxy.Config{})
 		body := fakeproxy.Pattern(2000)
 		r.srv.Script("/f/a", fakeproxy.OK(body))
@@ -394,7 +409,10 @@ func TestCase37CrossDeviceCopyPath(t *testing.T) {
 		if res.State == proxy.StateDone {
 			t.Fatal("the job cannot succeed when no rename works")
 		}
+		// This simulates a persistent failure, not a crash after the copy: a crash cannot be
+		// injected in-process, so what is checked is the state a failed job leaves behind.
 		noFinalFile(t, r)
+		stagingEmpty(t, r)
 		for name, kind := range realfs.Snapshot(t, r.fs.Dir()) {
 			if strings.Contains(name, "mothdex-tmp") && kind != "dir" {
 				t.Fatalf("temporary copy left behind: %s", name)
