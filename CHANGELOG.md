@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `docs/qa/T-22-m1-acceptance.md` (T-22): M1 acceptance run at `ebe6a54` with evidence per item (installer against the
   snapshot archive, mcp slug charset sample, command section C through the real binary and the package tests), the open
-  items, and findings F3 (`/dev/null` stdin is treated as a terminal), F4 and F5.
+  items, the live download check, and findings F3 (`/dev/null` stdin is treated as a terminal), F4 and F5.
 - `internal/ui/cli` and `cmd/mothdex` (T-20b): the command line. cobra commands `search`, `info`, `random`, `download`,
   `boxart`, `platforms`, `regions`, `db-info`, `history`, `cache stats|clear`, `config list|get|set|reset`,
   `profile show|detect` and `version` (`shell`, `tui`, `gui` print "not available yet"). Human tables with the 80/60
