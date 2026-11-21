@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- App service contract (T-20b): `SaveJobBoxart` (cover named after the downloaded file) and `SaveBoxart` (`boxart`
+  command) replace `DownloadRequest.Boxart`; exports go through `app`; UIs may also import `internal/i18n` and
+  `internal/buildinfo`.
 - T-16 catalog: cases 51 and 52 (installer launcher path injection and permissions) are now Covered by
   `tests/installer/cases.sh`, `nonroot.sh` and `install.Tests.ps1`; 51 of 52 cases are Covered, only 49 (terminal
   escapes in the UI output) is Pending.

@@ -6,7 +6,9 @@ The **only** API the four UIs (CLI, Shell, TUI, GUI) call. Business rules live h
 UIs format, prompt and render, nothing else. UIs may import `pkg/mothdex` **types** (Entry, Link, …) as DTOs,
 but never call `mothdex.Client`, the cache, the downloader or the config loader directly. Every type in the
 service's signatures is declared in `app` (aliases of internal types are fine: `HistoryRecord = history.Record`,
-`State = proxy.State`), so UI packages import only `app` and `pkg/mothdex`; only the composition root imports internals.
+`State = proxy.State`), so UI packages import only `app` and `pkg/mothdex` (plus the UI infrastructure `internal/i18n`
+and `internal/buildinfo`); only the composition root imports the other internals. File exports go through `app`
+(`ExportTarget`, `WriteExport`, `ExportHistory`, `CSVCell`, formats `FormatTXT|JSON|CSV`), never `internal/history`.
 
 > Layout note: this adds `internal/app/` to PLAN §2.2. Announced to Guindaste (T-3).
 
@@ -37,6 +39,8 @@ type Downloads interface {
     Events(ctx context.Context) <-chan Event // state changes + throttled progress (≤ 4/s per job); never lossy
     Cancel(id JobID) error
     Wait(ctx context.Context) (BatchResult, error) // returns when the queue is empty
+    SaveJobBoxart(ctx context.Context, job JobSnapshot, destDir string) (path string, err error) // cover of a Done job
+    SaveBoxart(ctx context.Context, ref Ref, destDir string) (path string, err error)          // `boxart` command
 }
 
 // Method names carry the capability (one type implements all, so `List`/`Get` cannot repeat; T-20a).
@@ -97,7 +101,6 @@ type LinkChoice struct { Index int; Link mothdex.Link; Score int; Available bool
 type DownloadRequest struct {
     Ref Ref; Link LinkSelector
     DestDir string   // "" = config `download.dir` if set, else active profile DestDir(platform) (profiles.md §4)
-    Boxart *bool     // nil = config `download.boxart`
 }
 ```
 
@@ -130,9 +133,16 @@ type DownloadRequest struct {
 - **Downloaders.** The service builds one downloader per destination root (downloader §6.2 confines each to its
   root). `download.concurrency`, the space ledger and the batch name set therefore apply per root. The CLI uses one
   root per batch; long-lived UIs (E-M3) that mix roots need a shared limiter first.
-- **Boxart** (`DownloadRequest.Boxart`): after a `Done` job the service, not the UI, writes the cover next to the
-  file through the same confined destination FS: name `<stem of the sanitized name>.<ext from the stored type>`,
-  never over an existing file, never in a launcher folder. A failure is a warning and never fails the job.
+- **Boxart** (T-20b). The UI decides **when** (after `Wait`, for `Done` jobs, when `download.boxart` or `--boxart`
+  is on, and never after an interrupt); the service decides **how**. `SaveJobBoxart` names the cover after the job's
+  file, `<stem of the final name>.<ext from the stored type>`, in the job's directory, so frontends pair them by stem.
+  `SaveBoxart` (standalone `boxart` command) names it `<title>.<ext>` in the download destination. Both:
+  - write through their own confined root FS with the downloader's Confiner (launcher folders refused) and a
+    `proxy.Sanitize`d name, with the extension taken from an allowlist of content types;
+  - stage `.<name>.part` and publish with a no-replace link (an `O_EXCL` copy where links are not supported), and
+    never replace an existing file (its path is returned);
+  - return `not_found` when the entry has no usable cover.
+  A boxart failure is a warning, and it never fails the job or the batch.
 - **Stale fallback.** On `KindNetwork` or `KindRateLimited`, catalog reads may serve an expired cache entry
   (≤ 7 days old) with `Meta.Stale = true`. Never for `Random`.
 - **429 cooldown** is persisted in namespace `state` (see api-client §4) and restored on start.
