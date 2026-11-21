@@ -175,7 +175,7 @@ func (s *store) GetJSON(ns, key string, v any, opts ...GetOption) (Entry, error)
 	if !e.Hit {
 		return Entry{}, nil
 	}
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: path is built from a validated namespace and key
+	raw, err := readShared(path)
 	if err == nil {
 		err = json.Unmarshal(raw, v)
 	}
@@ -196,7 +196,7 @@ func (s *store) GetBlob(ns, key string, opts ...GetOption) (io.ReadCloser, Entry
 	if !e.Hit {
 		return nil, Entry{}, nil
 	}
-	f, err := os.Open(path) //nolint:gosec // G304: path is built from a validated namespace and key
+	f, err := openShared(path)
 	if err != nil {
 		s.discard(ns, key, info, "unopenable data", func() bool { return !s.intact(ns, key, info) })
 		return nil, Entry{}, nil
@@ -207,7 +207,7 @@ func (s *store) GetBlob(ns, key string, opts ...GetOption) (io.ReadCloser, Entry
 // decodes reports whether the data file currently holds valid JSON (and the item is intact).
 func (s *store) decodes(ns, key string, info nsInfo) bool {
 	dataPath, _ := s.paths(ns, key, info)
-	raw, err := os.ReadFile(dataPath) //nolint:gosec // G304: path is built from a validated namespace and key
+	raw, err := readShared(dataPath)
 	return err == nil && s.intact(ns, key, info) && json.Valid(raw)
 }
 
