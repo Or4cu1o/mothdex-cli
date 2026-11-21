@@ -1,11 +1,19 @@
 name: GUI spike (qemu)
 
-# The arm64, armv7 and armv6 legs of the GUI spike (docs/contracts/cli/gui.md section 2, items 3 and 1). They use
-# docker/setup-qemu-action, which the repository's allowed-actions policy does not list yet: a workflow that uses it
-# fails at startup ("startup_failure"), so this file runs only by hand until the owner allows that action (a repository
-# setting, owner OK) and the pull_request trigger of gui-spike.yml is copied here. Until then the Tier 1 arm64 run
-# and the armv7 run are NOT verified. Same rules as gui-spike.yml: read-only token, actions pinned by SHA, no cache.
+# The arm64, armv7 and armv6 legs of the GUI spike (docs/contracts/cli/gui.md section 2, items 3 and 1). qemu-user comes
+# from the runner distro (qemu-user-static and binfmt-support from apt), not from docker/setup-qemu-action: the
+# repository's allowed-actions policy does not list that action, and a workflow that uses it fails at startup. The Debian
+# images are pinned by digest. The armv6 leg is best effort. Same rules as gui-spike.yml: read-only token, actions pinned
+# by SHA, no cache. Like it, this workflow is path-filtered: do not mark its jobs as required checks.
 on:
+  pull_request:
+    paths:
+      - "internal/ui/gui/**"
+      - "cmd/mothdex-gui/**"
+      - "scripts/gui-probe.sh"
+      - ".github/workflows/gui-spike-qemu.yml"
+      - "go.mod"
+      - "go.sum"
   workflow_dispatch:
 
 permissions:
@@ -70,12 +78,16 @@ jobs:
           [ "$GOARCH" = arm ] && ldflags="-I /lib/ld-linux-armhf.so.3"
           CGO_ENABLED=0 GOOS=linux go test -c -tags gui -trimpath ${ldflags:+-ldflags "$ldflags"} \
             -o "dist-gui/$DIR/sdl.test" ./internal/ui/gui/sdl
-      - name: Set up qemu-user (binfmt image pinned by digest, no cache)
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-        with:
-          image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 # qemu-v10.2.3
-          platforms: ${{ matrix.goarch }}
-          cache-image: false
+      - name: Install qemu-user-static and binfmt-support (distro packages, no third-party action)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+          dpkg -s qemu-user-static | grep '^Version'
+          update-binfmts --display | grep -E '^qemu-(arm|aarch64) ' || true
+      - name: The foreign-architecture Debian image runs in a container (binfmt works)
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: docker run --rm --platform "$PLATFORM" "$DEBIAN_IMAGE" uname -m
       - name: Run the probe and the package tests in the Debian image with its libsdl2
         env:
           PLATFORM: ${{ matrix.platform }}
