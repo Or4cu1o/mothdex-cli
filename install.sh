@@ -214,7 +214,8 @@ fat_exception_ok() {
   [ ! -L "$1" ] || return 1
   # the physical path (symlinked parents resolved) must be inside the profile tree
   real=$(cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
-  case "$real/" in "$root"/*) ;; *) return 1 ;; esac
+  rootreal=$(cd -P -- "$root" 2>/dev/null && pwd -P) || return 1
+  case "$real/" in "$rootreal"/*) ;; *) return 1 ;; esac
   [ -n "$(find "$real" -maxdepth 0 -user 0 2>/dev/null)" ] || return 1
   fat_fs "$real"
 }
@@ -275,7 +276,7 @@ fetch() {
     gnu_wget || die "this wget is not GNU Wget (busybox wget does not verify TLS certificates): install curl and run again"
     signature_tool_present ||
       die "only wget is available, and wget can follow an https to http redirect: install curl, or cosign (or a logged-in gh) so the signature is verified, and run again"
-    wget -q --https-only --secure-protocol=TLSv1_2 --max-redirect=5 --timeout=60 -O "$2" "$1"
+    wget -q --secure-protocol=TLSv1_2 --max-redirect=5 --timeout=60 -O "$2" "$1"
   else
     die "curl or GNU wget is required"
   fi

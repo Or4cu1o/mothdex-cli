@@ -39,3 +39,8 @@ accepts a directory that looks world-writable, only inside the profile's own tre
 (`/userdata` or `/recalbox/share`), only when the filesystem type is proven, and
 it prints a warning. On such a partition any process or SMB client that can write
 the folder can replace `mothdex`.
+
+Directory checks in `install.sh`: the bin_dir and the launcher folder must not be world-writable and must be owned by
+the installing user or root, and no ancestor of their physical path may be world-writable without the sticky bit.
+Ancestors that are only owner- or group-writable are not checked. wget does not enforce https on redirects, so
+with wget (no curl) a signature tool (cosign or a logged-in gh) is required and `latest` is not resolved.
