@@ -293,6 +293,20 @@ chmod 0777 /userdata/system/bin
 inst --version v1.2.3
 check "world-writable bin_dir refused" rc_not0
 check "no binary" absent /userdata/system/bin/mothdex
+reset case52-sticky-world-writable-bin-dir
+fs_batocera
+mkdir -p /userdata/system/bin
+chmod 1777 /userdata/system/bin
+inst --version v1.2.3
+check "mode 1777 bin_dir refused" rc_not0
+check "no binary (1777)" absent /userdata/system/bin/mothdex
+reset case52-foreign-owner-bin-dir
+fs_batocera
+mkdir -p /userdata/system/bin
+chown 1234 /userdata/system/bin
+inst --version v1.2.3
+check "bin_dir owned by another user refused" rc_not0
+check "no binary (foreign owner)" absent /userdata/system/bin/mothdex
 reset case52-world-writable-launcher-dir
 fs_batocera
 chmod 0777 /userdata/roms/ports
