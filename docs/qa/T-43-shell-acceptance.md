@@ -44,6 +44,7 @@ for per-line flags). The text of decision **D24** is not in the repository, so i
   the Runner run `info` and `boxart` once per index. Repro: `search game`, then `info 2-3`.
 - **S2 (Suggestion):** the double Ctrl+C rule is spelled "at an empty prompt", but a Ctrl+C on a line that has text also
   starts the 2 s window: `search -r <Ctrl+C><Ctrl+C>` within 2 s exits 130. Decide which is intended and align shell.md 4.
+  Found on `b45d433`, before #64 removed the double Ctrl+C rule from the Shell (contract change `da52824`); it no longer applies on current main.
 - **S3 (Suggestion):** when the terminal reports 0 columns (a `pty` without a window size, some ssh or CI wrappers), liner
   silently falls back to plain line reading (`tooNarrow`): no Tab, no history keys, `^C` echoed. shell.md 1 promises it
   works on a dumb terminal, and it does, but the user gets no hint. Real terminals report a size, so this is low impact.

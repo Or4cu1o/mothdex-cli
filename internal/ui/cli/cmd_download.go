@@ -117,7 +117,10 @@ func (r *runtime) runDownload(ctx context.Context, s *Session, args []string, f 
 		}
 		if size, ok := linkSize(choices, rsel.Index); ok {
 			total += size
-			r.announceLink(p, choices, preferActive(pref) || f.link != 0)
+			// A Shell batch says which link each entry takes, so a number typed for several entries
+			// never hides a choice; a single entry has the chooser (shell.md section 4).
+			batchInShell := r.run != nil && len(refs) > 1 && len(choices) > 1
+			r.announceLink(p, choices, preferActive(pref) || f.link != 0 || batchInShell)
 		}
 		reqs[i] = app.DownloadRequest{Ref: ref, Link: rsel, DestDir: r.g.Output}
 	}

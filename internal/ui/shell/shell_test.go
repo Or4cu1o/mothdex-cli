@@ -285,24 +285,21 @@ func TestExitCodes(t *testing.T) {
 	}
 }
 
-func TestCtrlCAtThePrompt(t *testing.T) {
-	second := time.Second
+func TestCtrlCAtThePromptNeverLeaves(t *testing.T) {
 	tests := []struct {
 		name   string
 		script []step
-		want   int
 		hints  int
 	}{
-		{"two within the window leave with 130", []step{{err: errAborted}, {err: errAborted, advance: second}}, exitInterrupted, 1},
-		{"a second one after the window is a new first", []step{{err: errAborted}, {err: errAborted, advance: 3 * second}}, 0, 2},
-		{"a command between them resets the window", []step{{err: errAborted}, {line: "version"}, {err: errAborted, advance: second}}, 0, 2},
-		{"a single one only hints", []step{{err: errAborted}}, 0, 1},
+		{"one only hints", []step{{err: errAborted}}, 1},
+		{"two in a row still only hint", []step{{err: errAborted}, {err: errAborted}}, 2},
+		{"many, with commands between", []step{{err: errAborted}, {line: "version"}, {err: errAborted}, {err: errAborted}, {err: errAborted}}, 4},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t, true, tc.script...)
-			if got := r.sh.Loop(context.Background()); got != tc.want {
-				t.Fatalf("exit %d, want %d", got, tc.want)
+			if got := r.sh.Loop(context.Background()); got != 0 { // the script ends with Ctrl+D
+				t.Fatalf("exit %d: only exit, quit and Ctrl+D leave", got)
 			}
 			if n := strings.Count(r.errs.String(), "Type exit or press Ctrl+D to leave."); n != tc.hints {
 				t.Fatalf("hint shown %d times, want %d", n, tc.hints)
