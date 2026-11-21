@@ -207,8 +207,14 @@ func TestEventsAndCancel(t *testing.T) {
 	events := r.svc.Events(ctx)
 	r.run(t, "game")
 	seen := map[proxy.State]bool{}
-	for len(events) > 0 {
-		seen[(<-events).Job.State] = true
+	timeout := time.After(5 * time.Second)
+	for !seen[proxy.StateDone] {
+		select {
+		case ev := <-events:
+			seen[ev.Job.State] = true
+		case <-timeout:
+			t.Fatalf("no done event; states seen: %v", seen)
+		}
 	}
 	if !seen[proxy.StateDone] {
 		t.Fatalf("states seen: %v", seen)
