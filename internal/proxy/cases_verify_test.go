@@ -1,0 +1,165 @@
+package proxy_test
+
+// T-16 catalog cases for verification (41 to 43) and the Sanitize invariants (12).
+
+import (
+	"errors"
+	"math/rand/v2"
+	"strings"
+	"testing"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
+	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeproxy"
+	"github.com/Or4cu1o/mothdex-cli/internal/testutil/zipfix"
+)
+
+func verifyRig(t *testing.T) *rig { return newRig(t, proxy.Config{Verify: true}) }
+
+// Case 41: hostile archives are refused as integrity failures, with bounded work.
+func TestCase41ZipBombs(t *testing.T) {
+	tests := map[string][]byte{
+		"member longer than declared":       zipfix.DeclaredSizeLie(1<<20, 1000),
+		"overlapping members over the cap":  zipfix.Overlap(50, 40<<20),
+		"more members than the cap":         zipfix.ManyEmpty(70000),
+		"declared sizes over the byte cap":  zipfix.Overlap(65535, 1<<20),
+		"damaged header after the magic":    append([]byte("PK\x03\x04"), fakeproxy.Pattern(200)...),
+		"truncated archive after the magic": zipfix.Valid(map[string][]byte{"a": fakeproxy.Pattern(5000)})[:300],
+	}
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			r := verifyRig(t)
+			r.srv.Script("/f/z", fakeproxy.OK(body))
+			wantFailed(t, r.download(r.job("/f/z", "z.zip", len(body))), proxy.CodeIntegrity)
+			stagingEmpty(t, r)
+			noFinalFile(t, r)
+			if got := r.history.recs[len(r.history.recs)-1].CRC; got != "failed" {
+				t.Fatalf("history crc = %q, want failed", got)
+			}
+		})
+	}
+}
+
+// Case 42: a cancel during the CRC pass returns Canceled, not an integrity failure.
+func TestCase42CancelDuringZipCRC(t *testing.T) {
+	r, ctx := cancelOn(t, proxy.Config{Verify: true}, proxy.StateVerifying)
+	members := map[string][]byte{}
+	for _, n := range []string{"a.bin", "b.bin", "c.bin", "d.bin"} {
+		members[n] = fakeproxy.Pattern(2 << 20)
+	}
+	body := zipfix.Valid(members)
+	r.srv.Script("/f/z", fakeproxy.OK(body))
+
+	res := r.dl.Download(ctx, r.job("/f/z", "z.zip", len(body)))
+
+	if res.State != proxy.StateCanceled || res.Err == nil || res.Err.Code != proxy.CodeCanceled {
+		t.Fatalf("state %s err %v", res.State, res.Err)
+	}
+	stagingEmpty(t, r)
+	noFinalFile(t, r)
+}
+
+// Case 43: the zip check keys on the magic bytes, not on the name, and says what it did.
+func TestCase43MagicByteDetection(t *testing.T) {
+	tests := []struct {
+		name  string
+		body  []byte
+		state proxy.State
+		crc   string
+	}{
+		{"end record only (PK 05 06)", zipfix.EmptyArchive(), proxy.StateDone, "skipped"},
+		{"random bytes named .zip", fakeproxy.Pattern(4000), proxy.StateDone, "skipped"},
+		{"valid archive", zipfix.Valid(map[string][]byte{"a.bin": fakeproxy.Pattern(4000)}), proxy.StateDone, "ok"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := verifyRig(t)
+			r.srv.Script("/f/z", fakeproxy.OK(tt.body))
+			res := r.download(r.job("/f/z", "z.zip", len(tt.body)))
+			if res.State != tt.state {
+				t.Fatalf("state %s err %v", res.State, res.Err)
+			}
+			if got := r.history.recs[0].CRC; got != tt.crc {
+				t.Fatalf("history crc = %q, want %q", got, tt.crc)
+			}
+		})
+	}
+	t.Run("verify off skips every check", func(t *testing.T) {
+		r := newRig(t, proxy.Config{})
+		body := zipfix.DeclaredSizeLie(1<<20, 1000)
+		r.srv.Script("/f/z", fakeproxy.OK(body))
+		if res := r.download(r.job("/f/z", "z.zip", len(body))); res.State != proxy.StateDone {
+			t.Fatalf("state %s err %v", res.State, res.Err)
+		}
+		if got := r.history.recs[0].CRC; got != "skipped" {
+			t.Fatalf("history crc = %q, want skipped", got)
+		}
+	})
+}
+
+// sanitizeInvariants are the guarantees of downloader.md 5.9 for any input.
+func sanitizeInvariants(t *testing.T, raw string) {
+	t.Helper()
+	opts := []proxy.NameOption{proxy.WithFallback("slug", "zip", "jobid")}
+	got, err := proxy.Sanitize(raw, opts...)
+	if errors.Is(err, proxy.ErrUnsafeName) {
+		return // the deny-list refusal is a valid outcome: no name is produced at all
+	}
+	if err != nil {
+		t.Fatalf("%q: %v", raw, err)
+	}
+	fail := func(why string) { t.Fatalf("%q -> %q: %s", raw, got, why) }
+	switch {
+	case got == "":
+		fail("empty")
+	case len(got) > 200:
+		fail("longer than 200 bytes")
+	case !utf8.ValidString(got):
+		fail("not valid UTF-8")
+	case got == "." || got == "..":
+		fail("dot name")
+	case strings.ContainsAny(got, `/\:<>"|?*`):
+		fail("separator or forbidden character")
+	case strings.HasPrefix(got, ".") || strings.HasPrefix(got, "-") || strings.HasPrefix(got, " "):
+		fail("leading dot, dash or space")
+	case strings.HasSuffix(got, ".") || strings.HasSuffix(got, " "):
+		fail("trailing dot or space")
+	}
+	for _, c := range got {
+		if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) {
+			fail("control or format character")
+		}
+	}
+	stem := strings.ToUpper(strings.SplitN(got, ".", 2)[0])
+	for _, reserved := range []string{"CON", "PRN", "AUX", "NUL", "COM1", "LPT1"} {
+		if strings.TrimRight(stem, " ") == reserved {
+			fail("Windows reserved device name")
+		}
+	}
+	if again, err := proxy.Sanitize(got, opts...); err != nil || again != got {
+		fail("not idempotent")
+	}
+}
+
+// Case 12 (property): random strings built from hostile pieces keep every invariant.
+func TestCase12SanitizeInvariantsOnRandomInput(t *testing.T) {
+	pieces := []string{"..", "/", `\`, ":", "CON", "nul", ".", " ", "\x00", "\x1b[2J", "\u202e", "\u200b", "\uff58", "\uff0f", "é", "é",
+		"😀", "あ", "COM1", "aux.", ".sh", "-", "<", "|", "$DATA", strings.Repeat("a", 120)}
+	rng := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // a fixed seed: the test must be reproducible
+	for range 20000 {
+		var b strings.Builder
+		for range 1 + rng.IntN(8) {
+			b.WriteString(pieces[rng.IntN(len(pieces))])
+		}
+		sanitizeInvariants(t, b.String())
+	}
+}
+
+// Case 12 (fuzz): the same invariants under go test -fuzz.
+func FuzzSanitizeInvariants(f *testing.F) {
+	for _, s := range []string{"../x", "CON", "a\x00b", "game.zip.", "\u202e", "\uff58\uff0fｙ", "COM¹", strings.Repeat("é", 150), "..\\..\\x"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, raw string) { sanitizeInvariants(t, raw) })
+}
