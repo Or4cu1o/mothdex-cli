@@ -10,6 +10,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeproxy"
+	"github.com/Or4cu1o/mothdex-cli/internal/testutil/realfs"
 )
 
 // Batch overwrite (Alicerce M1): three jobs with the same name under overwrite and --force,
@@ -129,4 +130,24 @@ func (r *rig) countEvents(s proxy.State) int {
 		}
 	}
 	return n
+}
+
+// A name finalized earlier by the same Downloader is taken even when the disk cannot see it
+// (Game.zip then game.zip on a case-sensitive file system): skip skips, rename renames.
+func TestFinalizedNamesCountAsExistingForSkipAndRename(t *testing.T) {
+	for policy, want := range map[proxy.OnExists]proxy.State{proxy.OnExistsSkip: proxy.StateSkipped, proxy.OnExistsRename: proxy.StateDone} {
+		t.Run(string(policy), func(t *testing.T) {
+			r := newRig(t, proxy.Config{OnExists: policy, Concurrency: 1})
+			if realfs.IsCaseInsensitive(t, r.fs.Dir()) {
+				t.Skip("the disk folds case itself")
+			}
+			body := fakeproxy.Pattern(100)
+			r.srv.Script("/f/a", fakeproxy.OK(body))
+			r.srv.Script("/f/b", fakeproxy.OK(body))
+			res := r.dl.Run(context.Background(), []proxy.Job{r.job("/f/a", "Game.zip", 100), r.job("/f/b", "game.zip", 100)})
+			if res[0].State != proxy.StateDone || res[1].State != want {
+				t.Fatalf("states %s, %s; want done, %s", res[0].State, res[1].State, want)
+			}
+		})
+	}
 }

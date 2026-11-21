@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"crypto/md5"  //nolint:gosec // upstream DATs publish md5 and sha1; this compares, it does not authenticate
 	"crypto/sha1" //nolint:gosec // same reason
@@ -269,8 +270,11 @@ const (
 	eocdSearch         = 64<<10 + eocdSize
 )
 
-// zipDirectoryWithinLimits refuses an archive whose member count or central directory size is
-// over the caps. A file where no end record is found is left to zip.NewReader to reject.
+// zipDirectoryWithinLimits refuses an archive whose central directory is over the caps. It does
+// not trust the counts of the end record (archive/zip compares only 16 bits of the count and
+// reads headers until the first non-header): it walks the directory itself, where Go would load
+// it, and stops at the member cap or the byte cap. A file where no end record is found is left
+// to zip.NewReader to reject.
 func zipDirectoryWithinLimits(ra io.ReaderAt, size int64) *attemptErr {
 	n := min(size, int64(eocdSearch))
 	tail := make([]byte, n)
@@ -287,36 +291,68 @@ func zipDirectoryWithinLimits(ra io.ReaderAt, size int64) *attemptErr {
 	if pos < 0 {
 		return nil
 	}
+	dirEnd := size - n + int64(pos) // where the central directory ends, as archive/zip computes it
 	entries := uint64(binary.LittleEndian.Uint16(tail[pos+10:]))
 	cdSize := uint64(binary.LittleEndian.Uint32(tail[pos+12:]))
 	if entries == 0xFFFF || cdSize == 0xFFFFFFFF { // zip64: the real values are in the zip64 record
-		if e, c, ok := readZip64(ra, size-n+int64(pos)); ok {
-			entries, cdSize = e, c
+		if e, c, end, ok := readZip64(ra, dirEnd); ok {
+			entries, cdSize, dirEnd = e, c, end
 		}
 	}
-	if entries > zipMaxMembers || cdSize > maxCentralDirBytes {
+	if entries > zipMaxMembers || cdSize > maxCentralDirBytes || int64(cdSize) > dirEnd { //nolint:gosec // cdSize is capped just before
 		return structural("the zip archive directory is too large", nil)
+	}
+	walked, ok := walkCentralDirectory(io.NewSectionReader(ra, dirEnd-int64(cdSize), int64(cdSize)+maxCentralDirBytes))
+	if !ok || walked != entries {
+		return structural("the zip archive directory does not match its end record", nil)
 	}
 	return nil
 }
 
+const (
+	cdHeaderSig  = 0x02014b50
+	cdHeaderSize = 46
+)
+
+// walkCentralDirectory counts central directory headers from r, stopping at the first thing
+// that is not one. ok is false when a cap was hit.
+func walkCentralDirectory(r io.Reader) (count uint64, ok bool) {
+	br := bufio.NewReaderSize(r, 64<<10)
+	var total int64
+	var hdr [cdHeaderSize]byte
+	for {
+		if _, err := io.ReadFull(br, hdr[:]); err != nil || binary.LittleEndian.Uint32(hdr[:]) != cdHeaderSig {
+			return count, true
+		}
+		count++
+		skip := int64(binary.LittleEndian.Uint16(hdr[28:])) + int64(binary.LittleEndian.Uint16(hdr[30:])) + int64(binary.LittleEndian.Uint16(hdr[32:]))
+		total += cdHeaderSize + skip
+		if count > zipMaxMembers || total > maxCentralDirBytes {
+			return count, false
+		}
+		if _, err := io.CopyN(io.Discard, br, skip); err != nil {
+			return count, true
+		}
+	}
+}
+
 // readZip64 reads the entry count and directory size of the zip64 end record that precedes the
-// locator before the classic end record at eocdAt.
-func readZip64(ra io.ReaderAt, eocdAt int64) (entries, cdSize uint64, ok bool) {
+// locator before the classic end record at eocdAt, and where that record starts.
+func readZip64(ra io.ReaderAt, eocdAt int64) (entries, cdSize uint64, dirEnd int64, ok bool) {
 	var loc [zip64LocatorSize]byte
 	if eocdAt < zip64LocatorSize {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	if _, err := ra.ReadAt(loc[:], eocdAt-zip64LocatorSize); err != nil || binary.LittleEndian.Uint32(loc[:]) != zip64LocatorSig {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	off := binary.LittleEndian.Uint64(loc[8:])
 	var rec [56]byte
 	if off > math.MaxInt64 {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	if _, err := ra.ReadAt(rec[:], int64(off)); err != nil || binary.LittleEndian.Uint32(rec[:]) != zip64EOCDSig { //nolint:gosec // checked above
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
-	return binary.LittleEndian.Uint64(rec[32:]), binary.LittleEndian.Uint64(rec[40:]), true
+	return binary.LittleEndian.Uint64(rec[32:]), binary.LittleEndian.Uint64(rec[40:]), int64(off), true //nolint:gosec // checked above
 }

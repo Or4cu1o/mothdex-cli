@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"net/http"
 	"os"
@@ -68,5 +70,30 @@ func TestIsMemoryBacked(t *testing.T) {
 	}
 	if IsMemoryBacked("/definitely/not/there") {
 		t.Fatal("an unreadable path is not reported as memory-backed")
+	}
+}
+
+// Sentinela m4 probe: the plain end record claims fewer members than the directory holds (the
+// count is 16 bits wide) and the zip64 locator is gone. archive/zip would still load every
+// member, so the directory is walked instead of trusting the declared count.
+func TestLyingEndRecordIsCaughtByWalkingTheDirectory(t *testing.T) {
+	z := zipfix.ManyEmpty(70_000)
+	at := bytes.LastIndex(z, []byte{0x50, 0x4b, 0x05, 0x06})
+	loc := bytes.LastIndex(z[:at], []byte{0x50, 0x4b, 0x06, 0x07})
+	if at < 0 || loc < 0 {
+		t.Fatal("the fixture has no zip64 records")
+	}
+	copy(z[loc:], []byte{0, 0, 0, 0})                       // the locator is gone
+	binary.LittleEndian.PutUint16(z[at+8:], 70_000%65_536)  // entries on this disk
+	binary.LittleEndian.PutUint16(z[at+10:], 70_000%65_536) // total entries
+
+	// The central directory ends where the zip64 end record started: recompute its size.
+	rec := bytes.LastIndex(z[:loc], []byte{0x50, 0x4b, 0x06, 0x06})
+	cdStart := int(binary.LittleEndian.Uint64(z[rec+48:])) //nolint:gosec // a few MB
+	binary.LittleEndian.PutUint32(z[at+12:], uint32(rec-cdStart)) //nolint:gosec // a few MB
+
+	err := zipDirectoryWithinLimits(bytesAt(z), int64(len(z)))
+	if err == nil || err.err.Code != CodeIntegrity {
+		t.Fatalf("a directory of 70 000 members behind a count of 4 464 must be refused, got %+v", err)
 	}
 }

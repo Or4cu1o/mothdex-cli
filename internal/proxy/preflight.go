@@ -95,7 +95,9 @@ func (d *Downloader) reserveName(j *jobState, start int) (State, *Error) {
 			}
 			return StateFailed, err
 		}
-		if held && !exists {
+		// A name finalized earlier by this Downloader counts as existing even when the file system
+		// does not see it (case-insensitive spelling on a case-sensitive disk).
+		if held && !exists && !d.names.isFinal(j.destRel, cand) {
 			j.name, j.nameHeld, j.renameN = cand, true, n
 			return "", nil
 		}
