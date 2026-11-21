@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/ui/gui/sdl` and `cmd/mothdex-gui` (T-52, spike): our own thin purego binding of 23 SDL2 functions (video, renderer,
+  textures, events, `SDL_GameControllerAddMapping`), loaded from the system SDL2 at run time. Pointers, integers and floats
+  only; `SDL_Event` and `SDL_Rect` go by pointer and their layout is tested per architecture. Linux opens `libSDL2-2.0.so.0` by
+  soname only; Windows opens `SDL2.dll` from the executable folder or System32 only, never the current directory. The probe
+  (`mothdex-gui`, tag `gui`, `CGO_ENABLED=0`) runs the headless check of the contract in order (load, version, mapping, window and
+  renderer, atlas texture, draw, pixel read-back, render scale, event round trip), prints the SDL version and exits 0, or 1 when
+  SDL2 is missing, too old or has no display, or 3 for a failed check. `scripts/gui-probe.sh` builds and inspects it for one
+  target (ELF interpreter and `NEEDED`, the armhf `-I` flag) and runs it on the host; `scripts/check-gui-isolation.sh` fails
+  if `mothdex` ever depends on purego or a GUI package. `purego` v0.11.3 is pinned in `go.mod`; `mothdex` does not contain it.
 - `app.Service.ConfigSchema() []SettingSpec{Key, Kind, Enum, Min, Max, Env}` (F1, ui.md section 6): the metadata of every configuration key (kind string, enum, int, float, bool, duration, size or list; the allowed values or range; the `MOTHDEX_*` variable) for the TUI Settings screen and Shell completion. It reads no file, so it works with a broken configuration. `config.Specs()` builds it from the schema, and a test checks that every enum value and range bound agrees with the parser.
 - `docs/contracts/cli/gui.md` (T-51): the E-M3 GUI contract, covering the separate `mothdex-gui` binary and its package layout, SDL2 through an own purego binding (with what the spike must prove and the decision rule), Noto Sans with the x/image raster, the pinned GameControllerDB, a single download root (no shared limiter), the exit budget, cover decode caps, the packaging impact, the test plan and the gaps for Forja.
 - `docs/release-v0.1.0-checklist.md` (T-23): the ordered owner steps for the first release (open gates A2 and D1 to D3,
