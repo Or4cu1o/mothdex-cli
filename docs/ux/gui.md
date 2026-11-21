@@ -247,8 +247,15 @@ SDL GameController buttons are read **by position** (SDL_GameControllerDB names:
 - **Hint bar:** the screen's actions, at most 5, right-aligned in the order A, X, Y, B, with `Start Menu` on the left.
   Each hint is the controller label on a `bg` disc (`text` letter, §1.5) plus the action word in `text.dim`. A label
   longer than one letter (`Start`, `Cross`, `Circle`) becomes a pill with `1u` padding on each side. `compact` shows
-  at most 4 (Start keeps the pill and drops the word). Actions that do nothing on the focused element are hidden,
-  not greyed.
+  at most 4 (Start keeps the pill and drops the word when Start means `Menu`). Actions that do nothing on the focused
+  element are hidden, not greyed.
+- **Hint bar fit** (every tier, text size and language; nothing overlaps the Start pill or leaves the safe
+  rectangle; words are never cut):
+  1. Where Start is the screen's main action (`Search` on Search, `Done` on the multi-select pickers), its word
+     stays in every tier.
+  2. When the hints do not fit, they are dropped in this order: `L`/`R`, then the Start word when it means `Menu`,
+     then `Y`, then `X`. `A` and `B` are never dropped.
+  3. A dropped action still works; Start › Buttons lists the whole map (§5.11).
 - **Toast:** under the top bar, right-aligned, `surface` with a 4 px left stripe in the state color. Its width is at
   most 60 % of the safe rectangle; longer text wraps to 2 lines (never cut). When it would cover the focused element
   (with its ring), it moves above the hint bar instead, still right-aligned. It stays 3 s; the locale notice (§1.3)
