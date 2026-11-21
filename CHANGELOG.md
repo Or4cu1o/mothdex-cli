@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/qa/T-22-m1-acceptance.md`: the M1 acceptance checklist (T-22) with the evidence source per item, what waits for
+  T-20b, and the plan for the mcp slug charset sample.
 - `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
   platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
   the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`
