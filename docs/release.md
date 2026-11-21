@@ -102,3 +102,6 @@ These are repository settings, not files, and need the owner's approval:
    or deleted. The "tag is on `main`" check runs inside the tag's own workflow
    file, so it is only as strong as this ruleset.
 3. Do not mark `Release check` as a required status check: it is path-filtered.
+
+The ordered owner steps for the first release (gates, tag, approval, verification of the published assets, rollback) are in
+[release-v0.1.0-checklist.md](release-v0.1.0-checklist.md).
