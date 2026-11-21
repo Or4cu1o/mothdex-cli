@@ -1,0 +1,122 @@
+name: GUI spike (qemu)
+
+# The arm64, armv7 and armv6 legs of the GUI spike (docs/contracts/cli/gui.md section 2, items 3 and 1). They use
+# docker/setup-qemu-action, which the repository's allowed-actions policy does not list yet: a workflow that uses it
+# fails at startup ("startup_failure"), so this file runs only by hand until the owner allows that action (a repository
+# setting, owner OK) and the pull_request trigger of gui-spike.yml is copied here. Until then the Tier 1 arm64 run
+# and the armv7 run are NOT verified. Same rules as gui-spike.yml: read-only token, actions pinned by SHA, no cache.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Debian trixie-slim, the multi-arch index pinned by digest (arm64/v8 and arm/v7 are picked with --platform).
+  DEBIAN_IMAGE: debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+
+jobs:
+  linux-qemu:
+    name: probe (${{ matrix.name }}, qemu-user, Debian)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # armv6 is best effort and Unverified as a technique (gui.md): its failure is not a stop.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux/arm64
+            target: linux/arm64
+            platform: linux/arm64
+            dir: linux_arm64
+            goarch: arm64
+            goarm: ""
+            experimental: false
+          - name: linux/armv7
+            target: linux/arm/7
+            platform: linux/arm/v7
+            dir: linux_armv7
+            goarch: arm
+            goarm: "7"
+            experimental: false
+          - name: linux/armv6 (best effort)
+            target: linux/arm/6
+            platform: linux/arm/v7 # Debian has no armv6 image: the armv6 binary runs on the armhf userland
+            dir: linux_armv6
+            goarch: arm
+            goarm: "6"
+            experimental: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Cross-build the probe and check its ELF (interpreter and NEEDED)
+        env:
+          TARGET: ${{ matrix.target }}
+          GUI_PROBE_RUN: "0"
+        run: scripts/gui-probe.sh "$TARGET"
+      - name: Cross-build the package tests
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          ldflags=""
+          [ "$GOARCH" = arm ] && ldflags="-I /lib/ld-linux-armhf.so.3"
+          CGO_ENABLED=0 GOOS=linux go test -c -tags gui -trimpath ${ldflags:+-ldflags "$ldflags"} \
+            -o "dist-gui/$DIR/sdl.test" ./internal/ui/gui/sdl
+      - name: Set up qemu-user (binfmt image pinned by digest, no cache)
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 # qemu-v10.2.3
+          platforms: ${{ matrix.goarch }}
+          cache-image: false
+      - name: Run the probe and the package tests in the Debian image with its libsdl2
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          docker run --rm --platform "$PLATFORM" \
+            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
+            "$DEBIAN_IMAGE" sh -ec '
+              uname -m
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
+              dpkg -s libsdl2-2.0-0 | grep "^Version"
+              /gui/mothdex-gui-probe
+              /gui/sdl.test -test.v -test.count=1
+            '
+      - name: armv6 CPU model (qemu arm1176) with the same libsdl2, best effort
+        if: matrix.goarm == '6'
+        continue-on-error: true
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          # Only the probe runs under QEMU_CPU: apt and the Debian armhf libraries need an ARMv7 CPU, so a
+          # SIGILL inside libsdl2 here is a limit of the technique (Debian armhf is not built for ARMv6).
+          docker run --rm --platform "$PLATFORM" \
+            -v "$PWD/dist-gui/$DIR:/gui:ro" -e SDL_VIDEODRIVER=dummy -e DEBIAN_FRONTEND=noninteractive \
+            "$DEBIAN_IMAGE" sh -ec '
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null
+              QEMU_CPU=arm1176 /gui/mothdex-gui-probe
+            '
+      - name: Size report
+        if: always()
+        env:
+          NAME: ${{ matrix.name }}
+          DIR: ${{ matrix.dir }}
+        run: |
+          {
+            echo "### GUI probe size ($NAME)"
+            echo
+            printf '%s\n' '```'
+            ls -l "dist-gui/$DIR"
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"
