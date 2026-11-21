@@ -86,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `internal/proxy/testdata/sanitize-vectors.json` (T-61 F-1): the `Sanitize` vectors as a shared fixture (`input`, optional `fallback` and `allow_executable`, and an `output` or a stable `error`: `unsafe_name` or `empty_name`). `TestSanitizeVectors` reads it; mothdex-mcp copies the file and checks it for divergence (mcp `download_file`).
 - `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
   three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry
   that has more than one link; Ctrl+C never exits the Shell (only `exit`, `quit` and Ctrl+D leave); the TUI Entry
