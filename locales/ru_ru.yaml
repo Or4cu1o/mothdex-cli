@@ -242,6 +242,63 @@ ui:
       sort: 'Сортировать текущую страницу: relevance, title или size'
       number: 'Показать запись с этим номером (как info)'
       d: 'Скачать записи по номерам: d 1 3 или d 2-4'
+  gui:
+    locale_fallback: 'Этот язык пока недоступен в этом режиме экрана. Показан английский.'
+    not_yet: '{name}: пока недоступно.'
+    splash:
+      starting: 'Запуск…'
+    home:
+      search: 'Поиск'
+      platforms: 'Платформы'
+      random: 'Случайно'
+      queue: 'Очередь'
+      history: 'История'
+      settings: 'Настройки'
+      recent: 'Недавние'
+      footer: 'Записей: {entries} · {profile} · {root}'
+      footer_pending: '{profile} · {root}'
+      footer_offline: 'Каталог недоступен. Поиск по кэшу работает.'
+      footer_generic: 'Система эмуляции не найдена. Игры сохраняются в {path}.'
+    bar:
+      offline: 'Нет сети'
+      will_quit: 'Выход после завершения загрузок'
+      badge_active: '{active}'
+      badge_queued: '{active} · в очереди {queued}'
+    hint:
+      menu: 'Меню'
+      open: 'Открыть'
+      quit: 'Выход'
+    menu:
+      home: 'Главная'
+      queue: 'Очередь'
+      history: 'История'
+      settings: 'Настройки'
+      buttons: 'Кнопки'
+      dont_quit: 'Не выходить'
+      quit: 'Выход'
+    quit:
+      ask: 'Выйти и вернуться в {frontend}?'
+      ask_generic: 'Выйти?'
+      stay: 'Остаться'
+      quit: 'Выйти'
+      busy:
+        one: 'Ещё идёт {count} загрузка.'
+        few: 'Ещё идут {count} загрузки.'
+        many: 'Ещё идут {count} загрузок.'
+        other: 'Ещё идут {count} загрузки.'
+      keep: 'Продолжить загрузку'
+      when_finished: 'Выйти по завершении'
+      cancel_and_quit: 'Отменить и выйти'
+    exit:
+      downloaded: 'Загружено: {count}'
+      skipped: 'Пропущено: {count}'
+      failed: 'Ошибок: {count}'
+      canceled: 'Отменено: {count}'
+      refreshing: 'Обновление списка игр…'
+      returning: 'Возврат в {frontend}'
+      closing: 'Закрытие'
+    toast:
+      download_failed: 'Ошибка загрузки: {title}'
   tui:
     needs_terminal: 'TUI требует интерактивного терминала.'
     too_small: 'Терминал слишком мал (нужно {need_w}x{need_h}, сейчас {w}x{h}). Измените размер или нажмите q.'
