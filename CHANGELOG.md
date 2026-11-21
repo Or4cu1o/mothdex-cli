@@ -47,6 +47,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/testutil`: `fakeresolver` (scripted DNS), `zipfix` (zip bomb, overlapping-member, declared-size and member-count
   fixtures) and `realfs` (real-directory helpers: links and Windows junctions, tree snapshot, case-sensitivity probe) for
   the downloader tests (T-18). gosec is not run on `internal/testutil`.
+- `internal/proxy`: the downloader (T-17, proxy links only, D16). `Sanitize` for server-supplied names (same rules on every
+  OS, executable deny-list, fallback name), URL policy (https, exact allowed host, no user info, port 443, no IP or IDN),
+  confinement of the destination directory per component and after the OS resolved links (`GetFinalPathNameByHandle` on
+  Windows), a real FS over `os.Root`, a no-replace finalize per OS (Linux `renameat2`, macOS `renameatx_np`, Windows
+  `MoveFileExW`) with link and placeholder fallbacks and an EXDEV copy, `on_exists` (skip, rename up to 99, overwrite
+  only with `--force`), a per-filesystem space ledger, name reservation, in-flight journal and startup cleanup, retry
+  policy with injected clock and sleeper, zip CRC and upstream hash checks with caps, fsync of file and directory before
+  `Done`, and one history record per job. Adds `golang.org/x/text` and `golang.org/x/sys`.
+- T-18 audit round: case 39 ages the symlink target (a following cleanup would delete it), case 24 asserts casefold collisions on every file system, a finalize fallback chain test (hard link, O_EXCL placeholder, second writer in each step) and a launcher-behind-a-link test on a real detected profile.
+- T-18: `fakefs` counts reads (`OpRead`, `BytesRead`); the case 31, 32, 41 and 42 tests now prove abort at size+1, the exact size limit, bounded verification reads and a stop right after a cancel.
+- T-18: tests for 40 of the 52 T-16 threat-model cases against the downloader (`internal/proxy/cases_*_test.go`):
+  URL policy, redirects, gzip, sizes, TLS, platform injection, symlink and junction destinations, launcher folders,
+  on_exists races, disk full, cross-device copy, cancel, startup cleanup, zip bombs and the Sanitize invariants
+  (property and fuzz). The catalog marks each case with its test; the other 12 belong to other packages.
+- `internal/testutil/fakefs`: `proxy.FS` and `proxy.Finalizer` doubles over a confined temp root with fault injection
+  (ENOSPC mid-write, EXDEV, unsupported no-replace rename and hard link), scripted free space and device ids, hooks
+  between steps, a call log and a Sync spy, for the downloader disk, partial-file and race cases (T-18).
 - `internal/cache`: on-disk cache (search, entry, meta, info, covers, session, state) with canonical request keys,
   per-namespace TTL, sidecar metadata, stale reads, a 200 MB cap with expiry-first then LRU eviction, atomic writes,
   an injected clock and private file modes (0700/0600).
