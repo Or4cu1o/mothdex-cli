@@ -185,6 +185,10 @@ Property: `Sanitize(Sanitize(x)) == Sanitize(x)`. UIs display the sanitized name
   for that single file. Before replacing, `Lstat` the target through the `os.Root`: anything that is not a regular
   file (symlink, directory, device, FIFO, socket, Windows reparse point) → `Failed(path_rejected)`, and the target is
   left untouched (T-16 G2, TH-10).
+- **Collisions inside one batch** (Regente decision, T-17): `overwrite` replaces only a file that existed **before**
+  the batch. When two jobs of the same batch reduce to the same reserved name (§3.1 step 5, `casefold(NFC(...))`), the
+  later job is resolved by `rename` (`name (1).ext` …) even under `overwrite`, so a job never replaces a file written
+  by another job of the same batch. `skip` and `rename` behave as usual.
 
 ### 6.4 Cleanup (CR-7; TH-15)
 
@@ -205,8 +209,24 @@ Journal entries whose job files are gone are pruned. The downloader never delete
 
 ## 8. Test hooks (T-18)
 
-`Downloader` takes `HTTPDoer`, `Clock`, `Sleeper`, `Rand`, an `os.Root`-based FS and a per-OS `Finalizer` (no-replace
-move) interface. The fake proxy covers: stall before the first byte, stall mid-stream, truncation, transient 404, 429,
+Everything that touches the outside world is an injected port (`internal/proxy/ports.go`, T-17):
+
+| Port | Contract |
+|---|---|
+| `HTTPDoer` | `Do(*http.Request)`; the downloader enforces the URL policy (§2) itself and never relies on the doer |
+| `Clock` | `Now()` and `NewTimer(d)` (channel plus stop), so timeouts run on a fake clock |
+| `Sleeper`, `Rand` | backoff sleep that honours `ctx`; jitter source (`Int63n`). The job id has its own `io.Reader` source |
+| `FS` | confined file system with `os.Root` semantics: `OpenExcl` (create-exclusive, no-follow, `0600`), `Open` (read an existing regular file again: verify and the EXDEV copy), `Lstat`, `MkdirAll`, `Remove`, `ReadDir`, `Link` (`fs.ErrExist`, or `errors.ErrUnsupported`), `Free` (free bytes plus device id, for the ledger and the EXDEV decision) and `SyncDir` (the §3 `fsync` of the destdir; it reports success where a directory cannot be synced, e.g. Windows, where `MOVEFILE_WRITE_THROUGH` covers it) |
+| `File` | the staging handle: read, write, seek, `Truncate`, `Sync`, `Close`; reused across retries (§3) |
+| `Finalizer` | `Rename(fs, from, to, replace)`: no-replace per OS (§6.3); `fs.ErrExist`, `ErrUnsupported` or `EXDEV`; `replace=true` only for `--force` after the `Lstat` check |
+| `Resolver` | `LookupIP` for the cover SSRF guard (cache.md §4) |
+| `Journal` | the in-flight journal (§6.4): `Add` and `Entries` plus clearing an entry at the terminal state, over `{job_id, staging, dest_dir, started_at}` |
+| `History` | `Append(Record)`, exactly once per job at its terminal state |
+
+`Record` (input to history, T-19): `JobID, Slug, Platform, State, Code` (empty unless failed), `RawName` (the received
+`link.filename`, escaped before display), `Name` (sanitized; empty if the job failed before naming), `Path`, `Bytes`,
+`SHA256`, `CRC` and `Hash` (`ok|skipped|failed`), `Attempts`, `Started`, `Finished`. Entry and link metadata (`title`,
+`source_name`, `link_index`) are added by the history layer. The fake proxy covers: stall before the first byte, stall mid-stream, truncation, transient 404, 429,
 any 3xx, `Content-Length` mismatch, extra bytes, `Content-Encoding: gzip`, malicious filenames, off-policy URLs (http,
 userinfo, port, IP literal, IDN, trailing dot) and zip bombs. [T-16 §8](../../security/T-16-threat-model-downloader.md) lists the full test set.
 

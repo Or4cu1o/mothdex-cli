@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Downloader contract: within one batch, a name collision under `on_exists: overwrite` is resolved by rename,
+  never by replacing another job's file; the injected ports (`FS.Open`, `FS.SyncDir`, `Journal`, `History`) and the
+  history `Record` are documented. `download` JSON gains `raw_filename` and `hash` (additive).
 - System profiles map 40 to 48 Mothdex platform ids per frontend (Batocera, EmuELEC, RetroBat, EmuDeck, RetroDECK,
   Recalbox) from the T15b research; arcade ids (D18) and `pc` (D19) stay unmapped on purpose. Contracts document the folder
   rules and that the launcher-folder check is lexical and is repeated after path resolution.

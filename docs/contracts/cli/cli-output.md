@@ -48,7 +48,7 @@ Entries and links use the API v1 field names exactly (api-client §1), so `data`
 | `regions` | `{regions: [{id, name}]}` |
 | `db-info` | `{total_entries}` |
 | `version` (and `--version`) | `{version, commit, date, go, os, arch}` (§3.1) |
-| `download` | `{jobs: [{slug, link_index, filename, path, state, bytes, expected_bytes, sha256, crc:"ok|skipped|failed", attempts, duration_ms, error:{code,message}|null}]}` |
+| `download` | `{jobs: [{slug, link_index, filename, raw_filename, path, state, bytes, expected_bytes, sha256, crc:"ok|skipped|failed", hash:"ok|skipped|failed", attempts, duration_ms, error:{code,message}|null}]}` (`filename` is the sanitized name; `raw_filename` is the received one, control characters stripped in human output) |
 | `boxart` | `{slug, path}` |
 | `history` | `{records: [HistoryRecord]}` (same fields as a `download` job + `id, started_at, finished_at, platform, title, source_name`) |
 | `cache stats` | `{namespaces: [{name, items, bytes, expired}], total_bytes, max_bytes}` |
