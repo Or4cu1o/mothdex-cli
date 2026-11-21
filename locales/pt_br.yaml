@@ -63,6 +63,7 @@ errors:
   path_rejected:
     message: 'Recusando gravar em {path}.'
     hint: 'Nada foi gravado. Escolha outra pasta com -o, ou confira profile.folders.'
+    missing_hint: '{path} não existe. Crie a pasta, use -o <pasta> ou execute: mothdex config set download.dir <pasta>'
   unsafe_name:
     message: 'Recusando salvar {name}: o tipo de arquivo pode executar código.'
     hint: 'Nada foi gravado. Escolha outro link com --link, ou use --allow-executable se confiar nele.'
