@@ -241,20 +241,47 @@ func (s *Shell) handle(ctx context.Context, line string) (quit bool, code int) {
 
 // command runs a CLI command line, expanding index ranges for the commands that take entries.
 func (s *Shell) command(ctx context.Context, words []string) int {
-	if cmd, ok := findCommand(s.o.Runner.Commands(), words[0]); ok && indexed(words[0]) {
-		expanded, err := expandIndexes(words[1:], func(flag string) bool {
-			f, found := findFlag(cmd, flag)
-			return found && f.TakesValue
-		})
-		if err != nil {
-			return s.fail(err)
-		}
-		words = append([]string{words[0]}, expanded...)
+	cmd, ok := findCommand(s.o.Runner.Commands(), words[0])
+	if !ok || !indexed(words[0]) {
+		return s.exec(ctx, func(c context.Context) int { return s.o.Runner.Run(c, words) })
 	}
-	return s.exec(ctx, func(c context.Context) int { return s.o.Runner.Run(c, words) })
+	takesValue := func(flag string) bool {
+		f, found := findFlag(cmd, flag)
+		return found && f.TakesValue
+	}
+	expanded, err := expandIndexes(words[1:], takesValue)
+	if err != nil {
+		return s.fail(err)
+	}
+	if !perEntry(words[0]) {
+		words = append([]string{words[0]}, expanded...)
+		return s.exec(ctx, func(c context.Context) int { return s.o.Runner.Run(c, words) })
+	}
+	// info and boxart take one entry: a list or a range runs the command once for each.
+	flags, entries := splitEntries(expanded, takesValue)
+	if len(entries) <= 1 {
+		words = append([]string{words[0]}, expanded...)
+		return s.exec(ctx, func(c context.Context) int { return s.o.Runner.Run(c, words) })
+	}
+	return s.exec(ctx, func(c context.Context) int {
+		code := 0
+		for _, entry := range entries {
+			if c.Err() != nil { // Ctrl+C: the rest of the list is dropped
+				break
+			}
+			one := append(append([]string{words[0]}, flags...), entry)
+			if rc := s.o.Runner.Run(c, one); rc != 0 && code == 0 {
+				code = rc // the first failure is the exit code, and the rest still run
+			}
+		}
+		return code
+	})
 }
 
 func indexed(name string) bool { return name == "info" || name == "download" || name == "boxart" }
+
+// perEntry says whether a command takes one entry at a time: download takes a list, info and boxart do not.
+func perEntry(name string) bool { return name == "info" || name == "boxart" }
 
 // exec runs fn with a context that Ctrl+C cancels: the command stops and the Shell stays
 // (shell.md section 4). A signal that arrived while nobody was running is dropped first.
