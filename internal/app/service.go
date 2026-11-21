@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
+	"github.com/Or4cu1o/mothdex-cli/internal/history"
+	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	"github.com/Or4cu1o/mothdex-cli/internal/session"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -45,12 +47,21 @@ type Options struct {
 	AllowedHosts []string // downloader URL policy (download.allowed_hosts)
 	PageSize     int      // default interface.page_size
 	Prefer       Preference
+	History      *history.Store
+	Config       ConfigSource
+	Profile      library.ProfileInfo
+	Detect       func(context.Context) (library.ProfileInfo, error) // `profile detect`
 }
 
 // Service implements the catalog capability; later capabilities are added to the same type.
 type Service struct {
 	o       Options
 	session *session.Store
+	dl      *downloads
+	hist    *history.Store
+	cfg     ConfigSource
+	profile library.ProfileInfo
+	detect  func(context.Context) (library.ProfileInfo, error)
 
 	coverMu     sync.Mutex
 	coverFlight map[string]*coverCall
@@ -70,7 +81,7 @@ func New(o Options) (*Service, error) {
 	if o.PageSize < 1 || o.PageSize > maxPageSize {
 		o.PageSize = defaultPage
 	}
-	return &Service{o: o, session: session.New(o.Cache), coverFlight: map[string]*coverCall{}, coverFailed: map[string]bool{}}, nil
+	return &Service{o: o, hist: o.History, cfg: o.Config, profile: o.Profile, detect: o.Detect, session: session.New(o.Cache), coverFlight: map[string]*coverCall{}, coverFailed: map[string]bool{}}, nil
 }
 
 // readThrough serves key from the cache when fresh, otherwise calls fetch and stores the answer;
@@ -118,7 +129,11 @@ func (s *Service) resolve(r Ref) (string, error) {
 	return slug, nil
 }
 
-// Close releases the service; the catalog holds nothing that needs flushing.
-func (s *Service) Close() error { return nil }
+// Close cancels running downloads and waits for them to settle (the history is written at each
+// terminal state, so there is nothing left to flush).
+func (s *Service) Close() error {
+	s.closeDownloads()
+	return nil
+}
 
 var _ io.Closer = (*Service)(nil)

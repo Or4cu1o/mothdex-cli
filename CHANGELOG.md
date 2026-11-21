@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `internal/app` (T-20a, in progress): the catalog half of the app service: search with a saved session, entry,
-  random, platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers
-  through the hardened fetcher with a singleflight and a per-session negative cache, stale cache fallback (7 d), and
-  `*app.Error` whose whole text is cleaned of terminal escapes (case 49, service half) with the exit-code mapping.
-
+- `internal/app` (T-20a): the app service behind the four UIs. Catalog: search with a saved session, entry, random,
+  platforms, regions, db-info, link ranking with the downloader URL policy applied first (case 28), covers through
+  the hardened fetcher (singleflight, per-session negative cache), stale cache fallback (7 d). Downloads: `Enqueue`
+  validates every request before queueing any, a Downloader per destination root (`-o` or `download.dir` becomes the
+  absolute root; otherwise the profile ROM root), startup `Cleanup`, journal, `Confiner` with the profile launcher
+  paths, `Jobs`/`Events`/`Cancel`/`Wait`, the frontend refresh once per batch and only after a Done job (case 46),
+  and the history record with title, link index, expected size and error object. Config read path that works on a
+  file holding `on_exists=overwrite`; the overwrite-without-force refusal is `invalid_config` (exit 2). `*app.Error`
+  has its whole text cleaned of terminal escapes and maps to the exit codes (case 49, service half).
 - `internal/history`: JSONL transfer history (`Append`, `List` newest first with a `--failed` filter, damaged lines
   skipped) and export to txt (120 columns), json (the `--json` envelope) and csv (RFC 4180, control and format
   characters stripped, formula guard); `ExportTarget` and `WriteExport` give directory naming, format inference and an
