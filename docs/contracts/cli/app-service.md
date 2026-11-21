@@ -103,6 +103,8 @@ type LinkChoice struct { Index int; Link mothdex.Link; Score int; Available bool
 type DownloadRequest struct {
     Ref Ref; Link LinkSelector
     DestDir string   // "" = config `download.dir` if set, else active profile DestDir(platform) (profiles.md §4)
+    SizeConsent int64 // T-27, downloader §3.2 step 6: 0 = default rule; ConsentAny (-1) = -f/--force, no header-time
+                      // re-confirmation; > 0 = the exact Content-Length accepted through "Download anyway"
 }
 ```
 
