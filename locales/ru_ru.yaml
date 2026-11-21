@@ -293,6 +293,10 @@ ui:
       download: 'Скачать'
       again: 'Скачать снова'
     queue:
+      warming: 'Сервер готовит файл…'
+      connecting: 'Подключение…'
+      verifying: 'Проверка…'
+      saving: 'Сохранение…'
       cancel: 'Отменить загрузку'
       retry: 'Повторить'
       details: 'Подробности'
@@ -350,6 +354,7 @@ ui:
       footer_offline: 'Каталог недоступен. Поиск по кэшу работает.'
       footer_generic: 'Система эмуляции не найдена. Игры сохраняются в {path}.'
     bar:
+      badge_queued_only: 'в очереди {queued}'
       offline: 'Нет сети'
       will_quit: 'Выход после завершения загрузок'
       badge_active: '{active}'

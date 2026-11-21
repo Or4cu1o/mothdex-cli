@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"errors"
 	"image"
 	stddraw "image/draw"
 	"io"
@@ -24,9 +25,10 @@ const (
 
 // coverEntry is a decoded cover, or the fact that it could not be had (so it is not asked for again).
 type coverEntry struct {
-	img    *image.RGBA
-	id     uint64 // names the picture to the backend's texture cache
-	failed bool
+	img     *image.RGBA
+	id      uint64 // names the picture to the backend's texture cache
+	failed  bool
+	retryAt time.Time // a failure that may pass (network, timeout) is asked again after this; zero is for good
 }
 
 // coverCache holds the last maxCovers covers by slug. It is a value: put returns a new cache.
@@ -41,15 +43,32 @@ func (c coverCache) get(slug string) (coverEntry, bool) {
 	return e, ok
 }
 
+// settled reports whether nothing more is to be asked for a slug at time now: it has a cover, or it failed for
+// good, or it failed for a reason that may pass and the wait has not ended.
+func (c coverCache) settled(slug string, now time.Time) bool {
+	e, ok := c.items[slug]
+	return ok && (e.retryAt.IsZero() || now.Before(e.retryAt))
+}
+
+// coverRetryAfter is how long a cover that failed for a reason that may pass is left alone.
+const coverRetryAfter = 30 * time.Second
+
+// permanent reports whether a cover error will not pass on its own: the cover is not there, or it cannot be
+// decoded. A canceled request, a timeout or a network error may pass, so they are asked again later.
+func permanent(err error) bool {
+	var ae *app.Error
+	return errors.As(err, &ae) && ae.Code == app.CodeNotFound
+}
+
 // put stores a cover, giving it an id, and drops the oldest beyond the limit.
-func (c coverCache) put(slug string, img *image.RGBA, failed bool) coverCache {
+func (c coverCache) put(slug string, img *image.RGBA, failed bool, retryAt time.Time) coverCache {
 	items := maps.Clone(c.items)
 	if items == nil {
 		items = map[string]coverEntry{}
 	}
 	order := slices.DeleteFunc(slices.Clone(c.order), func(s string) bool { return s == slug })
 	c.next++
-	items[slug] = coverEntry{img: img, id: c.next, failed: failed}
+	items[slug] = coverEntry{img: img, id: c.next, failed: failed, retryAt: retryAt}
 	order = append(order, slug)
 	for len(order) > maxCovers {
 		delete(items, order[0])
@@ -113,7 +132,7 @@ func (m Model) coverDue(now time.Time) (string, bool) {
 	if want == "" || m.coverBusy != "" || want != m.coverSlug {
 		return "", false
 	}
-	if _, cached := m.covers.get(want); cached || now.Before(m.coverSince.Add(coverSettle)) {
+	if m.covers.settled(want, now) || now.Before(m.coverSince.Add(coverSettle)) {
 		return "", false
 	}
 	return want, true
@@ -137,9 +156,13 @@ func (m Model) onCover(msg coverMsg, now time.Time) (Model, []Cmd) {
 		if !canceled(msg.err) {
 			m.o.Log.Debug("gui: cover", "slug", msg.slug, "err", msg.err)
 		}
-		m.covers = m.covers.put(msg.slug, nil, true)
+		var retryAt time.Time
+		if !permanent(msg.err) {
+			retryAt = now.Add(coverRetryAfter)
+		}
+		m.covers = m.covers.put(msg.slug, nil, true, retryAt)
 	} else {
-		m.covers = m.covers.put(msg.slug, msg.img, false)
+		m.covers = m.covers.put(msg.slug, msg.img, false, time.Time{})
 	}
 	return m.startCover(now)
 }

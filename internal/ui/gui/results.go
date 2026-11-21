@@ -40,21 +40,22 @@ type resultsState struct {
 	since    time.Time // when the first call began, for the spinner that waits 200 ms
 	nextBusy bool
 	prevBusy bool
-	seq      int // a result with another number is from an earlier search and is dropped
+	seq      int                // a result with another number is from an earlier search and is dropped
+	cancel   context.CancelFunc // cancels the first call of the search while it runs
 	meta     app.ResultMeta
 	total    int
 	dropped  int
 }
 
 func (s resultsState) focusedSlug() string {
-	if s.phase != loadOK || s.list.focus >= len(s.win.rows) {
+	if s.phase != loadOK || s.list.focus < 0 || s.list.focus >= len(s.win.rows) {
 		return ""
 	}
 	return s.win.rows[s.list.focus].slug
 }
 
 func (s resultsState) focusedRow() (resultRow, bool) {
-	if s.phase != loadOK || s.list.focus >= len(s.win.rows) {
+	if s.phase != loadOK || s.list.focus < 0 || s.list.focus >= len(s.win.rows) {
 		return resultRow{}, false
 	}
 	return s.win.rows[s.list.focus], true
@@ -75,12 +76,10 @@ type (
 	}
 )
 
+// bestLink is the link a row speaks for: the first one the API lists, which is what the service itself sorts by
+// (app.topSize). The ranking by preference is not exported, so this is an approximation of the top-ranked link
+// (docs/ux/gui.md section 5.6); the downloader checks the real size again (cli#75).
 func bestLink(e mothdex.Entry) mothdex.Link {
-	for _, l := range e.Links {
-		if l.Type == "Game" {
-			return l
-		}
-	}
 	if len(e.Links) > 0 {
 		return e.Links[0]
 	}
@@ -101,27 +100,42 @@ func (m Model) startResults(q app.SearchQuery, random bool, now time.Time) (Mode
 	m.results = resultsState{query: q, random: random, win: newWindow[resultRow](servicePageSize), phase: loadBusy, since: now, seq: seq}
 	m = m.enter(screenResults)
 	m.coverSlug, m.coverSince = "", now
+	ctx, cancel := context.WithTimeout(context.Background(), dbInfoTimeout)
+	m.results.cancel = cancel
 	if random {
-		return m, []Cmd{m.randomCmd(seq)}
+		return m, []Cmd{m.randomCmd(ctx, cancel, seq)}
 	}
-	return m, []Cmd{m.searchCmd(seq, q, 1, 0)}
+	return m, []Cmd{m.searchCmd(ctx, cancel, seq, q, 1, 0)}
 }
 
-func (m Model) searchCmd(seq int, q app.SearchQuery, page, dir int) Cmd {
+// cancelResults stops the call that is running and makes any answer to it stale (B on a wait).
+func (m Model) cancelResults() Model {
+	if m.results.cancel != nil {
+		m.results.cancel()
+	}
+	m.results.seq++
+	return m
+}
+
+func (m Model) searchCmd(ctx context.Context, cancel context.CancelFunc, seq int, q app.SearchQuery, page, dir int) Cmd {
 	svc := m.o.Service
 	q.Page, q.PageSize = page, servicePageSize
 	return func() Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), dbInfoTimeout)
 		defer cancel()
 		res, err := svc.Search(ctx, q)
 		return searchPageMsg{seq: seq, page: page, dir: dir, res: res, err: err}
 	}
 }
 
-func (m Model) randomCmd(seq int) Cmd {
+// moreCmd is the call for a page next to the window: it has its own timeout and nothing cancels it.
+func (m Model) moreCmd(seq int, q app.SearchQuery, page, dir int) Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), dbInfoTimeout)
+	return m.searchCmd(ctx, cancel, seq, q, page, dir)
+}
+
+func (m Model) randomCmd(ctx context.Context, cancel context.CancelFunc, seq int) Cmd {
 	svc, q := m.o.Service, m.results.query
 	return func() Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), dbInfoTimeout)
 		defer cancel()
 		res, err := svc.Random(ctx, app.RandomQuery{Filters: mothdex.Filters{Platforms: q.Platforms, Regions: q.Regions}, Count: randomCount})
 		return randomMsg{seq: seq, res: res, err: err}
@@ -158,16 +172,35 @@ func (m Model) onSearchPage(msg searchPageMsg, now time.Time) (Model, []Cmd) {
 		s.win = window[resultRow]{rows: rows, first: msg.page, pageSize: servicePageSize, totalPages: msg.res.TotalPages}
 		s.phase, s.list = loadOK, listState{}
 	case 1:
-		var dropped int
-		s.win, dropped = s.win.withNext(rows, msg.res.TotalPages)
+		// An answer is taken only if its page is still the one after the window: the call ran off the render
+		// thread, so the window may have moved since it was asked (PR-76 review, Major 1).
+		if msg.page != s.win.lastPage()+1 {
+			m.results = s
+			return m, nil
+		}
+		next, dropped := s.win.withNext(rows, msg.res.TotalPages)
+		if s.list.focus < dropped { // the rows that would drop off the front hold the focus: ask again on demand
+			m.results = s
+			return m, nil
+		}
+		s.win = next
 		s.list.focus -= dropped
 		s.list.top = max(s.list.top-dropped, 0)
 	case -1:
-		var added int
-		s.win, added = s.win.withPrev(rows)
+		if msg.page != s.win.first-1 {
+			m.results = s
+			return m, nil
+		}
+		next, added := s.win.withPrev(rows)
+		if s.list.focus+added >= len(next.rows) { // the rows that would drop off the end hold the focus
+			m.results = s
+			return m, nil
+		}
+		s.win = next
 		s.list.focus += added
 		s.list.top += added
 	}
+	s.list.focus = clampFocus(s.list.focus, len(s.win.rows))
 	s.meta, s.total, s.dropped = msg.res.Meta, msg.res.TotalResults, msg.res.Dropped
 	m.results = s
 	m = m.noteCoverFocus(now)
@@ -203,11 +236,11 @@ func (m Model) fetchMore() (Model, []Cmd) {
 	var cmds []Cmd
 	if !s.nextBusy && s.win.wantNext(s.list.focus) {
 		s.nextBusy = true
-		cmds = append(cmds, m.searchCmd(s.seq, s.query, s.win.lastPage()+1, 1))
+		cmds = append(cmds, m.moreCmd(s.seq, s.query, s.win.lastPage()+1, 1))
 	}
 	if !s.prevBusy && s.win.wantPrev(s.list.focus) {
 		s.prevBusy = true
-		cmds = append(cmds, m.searchCmd(s.seq, s.query, s.win.first-1, -1))
+		cmds = append(cmds, m.moreCmd(s.seq, s.query, s.win.first-1, -1))
 	}
 	m.results = s
 	return m, cmds
@@ -257,8 +290,7 @@ func (m Model) onResultsAction(a input.Action, now time.Time) (Model, []Cmd) {
 	}
 	if s.phase != loadOK {
 		if a == input.Back { // B cancels the wait and goes back
-			m.results.seq++
-			return m.leave(), nil
+			return m.cancelResults().leave(), nil
 		}
 		return m, nil
 	}
@@ -289,8 +321,7 @@ func (m Model) onResultsAction(a input.Action, now time.Time) (Model, []Cmd) {
 		}
 		return m.editSearch(), nil
 	case input.Back:
-		m.results.seq++
-		return m.leave(), nil
+		return m.cancelResults().leave(), nil
 	}
 	m.results = s
 	m = m.noteCoverFocus(now)
@@ -386,10 +417,10 @@ func (m Model) querySummary() string {
 		parts = append(parts, `"`+app.SanitizeText(q.Text)+`"`)
 	}
 	if len(q.Platforms) > 0 {
-		parts = append(parts, strings.Join(q.Platforms, ", "))
+		parts = append(parts, app.SanitizeText(strings.Join(q.Platforms, ", ")))
 	}
 	if len(q.Regions) > 0 {
-		parts = append(parts, strings.Join(q.Regions, ", "))
+		parts = append(parts, app.SanitizeText(strings.Join(q.Regions, ", ")))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -472,10 +503,12 @@ func (m Model) drawResultRow(p painter, r draw.Rect, row resultRow, focused bool
 	markW := 0
 	if m.slugDownloaded(row.slug) {
 		word := m.tr("ui.gui.results.downloaded", nil)
-		markW = p.width(met.Secondary, word) + LineHeight(met.Secondary) + met.Unit
+		cs := LineHeight(met.Secondary) - 6
+		markW = p.width(met.Secondary, word) + cs + met.Unit/2 + met.Unit
 		end := box.Right() - met.Unit
-		p.text(end-p.width(met.Secondary, word), top, met.Secondary, colOK, word)
-		drawCheck(p.l, end-p.width(met.Secondary, word)-LineHeight(met.Secondary)+met.Unit/2, top, LineHeight(met.Secondary)-4, colOK)
+		wordX := end - p.width(met.Secondary, word)
+		p.text(wordX, top, met.Secondary, colOK, word)
+		drawCheck(p.l, wordX-cs-met.Unit/2, top+3, cs, colOK) // one space between the mark and its word
 	}
 	p.text(x, top, met.Secondary, colDim, p.fit(met.Secondary, meta, inner-markW))
 }
@@ -508,7 +541,8 @@ func (m Model) drawLoading(p painter, r draw.Rect, text string, since, now time.
 func (m Model) drawFailure(p painter, r draw.Rect, f failure, retry bool) {
 	met := m.metrics
 	y := r.Y + met.Unit
-	drawCross(p.l, r.X+met.Unit, y+2, LineHeight(met.Body)-4, colError)
+	bang := draw.Rect{X: r.X + met.Unit, Y: y, W: LineHeight(met.Body), H: LineHeight(met.Body)}
+	p.centered(bang, met.Body, colError, "!") // the cross marks failed downloads; an error in place is a !
 	x := r.X + met.Unit + LineHeight(met.Body) + met.Unit
 	w := r.Right() - x
 	for _, line := range p.wrap(met.Body, f.msg, w, 3) {

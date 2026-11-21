@@ -169,6 +169,8 @@ func (m Model) drawFrame(p painter, spec frameSpec) {
 func (m Model) queueBadge() string {
 	active, queued := m.jobs.counts()
 	switch {
+	case queued > 0 && active == 0: // nothing runs yet: "1 queued", not "0 · 1 queued"
+		return m.tr("ui.gui.bar.badge_queued_only", map[string]any{"queued": queued})
 	case queued > 0:
 		return m.tr("ui.gui.bar.badge_queued", map[string]any{"active": active, "queued": queued})
 	case active > 0:
@@ -329,66 +331,126 @@ func (m Model) drawHintBar(p painter, hints []hint, start string, withStart bool
 	h := max(bar.H-met.Unit, 20)
 	y := bar.Y + (bar.H-h)/2
 	size := met.Secondary
+	gap := 2 * met.Unit
+	textY := bar.Y + (bar.H-LineHeight(size))/2
 
-	// Start Menu, at the left; compact keeps the disc and drops the word.
-	x := bar.X + pad
-	if withStart {
-		x += p.pill(x, y, h, input.PositionLabel(input.Start, m.pad)) + met.Unit/2
-		if met.Tier != Compact {
-			if start == "" {
-				start = m.tr("ui.gui.hint.menu", nil)
-			}
-			p.text(x, bar.Y+(bar.H-LineHeight(size))/2, size, colDim, start)
-		}
+	// Start at the left. Its word is kept where Start is not the menu (Search, Done): it is the only clue there.
+	// Where Start is the menu, compact drops the word, and so does a bar with no room (docs/ux/gui.md section 4).
+	startIsMenu := start == ""
+	startWord := start
+	if startIsMenu {
+		startWord = m.tr("ui.gui.hint.menu", nil)
 	}
+	showWord := withStart && (met.Tier != Compact || !startIsMenu)
+	startLabel := input.PositionLabel(input.Start, m.pad)
 
 	limit := maxHints
 	if met.Tier == Compact {
 		limit = 4
 	}
-	hints = dropHints(hints, limit)
-	gap := 2 * met.Unit
-	total := 0
+	hints = shrinkHints(hints, func(hs []hint) bool { return len(hs) <= limit })
+
 	type placed struct {
 		labels []string
 		word   string
 	}
-	items := make([]placed, 0, len(hints))
-	for _, hnt := range hints {
-		labels := []string{input.Hint(hnt.role, m.pad, m.cfg.confirmEast)}
-		if hnt.role2 != input.None {
-			labels = append(labels, input.Hint(hnt.role2, m.pad, m.cfg.confirmEast))
+	place := func(hs []hint) ([]placed, int) {
+		items := make([]placed, 0, len(hs))
+		total := 0
+		for _, hnt := range hs {
+			labels := []string{input.Hint(hnt.role, m.pad, m.cfg.confirmEast)}
+			if hnt.role2 != input.None {
+				labels = append(labels, input.Hint(hnt.role2, m.pad, m.cfg.confirmEast))
+			}
+			items = append(items, placed{labels, hnt.label})
+			for _, l := range labels {
+				total += p.pillWidth(h, l) + met.Unit/4
+			}
+			total += met.Unit/2 + p.width(size, hnt.label)
+			if len(items) > 1 {
+				total += gap
+			}
 		}
-		items = append(items, placed{labels, hnt.label})
-		for _, l := range labels {
-			total += p.pillWidth(h, l) + met.Unit/4
-		}
-		total += met.Unit/2 + p.width(size, hnt.label) + gap
+		return items, total
 	}
-	x = bar.Right() - pad - (total - gap)
+	leftWidth := func(word bool) int {
+		if !withStart {
+			return 0
+		}
+		w := p.pillWidth(h, startLabel)
+		if word {
+			w += met.Unit/2 + p.width(size, startWord)
+		}
+		return w
+	}
+	fits := func(hs []hint, word bool) bool {
+		_, total := place(hs)
+		return leftWidth(word)+gap+total <= bar.W-2*pad
+	}
+	// Too wide: drop L/R first, then the Start word when it means Menu, then Y, then X. A and B always stay
+	// and no word is ever cut.
+	hints = shrinkHints(hints, func(hs []hint) bool { return fits(hs, showWord) || !hasRank(hs, 0) })
+	if !fits(hints, showWord) && showWord && startIsMenu {
+		showWord = false
+	}
+	hints = shrinkHints(hints, func(hs []hint) bool { return fits(hs, showWord) })
+
+	x := bar.X + pad
+	if withStart {
+		x += p.pill(x, y, h, startLabel) + met.Unit/2
+		if showWord {
+			p.text(x, textY, size, colDim, startWord)
+		}
+	}
+	items, total := place(hints)
+	x = bar.Right() - pad - total
 	for _, it := range items {
 		for _, l := range it.labels {
 			x += p.pill(x, y, h, l) + met.Unit/4
 		}
 		x += met.Unit / 2
-		p.text(x, bar.Y+(bar.H-LineHeight(size))/2, size, colDim, it.word)
+		p.text(x, textY, size, colDim, it.word)
 		x += p.width(size, it.word) + gap
 	}
 }
 
-// dropHints keeps at most limit hints: optional ones go first, from the left, then the last ones.
-func dropHints(hints []hint, limit int) []hint {
+// dropRank says how early a hint goes when the bar has no room: the optional L/R pair first, then Y, then X.
+// A and B (and anything else) are never dropped.
+func dropRank(h hint) int {
+	switch {
+	case h.optional:
+		return 0
+	case h.role == input.Info:
+		return 1
+	case h.role == input.Download:
+		return 2
+	}
+	return -1
+}
+
+// hasRank reports whether some hint has exactly the given drop rank.
+func hasRank(hs []hint, rank int) bool {
+	for _, h := range hs {
+		if dropRank(h) == rank {
+			return true
+		}
+	}
+	return false
+}
+
+// shrinkHints drops hints, in the order of dropRank, until done reports the set fits or nothing droppable is
+// left. The hints that stay keep their order.
+func shrinkHints(hints []hint, done func([]hint) bool) []hint {
 	out := append([]hint(nil), hints...)
-	for len(out) > limit {
-		drop := -1
+	for !done(out) {
+		drop, best := -1, 1<<30
 		for i, h := range out {
-			if h.optional {
-				drop = i
-				break
+			if r := dropRank(h); r >= 0 && r < best {
+				drop, best = i, r
 			}
 		}
 		if drop < 0 {
-			drop = len(out) - 1
+			break
 		}
 		out = append(out[:drop], out[drop+1:]...)
 	}

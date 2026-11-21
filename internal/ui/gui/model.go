@@ -545,7 +545,7 @@ func (m Model) NextWake(now time.Time) (time.Time, bool) {
 		}
 		if m.screen == screenResults || m.screen == screenEntry {
 			if want := m.coverWanted(); want != "" && m.coverBusy == "" {
-				if _, cached := m.covers.get(want); !cached && want == m.coverSlug && now.Before(m.coverSince.Add(coverSettle)) {
+				if !m.covers.settled(want, now) && want == m.coverSlug && now.Before(m.coverSince.Add(coverSettle)) {
 					earliest(m.coverSince.Add(coverSettle))
 				}
 			}

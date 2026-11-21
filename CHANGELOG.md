@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
+  drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
+  cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a
+  missing one is not; the row size follows the first listed link like the service's own sort; query ids are sanitized. UX: the hint bar fits
+  in every language (drops L/R, then the Start word where Start is the menu, then Y, then X; A and B stay), compact keeps the Start word on
+  Search and the multi pickers, finished jobs show their bytes alone in Details, the Entry shows the platform name (the list is loaded once),
+  a transferring Queue row is two lines, failed rows keep only the message, the badge says `1 queued`, the Queue's state texts use the
+  ellipsis (`ui.gui.queue.*`), an error in place is marked with a `!`, and the Downloaded mark has a gap before its word.
 - T-55 (GUI PR 2, Medium): browse and download with the pad. Search with the virtual keyboard (abc, àé and, for Russian or Cyrillic text,
   абв layouts, an 80-character limit with a counter, cursor with L and R, a held B that deletes and only leaves at an empty field, the
   physical keyboard through `SDL_TEXTINPUT`), the Platform and Region pickers (multi-select from Search, single-select from Home ›

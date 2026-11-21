@@ -37,6 +37,8 @@ type harness struct {
 	now     time.Time
 	svc     *guitest.Fake
 	pending []Cmd // what New asked for, until run
+	hold    bool  // keep the Cmds the model returns instead of running them, to deliver their answers by hand
+	held    []Cmd
 }
 
 type harnessOpt func(*Options)
@@ -77,6 +79,10 @@ func started(t *testing.T, svc *guitest.Fake, w, h int, opts ...harnessOpt) *har
 
 func (h *harness) run(cmds []Cmd) {
 	h.t.Helper()
+	if h.hold {
+		h.held = append(h.held, cmds...)
+		return
+	}
 	for len(cmds) > 0 {
 		next := cmds[0]
 		cmds = cmds[1:]

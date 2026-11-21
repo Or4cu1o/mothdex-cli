@@ -281,6 +281,10 @@ ui:
       download: 'Descargar'
       again: 'Descargar de nuevo'
     queue:
+      warming: 'Calentando el servidor…'
+      connecting: 'Conectando…'
+      verifying: 'Verificando…'
+      saving: 'Guardando…'
       cancel: 'Cancelar descarga'
       retry: 'Reintentar'
       details: 'Detalles'
@@ -334,6 +338,7 @@ ui:
       footer_offline: 'Catálogo no disponible. Las búsquedas en caché siguen funcionando.'
       footer_generic: 'No se detectó ningún sistema de emulación. Los juegos van a {path}.'
     bar:
+      badge_queued_only: '{queued} en cola'
       offline: 'Sin conexión'
       will_quit: 'Saldrá cuando terminen las descargas'
       badge_active: '{active}'

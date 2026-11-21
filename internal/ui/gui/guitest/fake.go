@@ -41,6 +41,11 @@ type Fake struct {
 	Records    []app.HistoryRecord
 	Covers     map[string]bool // slugs that have a cover (a generated PNG); others answer not_found
 	CoverBlock chan struct{}   // when set, Cover waits on it (or its context)
+	CoverErr   error           // when set, Cover fails with it
+	// SearchBlock holds every Search until it is closed or the call is canceled; SearchEntered gets a value as
+	// each Search starts, so a test knows the call is in flight.
+	SearchBlock   chan struct{}
+	SearchEntered chan struct{}
 
 	SearchErr   error // when set, every Search fails with it
 	EnqueueErr  error
@@ -145,9 +150,22 @@ func matches(e mothdex.Entry, text string, platforms, regions []string) bool {
 }
 
 // Search filters the catalog by text, platforms and regions and cuts a page of q.PageSize.
-func (f *Fake) Search(_ context.Context, q app.SearchQuery) (app.SearchPage, error) {
+func (f *Fake) Search(ctx context.Context, q app.SearchQuery) (app.SearchPage, error) {
 	page := max(q.Page, 1)
 	f.record("search:%s:%d", q.Text, page)
+	if f.SearchEntered != nil {
+		select {
+		case f.SearchEntered <- struct{}{}:
+		default:
+		}
+	}
+	if f.SearchBlock != nil {
+		select {
+		case <-f.SearchBlock:
+		case <-ctx.Done():
+			return app.SearchPage{}, ctx.Err()
+		}
+	}
 	if f.SearchErr != nil {
 		return app.SearchPage{}, f.SearchErr
 	}
@@ -232,6 +250,9 @@ func (f *Fake) Cover(ctx context.Context, ref app.Ref) (io.ReadCloser, string, e
 		case <-ctx.Done():
 			return nil, "", ctx.Err()
 		}
+	}
+	if f.CoverErr != nil {
+		return nil, "", f.CoverErr
 	}
 	if !f.Covers[ref.Slug] {
 		return nil, "", &app.Error{Code: app.CodeNotFound, Message: "no cover"}

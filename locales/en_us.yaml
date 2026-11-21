@@ -281,6 +281,10 @@ ui:
       download: 'Download'
       again: 'Download again'
     queue:
+      warming: 'Warming up the server…'
+      connecting: 'Connecting…'
+      verifying: 'Verifying…'
+      saving: 'Saving…'
       cancel: 'Cancel download'
       retry: 'Retry'
       details: 'Details'
@@ -334,6 +338,7 @@ ui:
       footer_offline: 'Catalog unavailable. Cached searches still work.'
       footer_generic: 'No emulation system detected. Games go to {path}.'
     bar:
+      badge_queued_only: '{queued} queued'
       offline: 'Offline'
       will_quit: 'Will quit when downloads finish'
       badge_active: '{active}'

@@ -91,8 +91,6 @@ const (
 	itemHideDone  = "menu:hide_finished"
 )
 
-func isActive(j app.JobSnapshot) bool { return !j.Terminal() && j.State != app.StateQueued }
-
 // queueItems orders the jobs: active, then queued, then the Finished group, newest first.
 func (m Model) queueItems() []queueItem {
 	var active, queued, finished []app.JobSnapshot
@@ -163,14 +161,14 @@ func (m Model) followFocus() Model {
 	return m
 }
 
-// itemHeight is how tall a Queue row is: a header is one line, a queued or finished job two lines (name and
-// state), and an active job three, since the Warming notice adds a line after 30 s.
+// itemHeight is how tall a Queue row is: a header is one line, a job two lines (name and state), and a job that
+// is warming up or waiting to retry three, since a notice can add a line.
 func (m Model) itemHeight(it queueItem) int {
 	met := m.metrics
 	switch {
 	case it.header != "":
 		return LineHeight(met.Secondary) + met.Unit
-	case isActive(it.job):
+	case it.job.State == app.StateWarming || it.job.State == app.StateRetryWait: // these can show a hint line
 		return LineHeight(met.Body) + 2*LineHeight(met.Secondary) + met.Unit
 	}
 	return LineHeight(met.Body) + LineHeight(met.Secondary) + met.Unit
@@ -447,19 +445,19 @@ func (m Model) drawJobRow(p painter, r draw.Rect, j app.JobSnapshot, now time.Ti
 	case app.StateQueued:
 		p.text(x, y, met.Secondary, colDim, m.tr("ui.status.queued", nil))
 	case app.StatePreflight, app.StateConnecting:
-		p.text(x, y, met.Secondary, colText, m.tr("ui.cli.download.connecting", nil))
+		p.text(x, y, met.Secondary, colText, m.tr("ui.gui.queue.connecting", nil))
 	case app.StateWarming:
 		since := m.book.warmSince[j.ID]
-		p.text(x, y, met.Secondary, colWarn, m.tr("ui.cli.download.warming", nil)+" "+clock(now.Sub(since)))
+		p.text(x, y, met.Secondary, colWarn, m.tr("ui.gui.queue.warming", nil)+" "+clock(now.Sub(since)))
 		if now.Sub(since) >= warmHintAfter {
 			p.text(x, y+LineHeight(met.Secondary), met.Secondary, colDim, p.fit(met.Secondary, m.tr("ui.tui.queue.warming_hint", nil), w))
 		}
 	case app.StateRetryWait:
 		p.text(x, y, met.Secondary, colWarn, m.tr("ui.cli.download.retry", i18n.Args{"attempt": j.Attempt}))
 	case app.StateVerifying:
-		p.text(x, y, met.Secondary, colText, m.tr("ui.cli.download.verifying", nil))
+		p.text(x, y, met.Secondary, colText, m.tr("ui.gui.queue.verifying", nil))
 	case app.StateFinalizing:
-		p.text(x, y, met.Secondary, colText, m.tr("ui.cli.download.saving", nil))
+		p.text(x, y, met.Secondary, colText, m.tr("ui.gui.queue.saving", nil))
 	default:
 		m.drawProgress(p, draw.Rect{X: x, Y: y, W: w, H: LineHeight(met.Secondary)}, j, now)
 	}
@@ -507,8 +505,7 @@ func (m Model) drawFinishedRow(p painter, r draw.Rect, j app.JobSnapshot) {
 		p.text(x+mark+met.Unit, y, met.Body, colText, p.fit(met.Body, label, w-mark-met.Unit))
 		msg := m.tr("errors.canceled.message", nil)
 		if j.Err != nil {
-			f := m.failureOf(j.Err)
-			msg = f.msg + " [" + f.code + "]"
+			msg = m.failureOf(j.Err).msg // the code is in Details
 		}
 		p.text(x, y+LineHeight(met.Body), met.Secondary, colError, p.fit(met.Secondary, msg, w))
 	}
@@ -562,7 +559,11 @@ func (m Model) drawDetails(p painter) {
 	}
 	add("file", app.SanitizeText(j.Name))
 	add("path", app.SanitizeText(j.Path))
-	add("size", humanSize(j.Bytes)+" / "+humanSize(j.Expected))
+	size := humanSize(j.Bytes)
+	if !j.Terminal() && j.Expected > 0 && j.Expected != j.Bytes { // "X / Y" only while the job runs
+		size += " / " + humanSize(j.Expected)
+	}
+	add("size", size)
 	if j.SHA256 != "" {
 		add("sha", app.SanitizeText(j.SHA256[:min(detailHashLen, len(j.SHA256))])+"…")
 	}

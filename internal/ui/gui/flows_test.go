@@ -374,7 +374,7 @@ func TestXQueuesTheRowAndToastsTheLink(t *testing.T) {
 	if svc.Count("enqueue:zelda-002:0") != 1 {
 		t.Fatalf("calls %v: the default link is asked with no index", svc.Calls())
 	}
-	h.mustHave("Queued: Zelda 002 (link 1)", "0 · 1 queued")
+	h.mustHave("Queued: Zelda 002 (link 1)", "1 queued")
 	done := svc.JobList[0]
 	done.State = app.StateDone
 	done.LinkIndex = 1
@@ -679,9 +679,9 @@ func TestQueueListsActiveQueuedThenFinishedAndShowsTheStateTexts(t *testing.T) {
 		}
 		last = i
 	}
-	h.mustHave("2 active · 1 queued", "Warming up the server... 00:00", "Queued")
+	h.mustHave("2 active · 1 queued", "Warming up the server… 00:00", "Queued")
 	h.advance(31 * time.Second)
-	h.mustHave("Warming up the server... 00:31", "The server is fetching this file from peers. This is normal.")
+	h.mustHave("Warming up the server… 00:31", "The server is fetching this file from peers. This is normal.")
 }
 
 func focusJob(t *testing.T, h *harness, id app.JobID) {

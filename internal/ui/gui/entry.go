@@ -23,6 +23,7 @@ type entryState struct {
 	focus       int              // index in links
 	why         bool
 	seq         int
+	cancel      context.CancelFunc // cancels the call that loads the entry
 }
 
 type entryMsg struct {
@@ -43,8 +44,11 @@ func (m Model) loadEntry(slug, title string, now time.Time) (Model, []Cmd) {
 	m.entry = entryState{slug: slug, title: title, phase: loadBusy, since: now, seq: seq, why: m.entry.why}
 	m.coverSlug, m.coverSince = slug, now
 	svc, prefer := m.o.Service, m.o.Prefer
-	return m, []Cmd{func() Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), dbInfoTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dbInfoTimeout)
+	m.entry.cancel = cancel
+	// The platform name comes from the Platforms list: load it once into the picker's cache if it is not there.
+	m, names := m.loadCatalog(pickPlatform, now)
+	return m, append(names, func() Msg {
 		defer cancel()
 		ref := app.Ref{Slug: slug}
 		res, err := svc.Entry(ctx, ref)
@@ -53,7 +57,7 @@ func (m Model) loadEntry(slug, title string, now time.Time) (Model, []Cmd) {
 		}
 		links, err := svc.Links(ctx, ref, app.LinkSelector{Prefer: prefer})
 		return entryMsg{seq: seq, entry: res.Value, links: links, err: err}
-	}}
+	})
 }
 
 func (m Model) onEntry(msg entryMsg) Model {
@@ -103,8 +107,7 @@ func (m Model) onEntryAction(a input.Action, now time.Time) (Model, []Cmd) {
 				return m.loadEntry(s.slug, s.title, now)
 			}
 		case input.Back:
-			m.entry.seq++
-			return m.leave(), nil
+			return m.cancelEntry().leave(), nil
 		}
 		return m, nil
 	}
@@ -128,11 +131,19 @@ func (m Model) onEntryAction(a input.Action, now time.Time) (Model, []Cmd) {
 	case input.PageDown:
 		return m.neighbour(1, now)
 	case input.Back:
-		m.entry.seq++
-		return m.leave(), nil
+		return m.cancelEntry().leave(), nil
 	}
 	m.entry = s
 	return m, nil
+}
+
+// cancelEntry stops the call that loads the entry and makes its answer stale.
+func (m Model) cancelEntry() Model {
+	if m.entry.cancel != nil {
+		m.entry.cancel()
+	}
+	m.entry.seq++
+	return m
 }
 
 // neighbour is L or R: the previous or next entry of the Results list.
