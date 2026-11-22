@@ -128,6 +128,7 @@ make_gui_tag() {
     echo license >/tmp/build/LICENSE
     echo noto >/tmp/build/THIRD_PARTY/NotoSans-OFL-1.1.txt
     echo zlib >/tmp/build/THIRD_PARTY/SDL_GameControllerDB-zlib.txt
+    echo readme >/tmp/build/THIRD_PARTY/README.md
     members="mothdex-gui LICENSE THIRD_PARTY"
     name=mothdex-gui_${ver}_$t.tar.gz
     case $variant in
@@ -692,6 +693,15 @@ inst --profile retrobat
 check "retrobat points to install.ps1" out_has "install.ps1"
 inst --profile nonsense
 check "unknown profile fails" rc_not0
+
+# --- Ports: the notice lists of both installers equal the files of THIRD_PARTY/ (a new notice must not break installs) --
+notice_list_sh() { sed -n 's/^NOTICE_NAMES="\(.*\)"$/\1/p' "$REPO/install.sh" | tr ' ' '\n' | sort; }
+# shellcheck disable=SC2016  # the PowerShell variable name is matched literally
+notice_list_ps1() { grep '^\$NoticeNames = ' "$REPO/install.ps1" | grep -o "'[^']*'" | tr -d "'" | sort; }
+notice_files() { (cd "$REPO/THIRD_PARTY" && for f in *; do [ -f "$f" ] && printf '%s\n' "$f"; done) | sort; }
+CASE=notice-lists
+check "install.sh notice list equals THIRD_PARTY/" text_is "$(notice_list_sh)" "$(notice_files)"
+check "install.ps1 notice list equals THIRD_PARTY/" text_is "$(notice_list_ps1)" "$(notice_files)"
 
 # --- Ports: GUI archive, eligibility, launcher v2, default flip (ports.md sections 2 and 5; T-70 IC-1 to IC-12) ---------
 

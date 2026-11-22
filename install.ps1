@@ -63,7 +63,7 @@ $Marker = 'rem mothdex-launcher v2'
 $LauncherName = 'Mothdex.bat'
 $LicensesName = 'mothdex-licenses'
 # The notices this installer ships (T-70 IC-5): the only names ever removed from mothdex-licenses.
-$NoticeNames = @('NotoSans-OFL-1.1.txt', 'SDL_GameControllerDB-zlib.txt', 'SDL2-zlib.txt', 'purego-Apache-2.0.txt', 'x-image-BSD-3-Clause.txt')
+$NoticeNames = @('README.md', 'NotoSans-OFL-1.1.txt', 'SDL_GameControllerDB-zlib.txt', 'SDL2-zlib.txt', 'purego-Apache-2.0.txt', 'x-image-BSD-3-Clause.txt')
 $ProbeSeconds = 20
 $RefreshUrl = 'http://127.0.0.1:1234/reloadgames'
 $script:Failed = $false

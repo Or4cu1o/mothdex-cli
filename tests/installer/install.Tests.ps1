@@ -302,6 +302,7 @@ function New-GuiTag([string]$Tag, [string]$Variant) {
     'LICENSE' = 'license'
     'THIRD_PARTY/NotoSans-OFL-1.1.txt' = 'noto'
     'THIRD_PARTY/SDL2-zlib.txt' = 'zlib'
+    'THIRD_PARTY/README.md' = 'readme'
   }
   $links = @()
   switch ($Variant) {
