@@ -31,7 +31,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: scripts/ci-scope.sh '.goreleaser.yaml' '.github/workflows/release.yml' '.github/workflows/release-check.yml' 'scripts/verify-dist.sh' 'scripts/ci-scope.sh' 'tools/*' 'cmd/*' 'internal/*' 'pkg/*' 'go.mod' 'go.sum' 'LICENSE' 'README.md' 'CHANGELOG.md'
+        run: scripts/ci-scope.sh release
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
