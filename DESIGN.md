@@ -103,7 +103,8 @@ Measured contrast (WCAG 2.x formula):
 
 | Role | Face | compact | standard | large | Use |
 |---|---|---|---|---|---|
-| `display` | Handjet | 35 | 46 | 68 | top bar title and wordmark, Home tile labels, Settings section headers, the calibration percent, splash |
+| `display` | Handjet | 35 | 46 | 68 | top bar title and wordmark, Home tile labels, the calibration percent, splash |
+| `display.small` | Handjet | 27 | 35 | 51 | Settings section headers (`body` x 1.35) |
 | `title` | Noto Sans | 26 | 34 | 50 | entry title on the Entry screen, dialog titles (sentences) |
 | `body` | Noto Sans | 20 | 26 | 38 | as gui.md §1.3 |
 | `secondary` | Noto Sans | 17 | 21 | 31 | as gui.md §1.3 |
@@ -146,7 +147,7 @@ Measured contrast (WCAG 2.x formula):
     `1u` inside the left edge, and the item text starts at `3u`.
   - Grids, lists and dialog buttons use the frame alone.
   - The cursor does not blink.
-- **Windows** (dialogs, Start menu, sheets, details, Buttons overlay, keyboard): `surface.raised` with a `P` frame in
+- **Windows** (dialogs, Start menu, sheets, details, Buttons overlay): `surface.raised` with a `P` frame in
   `color.frame` outside it, over the `scrim`. This reads as a classic console text window and separates layers
   without shadows.
 - **Top bar:**
@@ -158,13 +159,16 @@ Measured contrast (WCAG 2.x formula):
   drawn on the pixel grid.
 - **Progress bar:** segmented. Blocks are `3P` wide with a `P` gap, the height follows gui.md §1.4, and blocks are
   filled in `moth` over a `bg` track drawn in the same blocks. The percent stays in text beside it.
-- **Spinner:** 8 blocks of `2P` around a `6P` square. One step per 100 ms, the newest block at full color and the rest
-  fading to 25 %. Replaces the ring of gui.md §4.
+- **Spinner:** a 3 x 3 ring of 8 square blocks with `P` gaps and an empty centre, as tall as the text line beside it.
+  One step per 100 ms, the newest block at full color and the rest fading to 25 %. Replaces the ring of gui.md §4.
 - **Status marks** (`✔ ✘ ! – ↓`): drawn on the pixel grid in the state colors, at the cap height of the text beside
   them (gui.md §1.3 rule, now pixel-aligned).
 - **Night sky (Home and splash only):** still specks of `P` x `P` in `color.frame`, about one per 5,200 px² of
   screen, at fixed positions from a seeded list. They are drawn on `bg` only, never over a surface, and never move.
-- **Settings section headers:** `display` in `text.dim`.
+- **Settings section headers:** `display.small` in `text.dim`, with `1u` above and `0.5u` below; they never touch a
+  row or the focus frame.
+- **On-screen keyboard:** part of the Search screen, not a window over the scrim, so it has no frame; its keys use the
+  2-step notch.
 - **Calibration view:** the percent is in `display`. The corner brackets are pixel Ls in `focus.ring`, as gui.md §1.2
   says.
 
