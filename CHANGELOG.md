@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-75: the cover fetcher's address filter blocks all of `::/8` (it only had `::/96`) and the unassigned rest of
+  `64:ff9b::/32`; the well-known NAT64 `/96` is still judged by its embedded IPv4 address, so DNS64 networks keep
+  working (cache.md). The GIF first-frame and WebP frame-against-canvas checks were already in place and tested.
+  A small test pins the VP8 14-bit mask.
 - `ports.md` §5.6: `mothdex-licenses/` is handled by a fixed list of shipped notice names equal to `THIRD_PARTY/`
   (`README.md` included), kept in step with it by a test; uninstall removes only those names (PR-88 re-check).
 - `docs/ux/gui.md` §5.8, `tui.md` §5 and `shell.md` §4 v1.2 (T-56, Bússola): the Download anyway rules shipped in
