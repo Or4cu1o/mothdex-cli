@@ -164,6 +164,9 @@ func (b *Backend) openWindow(o BackendOptions) error {
 	if b.win, err = b.lib.CreateWindow(title, w, h, flags); err != nil {
 		return err
 	}
+	if !o.Hidden {
+		b.showAndFocus()
+	}
 	attempts := []uint32{RendererPresentVSync, 0, RendererSoftware}
 	if o.Software {
 		attempts = []uint32{RendererSoftware}
@@ -175,6 +178,47 @@ func (b *Backend) openWindow(o BackendOptions) error {
 		b.log.Warn("sdl: renderer not available, trying the next kind", "flags", rflags, "err", err)
 	}
 	return err
+}
+
+// showAndFocus makes sure the window is on screen and has the input focus. A process that was started hidden (RetroBat
+// runs the Port's .bat with a hidden window style, ports.md PRT-G12) can have the first ShowWindow call of its life
+// answered with the start-up show state instead of the one asked for, so a window SDL meant to show stays hidden. SDL shows
+// the window when it creates it, which can be that first call; the explicit show here is then the one that counts. The
+// result is logged, for the beta checks (B11): one call is the normal case, two means the first was swallowed.
+func (b *Backend) showAndFocus() {
+	calls, shown := ensureShown(windowSteps{
+		show:  func() { b.lib.ShowWindow(b.win) },
+		raise: func() { b.lib.RaiseWindow(b.win) },
+		shown: func() bool { return b.lib.WindowFlags(b.win)&WindowShown != 0 },
+	})
+	if !shown {
+		b.log.Warn("sdl: the window is not shown after asking twice", "calls", calls)
+		return
+	}
+	b.log.Info("sdl: window shown", "calls", calls)
+}
+
+// windowSteps are the three things ensureShown asks of a window.
+type windowSteps struct {
+	show, raise func()
+	shown       func() bool
+}
+
+// maxShowCalls is how many times a window is asked to show: the first may be swallowed by a hidden start-up state.
+const maxShowCalls = 2
+
+// ensureShown asks for the window to be shown and raised until it reports itself shown, at most maxShowCalls times. It
+// returns how many calls it made and whether the window ended up shown.
+func ensureShown(s windowSteps) (calls int, shown bool) {
+	for calls < maxShowCalls {
+		calls++
+		s.show()
+		s.raise()
+		if s.shown() {
+			return calls, true
+		}
+	}
+	return calls, false
 }
 
 func (b *Backend) openControllers() {

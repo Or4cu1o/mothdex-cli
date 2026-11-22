@@ -22,6 +22,7 @@ const (
 	InitVideo          = 0x00000020
 	InitGameController = 0x00002000
 
+	WindowShown             = 0x00000004
 	WindowHidden            = 0x00000008
 	WindowFullscreenDesktop = 0x00001001
 
