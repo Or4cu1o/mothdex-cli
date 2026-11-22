@@ -77,13 +77,13 @@ func absInt(n int) int {
 	return n
 }
 
-// stripArgument cleans a substituted value: every Cc and Cf rune goes (a newline or tab becomes a
-// space), so server data cannot add lines to the error block or hide text from the terminal. Only
+// stripArgument cleans a substituted value: every Cc and Cf rune goes (a newline, tab, U+2028 or U+2029
+// becomes a space), so server data cannot add lines to the error block or hide text from the terminal. Only
 // the locale template may carry a newline.
 func stripArgument(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch {
-		case r == '\n' || r == '\t' || r == '\r':
+		case r == '\n' || r == '\t' || r == '\r' || r == '\u2028' || r == '\u2029':
 			return ' '
 		case unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r):
 			return -1

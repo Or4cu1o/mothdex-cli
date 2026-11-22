@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-74 (PR-37 backlog): `stripArgument` maps U+2028 and U+2029 to a space; the locale loader's warnings (which can echo a
+  path or YAML text from the locale folder) are cleaned of control characters; `readCatalog` opens the file once, checks
+  type and size on the open handle and caps the read, so a file that grew after the stat cannot pass the 1 MiB limit.
+  Production loads the user's locale folder only through `LoadDir` (os.Root); `Load(locales.FS)` is used with the embedded
+  files alone.
 - T-69: backlog cleanup. The stale-session search warning already existed (T-25) and now has a CLI test; the
   `config.Set` overwrite refusal already had tests; a retry after a 503 under the 2x size rule keeps the pinned
   `Content-Length` across the 503 (test); the duplicated edge case of T-64 was removed from `TestCase32e`.

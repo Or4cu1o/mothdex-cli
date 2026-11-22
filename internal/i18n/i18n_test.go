@@ -1,6 +1,7 @@
 package i18n
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -303,3 +304,70 @@ func TestEmbeddedLocalesTranslateTheErrorTable(t *testing.T) {
 		t.Fatal("translated keys of a best-effort locale are used")
 	}
 }
+
+// T-74 S1: U+2028 and U+2029 are Zl/Zp, not Cc/Cf, and some terminals and log viewers break a line on them.
+func TestArgumentsCannotBreakLinesWithUnicodeSeparators(t *testing.T) {
+	b, _ := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("m: 'x {h} y'\n")}})
+	got := b.New("en_us").T("m", Args{"h": "a b c"})
+	if got != "x a b c y" {
+		t.Fatalf("U+2028 and U+2029 must become spaces: %q", got)
+	}
+}
+
+// T-74 S2: a warning that echoes text from the locale folder (here its path) carries no control character.
+func TestWarningsAreSanitised(t *testing.T) {
+	notDir := filepath.Join(t.TempDir(), "a\x1b[31mb‮")
+	if err := os.WriteFile(notDir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b, err := LoadDir(fstest.MapFS{"en_us.yaml": {Data: []byte("a: 'A'\n")}}, notDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := b.Warnings()
+	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b‮") {
+		t.Fatalf("warnings: %q", ws)
+	}
+}
+
+// lyingFS reports a small size for a file that is really large: a file that grew after the stat.
+type lyingFS struct{ fstest.MapFS }
+
+type smallStat struct{ fs.File }
+
+func (s smallStat) Stat() (fs.FileInfo, error) {
+	info, err := s.File.Stat()
+	return sizedInfo{info}, err
+}
+
+type sizedInfo struct{ fs.FileInfo }
+
+func (sizedInfo) Size() int64 { return 10 }
+
+func (l lyingFS) Open(name string) (fs.File, error) {
+	f, err := l.MapFS.Open(name)
+	if err != nil || name != "big_xx.yaml" {
+		return f, err
+	}
+	return smallStat{f}, nil
+}
+
+// T-74 S3: the size limit holds on the bytes read, not only on the size a stat reported.
+func TestCatalogReadIsCappedWhateverTheStatSaid(t *testing.T) {
+	big := []byte("a: '" + strings.Repeat("x", 1<<20) + "'\n")
+	src := lyingFS{fstest.MapFS{"big_xx.yaml": {Data: big}}}
+	if _, err := readCatalog(src, "big_xx.yaml"); err == nil || !strings.Contains(err.Error(), "larger than 1 MiB") {
+		t.Fatalf("a file over the limit must be refused: %v", err)
+	}
+}
+
+func (l lyingFS) Stat(name string) (fs.FileInfo, error) {
+	f, err := l.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return f.Stat()
+}
+
+func (l lyingFS) ReadFile(name string) ([]byte, error) { return l.MapFS.ReadFile(name) }
