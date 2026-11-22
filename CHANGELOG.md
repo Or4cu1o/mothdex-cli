@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LD_LIBRARY_PATH`), SDL2 per system, gamepad mapping sources, ROM destination through the profiles, install, upgrade
   and uninstall with the D22 default flip and a `mothdex-gui --probe` eligibility check, third-party notices, the
   community beta checklist and the open questions for research.
+- T-70: threat model of the Ports installer (`docs/security/T-70-threat-model-ports-installer.md`, Sentinela) with
+  installer constraints IC-1 to IC-13; `ports.md` follows it: launchers forward no arguments, the probe runs from
+  `bin_dir` with a scrubbed environment, the GUI archive is decided from `checksums.txt`, and a failed Windows probe
+  installs neither `mothdex-gui.exe` nor `SDL2.dll`.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a

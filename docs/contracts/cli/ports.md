@@ -14,7 +14,8 @@ Sources:
 
 A **Port** is the launcher file that a frontend lists and runs like a game, so a gamepad user can open `mothdex-gui`
 without a terminal. This document fixes what the installers write, where, with which content, and what stays to be
-confirmed on hardware. It details the installer item of gui.md §6 and the launcher item of profiles.md §4.
+confirmed on hardware. The installer constraints IC-1 to IC-13 of the threat model
+[T-70](../../security/T-70-threat-model-ports-installer.md) §5 bind the implementation. It details the installer item of gui.md §6 and the launcher item of profiles.md §4.
 
 Every fact below comes from the sources above. A fact the research did not confirm is labelled ⚠ and listed in §9 as
 an open question (OQ-PRT-n). Do not turn an OQ into code behavior without new research.
@@ -56,8 +57,8 @@ POSIX (`Mothdex.sh`, mode `0755`):
 ```sh
 #!/bin/sh
 # mothdex-launcher v2
-if [ -x "<bin_dir>/mothdex-gui" ]; then exec "<bin_dir>/mothdex-gui" "$@"; fi
-exec "<bin_dir>/mothdex" tui "$@"
+if [ -x "<bin_dir>/mothdex-gui" ]; then exec "<bin_dir>/mothdex-gui"; fi
+exec "<bin_dir>/mothdex" tui
 ```
 
 Windows (`Mothdex.bat`, CRLF, UTF-8 without BOM):
@@ -67,11 +68,15 @@ Windows (`Mothdex.bat`, CRLF, UTF-8 without BOM):
 rem mothdex-launcher v2
 setlocal DisableDelayedExpansion
 if not exist "<bin_dir>\mothdex-gui.exe" goto tui
-"<bin_dir>\mothdex-gui.exe" %*
+"<bin_dir>\mothdex-gui.exe"
 exit /b %errorlevel%
 :tui
-"<bin_dir>\mothdex.exe" tui %*
+"<bin_dir>\mothdex.exe" tui
 ```
+
+**No argument forwarding** (T-70 IC-6): `cmd` re-parses `%*`, so an `&` in an argument would run a command, and a
+Port needs no arguments. If OQ-PRT-1 shows that a frontend passes arguments the GUI needs, they come back in the `.sh`
+template only, with the GUI and TUI rejecting unknown positional arguments.
 
 `<bin_dir>` is the directory where the binaries actually landed: after the `install.sh` noexec fallback to
 `$HOME/.local/bin`, it is the fallback directory.
@@ -130,9 +135,10 @@ Whether the frontend stops EmulationStation and releases the pad and the display
 - whether `LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`, `SDL_GAMECONTROLLERCONFIG` and `SDL_GAMECONTROLLERCONFIG_FILE` are
   set, as names with `set` or `unset`, and the value of `SDL_VIDEODRIVER` only;
 - `LANG` and `LC_ALL`;
-- the number of mapping lines added from each source and the type of each connected controller.
+- the number of mapping lines added from each source and the type of each connected controller;
+- whether `LD_PRELOAD` and `SDL_DYNAMIC_API` are set, as names only (T-70 IC-13).
 
-No value of a mapping, path list or other variable is logged. This line is what the beta report template (§8) asks
+No value of a mapping, path list or other variable is logged, and no path at all. This line is what the beta report template (§8) asks
 testers to paste.
 
 ## 5. Install, upgrade and uninstall
@@ -152,10 +158,12 @@ executable; cosign when available; TH-30 paths; TH-31 directory ownership; the e
 
 - **When the default flips:** in the same installer change that adds GUI install support, merged with the release PR
   of the first version that publishes `mothdex-gui_` archives. The installer decides by the release it installs, not by
-  its own version: if that release has no `mothdex-gui_` archive for the arch, the GUI part is skipped with a note,
-  and the launcher stays opt-in (D22 rule) for that release.
-- The flip is an owner decision already taken (D22: on by default once E-M3 ships, gui.md §6). Sentinela's threat
-  model may still ask to keep `--launcher` opt-in; that would be a new owner decision.
+  its own version, and only from that release's verified `checksums.txt` (T-70 IC-3): a `mothdex-gui_` archive for the
+  arch that is not listed means the GUI part is skipped with a note and the launcher stays opt-in (D22 rule) for that
+  release; one that is listed but cannot be downloaded or verified aborts the whole install.
+- The flip is an owner decision already taken (D22: on by default once E-M3 ships, gui.md §6). T-70 §6 keeps it, on
+  condition of IC-7 (`install.ps1` writes `Mothdex.bat` only into a trusted `roms\windows`, as `install.sh` already does)
+  and IC-12 (every run that writes the launcher prints its path and how to opt out).
 - `--dry-run` prints the GUI archive, the eligibility result (§5.2) and the launcher path, and changes nothing.
 
 ### 5.2 GUI eligibility (Linux)
@@ -167,8 +175,10 @@ The GUI is dynamic on Linux, so the installer must prove it can start before it 
 2. Verify it exactly like the CLI archive: SHA-256 against the same `checksums.txt`, cosign when available. **A
    verification failure aborts the whole install** before anything is written, as for the CLI; it never degrades to
    "CLI only".
-3. Extract into the installer's private temp dir and run `mothdex-gui --probe` from there (new flag, Vitral; see
-   below). Exit 0 means eligible.
+3. Extract by exact member name only (T-70 IC-4), copy the binary to its staging name in `bin_dir`, and run
+   `mothdex-gui --probe` there with a scrubbed environment and a time bound (IC-1, IC-2, IC-10), never from the temp
+   dir. Exit 0 means eligible: rename it into place. Exit 1 means not eligible: delete the staging file. An exec failure
+   (126, 127, `ENOEXEC`) is an installer error that is reported, never a silent "not eligible".
 4. Not eligible (missing interpreter, missing or too old SDL2, wrong userland arch): warn with the probe's one-line
    reason, do not install the GUI, and keep the CLI install. The launcher, when on, then runs `mothdex tui`.
 
@@ -182,7 +192,8 @@ This replaces the `ldconfig -p` check of gui.md §6. One run proves the interpre
 soname together, and does not depend on `ldconfig` being present on these images (Unverified).
 
 Windows: the archive carries `SDL2.dll`. `install.ps1` runs `mothdex-gui.exe --probe` the same way. A failure there is
-a packaging bug, so it is reported as an error, and the CLI install still completes.
+a packaging bug, so it is reported as an error. As on Linux, neither `mothdex-gui.exe` nor `SDL2.dll` is installed
+(T-70 IC-9); the CLI install still completes and the launcher runs `tui`.
 
 ### 5.3 Files written
 
@@ -313,7 +324,7 @@ template; the compatibility matrix lists the B-items per system.
 | PRT-G4 | Guindaste | installers: GUI archive, eligibility, `v2` launcher, `--no-gui`/`--no-launcher` and `-NoGui`/`-NoLauncher`, the default flip, `mothdex-licenses/`, uninstall and upgrade rules; installer tests for each case (`tests/installer/`); the beta report template (§8) |
 | PRT-G5 | Alicerce, with Guindaste's PR | gui.md §6: replace the `ldconfig -p` check with `--probe`, and `THIRD_PARTY.md` with `THIRD_PARTY/`; release-artifacts.md: the static-binary sentence (already listed in gui.md §6) |
 | PRT-G6 | Bússola | **closed (v1: no metadata).** The name `Mothdex` comes from the file name. No `gamelist.xml` entry: the file belongs to the frontend and the person, and EmulationStation rewrites it on exit and on scrape. No image in v1: art is deferred to the brand session (D28 8b). If that session approves art, this contract adds how each frontend shows it without writing `gamelist.xml` (for example a media file next to the script), Unverified per frontend and checked under B1 |
-| PRT-G7 | Sentinela | threat model of §5 before coding: the default-on launcher, running `--probe` as root from the temp dir, the inherited environment (§2.3), and Windows `SDL2.dll` placement |
+| PRT-G7 | Sentinela | **closed by T-70** ([threat model](../../security/T-70-threat-model-ports-installer.md)): constraints IC-1 to IC-13 bind PRT-G3 and PRT-G4, IC-8 (`SetDefaultDllDirectories` in `mothdex-gui.exe`) goes to Vitral; residuals R1-R5 recorded there |
 
 ## 11. Test plan (risk paths)
 
@@ -326,8 +337,19 @@ template; the compatibility matrix lists the B-items per system.
   - uninstall removes only marked files and `mothdex-licenses/`;
   - the launcher content equals the template for a given `bin_dir`;
   - a path with unsafe characters skips the launcher;
-  - the noexec fallback writes the launcher with the fallback dir.
-- **`install.ps1`** (Pester): the same cases; `SDL2.dll` lands only in the ACL-checked `bin_dir`.
+  - the noexec fallback writes the launcher with the fallback dir;
+  - T-70: a probe run with `LD_PRELOAD` set in the installer environment does not see it (IC-1);
+  - `/tmp` noexec still installs the GUI, because the probe runs in `bin_dir` (IC-2);
+  - a probe exec failure is reported, not taken as "not eligible" (IC-2);
+  - a GUI archive not listed in `checksums.txt` is skipped, a listed one that fails to download aborts (IC-3);
+  - an archive with an extra member, a symlink member or `../` aborts (IC-4);
+  - a `mothdex-licenses` symlink is refused (IC-5);
+  - `%*` and `"$@"` are absent from both templates (IC-6);
+  - the refresh ignores `http_proxy` (IC-11).
+- **`install.ps1`** (Pester): the same cases; `SDL2.dll` lands only in the ACL-checked `bin_dir`; the launcher is
+  skipped in a `roms\windows` where Users can write (IC-7); a probe failure installs neither `mothdex-gui.exe` nor
+  `SDL2.dll` (IC-9).
+- **GUI on Windows** (Vitral, spike job): a garbage `vulkan-1.dll` on `PATH` is ignored (IC-8).
 - **GUI** (Vitral, tag `gui`, existing spike jobs): `--probe` exits 0 with the distro SDL, and 1 with no SDL on the
   library path; the diagnostics line names variables without values.
 - No test reads this document's text, and none needs a real frontend.
