@@ -30,10 +30,10 @@ import (
 
 // Colors the model draws with (docs/ux/gui.md section 1.5).
 var (
-	colorBG        = [3]uint8{0x0F, 0x13, 0x17}
-	colorSurface   = [3]uint8{0x1A, 0x20, 0x27}
-	colorFocusBG   = [3]uint8{0x12, 0x34, 0x47}
-	colorFocusRing = [3]uint8{0x5C, 0xC8, 0xFF}
+	colorBG        = [3]uint8{0x0D, 0x0D, 0x10}
+	colorSurface   = [3]uint8{0x1C, 0x1C, 0x1E}
+	colorFocusBG   = [3]uint8{0x2A, 0x2E, 0x44}
+	colorFocusRing = [3]uint8{0xA8, 0xAC, 0xC2}
 )
 
 var testEpoch = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
@@ -353,7 +353,7 @@ func TestImagesAreDrawnScaledAndTheTextureCacheIsBounded(t *testing.T) {
 	}
 	var list gdraw.List
 	list.Reset(640, 480)
-	list.Fill(gdraw.Rect{W: 640, H: 480}, gdraw.Color{R: 0x0F, G: 0x13, B: 0x17, A: 0xff})
+	list.Fill(gdraw.Rect{W: 640, H: 480}, gdraw.Color{R: colorBG[0], G: colorBG[1], B: colorBG[2], A: 0xff})
 	for i := 0; i < 50; i++ {
 		list.Image(gdraw.Rect{X: 10, Y: 10, W: 100, H: 80}, uint64(i), solid(color.RGBA{R: 200, G: uint8(i), B: 50, A: 255}))
 	}
