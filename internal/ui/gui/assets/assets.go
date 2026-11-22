@@ -14,6 +14,17 @@ import (
 //go:embed NotoSans-Regular-subset.ttf
 var NotoSans []byte
 
+// MothWingsDown is the wings-down frame of the moth sprite (16 x 12 cells, RGBA PNG with binary alpha), drawn by
+// Aquarela for T-83a. It is original project-owned art (D30), not third-party, so it has no notice.
+//
+//go:embed moth-wings-down.png
+var MothWingsDown []byte
+
+// MothWingsUp is the wings-up frame of the moth sprite, from the same set as MothWingsDown.
+//
+//go:embed moth-wings-up.png
+var MothWingsUp []byte
+
 // ControllerDB is gamecontrollerdb.txt from gabomdq/SDL_GameControllerDB (zlib), byte for byte.
 //
 //go:embed gamecontrollerdb.txt

@@ -270,15 +270,15 @@ func (m Model) drawHistory(p painter) {
 func (m Model) recordMark(p painter, x, y, size int, r app.HistoryRecord) {
 	switch {
 	case consent.RecordNeeded(r):
-		drawBang(p.l, x, y, size, colWarn)
+		drawBang(p.l, p.m.Pixel, x, y, size, colWarn)
 	case r.State == string(app.StateDone):
-		drawCheck(p.l, x, y, size, colOK)
+		drawCheck(p.l, p.m.Pixel, x, y, size, colOK)
 	case r.State == string(app.StateSkipped):
-		p.l.Fill(draw.Rect{X: x + size/6, Y: y + size/2 - 1, W: size * 2 / 3, H: 2}, 0, colDim)
+		drawDash(p.l, p.m.Pixel, x, y, size, colDim)
 	case r.State == string(app.StateCanceled):
-		drawCross(p.l, x, y, size, colDim)
+		drawCross(p.l, p.m.Pixel, x, y, size, colDim)
 	default:
-		drawCross(p.l, x, y, size, colError)
+		drawCross(p.l, p.m.Pixel, x, y, size, colError)
 	}
 }
 
@@ -404,8 +404,8 @@ func (m Model) drawHistoryDetails(p painter) {
 	btnH := met.Row1
 	h := len(wrapped)*LineHeight(met.Secondary) + LineHeight(met.Body) + 5*u + btnH + u
 	panel := draw.Rect{X: met.Safe.X + (met.Safe.W-maxW)/2, Y: met.Safe.Y + max((met.Safe.H-h)/2, 0), W: maxW, H: min(h, met.Safe.H)}
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
-	p.l.Fill(panel, met.Radius, colSurface)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colScrim)
+	p.window(panel)
 	y := panel.Y + 2*u
 	p.text(panel.X+2*u, y, met.Body, colText, p.fit(met.Body, app.SanitizeText(rec.Title), maxW-4*u))
 	y += LineHeight(met.Body) + u
@@ -421,7 +421,7 @@ func (m Model) drawHistoryDetails(p painter) {
 		if m.history.detailFocus == b.id {
 			p.box(r, true)
 		} else {
-			p.l.Fill(r, met.Radius, colBG)
+			p.shape(r, colSurface)
 		}
 		p.centered(r, met.Body, colText, b.label)
 		x += bw + u

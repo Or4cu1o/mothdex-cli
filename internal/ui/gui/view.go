@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
@@ -87,27 +88,53 @@ func (p painter) rightAligned(right, top, bandH, size int, c draw.Color, s strin
 	return x
 }
 
-// box draws a focusable surface: the surface color, or the focus fill with the ring outside it.
+// Shapes snap to the pixel cell P (DESIGN.md Shape): tiles, rows, keys, bars, windows and buttons have a 2-step
+// notch at each corner; discs and pills a 3-step one.
+const (
+	notchSteps   = 2
+	capsuleSteps = 3
+)
+
+// shape fills a rectangle with the 2-step notch.
+func (p painter) shape(r rect, c draw.Color) { p.l.Notch(r, notchSteps, p.m.Pixel, c) }
+
+// capsule fills a rectangle with the 3-step notch: a pixel disc or pill.
+func (p painter) capsule(r rect, c draw.Color) { p.l.Notch(r, capsuleSteps, p.m.Pixel, c) }
+
+// box draws a focusable surface: the surface color, or the focus fill with the stepped ring outside it.
 func (p painter) box(r rect, focused bool) {
 	if focused {
-		p.l.Fill(r.Inset(-p.m.Ring), p.m.Radius+p.m.Ring, colFocusRing)
-		p.l.Fill(r, p.m.Radius, colFocusBG)
+		p.shape(r.Inset(-p.m.Ring), colFocusRing)
+		p.shape(r, colFocusBG)
 		return
 	}
-	p.l.Fill(r, p.m.Radius, colSurface)
+	p.shape(r, colSurface)
 }
 
-// spinner draws the ring of docs/ux/gui.md section 4 at its place in the turn.
-func (p painter) spinner(cx, cy, r int, now time.Time) {
-	turn := float64(now.UnixNano()%int64(spinnerPeriod)) / float64(spinnerPeriod)
-	p.l.Spinner(cx, cy, r, max(2, r/4), turn, colAccent)
+// cursor draws the menu cursor of DESIGN.md in a vertical menu: a right-pointing pixel arrow in focus.ring, 0.8 x the body
+// size tall rounded to 2P, 1u inside the left edge of the focused item. The item's text starts at 3u. It does not blink.
+func (p painter) cursor(item rect) {
+	h := max(snapDown(p.m.Body*4/5, 2*p.m.Pixel), 2*p.m.Pixel)
+	drawTriangle(p.l, p.m.Pixel, item.X+p.m.Unit, item.Y+(item.H-h)/2, h, 'r', colFocusRing)
+}
+
+// window draws a window over the scrim: surface.raised with a P frame in color.frame outside it.
+func (p painter) window(r rect) {
+	p.shape(r.Inset(-p.m.Pixel), colFrame)
+	p.shape(r, colRaised)
+}
+
+// spinner draws the spinner of DESIGN.md Components, centered at (cx, cy): eight blocks around a square, one step
+// per 100 ms.
+func (p painter) spinner(cx, cy int, now time.Time) {
+	p.l.Spinner(cx, cy, p.m.Pixel, int(now.UnixNano()/int64(spinnerFrame))%spinnerBlocks, colAccent)
 }
 
 // Render draws the whole frame for time now into l.
 func (m Model) Render(now time.Time, l *draw.List) {
 	met := m.metrics
 	l.Reset(met.W, met.H)
-	l.Fill(rect{W: met.W, H: met.H}, 0, colBG)
+	l.Fill(rect{W: met.W, H: met.H}, colBG)
 	p := m.painter(l)
 	switch m.screen {
 	case screenSplash:
@@ -306,7 +333,7 @@ func minTitleWidth(p painter, size int, crumbs []string) int {
 func (m Model) drawTopBar(p painter, spec frameSpec) {
 	met := m.metrics
 	bar := met.TopBarRect()
-	p.l.Fill(bar, 0, colSurface)
+	p.shape(bar, colSurface)
 	pad := 2 * met.Unit
 
 	full := brand
@@ -314,7 +341,12 @@ func (m Model) drawTopBar(p painter, spec frameSpec) {
 		full += crumb + c
 	}
 	// The title always keeps its minimum, and the right side takes the rest.
-	minTitle := min(p.width(met.Title, full), minTitleWidth(p, met.Title, spec.crumbs))
+	lead := 0 // Home: the moth sprite sits 1u before the wordmark (DESIGN.md Components)
+	if m.screen == screenHome {
+		mw, _ := p.mothSize()
+		lead = mw + met.Unit
+	}
+	minTitle := lead + min(p.width(met.Title, full), minTitleWidth(p, met.Title, spec.crumbs))
 	avail := max(bar.W-2*pad-minTitle-pad, 0)
 	right, _ := m.topBarItems(p, avail, spec.extra)
 
@@ -326,8 +358,25 @@ func (m Model) drawTopBar(p painter, spec frameSpec) {
 		}
 		x = p.rightAligned(x, bar.Y, bar.H, met.Secondary, right[i].c, right[i].s) - pad
 	}
-	title := fitCrumbs(p, met.Title, spec.crumbs, max(x-(bar.X+pad), 0))
-	p.text(bar.X+pad, bar.Y+(bar.H-LineHeight(met.Title))/2, met.Title, colText, title)
+	titleX := bar.X + pad
+	if lead > 0 {
+		p.drawMoth(titleX, bar.Y, bar.H, 0)
+		titleX += lead
+	}
+	title := fitCrumbs(p, met.Title, spec.crumbs, max(x-titleX, 0))
+	p.title(titleX, bar.Y+(bar.H-LineHeight(met.Title))/2, met.Title, title)
+}
+
+// title draws the title of the top bar: the wordmark in the moth color, the crumbs after it in the text color
+// (DESIGN.md Components). A title that starts with an ellipsis has no wordmark, so it is all text color.
+func (p painter) title(x, top, size int, s string) {
+	rest, ok := strings.CutPrefix(s, brand)
+	if !ok {
+		p.text(x, top, size, colText, s)
+		return
+	}
+	p.text(x, top, size, colAccent, brand)
+	p.text(x+p.width(size, brand), top, size, colText, rest)
 }
 
 // pillWidth is how wide a pill for label is: a disc for a one-letter label, and a pill with 1u of air at each
@@ -348,10 +397,14 @@ func (p painter) pill(x, y, h int, label string) int { return p.pillOn(x, y, h, 
 // pillOn draws a pill with the given fill: bg on a surface bar, surface on the bg screen.
 func (p painter) pillOn(x, y, h int, label string, fill draw.Color) int {
 	w := p.pillWidth(h, label)
-	p.l.Fill(rect{X: x, Y: y, W: w, H: h}, h/2, fill)
+	p.capsule(rect{X: x, Y: y, W: w, H: h}, fill)
 	if dir, ok := arrowLabels[label]; ok {
-		s := h * 2 / 5
-		drawTriangle(p.l, x+(w-s)/2, y+(h-s)/2, s, dir, colText)
+		s := h * 3 / 5 // a pixel triangle is half as deep as its base is long
+		tw, th := s/2, s
+		if dir == 'u' || dir == 'd' {
+			tw, th = s, s/2
+		}
+		drawTriangle(p.l, p.m.Pixel, x+(w-tw)/2, y+(h-th)/2, s, dir, colText)
 		return w
 	}
 	p.centered(rect{X: x, Y: y, W: w, H: h}, p.m.Secondary, colText, label)
@@ -361,7 +414,7 @@ func (p painter) pillOn(x, y, h int, label string, fill draw.Color) int {
 func (m Model) drawHintBar(p painter, hints []hint, start string, withStart bool) {
 	met := m.metrics
 	bar := met.HintBarRect()
-	p.l.Fill(bar, 0, colSurface)
+	p.shape(bar, colSurface)
 	pad := 2 * met.Unit
 	h := max(bar.H-met.Unit, 20)
 	y := bar.Y + (bar.H-h)/2
@@ -551,8 +604,8 @@ func (m Model) drawToast(p painter, now time.Time) {
 	size := met.Secondary
 	lines := m.toastLines(p)
 	r := m.toastRect(p, lines)
-	p.l.Fill(r, 0, colSurface)
-	p.l.Fill(rect{X: r.X, Y: r.Y, W: toastStripe, H: r.H}, 0, m.toast.kind.color())
+	p.l.Fill(r, colSurface)
+	p.l.Fill(rect{X: r.X, Y: r.Y, W: toastStripe, H: r.H}, m.toast.kind.color())
 	for i, line := range lines {
 		p.text(r.X+toastStripe+met.Unit, r.Y+met.Unit/2+i*LineHeight(size), size, colText, line)
 	}

@@ -49,7 +49,7 @@ type player struct {
 	now time.Time
 }
 
-func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confirm bool, lang string) *player {
+func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confirm bool, lang string, hold bool) *player {
 	t.Helper()
 	o := guiOptions(t, font, svc, w, h)
 	o.Confirm = confirm
@@ -64,7 +64,9 @@ func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confi
 	}
 	m, cmds := gui.New(o, testEpoch)
 	p := &player{t: t, m: m, now: testEpoch}
-	p.run(cmds)
+	if !hold { // a held start never runs the first commands, so the model stays on the Splash
+		p.run(cmds)
+	}
 	return p
 }
 
@@ -246,10 +248,14 @@ type scene struct {
 	confirm    bool                 // interface.confirm_downloads on
 	svc        func() *guitest.Fake // the service of the scene; the shared catalog when nil
 	lang       string               // the interface language; English when empty
+	hold       bool                 // the start commands do not run: the scene is the Splash
 	steps      func(p *player)
 }
 
 var renderScenes = []scene{
+	{name: "splash", what: "T-83: the Splash with the moth (wings down) before the wordmark, the sky, and the spinner", expect: []string{"mothdex", "Starting…"}, hold: true, steps: func(p *player) { p.advance(300 * time.Millisecond) }},
+	{name: "splash-wings-up", what: "T-83: the Splash 250 ms later: the wings up", expect: []string{"Starting…"}, hold: true, steps: func(p *player) { p.advance(550 * time.Millisecond) }},
+	{name: "splash-ru", lang: "ru_ru", what: "T-83: the Splash in ru_ru", expect: []string{"mothdex"}, hold: true, steps: func(p *player) { p.advance(300 * time.Millisecond) }},
 	{name: "home", what: "Home, first focus", expect: []string{"Search", "Platforms", "Queue", "Settings"}, steps: func(*player) {}},
 	{name: "home-menu", what: "Home with the Start menu open", expect: []string{"Quit"}, steps: func(p *player) { p.press(input.Menu) }},
 	{name: "search-keyboard", what: "Search, empty field and on-screen keyboard", expect: []string{"0/80", "space", "Del"}, steps: func(p *player) { p.press(input.Confirm) }},
@@ -288,7 +294,7 @@ var renderScenes = []scene{
 	{name: "anyway-toast", what: "T-56: the toast on Home when the job stops", expect: []string{"Needs your OK: The Legend of Zelda: Ocarina of Time (USA)"}, steps: func(p *player) {
 		p.job(stopped("1", "zelda-oot", "The Legend of Zelda: Ocarina of Time (USA)", 1234<<20, 40<<20))
 	}},
-	{name: "history", what: "T-78: History, newest first: done, failed, stopped on its size, skipped, canceled", expect: []string{"mothdex › History", "All · 5 records", "Contra (USA)", "Needs your OK: the file is 1.2 GB, listed as 40.0 MB."}, steps: func(p *player) { p.openFromMenu(2) }},
+	{name: "history", what: "T-78: History, newest first: done, failed, stopped on its size, skipped, canceled", expect: []string{"› History", "All · 5 records", "Contra (USA)", "Needs your OK: the file is 1.2 GB, listed as 40.0 MB."}, steps: func(p *player) { p.openFromMenu(2) }},
 	{name: "history-failed", what: "T-78: History with Failed only", expect: []string{"Failed only · 2 records", "Show all", "Contra (USA)"}, steps: func(p *player) { p.openFromMenu(2); p.press(input.Info) }},
 	{name: "history-details", what: "T-78: History details of a done record, with Download again", expect: []string{"Kirby's Dream Land (USA, Europe)", "Download again", "Close", "Attempts: 1"}, steps: func(p *player) { p.openFromMenu(2); p.press(input.Confirm) }},
 	{name: "history-stopped-details", what: "T-78: History details of a record stopped on its size: Download anyway", expect: []string{"Download anyway", "Status:", "Size: 1.2 GB"}, steps: func(p *player) {
@@ -303,7 +309,7 @@ var renderScenes = []scene{
 		p.press(input.Confirm)
 	}},
 	{name: "history-empty", what: "T-78: History with nothing in it", expect: []string{"No downloads yet. Search for a game to start."}, svc: func() *guitest.Fake { s := renderCatalog(); s.Records = nil; return s }, steps: func(p *player) { p.openFromMenu(2) }},
-	{name: "settings", what: "T-78: Settings, first page", expect: []string{"mothdex › Settings", "Concurrent downloads", "Preferred languages", "En, Pt"}, steps: func(p *player) { p.openFromMenu(3) }},
+	{name: "settings", what: "T-78: Settings, first page", expect: []string{"› Settings", "Concurrent downloads", "Preferred languages", "En, Pt"}, steps: func(p *player) { p.openFromMenu(3) }},
 	{name: "settings-scrolled", what: "T-78: Settings, last page (Storage and system, About)", expect: []string{"Confirm large downloads", "Cache", "84.0 MB", "About", "More settings: run \"mothdex config list\" over SSH."}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 12) }},
 	{name: "settings-choice", what: "T-78: the list of a choice row", expect: []string{"Skip", "Rename"}, steps: func(p *player) { p.openFromMenu(3); p.press(input.Down); p.press(input.Confirm) }},
 	{name: "settings-languages", what: "T-78: the ordered list of preferred languages", expect: []string{"En", "Pt", "+ Add"}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 3); p.press(input.Confirm) }},
@@ -388,6 +394,7 @@ var renderScenes = []scene{
 		p.repeat(input.Down, 12)
 		p.press(input.Confirm)
 	}},
+	{name: "exit", what: "T-83: the exit screen after Quit with nothing running", expect: []string{"Returning to"}, steps: func(p *player) { p.send(gui.QuitRequestMsg{}) }},
 	{name: "quit-busy", what: "Quit with downloads running", expect: []string{"Keep downloading"}, steps: func(p *player) {
 		p.job(app.JobSnapshot{ID: "1", Slug: "mario-world", Title: "Super Mario World (USA)", State: app.StateTransferring, Bytes: 1 << 19, Expected: 1 << 20})
 		p.send(gui.QuitRequestMsg{})
@@ -412,7 +419,7 @@ func TestRenderScenes(t *testing.T) {
 				if sc.svc != nil {
 					svc = sc.svc()
 				}
-				p := newPlayer(t, font, w, h, svc, sc.confirm, sc.lang)
+				p := newPlayer(t, font, w, h, svc, sc.confirm, sc.lang, sc.hold)
 				sc.steps(p)
 				p.advance(400 * time.Millisecond) // past the dialog's input pause; covers and toasts settle
 				img, shown := drawAndRead(t, be, p.m, p.now, w, h)

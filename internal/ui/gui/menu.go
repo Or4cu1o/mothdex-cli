@@ -152,16 +152,17 @@ func (m Model) activateMenu(id string, now time.Time) (Model, []Cmd) {
 
 func (m Model) drawMenu(p painter) {
 	met := m.metrics
-	p.l.Fill(rect{W: met.W, H: met.H}, 0, colScrim)
+	p.l.Fill(rect{W: met.W, H: met.H}, colScrim)
 	g := m.menuGeometry()
-	p.l.Fill(g.panel, met.Radius, colSurface)
+	p.window(g.panel)
 	for _, row := range g.rows {
 		focused := m.menuFocus == row.item.id
 		if focused {
 			p.box(row.rect, true)
+			p.cursor(row.rect)
 		}
 		top := row.rect.Y + (row.rect.H-LineHeight(met.Body))/2
-		p.text(row.rect.X+met.Unit*2, top, met.Body, colText, row.item.label)
+		p.text(row.rect.X+met.Unit*3, top, met.Body, colText, row.item.label)
 		if row.item.badge != "" {
 			p.arrowLabel(row.rect.Right()-2*met.Unit, row.rect.Y, row.rect.H, met.Secondary, colAccent, row.item.badge)
 		}

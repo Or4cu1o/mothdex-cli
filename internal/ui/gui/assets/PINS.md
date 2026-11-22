@@ -1,6 +1,6 @@
 # Pins of the embedded GUI assets
 
-Both files are data, never executed. A change to either one is a reviewed PR that changes the pin here and
+The files are data, never executed. A change to any of them is a reviewed PR that changes the pin here and
 the file together; `assets_test.go` fails if they disagree.
 
 ## `NotoSans-Regular-subset.ttf`
@@ -31,3 +31,13 @@ the file together; `assets_test.go` fails if they disagree.
   `97f35b302b361680ec1e891e95d2d52097bb95abff361434916d99dc1305f127`).
 - SHA-256 `a9994e85b0d608cfcb4df0e1424523e488829acb1017b6a2a2adf8df6478cb26`, 614,810 bytes.
 - Lines whose `platform:` is not the running one are skipped before SDL sees them.
+
+## `moth-wings-down.png` and `moth-wings-up.png`
+
+- Source: the T-83a set drawn by Aquarela (approved by Bússola, 2026-11-22): the two frames of the moth sprite of
+  DESIGN.md, 16 x 12 cells, RGBA with binary alpha, in `moth`, `moth.deep` and `moth.light`.
+- Original project-owned art (D30), shipped under the licence of the repository: no notice in `THIRD_PARTY/`.
+- `moth-wings-down.png`: 231 bytes, SHA-256 `a418676ca1027c283f2caa3d08c4879ddbfb3f3667bf7ef568cbf804368cf953`.
+  `moth-wings-up.png`: 207 bytes, SHA-256 `396e2413e23030ca4ff7bf093e7147bcbb4bc094cb40c7772c7aa83b1a19e87c`.
+- The GUI draws them as cell rectangles (one cell is `P`), never smoothed. The splash alternates the frames every
+  250 ms while it shows; Home and the top bar show the wings-down frame.

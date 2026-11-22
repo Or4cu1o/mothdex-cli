@@ -114,7 +114,21 @@ func (h *harness) render() *draw.List {
 	return &l
 }
 
-func (h *harness) texts() []string { return h.render().Texts() }
+// texts are the text runs of the frame. The top bar draws the wordmark in the moth color and the crumbs after it in the
+// text color (two runs); here they are joined again, so a test reads the title as one string.
+func (h *harness) texts() []string {
+	runs := h.render().Texts()
+	out := make([]string, 0, len(runs))
+	for i := 0; i < len(runs); i++ {
+		if runs[i] == brand && i+1 < len(runs) && strings.HasPrefix(runs[i+1], crumb) {
+			out = append(out, brand+runs[i+1])
+			i++
+			continue
+		}
+		out = append(out, runs[i])
+	}
+	return out
+}
 
 func (h *harness) mustHave(s ...string) {
 	h.t.Helper()
@@ -718,7 +732,7 @@ func TestEverythingIsDrawnInsideTheSafeRectangle(t *testing.T) {
 								t.Errorf("%dx%d safe=%d large=%v %s: text %q at (%d,%d) width %d outside %+v", size[0], size[1], safe.Percent, large, where(), op.Text, op.X, op.Base, width, met.Safe)
 							}
 						case draw.KindSpinner:
-							if !(draw.Rect{X: op.CX - op.R, Y: op.CY - op.R, W: 2 * op.R, H: 2 * op.R}).Within(met.Safe) {
+							if !(draw.Rect{X: op.CX - 3*op.Cell, Y: op.CY - 3*op.Cell, W: 6 * op.Cell, H: 6 * op.Cell}).Within(met.Safe) {
 								t.Errorf("%dx%d %s: spinner outside the safe rectangle", size[0], size[1], where())
 							}
 						}

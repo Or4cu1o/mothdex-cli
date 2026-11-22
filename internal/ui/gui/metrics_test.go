@@ -54,16 +54,16 @@ func TestSizesFollowTheTablesOfTheSpec(t *testing.T) {
 		w, h                                int
 		title, body, secondary, minimum     int
 		unit, bar, row1, row2, tileW, tileH int
-		key, ring, progress, radius         int
+		key, ring, progress, pixel          int
 	}{
-		{640, 480, 26, 20, 17, 16, 8, 36, 40, 52, 180, 96, 48, 3, 8, 6},
-		{1280, 720, 34, 26, 21, 18, 10, 48, 52, 72, 280, 150, 60, 4, 10, 8},
-		{1920, 1080, 50, 38, 31, 27, 16, 68, 76, 104, 420, 220, 88, 6, 14, 12},
+		{640, 480, 26, 20, 17, 16, 8, 36, 40, 52, 180, 96, 48, 4, 8, 2}, // ring and progress are multiples of P (DESIGN.md Pixel grid)
+		{1280, 720, 34, 26, 21, 18, 10, 48, 52, 72, 280, 150, 60, 3, 9, 3},
+		{1920, 1080, 50, 38, 31, 27, 16, 68, 76, 104, 420, 220, 88, 8, 16, 4},
 	}
 	for _, tc := range tests {
 		m := NewMetrics(tc.w, tc.h, SafeArea{}, false)
-		got := []int{m.Title, m.Body, m.Secondary, m.Minimum, m.Unit, m.TopBar, m.HintBar, m.Row1, m.Row2, m.TileW, m.TileH, m.Key, m.Ring, m.Progress, m.Radius}
-		want := []int{tc.title, tc.body, tc.secondary, tc.minimum, tc.unit, tc.bar, tc.bar, tc.row1, tc.row2, tc.tileW, tc.tileH, tc.key, tc.ring, tc.progress, tc.radius}
+		got := []int{m.Title, m.Body, m.Secondary, m.Minimum, m.Unit, m.TopBar, m.HintBar, m.Row1, m.Row2, m.TileW, m.TileH, m.Key, m.Ring, m.Progress, m.Pixel}
+		want := []int{tc.title, tc.body, tc.secondary, tc.minimum, tc.unit, tc.bar, tc.bar, tc.row1, tc.row2, tc.tileW, tc.tileH, tc.key, tc.ring, tc.progress, tc.pixel}
 		for i := range want {
 			if got[i] != want[i] {
 				t.Errorf("%dx%d: value %d is %d, want %d (%v)", tc.w, tc.h, i, got[i], want[i], got)

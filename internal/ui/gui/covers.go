@@ -182,6 +182,6 @@ func (m Model) drawCover(p painter, r draw.Rect, slug, platform string) {
 		p.l.Image(draw.Rect{X: r.X + (r.W-w)/2, Y: r.Y + (r.H-h)/2, W: max(w, 1), H: max(h, 1)}, e.id, e.img)
 		return
 	}
-	p.l.Fill(r, met.Radius, colSurface)
+	p.shape(r, colSurface)
 	p.centered(r, met.Secondary, colDim, app.SanitizeText(platform))
 }

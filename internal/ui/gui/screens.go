@@ -20,7 +20,12 @@ func (m Model) drawSplash(p painter, now time.Time) {
 	s := met.Safe
 	u := met.Unit
 	titleTop := s.Y + s.H*36/100
-	p.centered(rect{X: s.X, Y: titleTop, W: s.W, H: LineHeight(met.Title)}, met.Title, colText, brand)
+	// The moth sits 1u before the wordmark and the pair is centered; its wings flap, 250 ms a frame, while the app starts.
+	mw, _ := p.mothSize()
+	markW := p.width(met.Title, brand)
+	markX := s.X + (s.W-(mw+u+markW))/2
+	p.drawMoth(markX, titleTop, LineHeight(met.Title), wingFrameAt(now))
+	p.text(markX+mw+u, titleTop, met.Title, colAccent, brand)
 
 	line := m.tr("ui.gui.splash.starting", nil)
 	top := titleTop + LineHeight(met.Title) + u
@@ -28,10 +33,16 @@ func (m Model) drawSplash(p painter, now time.Time) {
 	x := s.X + (s.W-w)/2
 	p.text(x, top, met.Body, colDim, line)
 	if spinnerShown(m.start, now) { // on the right of the text, as on the exit screen
-		r := LineHeight(met.Body) / 3
-		p.spinner(x+w+u+r, top+LineHeight(met.Body)/2, r, now)
+		r := 3 * met.Pixel // half the spinner square
+		p.spinner(x+w+u+r, top+LineHeight(met.Body)/2, now)
 	}
 
+	infoTop := s.Bottom() - LineHeight(met.Secondary) - 2*u
+	p.drawSky([]rect{
+		{X: markX, Y: titleTop, W: mw + u + markW, H: LineHeight(met.Title)},
+		{X: s.X, Y: top, W: s.W, H: LineHeight(met.Body)},
+		{X: s.X, Y: infoTop, W: s.W, H: LineHeight(met.Secondary)},
+	})
 	info := m.o.Version + " · " + app.SanitizeText(m.profile.Name)
 	p.rightAligned(s.Right()-2*u, s.Bottom()-LineHeight(met.Secondary)-2*u, LineHeight(met.Secondary), met.Secondary, colDim, info)
 }
@@ -90,8 +101,8 @@ func (m Model) drawExit(p painter, now time.Time) {
 		x := s.X + (s.W-w)/2
 		p.text(x, y, met.Secondary, colDim, line)
 		if spinnerShown(e.started, now) {
-			r := LineHeight(met.Secondary) / 3
-			p.spinner(x+w+u+r, y+LineHeight(met.Secondary)/2, r, now)
+			r := 3 * met.Pixel // half the spinner square
+			p.spinner(x+w+u+r, y+LineHeight(met.Secondary)/2, now)
 		}
 		y += LineHeight(met.Secondary) + u
 	case e != nil && e.finished && e.res.Batch.RefreshWarning != "":

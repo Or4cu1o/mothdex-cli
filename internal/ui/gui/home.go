@@ -201,6 +201,7 @@ func (m Model) footer(p painter) (string, bool) {
 func (m Model) drawHome(p painter) {
 	met := m.metrics
 	g := m.homeGeometry()
+	p.drawSky(m.homeSkyAvoid(g))
 	for _, t := range g.tiles {
 		p.box(t.rect, m.focus == t.id)
 		label := m.tileName(t.id)
@@ -232,6 +233,24 @@ func (m Model) drawHome(p painter) {
 	for i, line := range p.wrap(met.Secondary, text, c.W, footerLines) {
 		p.text(c.X, g.footerTop+i*LineHeight(met.Secondary), met.Secondary, color, line)
 	}
+}
+
+// homeSkyAvoid is what the sky of Home keeps clear: the bars, the tiles with their focus ring, the recent searches and
+// the footer.
+func (m Model) homeSkyAvoid(g homeGeom) []rect {
+	met := m.metrics
+	avoid := []rect{met.TopBarRect(), met.HintBarRect()}
+	for _, t := range g.tiles {
+		avoid = append(avoid, t.rect.Inset(-met.Ring))
+	}
+	for _, c := range g.chips {
+		avoid = append(avoid, c.rect.Inset(-met.Ring))
+	}
+	if g.showRecent {
+		avoid = append(avoid, rect{X: g.recentX, Y: g.recentTop, W: met.ContentRect().W, H: LineHeight(met.Body) + 2*met.Unit})
+	}
+	c := met.ContentRect()
+	return append(avoid, rect{X: c.X, Y: g.footerTop, W: c.W, H: c.Bottom() - g.footerTop})
 }
 
 // tileLabel chooses how a tile label is drawn: at the body size, wrapped to at most two lines at its spaces. A

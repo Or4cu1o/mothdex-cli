@@ -250,7 +250,7 @@ func (m Model) drawSearch(p painter) {
 	u := met.Unit
 
 	// The field: the text, a cursor, and the counter on the right.
-	p.l.Fill(g.field, met.Radius, colSurface)
+	p.shape(g.field, colSurface)
 	counterW := p.width(met.Secondary, g.counter)
 	counterColor := colDim
 	if len(m.search.field.text) >= counterWarnAt {
@@ -260,7 +260,7 @@ func (m Model) drawSearch(p painter) {
 	shown, caret := fieldWindow(m.search.field.text, m.search.field.cursor, textW, func(s string) int { return p.width(met.Body, s) })
 	top := g.field.Y + (g.field.H-LineHeight(met.Body))/2
 	p.text(g.field.X+2*u, top, met.Body, colText, shown)
-	p.l.Fill(draw.Rect{X: g.field.X + 2*u + caret, Y: top + 2, W: 2, H: LineHeight(met.Body) - 4}, 0, colAccent)
+	p.l.Fill(draw.Rect{X: g.field.X + 2*u + caret, Y: top + 2, W: 2, H: LineHeight(met.Body) - 4}, colAccent)
 	p.rightAligned(g.field.Right()-2*u, g.field.Y, g.field.H, met.Secondary, counterColor, g.counter)
 	if m.search.msg != "" {
 		p.text(g.msg.X+u, g.msg.Y, met.Secondary, colWarn, p.fit(met.Secondary, m.search.msg, g.msg.W-2*u))
@@ -274,7 +274,7 @@ func (m Model) drawSearch(p painter) {
 		if m.search.focus == k.ID {
 			p.box(k.Rect, true)
 		} else {
-			p.l.Fill(k.Rect, met.Radius, colSurface)
+			p.shape(k.Rect, colSurface)
 		}
 		label := m.keyLabel(k.ID)
 		size := met.Body

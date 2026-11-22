@@ -92,8 +92,8 @@ func (m Model) drawButtons(p painter) {
 	panelW := min(widest+4*u, met.Safe.W-4*u)
 	panelH := LineHeight(met.Body) + 3*u + len(rows)*rowH
 	panel := draw.Rect{X: met.Safe.X + (met.Safe.W-panelW)/2, Y: met.Safe.Y + max((met.Safe.H-panelH)/2, 0), W: panelW, H: min(panelH, met.Safe.H)}
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
-	p.l.Fill(panel, met.Radius, colSurface)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colScrim)
+	p.window(panel)
 	p.text(panel.X+2*u, panel.Y+u, met.Body, colText, title)
 	y := panel.Y + LineHeight(met.Body) + 2*u
 	for _, r := range rows {

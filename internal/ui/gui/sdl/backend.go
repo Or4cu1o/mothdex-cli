@@ -369,7 +369,7 @@ func (b *Backend) Draw(layout gdraw.Layout, l *gdraw.List) error {
 		var err error
 		switch op.Kind {
 		case gdraw.KindRect:
-			err = b.fill(op.Rect, op.Radius, op.Color)
+			err = b.fill(op.Rect, op.Steps, op.Cell, op.Color)
 		case gdraw.KindText:
 			err = b.drawText(op)
 		case gdraw.KindSpinner:
@@ -435,12 +435,12 @@ func toRect(r gdraw.Rect) Rect {
 	return Rect{X: int32(r.X), Y: int32(r.Y), W: int32(r.W), H: int32(r.H)} //nolint:gosec // logical pixel coordinates, small
 }
 
-// fill draws a rectangle, with rounded corners when radius is above zero.
-func (b *Backend) fill(r gdraw.Rect, radius int, c gdraw.Color) error {
+// fill draws a rectangle, with stepped corners when steps is above zero.
+func (b *Backend) fill(r gdraw.Rect, steps, cell int, c gdraw.Color) error {
 	if err := b.setColor(c); err != nil {
 		return err
 	}
-	for _, part := range roundedRects(r, radius) {
+	for _, part := range notchedRects(r, steps, cell) {
 		if err := b.lib.FillRect(b.ren, toRect(part)); err != nil {
 			return err
 		}
@@ -449,11 +449,11 @@ func (b *Backend) fill(r gdraw.Rect, radius int, c gdraw.Color) error {
 }
 
 func (b *Backend) drawSpinner(op gdraw.Op) error {
-	for k := 0; k < spinnerDots; k++ {
-		x, y, side, alpha := spinnerDot(op, k)
+	for k := 0; k < spinnerBlocks; k++ {
+		x, y, side, alpha := spinnerBlock(op, k)
 		c := op.Color
 		c.A = uint8(min(uint16(c.A)*uint16(alpha)/255, 255)) //nolint:gosec // clamped to a byte on this line
-		if err := b.fill(gdraw.Rect{X: x, Y: y, W: side, H: side}, 0, c); err != nil {
+		if err := b.fill(gdraw.Rect{X: x, Y: y, W: side, H: side}, 0, 0, c); err != nil {
 			return err
 		}
 	}

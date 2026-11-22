@@ -316,19 +316,19 @@ func (m Model) editorTitle(e *settingsEditor) string {
 func (m Model) drawMargin(p painter, e *settingsEditor) {
 	met := m.metrics
 	tried := NewMetrics(met.DisplayW, met.DisplayH, SafeArea{Percent: e.pct}, m.cfg.largeText)
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colBG)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colBG)
 	mm := m
 	mm.metrics = tried
 	mm.drawHintBar(mm.painter(p.l), m.settingsFrame().hints, "", false) // first, so the brackets stay on top of it
 	s := tried.Safe
 	ring := max(met.Ring, 2)
-	arm := 4 * met.Unit * 2
+	arm := snapDown(4*met.Unit*2, met.Pixel)
 	// the frame, thin and dim
 	for _, r := range []draw.Rect{
 		{X: s.X, Y: s.Y, W: s.W, H: 1}, {X: s.X, Y: s.Bottom() - 1, W: s.W, H: 1},
 		{X: s.X, Y: s.Y, W: 1, H: s.H}, {X: s.Right() - 1, Y: s.Y, W: 1, H: s.H},
 	} {
-		p.l.Fill(r, 0, colDim)
+		p.l.Fill(r, colDim)
 	}
 	// the corner brackets, in the color and stroke of the focus ring
 	for _, r := range []draw.Rect{
@@ -337,7 +337,7 @@ func (m Model) drawMargin(p painter, e *settingsEditor) {
 		{X: s.X, Y: s.Bottom() - ring, W: arm, H: ring}, {X: s.X, Y: s.Bottom() - arm, W: ring, H: arm},
 		{X: s.Right() - arm, Y: s.Bottom() - ring, W: arm, H: ring}, {X: s.Right() - ring, Y: s.Bottom() - arm, W: ring, H: arm},
 	} {
-		p.l.Fill(r, 0, colAccent)
+		p.l.Fill(r, colFocusRing)
 	}
 	pct := m.tr("ui.gui.settings.val.pct", map[string]any{"pct": strconv.Itoa(e.pct)})
 	cy := s.Y + s.H/2 - LineHeight(met.Title)
@@ -444,8 +444,8 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 	u := met.Unit
 	title := m.tr("ui.gui.settings.row."+e.row, nil)
 	panel, shown, maxOff := m.infoGeometry(p, e.row, e.focus)
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
-	p.l.Fill(panel, met.Radius, colSurface)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colScrim)
+	p.window(panel)
 	y := panel.Y + 2*u
 	p.text(panel.X+2*u, y, met.Body, colText, p.fit(met.Body, title, panel.W-4*u))
 	y += LineHeight(met.Body) + u
@@ -457,10 +457,10 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 	off := min(max(e.focus, 0), maxOff)
 	tri := LineHeight(met.Secondary) / 2
 	if off > 0 {
-		drawTriangle(p.l, panel.Right()-2*u-tri, panel.Y+u, tri, 'u', colDim)
+		drawTriangle(p.l, p.m.Pixel, panel.Right()-2*u-tri, panel.Y+u, tri, 'u', colDim)
 	}
 	if off < maxOff {
-		drawTriangle(p.l, panel.Right()-2*u-tri, panel.Bottom()-u-tri, tri, 'd', colDim)
+		drawTriangle(p.l, p.m.Pixel, panel.Right()-2*u-tri, panel.Bottom()-u-tri, tri, 'd', colDim)
 	}
 }
 

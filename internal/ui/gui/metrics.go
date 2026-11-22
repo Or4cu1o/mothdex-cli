@@ -85,7 +85,7 @@ var (
 	keyMin        = tierValues{48, 60, 88}
 	focusRing     = tierValues{3, 4, 6}
 	progressBar   = tierValues{8, 10, 14}
-	cornerRadius  = tierValues{6, 8, 12}
+	pixelCell     = tierValues{2, 3, 4} // P, DESIGN.md Pixel grid
 )
 
 // Metrics is everything layout needs to know about the display and the settings. It is a value: a resize or
@@ -102,7 +102,7 @@ type Metrics struct {
 
 	Unit, TopBar, HintBar, Row1, Row2 int
 	TileW, TileH, Key, Ring, Progress int
-	Radius                            int
+	Pixel                             int // P, the pixel cell every shape snaps to: 2, 3 or 4
 	Title, Body, Secondary, Minimum   int // type sizes in pixels
 }
 
@@ -130,7 +130,9 @@ func NewMetrics(w, h int, safe SafeArea, largeText bool) Metrics {
 	m.Narrow = m.W < narrowBelowW
 
 	t := m.Tier
-	m.Unit, m.Ring, m.Progress, m.Radius = spaceUnit.at(t), focusRing.at(t), progressBar.at(t), cornerRadius.at(t)
+	m.Pixel = pixelCell.at(t)
+	m.Unit = spaceUnit.at(t)
+	m.Ring, m.Progress = snapToCell(focusRing.at(t), m.Pixel), snapToCell(progressBar.at(t), m.Pixel)
 	m.TileW, m.TileH = tileWidth.at(t), tileHeight.at(t)
 	grow := func(n int) int { return n }
 	if largeText {
@@ -146,6 +148,9 @@ func NewMetrics(w, h int, safe SafeArea, largeText bool) Metrics {
 	m.Safe = draw.Rect{X: insetX, Y: insetY, W: m.W - 2*insetX, H: m.H - 2*insetY}
 	return m
 }
+
+// snapToCell rounds n to a multiple of the pixel cell, at least one cell: ring = P x round(ring / P).
+func snapToCell(n, cell int) int { return max(cell, int(math.Round(float64(n)/float64(cell)))*cell) }
 
 // largerText is the 1.25 multiplier of gui.text_size = large, rounded to an even number of pixels.
 func largerText(n int) int { return int(math.Round(float64(n)*1.25/2)) * 2 }
