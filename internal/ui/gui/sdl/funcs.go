@@ -16,6 +16,9 @@ var (
 	ErrIncompatible = errors.New("SDL2 lacks a function this program needs")
 	ErrTooOld       = errors.New("SDL2 is too old")
 	ErrNoDisplay    = errors.New("SDL2 has no video device")
+	// ErrSearchPath is Windows only: the process could not be limited to its own folder and System32 for DLLs,
+	// so SDL2 was not loaded. It is not "not found": the library may be right there (T-72).
+	ErrSearchPath = errors.New("cannot restrict the DLL search path")
 )
 
 // TargetVersion is the SDL2 the GUI is meant for (docs/contracts/cli/gui.md section 2). MinimumVersion is

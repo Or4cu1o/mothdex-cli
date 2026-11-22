@@ -205,6 +205,16 @@ jobs:
           go test -c -tags gui -trimpath -o dist-gui/windows_amd64/sdl.test.exe ./internal/ui/gui/sdl
           cd dist-gui/windows_amd64 && ./sdl.test.exe -test.v -test.count=1
         if: steps.scope.outputs.run == 'true'
+      - name: Plain LoadLibrary ignores the cwd and PATH once SDL is open (IC-8, SetDefaultDllDirectories)
+        shell: bash
+        env:
+          SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1"
+        run: |
+          # SDL loads vulkan-1, opengl32, XInput and hid later with a plain LoadLibrary. A DLL planted in the working
+          # directory and on PATH must not be found, while the executable's folder and System32 still are.
+          cd dist-gui/windows_amd64 && ./sdl.test.exe -test.v -test.count=1 -test.run '^TestPlainLoadLibraryIgnoresThePathAndTheWorkingFolderOnceSDLIsOpen$'
+        if: steps.scope.outputs.run == 'true'
       - name: Size report
         if: always() && steps.scope.outputs.run == 'true'
         shell: bash
