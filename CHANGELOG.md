@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/ux/gui.md` §5.8, `tui.md` §5 and `shell.md` §4 v1.2 (T-56, Bússola): the Download anyway rules shipped in
+  cli#80. A job stopped with `confirmation_required` waits for a person: warn row with `!`, facts-only copy (real
+  size, catalog size, folder), one OK per job and never a bulk one, the GUI sheet and dialog, the TUI `[y/N]` on `r`
+  or `d`, the Shell question after the batch on a terminal only, and counts that keep these jobs apart from failures.
 - T-74 (PR-37 backlog): `stripArgument` maps U+2028 and U+2029 to a space; the locale loader's warnings (which can echo a
   path or YAML text from the locale folder) are cleaned of control characters; `readCatalog` opens the file once, checks
   type and size on the open handle and caps the read, so a file that grew after the stat cannot pass the 1 MiB limit.
