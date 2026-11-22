@@ -247,8 +247,9 @@ func (d *Downloader) swapClaims(j *jobState, cl int64) *attemptErr {
 }
 
 // consented is step 6: with the default rule and confirm_downloads on, a real size above the
-// threshold needs consent when the catalog estimate did not already; an exact consent must equal
-// the real size; ConsentAny skips the check.
+// threshold needs consent when the catalog estimate did not already, and a real size above twice
+// a catalog estimate that was itself above the threshold needs it again; an exact consent must
+// equal the real size; ConsentAny skips the check.
 func (d *Downloader) consented(j *jobState, cl int64) bool {
 	switch c := j.job.SizeConsent; {
 	case c == ConsentAny:
@@ -256,7 +257,14 @@ func (d *Downloader) consented(j *jobState, cl int64) bool {
 	case c > 0:
 		return c == cl
 	}
-	return !d.cfg.ConfirmDownloads || j.job.Link.Size > d.cfg.ConfirmBytes || cl <= d.cfg.ConfirmBytes
+	if !d.cfg.ConfirmDownloads {
+		return true
+	}
+	if est := j.job.Link.Size; est > d.cfg.ConfirmBytes {
+		// the user confirmed the estimate; only a real size over 2x it is a new decision (overflow-safe)
+		return cl <= est || cl-est <= est
+	}
+	return cl <= d.cfg.ConfirmBytes
 }
 
 // retryAfter reads a delay in seconds or an HTTP date; anything else is no delay.
