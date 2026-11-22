@@ -1,6 +1,6 @@
 # UX: interactive Shell (REPL)
 
-Status: v1.1 (T-6; E-M2 deviations recorded in UX-sync, Decisions D24) · Owner: Bússola · Implementer: Vitral · Risk: Medium
+Status: v1.2 (T-6; E-M2 deviations recorded in UX-sync, Decisions D24; Download anyway, T-56) · Owner: Bússola · Implementer: Vitral · Risk: Medium
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Human output rules come from [`cli-conventions.md`](cli-conventions.md); syntax of
 `--prefer` from [`prefer-syntax.md`](prefer-syntax.md). Library: `peterh/liner` (PLAN §9), so history and completion are line-based.
 
@@ -92,6 +92,17 @@ editor writes to stdout); otherwise the default is used, as in scripted input (D
 
 3. Confirmation follows cli-conventions §6; then progress rows render in place. The prompt returns when the queue is
    empty. Ctrl+C during a download cancels the queue (`Cancel`) and returns to the prompt; it does not exit the Shell.
+4. **Download anyway** (`confirmation_required`, T-56; the rules and the facts-only copy are in gui.md §5.8). A job that
+   stopped on its real size is a warning, not a failure. In a batch of several its row reads `! Contra (USA).nes: Needs
+   your OK: the file is 712.0 MB, listed as 43.0 MB. [confirmation_required]`, then the `-f` hint
+   (`errors.confirmation_required.size_hint_cli`); a single download prints the error block with the same hint.
+   The summary counts it apart: `2 downloaded, 0 skipped, 0 failed in 4s; 1 waiting for your OK`.
+   - After the batch ends, never during progress, the Shell asks once per stopped job:
+     `Contra (USA).nes is 712.0 MB, not 43.0 MB. Download it anyway to /userdata/roms/nes? [y/N]`.
+     Yes queues that request again with `SizeConsent` equal to the size shown; the default is No. If the proxy
+     reports another size, the same question comes back with it. Ctrl+C or the end of input stops the questions.
+   - It asks only when stdin and stdout are terminals and without `--json` or `-q`. Otherwise it prints the row and
+     the hint, and the exit code stays the one of the batch. The plain command line never asks: it keeps `-f`.
 
 **Ctrl+C never exits the Shell** (D24-review). At the prompt it clears the typed line and shows
 `Type exit or press Ctrl+D to leave.` Only `exit`, `quit` and Ctrl+D leave (exit code 0); piped input ends after the
