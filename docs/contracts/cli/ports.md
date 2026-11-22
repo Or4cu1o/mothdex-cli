@@ -18,7 +18,9 @@ confirmed on hardware. The installer constraints IC-1 to IC-13 of the threat mod
 [T-70](../../security/T-70-threat-model-ports-installer.md) §5 bind the implementation. It details the installer item of gui.md §6 and the launcher item of profiles.md §4.
 
 Every fact below comes from the sources above. A fact the research did not confirm is labelled ⚠ and listed in §9 as
-an open question (OQ-PRT-n). Do not turn an OQ into code behavior without new research.
+an open question (OQ-PRT-n). Do not turn an OQ into code behavior without new research. OQ-PRT-1 to OQ-PRT-9 are
+answered from source in [T-84](../../research/T-84-ports-open-questions.md) (Sonda, 2026-11-22, pinned commits, no hardware); §9 holds the answers and their
+confidence, and what no source can settle stays a beta item (§8).
 
 ## 1. Scope
 
@@ -75,14 +77,17 @@ exit /b %errorlevel%
 ```
 
 **No argument forwarding** (T-70 IC-6): `cmd` re-parses `%*`, so an `&` in an argument would run a command, and a
-Port needs no arguments. If OQ-PRT-1 shows that a frontend passes arguments the GUI needs, they come back in the `.sh`
+Port needs no arguments. EmuELEC passes Port arguments to the script, but nothing shows Mothdex needs them (T-84
+OQ-PRT-1). If a frontend turns out to pass arguments the GUI needs, they come back in the `.sh`
 template only, with the GUI and TUI rejecting unknown positional arguments.
 
 `<bin_dir>` is the directory where the binaries actually landed: after the `install.sh` noexec fallback to
 `$HOME/.local/bin`, it is the fallback directory.
 
-Whether a Port has a usable terminal for the `mothdex tui` fallback is ⚠ OQ-PRT-1. If the beta shows it has none, the
-installer stops writing a launcher when the GUI is not eligible (§5.2); the template does not change.
+**A Port has no usable terminal** (OQ-PRT-1, Verified from source): Batocera and EmuELEC redirect the child's stdout and
+stderr to logs and create no PTY, and RetroBat runs a `.bat` with a hidden window. The `mothdex tui` fallback line
+therefore cannot work from a frontend. It stays in the `v2` template until PRT-G8 (§10) is decided; until then the
+release notes say that a Port without an eligible GUI shows nothing and returns to the frontend.
 
 ### 2.3 Environment: the launcher sets nothing
 
@@ -90,9 +95,17 @@ installer stops writing a launcher when the GUI is not eligible (§5.2); the tem
   variable. It does not `cd`. The GUI inherits the frontend's environment unchanged.
 - **Why:** SDL2 is found by soname through the system loader (§3). A library path set by the launcher would widen the
   search to directories that may be writable (the share partition) and defeat the planting tests of the spike (T-52).
-- Whatever the frontend itself passes (`LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`, `SDL_GAMECONTROLLERCONFIG`, locale) is
-  not known for any system (⚠ OQ-PRT-1, OQ-PRT-2, OQ-PRT-4). The GUI does not unset inherited values either: a frontend
-  may need them for its own SDL build, and removing them is a choice to make only after the beta reports them.
+- What the frontends pass (OQ-PRT-1, OQ-PRT-2, OQ-PRT-4, Verified from source; [T-84](../../research/T-84-ports-open-questions.md)):
+  - **Batocera** (master): `os.environ` plus `SDL_GAMECONTROLLERCONFIG` generated from the ES controllers and
+    `SDL_RENDER_VSYNC`; `LC_ALL` and `LANG` from `system.language`; no `LD_LIBRARY_PATH` override in the shell generator.
+  - **EmuELEC** (4.8): the Port wrapper sources `/etc/profile`, which **prepends `LD_LIBRARY_PATH=/emuelec/lib:/emuelec/lib32`**
+    and exports `SDL_GAMECONTROLLERCONFIG_FILE=/storage/.config/SDL-GameControllerDB/gamecontrollerdb.txt`; stock
+    `LANG` can be reset to `C.UTF-8` while `LANGUAGE` keeps the ES language.
+  - **RetroBat** (7.0-era source): the Windows environment; neither mapping variable is set.
+- The GUI does not unset inherited values: EmuELEC's library path looks required by its own stack, and removing it is a
+  choice for after the beta. Consequence: `--probe` runs with a scrubbed environment (§5.2, IC-1) while the Port run
+  inherits EmuELEC's library path, so the SDL2 the probe found may not be the one the Port loads (lib32 entries are
+  skipped by the loader as the wrong ELF class). PRT-G9 (§10) and B12 cover it.
 - A fix that needs a per-system setting goes into the profile data and the GUI, never into the launcher template.
 
 ## 3. SDL2 per system
@@ -106,9 +119,9 @@ The rules are those of gui.md §2 and stay unchanged:
 
 | System | SDL2 source | Known | Arch of the GUI archive | Interpreter |
 |---|---|---|---|---|
-| Batocera | system `libSDL2-2.0.so.0` | SDL2 2.32.10 on master and 44 ✅ (T1b #17) | amd64, arm64, armv7, armv6 from `uname -m` | glibc ✅; armhf `/lib/ld-linux-armhf.so.3` ⚠ OQ-PRT-6 |
-| EmuELEC | system `libSDL2-2.0.so.0` | SDL2 2.32.10, Amlogic `mali-fbdev` patch ✅ (T1b #19) | arm64 | glibc Inferred (T1b #24); 32-bit userland next to 64-bit ⚠ OQ-PRT-7 |
-| Recalbox | system `libSDL2-2.0.so.0` | SDL2 present, version Unverified (T1b #18) | amd64, arm64, armv7 (rpi3 and rpizero2 are 32-bit, T1e #14) | glibc ✅; armhf ⚠ OQ-PRT-6 |
+| Batocera | system `libSDL2-2.0.so.0` | SDL2 2.32.10 on master and 44 ✅ (T1b #17) | amd64, arm64, armv7, armv6 from `uname -m` | glibc ✅; armhf `/lib/ld-linux-armhf.so.3` Inferred from EABIHF + glibc (T-84 OQ-PRT-6), image path ⚠ B5 |
+| EmuELEC | system `libSDL2-2.0.so.0` (the Port inherits `LD_LIBRARY_PATH=/emuelec/lib:/emuelec/lib32`, §2.3) | SDL2 2.32.10; Amlogic builds `mali` only, Rockchip builds KMSDRM (T-84 OQ-PRT-3) | arm64 | glibc Inferred (T1b #24); supported 4.8 is **aarch64-only**, lib32 is compatibility only (T-84 OQ-PRT-7, Documented) |
+| Recalbox | system `libSDL2-2.0.so.0` | SDL2 2.30.11 in 11.0-patron-1 (T-84 OQ-PRT-3) | amd64, arm64, armv7 (rpi3 and rpizero2 are 32-bit, T1e #14) | glibc ✅; armhf Inferred (T-84 OQ-PRT-6), image path ⚠ B5 |
 | RetroBat | the pinned `SDL2.dll` from the archive | RetroBat's own SDL is unknown (T1b #22) and not used | windows amd64 | n/a |
 
 Batocera `x86_wow64` (i686 userland) gets no GUI in v0.3.0: linux 386 is optional in gui.md §6, and the eligibility
@@ -123,13 +136,18 @@ The mapping source is gui.md §4, the same on every system. Later sources overri
 
 | System | Frontend mapping passed to Ports | Video driver | Locale for Ports |
 |---|---|---|---|
-| Batocera | ⚠ OQ-PRT-2 | ⚠ OQ-PRT-3 (KMSDRM, Wayland or X11 per board) | ⚠ OQ-PRT-4 (`system.language`) |
-| EmuELEC | ⚠ OQ-PRT-2 | ⚠ OQ-PRT-3 (`mali-fbdev` patch, T1b #19) | ⚠ OQ-PRT-4 |
-| Recalbox | n/a (no Port) | ⚠ OQ-PRT-3 | n/a |
-| RetroBat | ⚠ OQ-PRT-2 | Windows default (desktop session) | Windows user locale; gui.md §3 fallbacks apply |
+| Batocera | `SDL_GAMECONTROLLERCONFIG` inline, from the ES controllers ✅ (no `_FILE`) | x86_64 Xorg; RPi4 labwc Wayland + XWayland; RPi Zero/1 Wayland without XWayland; KMSDRM when libGBM ✅ build-time, selected driver ⚠ B3 | `LC_ALL` = `LANG` = `<system.language>.UTF-8` ✅ |
+| EmuELEC | `SDL_GAMECONTROLLERCONFIG_FILE` (a full DB file) ✅; inline variable ⚠ | Amlogic: SDL2 driver `mali` only; Rockchip targets: KMSDRM ✅ build-time | `LANG` may be `C.UTF-8` while `LANGUAGE` has the ES language (Inferred) ⚠ B13 |
+| Recalbox | n/a (no Port) | rpi3/zero2 KMSDRM, rpi4/5 XWayland + KMSDRM, x86_64 Xorg ✅ build-time | n/a |
+| RetroBat | neither variable ✅ (7.0-era source) | Windows desktop | no POSIX locale; Windows user locale, gui.md §3 fallbacks apply |
 
-Whether the frontend stops EmulationStation and releases the pad and the display while a Port runs is Unverified
-(T1b OQ1): ⚠ OQ-PRT-1.
+With the gui.md §4 order, Batocera's inline lines and EmuELEC's whole DB file override the embedded DB for the same
+controller. That is intended (the frontend's pad setup wins). EmuELEC's file may be older than our pin, so a pad can map
+as the older line says; B4 checks it.
+
+**ES keeps running** around a Port on all three (OQ-PRT-1, Verified from source): it waits for the child and resumes.
+It releases input and renderer only when `HideWindow` is set, which is off by default on Batocera, forced off by
+EmuELEC on Amlogic and off on Windows. Whether the GUI actually gets focus, display and pads is B2.
 
 **Diagnostics for the beta (Vitral, small).** At start, `mothdex-gui` writes one log line with:
 - the loaded SDL version and the video driver SDL chose;
@@ -226,11 +244,12 @@ a packaging bug, so it is reported as an error. As on Linux, neither `mothdex-gu
 |---|---|---|---|
 | Batocera | `/userdata/system/bin` ⚠ (convention) | if eligible | `Mothdex.sh` in `/userdata/roms/ports` |
 | EmuELEC | `/storage/.local/bin` ⚠ | if eligible | `Mothdex.sh` in `/storage/roms/ports_scripts` |
-| Recalbox | `/recalbox/share/system/bin` ⚠ | if eligible (runs from a desktop or terminal session only) | none (`launcher: none`); ⚠ OQ-PRT-8 |
+| Recalbox | `/recalbox/share/system/bin` ⚠ | if eligible (runs from a desktop or terminal session only) | none (`launcher: none`; no generic shell-Port system in 11.0, OQ-PRT-8) |
 | RetroBat | `%LocalAppData%\Programs\mothdex` | always (Windows archive) | `Mothdex.bat` in `<RetroBat>\roms\windows` |
 
 On Batocera and Recalbox shares without permission bits, the TH-31 root-only FAT exception of profiles.md §4 applies
-to the launcher folder unchanged. Whether a `.sh` Port on exFAT runs without the exec bit is ⚠ OQ-PRT-5.
+to the launcher folder unchanged. Batocera runs a shell Port as `/bin/bash <script>` (OQ-PRT-5, Verified from source),
+so the **script** needs no exec bit; the binaries in `bin_dir` still do, which the exec-bit probe checks (B8).
 
 ### 5.5 Upgrade
 
@@ -302,45 +321,56 @@ profile's `RomRoot/<folder>` from profiles.md §4. Launcher folders can never be
 | Recalbox | `/recalbox/share/roms` ✅ | `folders_verified: false` (T15b: 51 of 146 read) |
 | RetroBat | `<RetroBat>\roms` ✅ | `folders_verified: true` |
 
-Whether `HOME` and the XDG directories that hold config, data and logs (config.md §3) are on persistent storage when a
-Port runs is ⚠ OQ-PRT-9. If they are not, the fix is a profile data path, never a launcher variable (§2.3).
+`HOME` for root is Batocera `/userdata/system`, EmuELEC `/storage`, Recalbox `/recalbox/share/system` (OQ-PRT-9,
+Verified from source). These are persistent **normally**. All three fall back to a RAM-backed tmpfs when the storage
+mount fails (Batocera 256 MiB; EmuELEC live mode or no disk). Then config, history and every download live in RAM and
+are lost at reboot. PRT-G11 (§10) proposes a warning. The fix is never a launcher variable (§2.3).
 
 ## 8. What stays unverified (community beta, D28 9a)
 
 There is no hardware (ROADMAP risks), so these items ship labelled Unverified in the release notes until a beta report
 confirms each one on a named system and device:
 
-| # | Item | Systems |
-|---|---|---|
-| B1 | The Port appears in the list and starts the GUI; the frontend comes back on exit (gui.md exit codes) | Batocera, EmuELEC, RetroBat |
-| B2 | The GUI takes the display and the pad while EmulationStation waits; the `tui` fallback has a terminal (OQ-PRT-1) | Batocera, EmuELEC, RetroBat |
-| B3 | The video driver SDL picks, and legibility at 640x480 and 480x320 (gui.md §3) | Batocera, EmuELEC |
-| B4 | Pads map correctly from the embedded DB, and frontend mapping variables reach the GUI (OQ-PRT-2) | all |
-| B5 | The armhf interpreter path, and real ARMv6 (T-52 Unverified) | Batocera, Recalbox |
-| B6 | `bin_dir` persists across reboots and upgrades, and `HOME` is persistent (OQ-PRT-9) | Batocera, EmuELEC, Recalbox |
-| B7 | `--probe` result on each image, including EmuELEC 32-bit userland (OQ-PRT-7) | Batocera, EmuELEC, Recalbox |
-| B8 | A `.sh` Port on an exFAT share (OQ-PRT-5) | Batocera |
-| B9 | The refresh after install shows the Port | Batocera, EmuELEC, RetroBat |
-| B10 | Upgrade from a `v1` launcher, and uninstall leaves ROMs and config intact | all |
+| # | Item | Systems | Tester steps (T-84) |
+|---|---|---|---|
+| B1 | The Port appears in the list and starts the GUI; the frontend comes back on exit (gui.md exit codes) | Batocera, EmuELEC, RetroBat | launch from ES twice; record system, image, build, device; check the ES process survives; exit by menu and by hotkey |
+| B2 | The GUI gets focus, display and every pad while ES waits (ES keeps running, §4); whether the child has a controlling terminal | Batocera, EmuELEC, RetroBat | record `isatty` of fds 0, 1 and 2 and whether a controlling terminal exists (a `TERM` value is not evidence); try every connected pad |
+| B3 | The video driver SDL picks, and legibility at 640x480 and 480x320 (gui.md §3) | Batocera, EmuELEC | the diagnostics line (driver, `SDL_VIDEODRIVER` set or unset); compare an ES launch with an SSH launch, which is not equivalent |
+| B4 | Pads map correctly; the frontend mapping reaches the GUI (Batocera inline, EmuELEC `_FILE`) and overrides the embedded line | all | mapping counts per source from the diagnostics line; a pad with a custom frontend mapping visibly different from the embedded DB |
+| B5 | `/lib/ld-linux-armhf.so.3` exists on armv6 and armv7 images, and real ARMv6 runs the GUI | Batocera, Recalbox | `test -e` and `readlink -f` of the loader, `readelf -l /bin/bash`, then the real `--probe`; record image, CPU and `uname -m` |
+| B6 | `bin_dir` and `HOME` persist across reboot and upgrade, and the RAM fallback is seen (§7) | Batocera, EmuELEC, Recalbox | `findmnt -T "$HOME"` (privately); a harmless sentinel file under the data dir across a reboot and an upgrade, then delete it |
+| B7 | `--probe` result on each image; EmuELEC 4.8 userland is aarch64 | Batocera, EmuELEC, Recalbox | `getconf LONG_BIT`, ELF class of `/bin/bash` and `/usr/bin/emulationstation`, then `--probe` (`uname -m` alone is the kernel) |
+| B8 | A `.sh` Port on an exFAT share runs (Batocera reads it with `bash`) | Batocera | a mode-0644 script on a filesystem with modes, then the same Port on exFAT; record mount options; test `bin_dir` exec separately |
+| B9 | The refresh after install shows the Port | Batocera, EmuELEC, RetroBat | |
+| B10 | Upgrade from a `v1` launcher, and uninstall leaves ROMs and config intact | all | |
+| B11 | On RetroBat the GUI window is visible although the `.bat` runs hidden | RetroBat | launch from ES; record whether the window shows, gets focus and is fullscreen |
+| B12 | Which SDL2 the Port actually loads on EmuELEC, with `/emuelec/lib` first in `LD_LIBRARY_PATH` (§2.3) | EmuELEC | the SDL version in the diagnostics line against `--probe` run over SSH; privately, whether `/emuelec/lib` holds a `libSDL2-2.0.so.0` and who can write it |
+| B13 | The GUI language follows the ES language | Batocera, EmuELEC | a non-English ES language, restart ES; record `LANG`, `LC_ALL`, `LANGUAGE` and the language the GUI chose |
+
+Public reports keep library-path and mapping values redacted (IC-13); the steps above that read them are private.
 
 The beta report template (one issue per system and device, D4) asks for: system and version, device and CPU arch,
 the installer output, the GUI diagnostics line (§4), and each B-item as pass, fail or not tried. Guindaste writes the
 template ([`ports-beta.yml`](../../../.github/ISSUE_TEMPLATE/ports-beta.yml)); the compatibility matrix lists the B-items per system ([`ports-beta-matrix.md`](../../qa/ports-beta-matrix.md)).
 
-## 9. Open questions (research for Sonda, via Regente)
+## 9. Open questions: answers (T-84)
 
-| Id | Question | Blocks |
-|---|---|---|
-| OQ-PRT-1 | Batocera, EmuELEC, RetroBat: does the frontend stop ES and release the pad and display for a Port? Which environment does the child get (`LD_LIBRARY_PATH` especially)? Does it have a terminal? (T1b OQ1) | B1, B2 |
-| OQ-PRT-2 | Do these frontends set `SDL_GAMECONTROLLERCONFIG` or `SDL_GAMECONTROLLERCONFIG_FILE` for Ports? (gui.md §4) | B4 |
-| OQ-PRT-3 | Which `SDL_VIDEODRIVER` and SDL video backends are in each image (KMSDRM, fbdev Mali, Wayland, X11)? | B3 |
-| OQ-PRT-4 | Which locale variables does a Port get (Batocera `system.language`)? (gui.md §8) | locale |
-| OQ-PRT-5 | Does Batocera run a `.sh` Port without the exec bit (exFAT share), for example through `sh file`? (T1e #6) | B8 |
-| OQ-PRT-6 | Does `/lib/ld-linux-armhf.so.3` exist on Batocera and Recalbox armv6 and armv7 images? (gui.md §2) | B5 |
-| OQ-PRT-7 | EmuELEC: is the userland that runs ES and Ports aarch64, or 32-bit armhf on some Amlogic builds? (T1e: "32-bit libs side-by-side") | B7 |
-| OQ-PRT-8 | Recalbox 11.0: is there a `ports` system or another supported way to add a launcher? (T1e OQ2) | Recalbox Port |
-| OQ-PRT-9 | Batocera, EmuELEC, Recalbox: the value of `HOME` for root, and whether it is on persistent storage | B6 |
-| OQ-PRT-10 | muOS and Knulli: ROM roots, Port folder and format, SDL2 and libc | scope (§1) |
+Research [T-84](../../research/T-84-ports-open-questions.md) (Sonda, 2026-11-22; 69 sources at pinned commits: Batocera master `15820e4`, EmuELEC v4.8 `02b45fe`,
+RetroBat 7.0-era source, Recalbox 11.0-patron-1 `1392898`). "Verified from source" is code at that revision, not a run on
+a device. Batocera results are for master (toward 45) and are not backported to 41 to 43.
+
+| Id | Answer | Confidence | Source | Left to the beta |
+|---|---|---|---|---|
+| OQ-PRT-1 | ES waits and resumes on all three; it releases input and renderer only with `HideWindow`, off by default. No terminal: Linux stdout and stderr go to logs, no PTY; RetroBat runs the `.bat` hidden. Environment per §2.3 (EmuELEC prepends `LD_LIBRARY_PATH`). | Verified from source; terminal unusable is Inferred | T-84 OQ-PRT-1: [Batocera `sh.py`](https://github.com/batocera-linux/batocera.linux/blob/15820e4000df65d140b63ee2d0f14ca6238d2b35/python-src/batocera-launch/batocera_launch/emulators/sh.py#L36), [EmuELEC `99-emuelec.conf`](https://github.com/EmuELEC/EmuELEC/blob/02b45fe53b85c45c75dbad8e44a648092dec2e72/packages/sx05re/emuelec/profile.d/99-emuelec.conf#L4) | B1, B2, B11 |
+| OQ-PRT-2 | Batocera: inline `SDL_GAMECONTROLLERCONFIG`. EmuELEC: `SDL_GAMECONTROLLERCONFIG_FILE`. RetroBat: neither. | Verified from source | T-84 OQ-PRT-2: [Batocera `emulator.py`](https://github.com/batocera-linux/batocera.linux/blob/15820e4000df65d140b63ee2d0f14ca6238d2b35/python-src/batocera-launch/batocera_launch/emulator.py#L857) | B4 |
+| OQ-PRT-3 | Build-time backends per §4 table; EmuELEC Amlogic registers the driver `mali`. No `SDL_VIDEODRIVER` export found in the shell-Port generators (not proof of unset). | Verified from source (build time) | T-84 OQ-PRT-3: [EmuELEC SDL2 recipe](https://github.com/EmuELEC/EmuELEC/blob/02b45fe53b85c45c75dbad8e44a648092dec2e72/packages/multimedia/SDL2/package.mk#L17) | B3 |
+| OQ-PRT-4 | Batocera sets `LC_ALL` and `LANG` from `system.language`. EmuELEC may hand the Port `LANG=C.UTF-8` with the language only in `LANGUAGE`. RetroBat: no POSIX locale. | Verified (Batocera); Inferred (EmuELEC) | T-84 OQ-PRT-4: [Batocera standalone](https://github.com/batocera-linux/batocera.linux/blob/15820e4000df65d140b63ee2d0f14ca6238d2b35/package/batocera/emulationstation/batocera-emulationstation/emulationstation-standalone#L86) | B13 |
+| OQ-PRT-5 | Batocera runs `/bin/bash <script>`: the script needs no exec bit. The binaries still do. | Verified from source | T-84 OQ-PRT-5: [`sh.py`](https://github.com/batocera-linux/batocera.linux/blob/15820e4000df65d140b63ee2d0f14ca6238d2b35/python-src/batocera-launch/batocera_launch/emulators/sh.py#L36) | B8 |
+| OQ-PRT-6 | Batocera ARMv6 and ARMv7 and Recalbox rpi3/zero2 are EABIHF glibc, so the loader is expected at `/lib/ld-linux-armhf.so.3`. Recalbox 11.0 ships no ARMv6 image config. | Inferred | T-84 OQ-PRT-6 | B5 |
+| OQ-PRT-7 | Supported EmuELEC after 3.9 is aarch64-only; lib32 is compatibility libraries, not a 32-bit ES or shell. Keep the arm64 GUI; never pick armv7 automatically. | Documented | T-84 OQ-PRT-7: [EmuELEC README](https://github.com/EmuELEC/EmuELEC/blob/02b45fe53b85c45c75dbad8e44a648092dec2e72/README.md#L10) | B7 |
+| OQ-PRT-8 | Recalbox 11.0 has game-specific port systems and a Ports collection, but no generic shell-Port system. `launcher: none` stays. | Verified from source; supported custom route Unknown | T-84 OQ-PRT-8 | none (Recalbox has no Port) |
+| OQ-PRT-9 | `HOME` per §7; persistent normally, RAM tmpfs when the storage mount fails, on all three. | Verified from source | T-84 OQ-PRT-9 | B6 |
+| OQ-PRT-10 | muOS and Knulli: deferred, still out of scope (§1). | Unknown | T-84 OQ-PRT-10 | n/a |
 
 ## 10. Gaps and owners
 
@@ -353,6 +383,11 @@ template ([`ports-beta.yml`](../../../.github/ISSUE_TEMPLATE/ports-beta.yml)); t
 | PRT-G5 | Alicerce, with Guindaste's PR | gui.md §6: replace the `ldconfig -p` check with `--probe`, and `THIRD_PARTY.md` with `THIRD_PARTY/`; release-artifacts.md: the static-binary sentence (already listed in gui.md §6) |
 | PRT-G6 | Bússola | **closed (v1: no metadata).** The name `Mothdex` comes from the file name. No `gamelist.xml` entry: the file belongs to the frontend and the person, and EmulationStation rewrites it on exit and on scrape. No image in v1: art is deferred to the brand session (D28 8b). If that session approves art, this contract adds how each frontend shows it without writing `gamelist.xml` (for example a media file next to the script), Unverified per frontend and checked under B1 |
 | PRT-G7 | Sentinela | **closed by T-70** ([threat model](../../security/T-70-threat-model-ports-installer.md)): constraints IC-1 to IC-13 bind PRT-G3 and PRT-G4, IC-8 (`SetDefaultDllDirectories` in `mothdex-gui.exe`) goes to Vitral; residuals R1-R5 recorded there |
+| PRT-G8 | Guindaste (installer, High), Sentinela delta, Alicerce text | **Proposed (T-84 OQ-PRT-1), needs a decision:** a Port has no terminal, so drop the `tui` fallback. The launcher is written only when the GUI is installed; a `v3` template runs `mothdex-gui` only. Not eligible, `--no-gui` or no GUI archive means no launcher, and an existing marked launcher is removed with a note. D22 then reads "launcher on when the GUI is installed". |
+| PRT-G9 | Vitral (GUI, Medium) and Sonda; Sentinela for R2 | **Proposed (T-84 OQ-PRT-1):** the probe runs scrubbed while the EmuELEC Port inherits `/emuelec/lib` first. The diagnostics line reports whether the loaded SDL2 came from a system directory or from an `LD_LIBRARY_PATH` entry, as a word, never a path, next to its version. Sonda checks whether `/emuelec/lib` is read-only and holds a `libSDL2-2.0.so.0`. The launcher still sets nothing. |
+| PRT-G10 | Forja (i18n, Medium); Sentinela for the IC-13 change | **Proposed (T-84 OQ-PRT-4):** when `LC_ALL`, `LC_MESSAGES` and `LANG` are unset, `C` or `C.UTF-8`, the locale comes from the first entry of `LANGUAGE`; the diagnostics line adds `LANGUAGE` as a plain word, like `LANG`. |
+| PRT-G11 | Forja (profiles, Medium), Bússola for the text | **Proposed (T-84 OQ-PRT-9):** when the ROM root or the data directory is on tmpfs, profile detection adds a warning, and the GUI and CLI show it: downloads and history are in RAM and lost at reboot. |
+| PRT-G12 | Vitral (GUI, Medium) | **Proposed (T-84 OQ-PRT-1):** RetroBat starts the `.bat` hidden. Check that the GUI window does not inherit a hidden show state on Windows and shows itself explicitly; verified by B11. |
 
 ## 11. Test plan (risk paths)
 
