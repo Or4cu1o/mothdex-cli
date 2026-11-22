@@ -274,7 +274,7 @@ function Expand-GuiArchive([string]$Zip, [string]$ZipName, [string]$Dest) {
       if ($item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) { Fail "$ZipName`: $relative is not a regular file" }
       if ($relative.StartsWith('THIRD_PARTY\')) { $notices += $relative.Substring(12) }
     }
-    return , $notices
+    return $notices
   } finally { $archive.Dispose() }
 }
 

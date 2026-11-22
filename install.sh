@@ -57,7 +57,7 @@ die() {
 NEWFILE=""
 NEWGUI=""
 NEWLIC=""
-# shellcheck disable=SC2317  # runs from the EXIT trap
+# shellcheck disable=SC2317,SC2329  # runs from the EXIT trap
 cleanup() {
   if [ -n "$NEWFILE" ]; then rm -f "$NEWFILE"; fi
   if [ -n "$NEWGUI" ]; then rm -f "$NEWGUI"; fi
