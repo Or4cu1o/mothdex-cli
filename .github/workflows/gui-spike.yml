@@ -81,6 +81,29 @@ jobs:
           GUI_REQUIRE_SDL: "1" # a broken libsdl2 install fails here instead of skipping the smoke test
         run: go test -tags gui -count=1 -v ./internal/ui/gui/sdl
         if: steps.scope.outputs.run == 'true'
+      - name: --probe, the installer's eligibility check (scrubbed environment, with and without SDL2)
+        run: |
+          probe=dist-gui/linux_amd64/mothdex-gui-probe
+          # Eligible: the installer runs it as `env -i PATH=... timeout 20 mothdex-gui --probe` (ports.md 5.2, T-70 IC-1,
+          # IC-10). Exit 0 and exactly one line, "sdl X.Y.Z", on stdout. (An explicit --probe beats the probe name.)
+          set +e
+          out=$(env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin timeout 20 "$probe" --probe 2>probe.err)
+          code=$?
+          set -e
+          echo "exit $code, stdout [$out], stderr [$(cat probe.err)]"
+          [ "$code" -eq 0 ] || { echo "::error::--probe exited $code with SDL2 installed"; exit 1; }
+          printf '%s\n' "$out" | grep -Eq '^sdl [0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::stdout is not one line sdl X.Y.Z"; exit 1; }
+          [ ! -s probe.err ] || { echo "::error::an eligible probe wrote to stderr"; exit 1; }
+          # Not eligible: a machine with no SDL2 (a Debian image without libsdl2). Exit 1, nothing on stdout, one clean
+          # line of reason on stderr, at most 200 bytes.
+          out=$(docker run --rm -v "$PWD/dist-gui/linux_amd64:/t:ro" debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 \
+            sh -c 'env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin /t/mothdex-gui-probe --probe 2>/tmp/err; echo "code=$?"; cat /tmp/err')
+          echo "$out"
+          printf '%s\n' "$out" | grep -q '^code=1$' || { echo "::error::--probe without SDL2 did not exit 1"; exit 1; }
+          reason=$(printf '%s\n' "$out" | sed -n '2,$p')
+          [ "$(printf '%s\n' "$reason" | wc -l)" -eq 1 ] && [ "${#reason}" -gt 0 ] && [ "${#reason}" -le 200 ] || { echo "::error::the reason is not one line of at most 200 bytes"; exit 1; }
+          case $reason in *[![:print:]]*) echo "::error::the reason has control characters"; exit 1 ;; esac
+        if: steps.scope.outputs.run == 'true'
       - name: Library planting is ignored (a garbage libSDL2-2.0.so.0 in the cwd and next to the probe)
         env:
           SDL_VIDEODRIVER: dummy
@@ -195,6 +218,37 @@ jobs:
           Write-Host $out
           if ($code -ne 1) { throw "case 2: expected exit 1 (SDL2 not found), got ${code}: a DLL outside the application and system folders was loaded" }
           exit 0 # the last native command exited 1 on purpose: do not let PowerShell hand that to the step
+        if: steps.scope.outputs.run == 'true'
+      - name: --probe, the installer's eligibility check (the environment install.ps1 gives it)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = (Resolve-Path 'dist-gui/windows_amd64').Path
+          # install.ps1 starts the process with only SystemRoot, PATH=System32 and TEMP (T-70 IC-1) and waits 20 s (IC-10).
+          function Invoke-Probe($exe) {
+            $psi = [System.Diagnostics.ProcessStartInfo]::new($exe, '--probe')
+            $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+            $psi.Environment.Clear()
+            $psi.Environment['SystemRoot'] = $env:SystemRoot
+            $psi.Environment['PATH'] = "$env:SystemRoot\System32"
+            $psi.Environment['TEMP'] = $env:TEMP
+            $p = [System.Diagnostics.Process]::Start($psi)
+            if (-not $p.WaitForExit(20000)) { $p.Kill(); throw 'the probe did not finish in 20 s' }
+            [pscustomobject]@{ Code = $p.ExitCode; Out = $p.StandardOutput.ReadToEnd().Trim(); Err = $p.StandardError.ReadToEnd().Trim() }
+          }
+          # Eligible: the SDL2.dll is beside the executable.
+          $r = Invoke-Probe (Join-Path $dist 'mothdex-gui-probe.exe')
+          Write-Host "eligible: exit $($r.Code), stdout [$($r.Out)], stderr [$($r.Err)]"
+          if ($r.Code -ne 0 -or $r.Out -notmatch '^sdl \d+\.\d+\.\d+$' -or $r.Err -ne '') { throw 'case 1: --probe did not say one line sdl X.Y.Z and exit 0' }
+          # Not eligible: no SDL2.dll beside the executable. Exit 1, nothing on stdout, one clean line of at most 200 bytes.
+          $alone = Join-Path $env:RUNNER_TEMP 'probe-alone'
+          New-Item -ItemType Directory -Force -Path $alone | Out-Null
+          Copy-Item (Join-Path $dist 'mothdex-gui-probe.exe') $alone
+          $r = Invoke-Probe (Join-Path $alone 'mothdex-gui-probe.exe')
+          Write-Host "not eligible: exit $($r.Code), stdout [$($r.Out)], stderr [$($r.Err)]"
+          if ($r.Code -ne 1 -or $r.Out -ne '' -or $r.Err -eq '' -or $r.Err -match '[\r\n]' -or $r.Err -match '\p{Cc}' -or [Text.Encoding]::UTF8.GetByteCount($r.Err) -gt 200) {
+            throw 'case 2: --probe without SDL2.dll did not exit 1 with one clean line of reason'
+          }
         if: steps.scope.outputs.run == 'true'
       - name: go test -tags gui, run from the folder that holds SDL2.dll
         shell: bash
