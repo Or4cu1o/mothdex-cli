@@ -111,7 +111,7 @@ gui_stub() {
 }
 
 # make_gui_tag <tag> <variant>: a release like make_tag plus mothdex-gui_ archives for linux amd64 and armv7.
-# Variants: ok notelig execfail crash longmsg (probe behaviour), symlink (mothdex-gui is a link), extra (an unexpected
+# Variants: ok notelig execfail crash longmsg (probe behaviour), unknownnotice (a safe name that is not a shipped notice), symlink (mothdex-gui is a link), extra (an unexpected
 # member), noticelink (a THIRD_PARTY member is a link), nomember (no mothdex-gui), missing (listed, not downloadable),
 # tamper (checksum mismatch), dotdot and absolute (GNU tar only: names a tar writer should never produce).
 make_gui_tag() {
@@ -151,6 +151,7 @@ make_gui_tag() {
         rm -f /tmp/build/THIRD_PARTY/SDL_GameControllerDB-zlib.txt
         ln /tmp/build/THIRD_PARTY/NotoSans-OFL-1.1.txt /tmp/build/THIRD_PARTY/SDL_GameControllerDB-zlib.txt
         ;;
+      unknownnotice) echo x >/tmp/build/THIRD_PARTY/extra.txt ;;
       badspace) echo x >"/tmp/build/THIRD_PARTY/a b" ;;
       badstar) echo x >"/tmp/build/THIRD_PARTY/a*b" ;;
     esac
@@ -208,6 +209,7 @@ setup_release() {
   make_gui_tag v1.4.3 hardlink
   make_gui_tag v1.4.4 badspace
   make_gui_tag v1.4.5 badstar
+  make_gui_tag v1.4.6 unknownnotice
 }
 
 # --- simulated systems ------------------------------------------------------------------------------------------
@@ -1012,6 +1014,12 @@ fs_batocera
 inst --version v1.4.3
 check "a hard link member is refused (by type on GNU tar, by link count on busybox)" rc_not0
 check "refusal says so" out_has "not a regular file"
+check "nothing installed" absent $BATOCERA_BIN/mothdex
+reset gui-archive-unknown-notice
+fs_batocera
+inst --version v1.4.6
+check "a safe but unknown THIRD_PARTY name aborts (the allowlist, IC-4)" rc_not0
+check "says unexpected member" out_has "unexpected member"
 check "nothing installed" absent $BATOCERA_BIN/mothdex
 for pair in 'v1.4.4 a-space' 'v1.4.5 a-star'; do
   # shellcheck disable=SC2086  # intentional word splitting of the "tag name" pair

@@ -309,6 +309,7 @@ function New-GuiTag([string]$Tag, [string]$Variant) {
     'extra' { $entries['evil.exe'] = 'x' }
     'badspace' { $entries['THIRD_PARTY/a b.txt'] = 'x' }
     'badstar' { $entries['THIRD_PARTY/a*b.txt'] = 'x' }
+    'unknownnotice' { $entries['THIRD_PARTY/extra.txt'] = 'x' }
     'dotdot' { $entries['../evil.exe'] = 'x' }
     'backslash' { $entries['THIRD_PARTY\evil.txt'] = 'x' }
     'symlink' { $links = @('SDL2.dll') }
@@ -335,6 +336,7 @@ New-GuiTag 'v1.4.0' 'long'
 New-GuiTag 'v1.4.1' 'badspace'
 New-GuiTag 'v1.4.2' 'badstar'
 New-GuiTag 'v1.4.3' 'hang'
+New-GuiTag 'v1.4.4' 'unknownnotice'
 
 $tempDir = [IO.Path]::GetTempPath()
 function Clear-ProbeFiles { Remove-Item -LiteralPath (Join-Path $tempDir 'mothdex-probe-env.txt'), (Join-Path $tempDir 'mothdex-probe-where.txt') -Force -ErrorAction SilentlyContinue }
@@ -449,6 +451,11 @@ foreach ($pair in @(@('v1.4.1', 'space'), @('v1.4.2', 'star'))) {
   Invoke-Install @{ Version = $pair[0]; BinDir = $dir }
   Check "member name with a $($pair[1]) aborts as unsafe" ($script:threw -and ($script:message -match 'unsafe member name') -and (-not (Test-Path (Join-Path $dir 'mothdex.exe'))))
 }
+
+# IC-4: a safe name that is not a shipped notice is refused as unexpected (the allowlist)
+$dirU = Join-Path $root 'bn-unknown'
+Invoke-Install @{ Version = 'v1.4.4'; BinDir = $dirU }
+Check 'a safe but unknown THIRD_PARTY name aborts as unexpected member' ($script:threw -and ($script:message -match 'unexpected member') -and (-not (Test-Path (Join-Path $dirU 'mothdex.exe'))))
 
 # IC-10: a probe that hangs is killed after 20 seconds and means not eligible (the staging folder can only be removed
 # once the process is gone, so its absence proves the Kill)
