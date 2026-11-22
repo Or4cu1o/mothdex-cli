@@ -369,7 +369,7 @@ func TestBodyIsReadOnlyUpToTheCap(t *testing.T) {
 func TestBlockedIPTable(t *testing.T) {
 	for _, s := range []string{"127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.0.1", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1",
 		"255.255.255.255", "198.18.0.1", "::1", "::", "fe80::1", "fc00::1", "ff02::1", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:7f00:1::", "0.1.2.3", "fec0::1", "::7f00:1",
-		"::2", "ff::1", "0:ff::1", "64:ff9b::1:0:0:1", "64:ff9b:0:1::5db8:d822"} {
+		"::2", "ff::1", "0:ff::1", "64:ff9b::1:0:0:1", "64:ff9b:0:1::5db8:d822", "2001:2::1", "2001:10::1"} {
 		if !blockedIP(netip.MustParseAddr(s)) {
 			t.Errorf("%s must be blocked", s)
 		}
