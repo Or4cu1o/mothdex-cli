@@ -25,10 +25,17 @@ type Texture struct {
 // called Init (the main OS thread of the program, see runtime.LockOSThread).
 type Library struct{ a api }
 
+// openLib is openLibrary, replaceable by a test.
+var openLib = openLibrary
+
 // Open loads the system SDL2 and binds the functions. It wraps ErrNotFound when the library is not
-// there, and ErrIncompatible when it lacks a function.
+// there, ErrSearchPath when the DLL search path could not be restricted first (Windows), and ErrIncompatible
+// when it lacks a function.
 func Open() (*Library, error) {
-	h, err := openLibrary()
+	h, err := openLib()
+	if errors.Is(err, ErrSearchPath) {
+		return nil, err
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
