@@ -140,7 +140,7 @@ func (p Profile) Refresh(ctx context.Context, h HTTPDoer) error     // never fat
   supports the exec bit (NTFS/exFAT do not, per T1e) and fall back to another directory with a warning. The launcher
   is opt-in (D22: `--launcher`, `-Launcher` on Windows; off by default while `mothdex tui` does not exist), and
   `--uninstall` still removes a launcher it created. The launcher file runs `<bin_dir>/mothdex-gui` (or `mothdex tui`
-  until E-M3).
+  until E-M3). The E-M3 launcher, GUI install and the D22 default flip are in [`ports.md`](ports.md).
 - **World-writable directories (TH-31):** `bin_dir` and the launcher dir must not be world-writable and must be owned
   by the installing user or root; a symlinked `bin_dir` is refused. The only exception is a share partition without
   permission bits on an appliance: the installer runs as root, the profile is `batocera` or `recalbox`, the directory

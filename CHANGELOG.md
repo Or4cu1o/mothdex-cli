@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-69: backlog cleanup. The stale-session search warning already existed (T-25) and now has a CLI test; the
+  `config.Set` overwrite refusal already had tests; a retry after a 503 under the 2x size rule keeps the pinned
+  `Content-Length` across the 503 (test); the duplicated edge case of T-64 was removed from `TestCase32e`.
+- T-65: `release-check.yml`, `gui-spike.yml` and `gui-spike-qemu.yml` no longer use a `paths:` filter, so their jobs can be
+  required status checks (a workflow skipped by a path filter never reports a check). The first step of each job runs
+  `scripts/ci-scope.sh`, which compares the pull request with its base using plain `git diff` (no new action, no token, fails
+  closed to "run"); when nothing the job checks changed, its later steps are skipped and the job succeeds under the same name.
+  The lists live once in the script as named scopes (`release`, `gui`, `gui-qemu`) and include the go:embed folders `locales/` and
+  `profiles/`; a path that is quoted by git or a pattern that matches no tracked file (a moved path) answers "run". The `static`
+  GUI job always runs. Matrix jobs are never skipped whole, only their steps.
 - T-64: when the catalog size is already above 500 MiB and was confirmed, a `Content-Length` over 2x that size asks for
   confirmation again (`confirmation_required`); `-f` still skips it and the exact-length pin across retries stays
   (downloader.md 3.2 step 6).
@@ -36,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all of them (nothing already answered yes is queued); the size to accept comes only from the error (`Size` is 0 without it, and then
   the job is an ordinary failure, never offered the catalog's size); the texts share `consent.Args`; tests for the proxy answering
   another size after the consent in the three UIs.
+- T-68: contract `docs/contracts/cli/ports.md` for the frontend Ports of `mothdex-gui` on Batocera, EmuELEC and RetroBat
+  (Recalbox has no Port in 10.1.2): launcher location and fixed `v2` template that sets no environment (never
+  `LD_LIBRARY_PATH`), SDL2 per system, gamepad mapping sources, ROM destination through the profiles, install, upgrade
+  and uninstall with the D22 default flip and a `mothdex-gui --probe` eligibility check, third-party notices, the
+  community beta checklist and the open questions for research.
+- T-70: threat model of the Ports installer (`docs/security/T-70-threat-model-ports-installer.md`, Sentinela) with
+  installer constraints IC-1 to IC-13; `ports.md` follows it: launchers forward no arguments, the probe runs from
+  `bin_dir` with a scrubbed environment, the GUI archive is decided from `checksums.txt`, and a failed Windows probe
+  installs neither `mothdex-gui.exe` nor `SDL2.dll`.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a

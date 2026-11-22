@@ -110,7 +110,13 @@ These are repository settings, not files, and need the owner's approval:
    commit leaves a short window before `gh release create` that only the ruleset closes. Residual: a ruleset bypass for the
    repository admin role lets an admin still move a `v*` tag; that check is what catches it inside a run, and immutable
    releases lock the tag once the release is published (a repository setting: owner-checked, Sentinela saw it enabled in the T-24 review). Drop the bypass and lift it only when needed, if that residual matters.
-3. Do not mark `Release check` as a required status check: it is path-filtered.
+3. `Release check` (job `goreleaser snapshot`) may be a required status check: the workflow runs on every pull request and
+   skips its steps itself when no release-relevant path changed (`scripts/ci-scope.sh`), so the check always reports. The
+   workflow and the script come from the pull request's own merge commit, so a PR can edit them to skip a required job:
+   required checks are not a boundary against the PR author, review is. Residual, owner decision pending (backlog
+   `ci-self-edit`): CODEOWNERS with required review on `.github/workflows/` and `scripts/ci-scope.sh` would close it, but it
+   cannot be used while every agent works under the owner identity (D28 1c: GitHub does not let an author approve their
+   own PR).
 
 The ordered owner steps for the first release (gates, tag, approval, verification of the published assets, rollback) are in
 [release-v0.1.0-checklist.md](release-v0.1.0-checklist.md).
