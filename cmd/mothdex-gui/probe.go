@@ -36,7 +36,7 @@ func runProbe(driver string, stdout, stderr io.Writer) int {
 // sdlExitCode maps an SDL error to the exit codes of the contract: 1 for a missing or old SDL2 or no display,
 // 3 for anything else.
 func sdlExitCode(err error) int {
-	for _, e := range []error{sdl.ErrNotFound, sdl.ErrIncompatible, sdl.ErrTooOld, sdl.ErrNoDisplay} {
+	for _, e := range []error{sdl.ErrNotFound, sdl.ErrSearchPath, sdl.ErrIncompatible, sdl.ErrTooOld, sdl.ErrNoDisplay} {
 		if errors.Is(err, e) {
 			return exitSDL
 		}
