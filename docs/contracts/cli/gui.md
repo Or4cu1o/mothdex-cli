@@ -54,7 +54,7 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 
 **Library lookup.**
 - **Linux:** `dlopen("libSDL2-2.0.so.0")` by soname only.
-- **Windows:** `LoadLibraryEx("SDL2.dll", LOAD_LIBRARY_SEARCH_APPLICATION_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32)`, never the current directory (DLL planting). `purego.Dlopen` does not exist on Windows (T1b row 9), so use `x/sys/windows`.
+- **Windows:** `LoadLibraryEx("SDL2.dll", LOAD_LIBRARY_SEARCH_APPLICATION_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32)`, never the current directory (DLL planting). Before that load, `SetDefaultDllDirectories` with the same two flags makes them the default of the whole process, because SDL later loads `vulkan-1`, `opengl32`, XInput and `hid` with a plain `LoadLibrary`, which would search the current directory and `PATH`; if the call fails, SDL2 is not loaded (T-70 IC-8, T-72). `purego.Dlopen` does not exist on Windows (T1b row 9), so use `x/sys/windows`.
 
 **Interpreter on linux/arm.** Build with `-ldflags "-I /lib/ld-linux-armhf.so.3"`; the Go default `/lib/ld-linux.so.3` is wrong for armhf glibc. The path still has to be checked on Batocera and Recalbox armv6 and armv7 images.
 

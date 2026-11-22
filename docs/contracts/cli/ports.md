@@ -100,7 +100,8 @@ installer stops writing a launcher when the GUI is not eligible (§5.2); the tem
 The rules are those of gui.md §2 and stay unchanged:
 - Linux: `dlopen("libSDL2-2.0.so.0")` by soname only; SDL2 is **never bundled** on Linux.
 - Windows: the pinned `SDL2.dll` 2.32.10 (`scripts/sdl2-windows.pin`) next to `mothdex-gui.exe`, loaded with
-  `LOAD_LIBRARY_SEARCH_APPLICATION_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32`.
+  `LOAD_LIBRARY_SEARCH_APPLICATION_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32`, after `SetDefaultDllDirectories` with the same flags
+  for the whole process (gui.md §2, T-70 IC-8).
 - The binding needs SDL 2.0.0 at least and targets 2.0.18 or later (T-52).
 
 | System | SDL2 source | Known | Arch of the GUI archive | Interpreter |
