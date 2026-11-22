@@ -1,6 +1,6 @@
 # UX: gamepad GUI (`mothdex-gui`, emulator mode)
 
-Status: v1.4 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56; GUI PR 3 rules and review, T-78) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
+Status: v1.5 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56; GUI PR 3 rules and review, T-78; controller notices, T-80) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
 Contract: [`gui.md`](../contracts/cli/gui.md) (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Flows mirror [`tui.md`](tui.md); wording, units and the
 Warming rules come from [`cli-conventions.md`](cli-conventions.md); link ranking from [`prefer-syntax.md`](prefer-syntax.md).
@@ -188,10 +188,24 @@ SDL GameController buttons are read **by position** (SDL_GameControllerDB names:
   Details in the contract.
 - **Any** connected controller drives the GUI (in a two-player TV setup, whoever holds a pad). Hot-plug works at any
   time.
-- No controller at start, or the last one unplugged: a non-blocking notice card
-  `Connect a controller. On a keyboard: arrows, Enter, Esc.` The screen underneath keeps working with a keyboard.
-- A joystick SDL cannot map: notice `Controller not recognized: <name>. Add a mapping to <config dir>/gamecontrollerdb.txt.`
-  with the full path (Settings › About shows the name and GUID for support).
+- **No controller** (none after SDL's first device report at start, or the last one unplugged):
+  - A `warn` toast for 6 s (§4), shown once each time the state appears: `Connect a controller. On a keyboard:
+    arrows, Enter, Esc.` (`ui.gui.pad.none`).
+  - While no pad is connected, the top bar also shows the `warn` badge `No controller` (`ui.gui.bar.no_pad`). It is
+    never cut, like `Offline`, and goes away when a pad connects.
+  - The screen underneath keeps working with a keyboard.
+- **A joystick SDL cannot map:** a `warn` toast for 6 s, once per device per session: `Controller not recognized:
+  {name}. See Settings › About.` (`ui.gui.pad.unmapped`).
+  - The toast has no path: a path shortened to fit could not be typed.
+  - The name may wrap; past 2 lines only the name is cut with `…`.
+- **Settings › About**, for each connected pad:
+  - `Controller: <name>`, then `GUID: <guid>`.
+  - An unmapped pad adds, under its name, `Not recognized. Add a mapping to <data dir>/gamecontrollerdb.txt.` with
+    the full path, wrapped and never shortened.
+  - With no pad: `Controller: None connected`.
+  - Where purego cannot read the 16-byte GUID (32-bit ARM and x86 Linux, 32-bit Windows): `GUID: Unavailable on this
+    system`.
+- Toasts are shown one at a time; a notice waits for the toast on screen to end.
 
 ### 2.4 Keyboard fallback (TV boxes with a keyboard, desktop testing)
 
@@ -247,7 +261,8 @@ SDL GameController buttons are read **by position** (SDL_GameControllerDB names:
   2. When the status items do not fit, `Will quit when downloads finish` switches to its short form
      `ui.gui.bar.will_quit_short` (en `Quit pending`, pt_br `Saída pendente`, es_es `Salida pendiente`, ru_ru
      `Ожидается выход`).
-  3. If they still do not fit, only that item is cut with `…`. `Offline` and the queue badge are never cut.
+  3. If they still do not fit, only that item is cut with `…`. `Offline`, `No controller` (§2.3) and the queue badge
+     are never cut.
   4. Whatever room is left goes to the title, cut at the end with `…` (crumbs are dropped from the left first:
      `… › Results "zelda"`).
 - **Hint bar:** the screen's actions, at most 5, right-aligned in the order A, X, Y, B, with `Start Menu` on the left.
