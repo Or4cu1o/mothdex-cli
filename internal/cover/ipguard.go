@@ -14,7 +14,7 @@ import (
 // blockedIP); the rest of the block is unassigned.
 var blockedPrefixes = mustPrefixes(
 	"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4",
-	"::/8", "64:ff9b::/32", "64:ff9b:1::/48", "2002::/16", "2001::/23", "100::/64", "fec0::/10",
+	"::/8", "64:ff9b::/32", "2002::/16", "2001::/23", "100::/64", "fec0::/10",
 )
 
 var nat64 = netip.MustParsePrefix("64:ff9b::/96")
