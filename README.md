@@ -7,20 +7,22 @@
 
 Command-line client for the [Mothdex](https://api.mothdex.net) API.
 
-> **Status: pre-alpha.** Only the project skeleton exists. The binary prints its
-> version and nothing else. Everything listed below is **planned**, not
-> implemented.
+> **Status: v0.1.0.** First release. The command-line client, the interactive shell and the terminal UI are
+> implemented; the `--json` output and the exit codes are documented in
+> [docs/contracts/cli](docs/contracts/cli). The separate graphical frontend (`mothdex-gui`) and the Ports
+> installer (Batocera, Recalbox, RetroBat and similar) ship in the release but are in beta: they have not been
+> tested on real devices yet.
 
-## Planned features
+## Features
 
-- [ ] Search, entry details, random pick, platforms and regions (API v1)
-- [ ] Resilient downloader: parallel files, retry with backoff, size validation, atomic move
-- [ ] Cache with TTL and size limit, request history with export
-- [ ] Interactive shell, terminal UI and gamepad-driven emulator mode
-- [ ] Per-system profiles (Batocera, Recalbox, EmuELEC, Lakka, RetroBat, Bazzite, generic)
-- [ ] Localization (`en_us`, `pt_br`, `es_es`, `ru_ru`)
-- [ ] Stable `--json` output and documented exit codes
-- [ ] Release binaries for Linux, Windows and macOS with checksums
+- Search, entry details, random pick, platforms, regions and catalog statistics (API v1)
+- Resilient downloader: parallel files, retry with backoff, size validation, atomic move
+- Cache with TTL and size limit, request history
+- Interactive shell and terminal UI
+- Per-system profiles (Batocera, Recalbox, EmuELEC, Lakka, RetroBat, EmuDeck, RetroDECK, generic)
+- Localization (`en_us`, `pt_br`, `es_es`, `ru_ru`, `hi_in`, `ja_jp`, `zh_cn`)
+- Stable `--json` output and documented exit codes
+- Release binaries for Linux, Windows and macOS with checksums, SBOMs and signatures
 
 ## Install
 

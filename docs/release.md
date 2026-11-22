@@ -1,7 +1,7 @@
 # Release artifacts and pipeline
 
-Status: pre-alpha. The artifact names and the `install.sh` mapping are a stable
-interface once `v0.1.0` is published; they are specified in
+Status: v0.1.0. The artifact names and the `install.sh` mapping are a stable
+interface from `v0.1.0` on; they are specified in
 [contracts/cli/release-artifacts.md](contracts/cli/release-artifacts.md). This page
 describes the pipeline that produces them and how to verify a download.
 
