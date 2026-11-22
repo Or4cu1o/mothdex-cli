@@ -42,3 +42,26 @@ func drawBang(l *draw.List, x, y, size int, c draw.Color) {
 	l.Fill(draw.Rect{X: cx, Y: y + size/10, W: thick, H: size * 11 / 20}, 0, c)
 	l.Fill(draw.Rect{X: cx, Y: y + size*3/4, W: thick, H: thick}, 0, c)
 }
+
+// arrowLabels are the labels the hint bar uses for the D-pad directions. The font has no arrows (assets/PINS.md), so
+// the pill draws them as small triangles.
+var arrowLabels = map[string]byte{"←": 'l', "→": 'r', "↑": 'u', "↓": 'd'}
+
+// drawTriangle draws a filled triangle pointing in dir ('l', 'r', 'u' or 'd') in a size x size box with its top left
+// at (x, y), as one-pixel lines.
+func drawTriangle(l *draw.List, x, y, size int, dir byte, c draw.Color) {
+	for i := 0; i < size; i++ {
+		span := max(size-i, 1) // the line shrinks to the tip
+		half := max(span/2, 1)
+		switch dir {
+		case 'r': // a vertical line that gets shorter towards the right
+			l.Fill(draw.Rect{X: x + i, Y: y + size/2 - half, W: 1, H: 2 * half}, 0, c)
+		case 'l':
+			l.Fill(draw.Rect{X: x + size - 1 - i, Y: y + size/2 - half, W: 1, H: 2 * half}, 0, c)
+		case 'd':
+			l.Fill(draw.Rect{X: x + size/2 - half, Y: y + i, W: 2 * half, H: 1}, 0, c)
+		case 'u':
+			l.Fill(draw.Rect{X: x + size/2 - half, Y: y + size - 1 - i, W: 2 * half, H: 1}, 0, c)
+		}
+	}
+}

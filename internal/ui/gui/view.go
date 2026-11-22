@@ -314,6 +314,9 @@ func (m Model) drawTopBar(p painter, spec frameSpec) {
 // pillWidth is how wide a pill for label is: a disc for a one-letter label, and a pill with 1u of air at each
 // end for a word.
 func (p painter) pillWidth(h int, label string) int {
+	if _, ok := arrowLabels[label]; ok {
+		return h
+	}
 	if len([]rune(label)) > 1 {
 		return max(h, p.width(p.m.Secondary, label)+2*p.m.Unit)
 	}
@@ -327,6 +330,11 @@ func (p painter) pill(x, y, h int, label string) int { return p.pillOn(x, y, h, 
 func (p painter) pillOn(x, y, h int, label string, fill draw.Color) int {
 	w := p.pillWidth(h, label)
 	p.l.Fill(rect{X: x, Y: y, W: w, H: h}, h/2, fill)
+	if dir, ok := arrowLabels[label]; ok {
+		s := h * 2 / 5
+		drawTriangle(p.l, x+(w-s)/2, y+(h-s)/2, s, dir, colText)
+		return w
+	}
 	p.centered(rect{X: x, Y: y, W: w, H: h}, p.m.Secondary, colText, label)
 	return w
 }

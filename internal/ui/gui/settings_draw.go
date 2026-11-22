@@ -277,6 +277,9 @@ func (m Model) drawMargin(p painter, e *settingsEditor) {
 	met := m.metrics
 	tried := NewMetrics(met.DisplayW, met.DisplayH, SafeArea{Percent: e.pct}, m.cfg.largeText)
 	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colBG)
+	mm := m
+	mm.metrics = tried
+	mm.drawHintBar(mm.painter(p.l), m.settingsFrame().hints, "", false) // first, so the brackets stay on top of it
 	s := tried.Safe
 	ring := max(met.Ring, 2)
 	arm := 4 * met.Unit * 2
@@ -302,9 +305,6 @@ func (m Model) drawMargin(p painter, e *settingsEditor) {
 	for i, line := range p.wrap(met.Secondary, m.tr("ui.gui.settings.calib_help", nil), s.W-2*arm, 2) {
 		p.text(s.X+(s.W-p.width(met.Secondary, line))/2, cy+LineHeight(met.Title)+met.Unit+i*LineHeight(met.Secondary), met.Secondary, colDim, line)
 	}
-	mm := m
-	mm.metrics = tried
-	mm.drawHintBar(mm.painter(p.l), m.settingsFrame().hints, "", false)
 }
 
 // drawInfoPanel is the read-only panel of System and About.

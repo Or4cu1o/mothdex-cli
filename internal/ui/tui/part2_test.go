@@ -546,3 +546,29 @@ func TestDownloadAnywayAsksWithBothSizesAndConsentsToExactlyThat(t *testing.T) {
 		t.Fatalf("the new consent is for %d, got %d", again, last.SizeConsent)
 	}
 }
+
+// A history record that stopped on its real size asks again before it is queued: it shows both sizes, y queues it with
+// the consent for exactly that size, anything else queues nothing (backlog history-retry-consent).
+func TestHistoryRecordStoppedOnItsSizeAsksBeforeItIsQueuedAgain(t *testing.T) {
+	stopped := rec("s", "Zelda", time.Hour, true)
+	stopped.Error = &history.Failure{Code: "confirmation_required", Message: "needs confirmation"}
+	stopped.ContentLength, stopped.CatalogSize = 700<<20, 40<<20
+	svc := &fakeSvc{history: []app.HistoryRecord{stopped}}
+	h := newHarness(t, svc)
+	h.leaveSearchField()
+	h.keys("H", "d")
+	if len(svc.enqueued) != 0 {
+		t.Fatal("d only asks")
+	}
+	if v := h.view(); !strings.Contains(v, "[y/N]") || !strings.Contains(v, humanSize(700<<20)) || !strings.Contains(v, humanSize(40<<20)) {
+		t.Fatalf("the question names both sizes:\n%s", v)
+	}
+	h.keys("n")
+	if len(svc.enqueued) != 0 {
+		t.Fatal("n queues nothing")
+	}
+	h.keys("d", "y")
+	if len(svc.enqueued) != 1 || svc.enqueued[0].SizeConsent != 700<<20 || svc.enqueued[0].Ref.Slug != "slug-s" {
+		t.Fatalf("enqueued %+v: the consent is for the size shown", svc.enqueued)
+	}
+}

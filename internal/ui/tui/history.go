@@ -14,6 +14,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 )
 
 const (
@@ -59,7 +60,8 @@ type historyScreen struct {
 	detail     bool
 	export     *textinput.Model
 	over       *overwriteAsk
-	queued     map[string]bool // records queued again this run: d twice would queue the file twice
+	ask        *app.HistoryRecord // a record that stopped on its real size, waiting for the "[y/N]" before it is queued again
+	queued     map[string]bool    // records queued again this run: d twice would queue the file twice
 }
 
 func newHistory() historyScreen {
@@ -81,7 +83,7 @@ func (s historyScreen) title(rt *shared) string {
 
 func (s historyScreen) focus() focusKind {
 	switch {
-	case s.over != nil:
+	case s.over != nil || s.ask != nil:
 		return focusPrompt
 	case s.typing || s.export != nil:
 		return focusText
@@ -193,6 +195,8 @@ func (s historyScreen) onKey(ev keyEv, rt *shared) (screen, tea.Cmd) {
 	switch {
 	case s.over != nil:
 		return s.answerOverwrite(ev.a, rt)
+	case s.ask != nil:
+		return s.answerConsent(ev.a, rt)
 	case s.export != nil:
 		return s.onExportKey(ev, rt)
 	case s.typing:
@@ -298,8 +302,37 @@ func (s historyScreen) requeue(vis []app.HistoryRecord, i int, rt *shared) (scre
 	if s.queued[r.ID] {
 		return s, toastCmd(rt.T("ui.tui.history.already_queued", nil), toastWarn)
 	}
+	if consent.RecordNeeded(r) { // it stopped on its real size: asks again, with that size, instead of going out with no consent
+		s.ask = &r
+		return s, nil
+	}
+	return s.enqueueRecord(r, 0, rt)
+}
+
+// recordDir is where the file would be saved: the profile's folder for the platform, else the ROM root.
+func recordDir(rt *shared, r app.HistoryRecord) string {
+	p := rt.svc.ActiveProfile()
+	if dir, err := p.Profile.DestDir(r.Platform); err == nil && dir != "" {
+		return clean(dir)
+	}
+	return clean(p.RomRoot)
+}
+
+// answerConsent is the answer of the question of a record that stopped on its real size: y queues it again with the
+// consent for exactly that size, anything else leaves it as it is.
+func (s historyScreen) answerConsent(a action, rt *shared) (screen, tea.Cmd) {
+	r := *s.ask
+	s.ask = nil
+	if a != actYes || s.queued[r.ID] {
+		return s, nil
+	}
+	return s.enqueueRecord(r, r.ContentLength, rt)
+}
+
+// enqueueRecord queues a record's file again with the link it used; consent is the size accepted for it, 0 for none.
+func (s historyScreen) enqueueRecord(r app.HistoryRecord, consentSize int64, rt *shared) (screen, tea.Cmd) {
 	s.queued = withID(s.queued, r.ID)
-	req := app.DownloadRequest{Ref: app.Ref{Slug: r.Slug}, Link: app.LinkSelector{Index: r.LinkIndex, Prefer: rt.prefs}}
+	req := app.DownloadRequest{Ref: app.Ref{Slug: r.Slug}, Link: app.LinkSelector{Index: r.LinkIndex, Prefer: rt.prefs}, SizeConsent: consentSize}
 	enqueue := enqueueCmd(rt.env, []app.DownloadRequest{req})
 	ids := []app.JobID{app.JobID(r.ID)}
 	return s, func() tea.Msg {
@@ -392,6 +425,9 @@ func (s historyScreen) view(rt *shared, w, h int) screenView {
 	}
 	if s.over != nil {
 		return screenView{body: s.rows(rt, w, h), status: render(rt.st.warn, rt.T("ui.tui.history.overwrite", nil)), prompt: true}
+	}
+	if s.ask != nil {
+		return screenView{body: s.rows(rt, w, h), status: render(rt.st.warn, consentAskText(rt, consent.RecordJob(*s.ask, recordDir(rt, *s.ask)))), prompt: true}
 	}
 	if s.export != nil {
 		return screenView{body: s.rows(rt, w, h), status: rt.T("ui.tui.history.export_to", nil) + " [ " + s.export.View() + " ]", prompt: true}
