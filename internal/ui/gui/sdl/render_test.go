@@ -387,6 +387,14 @@ var renderScenes = []scene{
 		p.repeat(input.Down, 12)
 		p.press(input.Confirm)
 	}},
+	{name: "settings-system-ram", what: "T-93: the System card with a RAM disk: two warn lines of their own, no Not verified prefix, Verified kept", expect: []string{"System", "Verified", "Games folder is on a RAM disk: downloaded games are lost at reboot.", "Data folder is on a RAM disk: history, cache and settings are lost at reboot."},
+		svc: func() *guitest.Fake {
+			s := renderCatalog()
+			s.Profile = app.ProfileInfo{ID: "batocera", Name: "Batocera", RomRoot: "/userdata/roms", Verified: true,
+				StorageWarnings: []string{"Games folder is on a RAM disk: downloaded games are lost at reboot.", "Data folder is on a RAM disk: history, cache and settings are lost at reboot."}}
+			return s
+		},
+		steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 11); p.press(input.Confirm) }},
 	{name: "settings-about-nopad", what: "T-80: About with no controller", expect: []string{"Controller: None connected"}, steps: func(p *player) {
 		p.send(gui.PadsMsg{})
 		p.advance(7 * time.Second)
