@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-73 (High, PRT-G3 of `ports.md`; Sentinela T-70 IC-10 and IC-13): `mothdex-gui --probe` is the eligibility check the installer runs. It
+  loads SDL2 as a normal start does and checks the version; it opens no window, starts no video or input subsystem, reads no
+  configuration and writes no file or log (nothing runs before it but flag parsing). It prints `sdl X.Y.Z` and exits 0, or one line of
+  reason on stderr (control characters removed, at most 200 bytes) and exits 1; it also gives up by itself after 15 s, so a library that
+  blocks does not hang the installer. The old full check of the binding is now `-spike` (an executable named `mothdex-gui-probe` still
+  does it with no flag, so the CI legs are unchanged). The start-up log has one `gui: diagnostics` line: the SDL version and the video
+  driver, `LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`, the two `SDL_GAMECONTROLLERCONFIG*` variables, `LD_PRELOAD` and `SDL_DYNAMIC_API` as `set` or
+  `unset` on every system, the values of `SDL_VIDEODRIVER`, `LANG` and `LC_ALL` only when they are plain words, the mapping lines added from
+  each source and the type of each controller; no path and no other value. The spike jobs check `--probe` with and without SDL2 on Linux
+  (scrubbed environment, `timeout 20`) and on Windows (the environment `install.ps1` gives it). A failure to restrict the Windows DLL search
+  path now has its own message, `ErrSearchPath`, instead of `SDL2 was not found` (Alicerce, T-72 review).
 - T-68: contract `docs/contracts/cli/ports.md` for the frontend Ports of `mothdex-gui` on Batocera, EmuELEC and RetroBat
   (Recalbox has no Port in 10.1.2): launcher location and fixed `v2` template that sets no environment (never
   `LD_LIBRARY_PATH`), SDL2 per system, gamepad mapping sources, ROM destination through the profiles, install, upgrade
@@ -34,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installer constraints IC-1 to IC-13; `ports.md` follows it: launchers forward no arguments, the probe runs from
   `bin_dir` with a scrubbed environment, the GUI archive is decided from `checksums.txt`, and a failed Windows probe
   installs neither `mothdex-gui.exe` nor `SDL2.dll`.
+- T-72 (High, DLL planting; Sentinela T-70, IC-8): on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories` with the application folder
+  and System32 before it loads `SDL2.dll`, and does not load it if the call fails. `LoadLibraryEx` with those flags already protected
+  `SDL2.dll`, but SDL loads `vulkan-1`, `opengl32`, `XInput` and `hid` later with a plain `LoadLibrary`, which searches the working
+  directory and `PATH`. `TestPlainLoadLibraryIgnoresThePathAndTheWorkingFolderOnceSDLIsOpen` plants a DLL in both and checks that a plain
+  load does not find it while a DLL beside the executable and a System32 DLL still load; the Windows job of `gui-spike.yml` runs it as
+  its own step. Not done here: IC-13 (the diagnostics line reports `LD_PRELOAD` and `SDL_DYNAMIC_API`), because that line is the PRT-G3
+  item of cli#82 and does not exist yet.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a
