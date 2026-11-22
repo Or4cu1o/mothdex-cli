@@ -374,7 +374,7 @@ func TestBlockedIPTable(t *testing.T) {
 			t.Errorf("%s must be blocked", s)
 		}
 	}
-	for _, s := range []string{publicIP, "8.8.8.8", "2606:4700::1111", "64:ff9b::5db8:d822", "::ffff:8.8.8.8"} {
+	for _, s := range []string{publicIP, "8.8.8.8", "2606:4700::1111", "64:ff9b::5db8:d822", "::ffff:8.8.8.8", "2001:200::1"} {
 		if blockedIP(netip.MustParseAddr(s)) {
 			t.Errorf("%s must be allowed", s)
 		}
