@@ -24,8 +24,8 @@ What was and was not checked while preparing this page is at the end.
    - Tag ruleset for `v*`: creation only by the owner (or the bot, see D2), update and deletion blocked.
    - `Release check` (job `goreleaser snapshot`) may be a required status check: it runs on every pull request and skips its own steps when nothing release-relevant changed.
    - Recommended: immutable releases, so assets cannot be replaced after publishing.
-3. **Prepare PR** (docs only, Low): in `CHANGELOG.md` move the `[Unreleased]` entries under `## [0.1.0] - <date>` and add a
-   fresh empty `[Unreleased]`; check README and `docs/release.md` say pre-alpha only where that is still true. Merge.
+3. **Prepare PR** (docs only, Low): run `scripts/changelog-fold.sh --release 0.1.0` (it folds the `changes/` fragments into
+   `CHANGELOG.md`, deletes them, moves the `[Unreleased]` entries under `## [0.1.0] - <date>` and adds a fresh empty `[Unreleased]`); check README and `docs/release.md` say pre-alpha only where that is still true. Merge.
 4. **Re-run the T-22 delta on the release commit** (Ensaio): `go test -race -count=1 ./...`, and the CI jobs `goreleaser
    snapshot`, `release-check` and `installer`. Findings F3 (stdin from `/dev/null`) and F5 are product defects owned by
    Forja (T-20c): decide whether they block v0.1.0.

@@ -28,6 +28,8 @@ jobs:
         with:
           version: v2.15.0
       - run: go vet -tags gui ./cmd/mothdex-gui
+      - name: Changelog fragments are well formed
+        run: scripts/changelog-fold.sh --check
 
   test:
     name: test (${{ matrix.os }})
