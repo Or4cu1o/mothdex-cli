@@ -116,6 +116,6 @@ func (m Model) drawContinueHint(p painter) {
 	total := p.pillWidth(h, label) + met.Unit/2 + p.width(size, word)
 	x := met.Safe.X + (met.Safe.W-total)/2
 	y := met.Safe.Bottom() - met.Unit - h
-	x += p.pill(x, y, h, label) + met.Unit/2
+	x += p.pillOn(x, y, h, label, colSurface) + met.Unit/2 // a disc on the bg screen is drawn in surface
 	p.text(x, y+(h-LineHeight(size))/2, size, colDim, word)
 }

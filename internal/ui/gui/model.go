@@ -14,6 +14,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
+	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 // Timings of docs/ux/gui.md sections 4 and 5.
@@ -36,6 +37,11 @@ const (
 	screenSplash screenKind = iota
 	screenHome
 	screenExit
+	screenSearch
+	screenPicker
+	screenResults
+	screenEntry
+	screenQueue
 )
 
 type overlayKind int
@@ -95,6 +101,7 @@ type Model struct {
 	profile app.ProfileInfo
 
 	screen screenKind
+	back   []screenKind // the screens under the current one, nearest last
 	start  time.Time
 	focus  string // the focused element of the screen, by id
 
@@ -116,6 +123,21 @@ type Model struct {
 	noticeShown bool // the locale notice was shown
 	exit        *exitState
 	done        bool
+
+	search     searchState
+	results    resultsState
+	entry      entryState
+	queue      queueState
+	book       jobBook
+	batchBase  [3]int // done, skipped and failed when the queue last went busy, for the summary toast
+	covers     coverCache
+	coverBusy  string    // the slug whose cover is being decoded
+	coverSlug  string    // the slug the settle timer is for
+	coverSince time.Time // when focus reached coverSlug
+	downloaded map[string]bool
+	picker     pickerState
+	platforms  catalogLoad[mothdex.Platform]
+	regions    catalogLoad[mothdex.Region]
 }
 
 // Messages that carry the result of a Cmd.
@@ -151,6 +173,7 @@ func New(o Options, now time.Time) (Model, []Cmd) {
 	m.metrics = NewMetrics(o.Width, o.Height, m.cfg.safe, m.cfg.largeText)
 	for _, j := range o.Service.Jobs() {
 		m.jobs, _, _ = m.jobs.apply(j)
+		m.book = m.book.apply(j, now)
 	}
 	svc := o.Service
 	return m, []Cmd{
@@ -164,11 +187,16 @@ func New(o Options, now time.Time) (Model, []Cmd) {
 			list, err := svc.ConfigList()
 			return configMsg{list: list, err: err}
 		},
+		historyCmd(svc),
 	}
 }
 
 // Metrics is the layout in use, for the run loop (render scale, logical size).
 func (m Model) Metrics() Metrics { return m.metrics }
+
+// TextMode says whether the screen takes typed text: the loop turns SDL text input on and switches the input
+// layer to its text rules.
+func (m Model) TextMode() bool { return m.screen == screenSearch && m.overlay == overlayNone }
 
 // InputConfig is what the input layer must follow: the confirm button.
 func (m Model) InputConfig() input.Config { return input.Config{ConfirmEast: m.cfg.confirmEast} }
@@ -187,7 +215,30 @@ func (m Model) OverlayEpoch() int { return m.epoch }
 func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 	switch msg := msg.(type) {
 	case InputMsg:
-		return m.onAction(msg.Action, now)
+		return m.onAction(msg.Action, msg.Repeat, now)
+	case TextMsg:
+		return m.onText(msg.Text), nil
+	case searchPageMsg:
+		return m.onSearchPage(msg, now)
+	case randomMsg:
+		return m.onRandom(msg, now), nil
+	case entryMsg:
+		return m.onEntry(msg), nil
+	case coverMsg:
+		return m.onCover(msg, now)
+	case historyMsg:
+		return m.onHistory(msg), nil
+	case enqueuedMsg:
+		return m.onEnqueued(msg, now), nil
+	case boxartMsg:
+		if msg.err != nil {
+			return m.withToast(m.tr("ui.gui.toast.boxart_failed", nil), toastWarn, now), nil
+		}
+		return m, nil
+	case platformsMsg:
+		return m.onPlatforms(msg), nil
+	case regionsMsg:
+		return m.onRegions(msg), nil
 	case TickMsg:
 		return m.onTick(now)
 	case ResizeMsg:
@@ -235,7 +286,7 @@ func dirOf(a input.Action) (Dir, bool) {
 	return 0, false
 }
 
-func (m Model) onAction(a input.Action, now time.Time) (Model, []Cmd) {
+func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cmd) {
 	switch {
 	case m.screen == screenExit:
 		if a == input.Confirm && m.exit != nil && m.exit.finished && m.exit.res.Batch.RefreshWarning != "" {
@@ -252,6 +303,24 @@ func (m Model) onAction(a input.Action, now time.Time) (Model, []Cmd) {
 	case m.overlay == overlayMenu:
 		return m.onMenuAction(a, now)
 	}
+	if a == input.Menu && m.startOpensMenu() {
+		return m.openMenu(), nil
+	}
+	if a == input.Queue && m.screen != screenQueue { // Select opens the Queue from any screen
+		return m.openQueue(), nil
+	}
+	switch m.screen {
+	case screenSearch:
+		return m.onSearchAction(a, repeat, now)
+	case screenPicker:
+		return m.onPickerAction(a, now)
+	case screenResults:
+		return m.onResultsAction(a, now)
+	case screenEntry:
+		return m.onEntryAction(a, now)
+	case screenQueue:
+		return m.onQueueAction(a)
+	}
 	return m.onHomeAction(a, now)
 }
 
@@ -265,6 +334,8 @@ func (m Model) onTick(now time.Time) (Model, []Cmd) {
 		if m.exit != nil && m.exit.finished && !now.Before(m.exit.holdUntil) {
 			m.done = true
 		}
+	case screenResults, screenEntry:
+		return m.startCover(now)
 	}
 	return m, nil
 }
@@ -323,15 +394,46 @@ func (m Model) onConfig(msg configMsg) Model {
 func (m Model) onJob(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
 	var prev app.JobSnapshot
 	var known bool
+	before := m.jobs.unfinished()
 	m.jobs, prev, known = m.jobs.apply(j)
-	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) {
+	m = m.noteJob(j, now)
+	var cmds []Cmd
+	if before == 0 && m.jobs.unfinished() > 0 { // the queue went busy: a new batch starts counting
+		done, skipped, failed, _ := m.jobs.summary()
+		m.batchBase = [3]int{done, skipped, failed}
+		if known && prev.Terminal() { // a retried job: its earlier end belongs to the batch before
+			m.batchBase[0], m.batchBase[1], m.batchBase[2] = m.batchBase[0]-btoi(prev.State == app.StateDone), m.batchBase[1]-btoi(prev.State == app.StateSkipped), m.batchBase[2]-btoi(prev.State == app.StateFailed)
+		}
+	}
+	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) && m.screen != screenQueue {
 		m = m.withToast(m.tr("ui.gui.toast.download_failed", map[string]any{"title": app.SanitizeText(j.Title)}), toastError, now)
 	}
-	if m.quitPending && m.screen != screenExit && m.jobs.unfinished() == 0 {
-		return m.startExit(false, false, now)
+	if j.State == app.StateDone && (!known || prev.State != app.StateDone) && m.o.Boxart {
+		svc := m.o.Service
+		cmds = append(cmds, func() Msg {
+			_, err := svc.SaveJobBoxart(context.Background(), j, "")
+			return boxartMsg{err: err}
+		})
 	}
-	return m, nil
+	if before > 0 && m.jobs.unfinished() == 0 && m.screen != screenExit {
+		m = m.summaryToast(now)
+	}
+	if m.quitPending && m.screen != screenExit && m.jobs.unfinished() == 0 {
+		var more []Cmd
+		m, more = m.startExit(false, false, now)
+		return m, append(cmds, more...)
+	}
+	return m, cmds
 }
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+type boxartMsg struct{ err error }
 
 // startExit begins the exit sequence off the render thread and shows the exit screen.
 func (m Model) startExit(signal, cancel bool, now time.Time) (Model, []Cmd) {
@@ -381,7 +483,26 @@ func (m Model) withToastFor(text string, kind toastKind, d time.Duration, now ti
 
 // focusRect is where the focused element of the screen is, for keeping toasts off it.
 func (m Model) focusRect() (rect, bool) {
-	if m.screen != screenHome || m.overlay != overlayNone {
+	if m.overlay != overlayNone {
+		return rect{}, false
+	}
+	switch m.screen {
+	case screenSearch:
+		for _, e := range m.searchGeometry().elements {
+			if e.ID == m.search.focus {
+				return e.Rect, true
+			}
+		}
+		return rect{}, false
+	case screenResults:
+		g := m.resultsLayout()
+		if m.results.phase != loadOK || len(m.results.win.rows) == 0 {
+			return rect{}, false
+		}
+		l, from, _ := m.results.list.shown(m.resultsVisible(), len(m.results.win.rows))
+		return rect{X: g.list.X, Y: g.list.Y + (l.focus-from)*m.metrics.Row2, W: g.list.W, H: m.metrics.Row2}, true
+	case screenHome:
+	default:
 		return rect{}, false
 	}
 	for _, e := range m.homeElements() {
@@ -418,9 +539,54 @@ func (m Model) NextWake(now time.Time) (time.Time, bool) {
 		} else if m.exit != nil && !m.done {
 			earliest(m.exit.holdUntil)
 		}
+	case screenResults, screenEntry, screenPicker, screenSearch:
+		if m.waiting() { // a spinner turns, or is about to appear
+			earliest(now.Add(spinnerFrame))
+		}
+		if m.screen == screenResults || m.screen == screenEntry {
+			if want := m.coverWanted(); want != "" && m.coverBusy == "" {
+				if !m.covers.settled(want, now) && want == m.coverSlug && now.Before(m.coverSince.Add(coverSettle)) {
+					earliest(m.coverSince.Add(coverSettle))
+				}
+			}
+		}
+	case screenQueue:
+		for _, j := range m.book.snaps { // the Warming counter has its own one-second timer
+			if j.State == app.StateWarming {
+				earliest(now.Add(queueUITickDur))
+				break
+			}
+		}
 	}
 	return wake, !wake.IsZero()
 }
 
 // tr translates a key; a missing key shows as itself.
 func (m Model) tr(key string, args map[string]any) string { return m.o.T.T(key, args) }
+
+// waiting reports whether the current screen shows a wait (a spinner), which needs frames while it lasts.
+func (m Model) waiting() bool {
+	switch m.screen {
+	case screenResults:
+		return m.results.phase == loadBusy
+	case screenEntry:
+		return m.entry.phase == loadBusy
+	case screenPicker:
+		phase, _ := m.catalogPhase()
+		return phase == loadBusy
+	}
+	return false
+}
+
+// startOpensMenu says whether Start opens the Start menu on the current screen. On Search it runs the search and
+// on the multi-select pickers it applies them (docs/ux/gui.md sections 5.3 and 5.5).
+func (m Model) startOpensMenu() bool {
+	switch m.screen {
+	case screenSearch:
+		return false
+	case screenPicker:
+		phase, _ := m.catalogPhase()
+		return m.picker.single || phase != loadOK
+	}
+	return true
+}

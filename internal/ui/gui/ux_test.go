@@ -8,6 +8,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/guitest"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 )
 
@@ -22,10 +23,10 @@ func withLocale(loc string) harnessOpt {
 // the catalog down: the worst case of the top bar.
 func pendingQuit(t *testing.T, w, h int, offline bool, opts ...harnessOpt) *harness {
 	t.Helper()
-	svc := newFakeService()
-	svc.jobs = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
+	svc := guitest.New()
+	svc.JobList = []app.JobSnapshot{activeJob("1"), queuedJob("2")}
 	if offline {
-		svc.infoErr = &app.Error{Code: app.CodeNetwork, Message: "no route"}
+		svc.InfoErr = &app.Error{Code: app.CodeNetwork, Message: "no route"}
 	}
 	hn := started(t, svc, w, h, opts...)
 	hn.press(input.Back)
@@ -41,6 +42,7 @@ func pendingQuit(t *testing.T, w, h int, offline bool, opts ...harnessOpt) *harn
 	if !hn.m.quitPending {
 		t.Fatal("quit is not pending")
 	}
+	hn.press(input.Back) // Quit when finished opened the Queue: back to Home
 	return hn
 }
 
@@ -109,7 +111,7 @@ func TestPendingQuitKeepsItsFullTextWhenItFits(t *testing.T) {
 // m3: a toast takes at most 60 % of the safe width and wraps to two lines; the language notice stays 6 s and
 // the others 3 s; and the toast never covers the focused element (section 3).
 func TestToastIsNarrowWrappedAndStaysOffTheFocus(t *testing.T) {
-	h := started(t, newFakeService(), 640, 480, func(o *Options) { o.LocaleFallback = true })
+	h := started(t, guitest.New(), 640, 480, func(o *Options) { o.LocaleFallback = true })
 	const notice = "This language is not available in this screen mode yet. Showing English."
 	lines := h.m.toastLines(h.m.painter(nil))
 	if len(lines) != 2 || strings.Join(lines, " ") != notice {
@@ -130,7 +132,7 @@ func TestToastIsNarrowWrappedAndStaysOffTheFocus(t *testing.T) {
 	h.advance(200 * time.Millisecond)
 	h.mustNotHave(lines...)
 
-	short := started(t, newFakeService(), 1280, 720)
+	short := started(t, guitest.New(), 1280, 720)
 	short.press(input.Confirm)
 	short.advance(3100 * time.Millisecond)
 	short.mustNotHave("Search is not available yet.") // other toasts stay 3 s
@@ -138,7 +140,7 @@ func TestToastIsNarrowWrappedAndStaysOffTheFocus(t *testing.T) {
 
 // A toast that would sit on the focused tile goes above the hint bar instead.
 func TestAToastMovesAwayFromAFocusItWouldCover(t *testing.T) {
-	h := started(t, newFakeService(), 640, 480)
+	h := started(t, guitest.New(), 640, 480)
 	for i := 0; i < 3; i++ {
 		h.press(input.Right)
 	}
@@ -152,7 +154,7 @@ func TestAToastMovesAwayFromAFocusItWouldCover(t *testing.T) {
 }
 
 func TestShortenPathKeepsTheFirstAndTheLastFolder(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	p := h.m.painter(nil)
 	size := h.m.Metrics().Secondary
 	const path = "/home/someone/Games/retro/emulation/collection"
@@ -183,8 +185,8 @@ func TestShortenPathKeepsTheFirstAndTheLastFolder(t *testing.T) {
 
 // m1: the generic profile's footer names the folder; it wraps to two lines, and the folder is kept.
 func TestTheGenericFooterKeepsTheFolderAtSixHundredAndForty(t *testing.T) {
-	svc := newFakeService()
-	svc.profile = app.ProfileInfo{ID: "generic", Name: "Generic", RomRoot: "/home/someone/Games/retro/emulation/collection"}
+	svc := guitest.New()
+	svc.Profile = app.ProfileInfo{ID: "generic", Name: "Generic", RomRoot: "/home/someone/Games/retro/emulation/collection"}
 	for _, loc := range []string{"en_us", "pt_br"} {
 		for _, large := range []bool{false, true} {
 			h := started(t, svc, 640, 480, withLocale(loc), func(o *Options) { o.LargeText = large })
@@ -209,7 +211,7 @@ func TestTheGenericFooterKeepsTheFolderAtSixHundredAndForty(t *testing.T) {
 // m2: a tile label wraps at its spaces before it is cut, and a single long word is never split in the middle:
 // it drops to a smaller size instead.
 func TestTileLabelsWrapBeforeTheyAreCutAndWordsAreNeverSplit(t *testing.T) {
-	h := started(t, newFakeService(), 640, 480, withLocale("pt_br"), func(o *Options) { o.LargeText = true })
+	h := started(t, guitest.New(), 640, 480, withLocale("pt_br"), func(o *Options) { o.LargeText = true })
 	if !slices.Contains(h.texts(), "Configurações") {
 		t.Errorf("the Settings label must be drawn whole on one line: %q", h.texts())
 	}
@@ -233,8 +235,8 @@ func TestTileLabelsWrapBeforeTheyAreCutAndWordsAreNeverSplit(t *testing.T) {
 
 // s1: stacked dialog buttons all take the width of the panel's inner area.
 func TestStackedDialogButtonsAreAsWideAsThePanel(t *testing.T) {
-	svc := newFakeService()
-	svc.jobs = []app.JobSnapshot{activeJob("1")}
+	svc := guitest.New()
+	svc.JobList = []app.JobSnapshot{activeJob("1")}
 	h := started(t, svc, 640, 480, func(o *Options) { o.LargeText = true; o.Safe = SafeArea{Percent: 10} })
 	h.press(input.Back)
 	g := h.m.dialogGeometry()
@@ -250,7 +252,7 @@ func TestStackedDialogButtonsAreAsWideAsThePanel(t *testing.T) {
 
 // s2: a hint with a word label has 1u of air at each end; a one-letter label stays a disc.
 func TestHintPillsHaveAirAroundWords(t *testing.T) {
-	h := started(t, newFakeService(), 1280, 720)
+	h := started(t, guitest.New(), 1280, 720)
 	p := h.m.painter(nil)
 	met := h.m.Metrics()
 	hh := met.HintBar - met.Unit
@@ -264,7 +266,7 @@ func TestHintPillsHaveAirAroundWords(t *testing.T) {
 
 // s3: the spinner is on the right of the text on the Splash, as on the exit screen.
 func TestTheSplashSpinnerIsOnTheRightOfTheText(t *testing.T) {
-	h := newHarness(t, newFakeService(), 1280, 720)
+	h := newHarness(t, guitest.New(), 1280, 720)
 	h.now = h.now.Add(400 * time.Millisecond)
 	var textRight, spinnerX int
 	for _, op := range h.render().Ops {
@@ -283,8 +285,8 @@ func TestTheSplashSpinnerIsOnTheRightOfTheText(t *testing.T) {
 
 // s4: during the 4 s refresh notice the exit screen shows one hint, (A) Continue.
 func TestTheExitNoticeShowsAContinueHint(t *testing.T) {
-	svc := newFakeService()
-	svc.batch = app.BatchResult{Done: 1, RefreshWarning: "Refresh the game list from the frontend menu."}
+	svc := guitest.New()
+	svc.Batch = app.BatchResult{Done: 1, RefreshWarning: "Refresh the game list from the frontend menu."}
 	h := started(t, svc, 1280, 720)
 	h.press(input.Menu)
 	for i := 0; i < 5; i++ {
@@ -296,7 +298,7 @@ func TestTheExitNoticeShowsAContinueHint(t *testing.T) {
 	if h.texts()[i-1] != "A" {
 		t.Errorf("the hint is (A) Continue, got %q", h.texts()[i-1])
 	}
-	plain := started(t, newFakeService(), 1280, 720)
+	plain := started(t, guitest.New(), 1280, 720)
 	plain.send(SignalMsg{})
 	plain.mustNotHave("Continue")
 	assertInsideSafe(t, h, "exit notice")

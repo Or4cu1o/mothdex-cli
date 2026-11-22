@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 )
 
@@ -37,6 +38,11 @@ func (m Model) menuItems() []menuItem {
 		{id: menuHistory, label: m.tr("ui.gui.menu.history", nil)},
 		{id: menuSettings, label: m.tr("ui.gui.menu.settings", nil)},
 		{id: menuButtons, label: m.tr("ui.gui.menu.buttons", nil)},
+	}
+	if m.screen == screenQueue { // the Queue's own actions sit between Buttons and Quit
+		items = append(items,
+			menuItem{id: itemCancelAll, label: m.tr("ui.gui.queue.cancel_all", nil)},
+			menuItem{id: itemHideDone, label: m.tr("ui.gui.queue.hide_finished", nil)})
 	}
 	if m.quitPending {
 		items = append(items, menuItem{id: menuDontQuit, label: m.tr("ui.gui.menu.dont_quit", nil)})
@@ -115,8 +121,21 @@ func (m Model) onMenuAction(a input.Action, now time.Time) (Model, []Cmd) {
 func (m Model) activateMenu(id string, now time.Time) (Model, []Cmd) {
 	m = m.closeOverlay()
 	switch id {
+	case menuHome:
+		return m.toHome(), nil
 	case menuQueue:
-		return m.notYetNamed(m.tr("ui.gui.menu.queue", nil), now), nil
+		return m.openQueue(), nil
+	case itemCancelAll:
+		n := m.jobs.unfinished()
+		if n == 0 {
+			return m, nil
+		}
+		return m.openDialog(dialogState{
+			kind: dialogCancelAll, title: m.o.T.N("ui.gui.queue.cancel_all_ask", n, i18n.Args{"count": n}),
+			buttons: []dialogButton{{btnKeep, m.tr("ui.gui.queue.keep", nil)}, {btnCancelAll, m.tr("ui.gui.queue.cancel_all_yes", nil)}},
+		}, now), nil
+	case itemHideDone:
+		return m.hideFinished(), nil
 	case menuHistory:
 		return m.notYetNamed(m.tr("ui.gui.menu.history", nil), now), nil
 	case menuSettings:

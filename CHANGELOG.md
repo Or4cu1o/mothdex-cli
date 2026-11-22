@@ -15,6 +15,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
+  drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
+  cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a
+  missing one is not; the row size follows the first listed link like the service's own sort; query ids are sanitized. UX: the hint bar fits
+  in every language (drops L/R, then the Start word where Start is the menu, then Y, then X; A and B stay), compact keeps the Start word on
+  Search and the multi pickers, finished jobs show their bytes alone in Details, the Entry shows the platform name (the list is loaded once),
+  a transferring Queue row is two lines, failed rows keep only the message, the badge says `1 queued`, the Queue's state texts use the
+  ellipsis (`ui.gui.queue.*`), an error in place is marked with a `!`, and the Downloaded mark has a gap before its word.
+- T-55 (GUI PR 2, Medium): browse and download with the pad. Search with the virtual keyboard (abc, àé and, for Russian or Cyrillic text,
+  абв layouts, an 80-character limit with a counter, cursor with L and R, a held B that deletes and only leaves at an empty field, the
+  physical keyboard through `SDL_TEXTINPUT`), the Platform and Region pickers (multi-select from Search, single-select from Home ›
+  Platforms), Results as one continuous list over service pages of 25 (next page in the last five rows, at most 200 rows, earlier pages come
+  back from the service cache), the cover panel (asked 250 ms after the focus settles, decoded one at a time with `app.DecodeCover`,
+  scaled to 512 px, a memory cache of 50, a texture cache of 48 in the backend, a placeholder when there is none), Entry with the link
+  chooser (unavailable links skipped, Why line, L/R to the neighbouring result), downloads from Results and Entry with the
+  already-downloaded and over-500-MB confirmations, `download.boxart` after each finished job, and the Queue (active, queued and
+  finished jobs with the Warming counter, the action sheet by state, details, Cancel all and Hide finished from the Start menu, a summary
+  toast, Quit when finished now opens the Queue). Errors and empty states are drawn in place with Retry, using the GUI hints of
+  docs/ux/gui.md section 6. Recent searches are saved to `<paths.data>/tui_state`. New: `internal/ui/gui/guitest` (a shared fake
+  service for the GUI tests), the image draw op, `SDL_StartTextInput`/`SDL_StopTextInput` and `SDL_TEXTINPUT` in the binding, and
+  `ui.gui.*` strings in en_us, pt_br, es_es and ru_ru.
 - PR-71 review rounds (Crivo, Bússola): Quit when finished quits at once when the last job ended under the dialog; `SDL_GAMECONTROLLERCONFIG`
   and `SDL_GAMECONTROLLERCONFIG_FILE` are read in Go and added after the embedded database and the user file so they win (SDL applies them
   at `SDL_Init`, before our lines, which would have replaced them; `gui.md` and the contract say so now); when the exit sequence runs out of

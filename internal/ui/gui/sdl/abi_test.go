@@ -21,6 +21,7 @@ func TestStructLayoutMatchesTheSDL2Headers(t *testing.T) {
 	var k KeyboardEvent
 	var a ControllerAxisEvent
 	var d ControllerDeviceEvent
+	var x TextInputEvent
 	tests := []struct {
 		name string
 		got  uintptr
@@ -58,6 +59,9 @@ func TestStructLayoutMatchesTheSDL2Headers(t *testing.T) {
 		{"SDL_ControllerAxisEvent.value", unsafe.Offsetof(a.Value), 16},
 		{"sizeof(SDL_ControllerDeviceEvent)", unsafe.Sizeof(d), 12},
 		{"SDL_ControllerDeviceEvent.which", unsafe.Offsetof(d.Which), 8},
+		{"sizeof(SDL_TextInputEvent)", unsafe.Sizeof(x), 44},
+		{"SDL_TextInputEvent.windowID", unsafe.Offsetof(x.WindowID), 8},
+		{"SDL_TextInputEvent.text", unsafe.Offsetof(x.Text), 12},
 	}
 	for _, tc := range tests {
 		if tc.got != tc.want {
@@ -242,5 +246,21 @@ func TestNewEventViewsRoundTrip(t *testing.T) {
 	e.SetType(0x8001)
 	if e.Type() != 0x8001 || e.Keyboard().Sym != 0 {
 		t.Fatal("SetType must clear the rest of the event")
+	}
+}
+
+func TestTextInputEventReadsUpToTheFirstZeroByte(t *testing.T) {
+	e := NewEvent()
+	*e.TextInput() = TextInputEvent{Type: EventTextInput}
+	copy(e.TextInput().Text[:], "é ü\x00junk")
+	if got := e.TextInput().String(); got != "é ü" {
+		t.Fatalf("%q", got)
+	}
+	full := TextInputEvent{}
+	for i := range full.Text {
+		full.Text[i] = 'a'
+	}
+	if got := full.String(); len(got) != textInputSize {
+		t.Fatalf("a text with no zero byte is the whole field: %d bytes", len(got))
 	}
 }

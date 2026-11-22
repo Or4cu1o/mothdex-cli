@@ -18,8 +18,9 @@ mothdex-gui -probe [-driver dummy]
 Exit codes: 0 normal exit or SIGTERM/SIGINT, 1 SDL missing, too old or no display, 2 configuration error, 3 internal error. Every
 failure is written to the log file and to stderr.
 
-This release has the foundation: Splash, Home, the Start menu, the quit flow and the exit screen. Search, Results, Entry, Queue,
-History and Settings arrive in the next pull requests; their tiles say so in a toast.
+Screens so far: Splash, Home, Search with the virtual keyboard, the Platform and Region pickers, Results with covers, Entry with
+the link chooser, the Queue, the Start menu, the quit flow and the exit screen. History and Settings arrive in the next pull request;
+their tiles say so in a toast. On the Search screen Start runs the search, and Select opens the Queue from any screen.
 
 Build and test:
 
