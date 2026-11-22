@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -525,5 +526,23 @@ func TestDownloadAnywayAsksWithBothSizesAndConsentsToExactlyThat(t *testing.T) {
 	h.keys("d", "y")
 	if len(svc.enqueued) != before+1 || svc.enqueued[before].Ref.Slug != "zelda" || svc.enqueued[before].SizeConsent != real {
 		t.Fatalf("y queues the request with the consent for %d: %+v", real, svc.enqueued)
+	}
+
+	// The proxy now answers another length: the row and the question show the new size, and the next consent is
+	// for it, not for the one accepted before.
+	again := int64(900 << 20)
+	id := app.JobID("q" + strconv.Itoa(len(svc.enqueued)))
+	h.send(eventMsg{ev: app.Event{Job: app.JobSnapshot{ID: id, Slug: "zelda", Title: "Title zelda", State: app.StateFailed, Expected: again, CatalogSize: catalog,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": again, "path": "/roms/gbc"}}}}, ok: true})
+	if v := h.view(); !strings.Contains(v, "the file is "+humanSize(again)+", listed as "+humanSize(catalog)) {
+		t.Fatalf("the row shows the new size:\n%s", v)
+	}
+	h.keys("r")
+	if v := h.view(); !strings.Contains(v, "It is "+humanSize(again)+", not "+humanSize(catalog)) {
+		t.Fatalf("the question shows the new size:\n%s", v)
+	}
+	h.keys("y")
+	if last := svc.enqueued[len(svc.enqueued)-1]; last.SizeConsent != again {
+		t.Fatalf("the new consent is for %d, got %d", again, last.SizeConsent)
 	}
 }

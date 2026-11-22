@@ -638,16 +638,10 @@ func (m Model) summaryToast(now time.Time) Model {
 	return m.withToast(text, kind, now)
 }
 
-// consentArgs are the values of the "Download anyway" texts and the suffix of their keys: _unknown when the
-// catalog had no size for the file. The sizes are the real one and the catalog's, never "much larger": 499 MiB
-// to 501 MiB also trips the rule.
+// consentArgs are the values of the "Download anyway" texts and the suffix of their keys (see consent.Args): the
+// real size and the catalog's, never "much larger", since 499 MiB to 501 MiB also trips the rule.
 func (m Model) consentArgs(j app.JobSnapshot) (suffix string, args map[string]any) {
-	args = map[string]any{"size": humanSize(consent.Size(j))}
-	if j.CatalogSize > 0 {
-		args["estimate"] = humanSize(j.CatalogSize)
-		return "", args
-	}
-	return "_unknown", args
+	return consent.Args(j, humanSize)
 }
 
 // consentRow is the text of a Queue row that waits for the person's OK.

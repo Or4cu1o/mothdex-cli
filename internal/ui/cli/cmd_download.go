@@ -310,11 +310,13 @@ func (r *runtime) canAskConsent() bool {
 // askConsent asks once per stopped job, after the batch ended, naming the real size and the catalog's,
 // and queues again the ones answered yes with the consent for exactly that size. If the proxy then
 // reports another size, the same question comes back with the new one. firstErr is what the batch
-// returned: it stays the result when nothing is downloaded anyway (the answer was no), without a
-// second error block, since the questions said it all.
+// returned: it stays the result when nothing is downloaded anyway, and also when some job was refused
+// (the others may download, but the refused one still stopped), without a second error block, since the
+// questions said it all. Ctrl+C or the end of input at a question aborts the lot: nothing is queued.
 func (r *runtime) askConsent(ctx context.Context, s *Session, f downloadFlags, stopped []app.JobSnapshot, reqOf map[app.JobID]app.DownloadRequest, firstErr error) (outcome, error) {
 	p := r.printer()
 	var again []app.DownloadRequest
+	refused := 0
 	for _, j := range stopped {
 		req, ok := reqOf[j.ID]
 		if !ok {
@@ -323,31 +325,57 @@ func (r *runtime) askConsent(ctx context.Context, s *Session, f downloadFlags, s
 		suffix, args := consentArgs(j)
 		line, err := r.readAnswer(clean(p.T("ui.consent.shell_ask"+suffix, args)) + " ")
 		if err != nil {
-			break // Ctrl+C or the end of input: no more questions
+			return outcome{}, &exitError{err: &app.Error{Code: app.CodeCanceled, Message: "canceled"}, code: 130, silent: true}
 		}
 		if p.isYes(strings.TrimSpace(line)) {
 			again = append(again, consent.WithConsent(req, j))
+		} else {
+			refused++
 		}
 	}
-	if len(again) > 0 {
-		return r.transfer(ctx, s, again, f)
+	kept := silent(firstErr)
+	if len(again) == 0 {
+		return outcome{}, kept
 	}
-	var ae *app.Error
-	if errors.As(firstErr, &ae) {
-		return outcome{}, &exitError{err: ae, code: ae.ExitCode(), silent: true}
+	out, err := r.transfer(ctx, s, again, f)
+	if refused == 0 {
+		return out, err
 	}
-	return outcome{}, firstErr
+	// A refused job still stopped: the result of the new batch must not hide it, even when that batch is clean
+	// or asks its own questions.
+	if inner := out.follow; inner != nil {
+		out.follow = func() (outcome, error) {
+			next, nerr := inner()
+			if nerr == nil {
+				nerr = kept
+			}
+			return next, nerr
+		}
+	}
+	if err == nil {
+		err = kept
+	}
+	return out, err
 }
 
-// consentArgs are the values of the "Download anyway" texts and the key suffix: _unknown when the
-// catalog had no size for the file. The sizes are the real one and the catalog's.
-func consentArgs(j app.JobSnapshot) (suffix string, args i18n.Args) {
-	args = i18n.Args{"name": clean(firstNonEmpty(j.Name, firstNonEmpty(j.Title, j.Slug))), "size": humanSize(consent.Size(j)), "dir": clean(consent.Dir(j))}
-	if j.CatalogSize > 0 {
-		args["estimate"] = humanSize(j.CatalogSize)
-		return "", args
+// silent is the error of a batch with no second error block: the lines and questions already said it all.
+func silent(err error) error {
+	var ee *exitError
+	if errors.As(err, &ee) {
+		return ee
 	}
-	return "_unknown", args
+	var ae *app.Error
+	if errors.As(err, &ae) {
+		return &exitError{err: ae, code: ae.ExitCode(), silent: true}
+	}
+	return err
+}
+
+// consentArgs are the values of the "Download anyway" texts and the suffix of their keys (see consent.Args).
+func consentArgs(j app.JobSnapshot) (suffix string, args i18n.Args) {
+	suffix, a := consent.Args(j, humanSize)
+	a["name"], a["dir"] = clean(firstNonEmpty(j.Name, firstNonEmpty(j.Title, j.Slug))), clean(consent.Dir(j))
+	return suffix, i18n.Args(a)
 }
 
 // saveBoxarts writes the cover of every finished job, named after its file; a failure is a warning,

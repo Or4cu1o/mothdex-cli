@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of `Download failed`. UX review (Bússola): a stopped job is counted apart from the failures, so the summaries (GUI and TUI
   toasts, the Shell line, the GUI exit screen) say `N waiting for your OK` instead of `failed`; Details shows the real size and a
   Status line instead of `0 B` and `Error`.
+  Review (Crivo): the Shell keeps the stopped result when one job is refused and the other downloads, and Ctrl+C at a question aborts
+  all of them (nothing already answered yes is queued); the size to accept comes only from the error (`Size` is 0 without it, and then
+  the job is an ordinary failure, never offered the catalog's size); the texts share `consent.Args`; tests for the proxy answering
+  another size after the consent in the three UIs.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a

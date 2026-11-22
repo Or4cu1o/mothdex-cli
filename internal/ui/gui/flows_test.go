@@ -969,6 +969,25 @@ func TestDownloadAnywayAsksAndConsentsToExactlyTheSizeShown(t *testing.T) {
 	}
 	h.mustNotHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.")
 
+	// The proxy now answers another length for the new job: the row and the dialog show the new size, and the
+	// next consent is for it, not for the one accepted before.
+	const again = int64(900 << 20)
+	newID := svc.JobList[len(svc.JobList)-1].ID
+	h.send(JobMsg{Job: app.JobSnapshot{ID: newID, Slug: "zelda-001", Title: "Zelda 001", LinkIndex: 2, State: app.StateFailed, Expected: again, CatalogSize: catalog,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": again, "path": "/roms/gbc"}}}})
+	h.press(input.Queue)
+	h.mustHave("Needs your OK: the file is 900.0 MB, listed as 40.0 MB.")
+	focusJob(t, h, newID)
+	h.press(input.Confirm)
+	h.press(input.Confirm)
+	h.mustHave("This file is 900.0 MB, not 40.0 MB.", "Download 900.0 MB")
+	h.advance(200 * time.Millisecond)
+	h.press(input.Right)
+	h.press(input.Confirm)
+	if reqs := svc.Requests(); len(reqs) != 2 || reqs[1].SizeConsent != again {
+		t.Fatalf("the second consent is for %d: %+v", again, reqs)
+	}
+
 	// A catalog with no size for the file: the dialog drops the catalog part.
 	h.send(JobMsg{Job: app.JobSnapshot{ID: "9", Slug: "zelda-002", Title: "Zelda 002", State: app.StateFailed, Expected: real,
 		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}})

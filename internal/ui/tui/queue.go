@@ -390,15 +390,11 @@ func (s queueScreen) detailView(rt *shared, j app.JobSnapshot) screenView {
 	return screenView{body: lines, status: rt.T("ui.tui.queue.detail_help", nil)}
 }
 
-// consentArgs are the values of the "Download anyway" texts: the real size, the catalog's (when it had
-// one) and the folder, all cleaned. The key takes the _unknown variant when the catalog had no size.
+// consentArgs are the values of the "Download anyway" texts and the suffix of their keys (see consent.Args).
 func consentArgs(j app.JobSnapshot) (suffix string, args i18n.Args) {
-	args = i18n.Args{"name": jobLabel(j), "size": humanSize(consent.Size(j)), "dir": clean(consent.Dir(j))}
-	if j.CatalogSize > 0 {
-		args["estimate"] = humanSize(j.CatalogSize)
-		return "", args
-	}
-	return "_unknown", args
+	suffix, a := consent.Args(j, humanSize)
+	a["name"], a["dir"] = jobLabel(j), clean(consent.Dir(j))
+	return suffix, i18n.Args(a)
 }
 
 func consentRow(rt *shared, j app.JobSnapshot) string {

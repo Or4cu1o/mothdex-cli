@@ -557,3 +557,73 @@ func TestBatchLineOfAJobThatWaitsForItsOK(t *testing.T) {
 		t.Fatalf("it is not drawn as a failure:\n%s", got)
 	}
 }
+
+func stoppedAt(id app.JobID, title string, real int64) app.JobSnapshot {
+	return app.JobSnapshot{ID: id, Slug: title, Title: title, State: app.StateFailed, Expected: real, CatalogSize: 40 << 20,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}
+}
+
+// The consent is for the size shown: if the proxy then answers another length, the question comes back with the
+// new size and the next request carries the new consent (T-56, a listed requirement).
+func TestShellAsksAgainWhenTheProxyAnswersAnotherSize(t *testing.T) {
+	var queued [][]app.DownloadRequest
+	calls := 0
+	f := &fake{
+		enqueue: func(r []app.DownloadRequest) ([]app.JobID, error) {
+			queued = append(queued, r)
+			return []app.JobID{"a"}, nil
+		},
+		wait: func() (app.BatchResult, error) {
+			calls++
+			switch calls {
+			case 1:
+				return app.BatchResult{Jobs: []app.JobSnapshot{stoppedAt("a", "Zelda", 700<<20)}, Failed: 1}, nil
+			case 2:
+				return app.BatchResult{Jobs: []app.JobSnapshot{stoppedAt("a", "Zelda", 900<<20)}, Failed: 1}, nil
+			}
+			return app.BatchResult{Jobs: []app.JobSnapshot{{ID: "a", Slug: "Zelda", Title: "Zelda", State: app.StateDone, Path: "/roms/gbc/z.gb", Bytes: 900 << 20}}, Done: 1}, nil
+		},
+	}
+	rig := newShellRig(t, f, true, "y", "y")
+	if code := rig.r.Run(context.Background(), []string{"download", "1"}); code != 0 {
+		t.Fatalf("exit %d: %s", code, rig.err.String())
+	}
+	if len(rig.prompts) != 2 || !strings.Contains(rig.prompts[0], "700.0 MB") || !strings.Contains(rig.prompts[1], "900.0 MB") {
+		t.Fatalf("the second question names the new size: %q", rig.prompts)
+	}
+	if len(queued) != 3 || queued[1][0].SizeConsent != 700<<20 || queued[2][0].SizeConsent != 900<<20 {
+		t.Fatalf("each consent is for the size shown: %+v", queued)
+	}
+}
+
+// A refused job still stopped, even when the other one downloads; Ctrl+C at a question aborts everything.
+func TestShellKeepsTheStoppedResultWhenAJobIsRefusedAndCtrlCAbortsAll(t *testing.T) {
+	run := func(answers ...string) (code int, queued int, rig *shellRig) {
+		calls := 0
+		f := &fake{
+			enqueue: func(r []app.DownloadRequest) ([]app.JobID, error) {
+				queued++
+				ids := make([]app.JobID, len(r))
+				for i := range r {
+					ids[i] = app.JobID(string(rune('a' + i)))
+				}
+				return ids, nil
+			},
+			wait: func() (app.BatchResult, error) {
+				calls++
+				if calls == 1 {
+					return app.BatchResult{Jobs: []app.JobSnapshot{stoppedAt("a", "Zelda", 700<<20), stoppedAt("b", "Mario", 800<<20)}, Failed: 2}, nil
+				}
+				return app.BatchResult{Jobs: []app.JobSnapshot{{ID: "a", Slug: "Zelda", Title: "Zelda", State: app.StateDone, Path: "/roms/z.gb", Bytes: 700 << 20}}, Done: 1}, nil
+			},
+		}
+		rig = newShellRig(t, f, true, answers...)
+		return rig.r.Run(context.Background(), []string{"download", "1", "2"}), queued, rig
+	}
+	if code, queued, _ := run("y", "n"); code == 0 || queued != 2 {
+		t.Fatalf("yes then no: exit %d with %d batches; the refused job must keep the batch result non-zero", code, queued)
+	}
+	if code, queued, _ := run("y", "<abort>"); code != 130 || queued != 1 {
+		t.Fatalf("Ctrl+C at the second question: exit %d with %d batches; nothing may be queued", code, queued)
+	}
+}
