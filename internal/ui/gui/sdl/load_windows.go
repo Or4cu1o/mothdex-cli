@@ -2,7 +2,11 @@
 
 package sdl
 
-import "golang.org/x/sys/windows"
+import (
+	"fmt"
+
+	"golang.org/x/sys/windows"
+)
 
 // searchFlags are the only places a DLL may come from: the folder of the executable and System32. The current
 // directory and PATH are never searched (docs/contracts/cli/gui.md section 2).
@@ -20,7 +24,7 @@ const searchFlags = windows.LOAD_LIBRARY_SEARCH_APPLICATION_DIR | windows.LOAD_L
 // carrying on with the unsafe search order would be worse than no GUI (T-72, IC-8).
 func openLibrary() (uintptr, error) {
 	if err := windows.SetDefaultDllDirectories(searchFlags); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("cannot restrict the DLL search path: %w", err) // the log reader sees the real reason
 	}
 	h, err := windows.LoadLibraryEx("SDL2.dll", 0, searchFlags)
 	return uintptr(h), err
