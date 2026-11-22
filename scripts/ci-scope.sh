@@ -8,7 +8,8 @@
 # SCOPE is a name from the list below (one list per protected thing, so the workflows cannot drift apart).
 # PATTERN is a shell glob matched against each path changed by the pull request (a "*" also matches "/", so
 # "internal/*" is the whole tree). A pattern that matches no tracked file (a path was moved or renamed) answers
-# run=true, so a move turns CI loud instead of silently skipping. Writes "run=true" or "run=false" to $GITHUB_OUTPUT (stdout when unset).
+# run=true, so a move turns CI loud instead of silently skipping. Use only "*" and plain names in a pattern: the
+# stale check uses git pathspec and the match uses case globs, which differ for "?" and "[". Writes "run=true" or "run=false" to $GITHUB_OUTPUT (stdout when unset).
 #
 # Environment:
 #   EVENT_NAME  github.event_name; anything but "pull_request" runs everything
