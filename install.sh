@@ -82,7 +82,8 @@ Usage: sh install.sh [options]
   --no-launcher        do not create or rewrite the launcher
   --gui                install mothdex-gui when the release has one (the default)
   --no-gui             install the CLI only; an installed mothdex-gui is removed (upgrade)
-  --dry-run            download and verify, then print what would be installed; change nothing
+  --dry-run            download and verify, then print what would be installed; leaves nothing changed
+                       (the GUI check runs in an existing bin_dir and removes its staging file)
   --uninstall          remove the binaries, the licence notices and the launcher created by this installer
   -h, --help           show this help
 

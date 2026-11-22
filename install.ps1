@@ -33,7 +33,7 @@
 .PARAMETER NoGui
   Install the CLI only; an installed mothdex-gui.exe and SDL2.dll are removed (upgrade).
 .PARAMETER DryRun
-  Download and verify, print what would be installed, change nothing.
+  Download and verify, print what would be installed, leave nothing changed (the GUI check runs in an existing install folder and removes its staging file).
 .PARAMETER Uninstall
   Remove the binaries, the licence notices and the launcher created by this installer.
 #>
@@ -308,6 +308,7 @@ function Invoke-GuiProbe([string]$Exe) {
     $stderr = $process.StandardError.ReadToEndAsync()
     if (-not $process.WaitForExit($ProbeSeconds * 1000)) {
       try { $process.Kill() } catch { }
+      [void]$process.WaitForExit(5000)   # the staged exe stays locked until the process is really gone
       return [pscustomobject]@{ Verdict = 'not-eligible'; Code = 124; Message = "the probe did not finish within $ProbeSeconds seconds" }
     }
     $process.WaitForExit()
@@ -335,8 +336,12 @@ function Install-Gui([string]$GuiStage, [string]$BinDirPath, [bool]$Move) {
     }
     return $result
   } finally {
-    foreach ($name in 'mothdex-gui.exe', 'SDL2.dll') { Remove-Item -LiteralPath (Join-Path $stage $name) -Force -ErrorAction SilentlyContinue }
-    try { [IO.Directory]::Delete($stage, $false) } catch { Write-Warning "could not remove the staging folder $stage" }
+    # a few tries: antivirus or a process that has just been killed can hold the files for a moment
+    for ($try = 0; $try -lt 10; $try++) {
+      foreach ($name in 'mothdex-gui.exe', 'SDL2.dll') { Remove-Item -LiteralPath (Join-Path $stage $name) -Force -ErrorAction SilentlyContinue }
+      try { [IO.Directory]::Delete($stage, $false); break } catch { Start-Sleep -Milliseconds 300 }
+    }
+    if (Test-Path -LiteralPath $stage) { Write-Warning "could not remove the staging folder $stage" }
   }
 }
 
