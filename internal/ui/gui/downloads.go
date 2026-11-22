@@ -10,8 +10,8 @@ import (
 )
 
 // confirmBytes is the size above which one file also asks when interface.confirm_downloads is on
-// (cli-conventions section 6, docs/ux/gui.md section 5.7).
-const confirmBytes = 500 << 20
+// (cli-conventions section 6, docs/ux/gui.md section 5.7); the downloader's check uses the same constant.
+const confirmBytes = app.ConfirmBytes
 
 // doneKey identifies a downloaded file: the entry and the link number.
 func doneKey(slug string, link int) string { return slug + "|" + strconv.Itoa(link) }
@@ -36,9 +36,10 @@ type (
 	}
 	// enqueuedMsg is the answer of Enqueue for one request.
 	enqueuedMsg struct {
-		err   error
-		title string
-		jobs  []app.JobSnapshot
+		err      error
+		title    string
+		jobs     []app.JobSnapshot
+		replaces app.JobID
 	}
 )
 
@@ -83,6 +84,10 @@ type download struct {
 	slug, title, platform string
 	link                  int // 0: the default link, chosen by the preference
 	size                  int64
+	// consent is the real size a person accepted in "Download anyway" (DownloadRequest.SizeConsent); replaces is
+	// the stopped job that this request takes the place of, which leaves the list once the new one is queued.
+	consent  int64
+	replaces app.JobID
 }
 
 func (d download) request(prefer app.Preference) app.DownloadRequest {
@@ -90,7 +95,7 @@ func (d download) request(prefer app.Preference) app.DownloadRequest {
 	if d.link > 0 {
 		sel = app.LinkSelector{Index: d.link}
 	}
-	return app.DownloadRequest{Ref: app.Ref{Slug: d.slug}, Link: sel}
+	return app.DownloadRequest{Ref: app.Ref{Slug: d.slug}, Link: sel, SizeConsent: d.consent}
 }
 
 // requestDownload queues a download, asking first when interface.confirm_downloads is on and the file is above
@@ -137,7 +142,7 @@ func (m Model) enqueue(d download) (Model, []Cmd) {
 				jobs = append(jobs, j)
 			}
 		}
-		return enqueuedMsg{title: d.title, jobs: jobs}
+		return enqueuedMsg{title: d.title, jobs: jobs, replaces: d.replaces}
 	}}
 }
 
@@ -145,6 +150,9 @@ func (m Model) onEnqueued(msg enqueuedMsg, now time.Time) Model {
 	if msg.err != nil {
 		f := m.failureOf(msg.err)
 		return m.withToast(f.msg, toastError, now)
+	}
+	if msg.replaces != "" { // the stopped job is queued again: the new one takes its place in the list
+		m = m.hideJob(msg.replaces)
 	}
 	for _, j := range msg.jobs {
 		m.jobs, _, _ = m.jobs.apply(j)

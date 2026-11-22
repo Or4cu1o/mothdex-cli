@@ -13,6 +13,7 @@ import (
 	"golang.org/x/text/message"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -319,7 +320,7 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 	case screenEntry:
 		return m.onEntryAction(a, now)
 	case screenQueue:
-		return m.onQueueAction(a)
+		return m.onQueueAction(a, now)
 	}
 	return m.onHomeAction(a, now)
 }
@@ -406,7 +407,11 @@ func (m Model) onJob(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
 		}
 	}
 	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) && m.screen != screenQueue {
-		m = m.withToast(m.tr("ui.gui.toast.download_failed", map[string]any{"title": app.SanitizeText(j.Title)}), toastError, now)
+		if consent.Needed(j) { // nothing failed: the job waits for a person, so the toast is a warning with the row's words
+			m = m.withToast(app.SanitizeText(j.Title)+": "+m.consentRow(j), toastWarn, now)
+		} else {
+			m = m.withToast(m.tr("ui.gui.toast.download_failed", map[string]any{"title": app.SanitizeText(j.Title)}), toastError, now)
+		}
 	}
 	if j.State == app.StateDone && (!known || prev.State != app.StateDone) && m.o.Boxart {
 		svc := m.o.Service

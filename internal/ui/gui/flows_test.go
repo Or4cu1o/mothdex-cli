@@ -926,3 +926,55 @@ func TestEditSearchFromARecentChipReturnsToHome(t *testing.T) {
 		t.Fatalf("screen %d: B returns to Home", h.m.screen)
 	}
 }
+
+// A download that stopped on its real size waits for a person (T-56): its action sheet offers Download anyway
+// instead of Retry, the dialog names both sizes and the folder with Don't download as the default and as B,
+// and Download queues the request again with the consent for exactly that size, taking the stopped row's place.
+func TestDownloadAnywayAsksAndConsentsToExactlyTheSizeShown(t *testing.T) {
+	const real, catalog = int64(700 << 20), int64(40 << 20)
+	h, svc := queueHarness(t)
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Slug: "zelda-001", Title: "Zelda 001", LinkIndex: 2, State: app.StateFailed, Expected: real, CatalogSize: catalog,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}})
+	h.mustHave("Zelda 001: Needs your OK: the file is 700.0 MB, listed as 40.0 MB.") // the toast, from the Home screen
+	h.mustNotHave("Download failed")
+	h.press(input.Queue)
+	h.mustHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.")
+
+	h.press(input.Confirm)
+	h.mustHave("Download anyway", "Details", "Close")
+	h.mustNotHave("Retry")
+	h.press(input.Confirm) // Download anyway only opens the dialog
+	if svc.Count("enqueue:") != 0 {
+		t.Fatal("the sheet item never queues by itself")
+	}
+	h.mustHave("This file is 700.0 MB, not 40.0 MB.", "The catalog listed a smaller size. It will be saved to /roms/gbc.", "Don't download", "Download 700.0 MB")
+	if h.m.dlgFocus != btnCancel {
+		t.Fatalf("default %q: Don't download", h.m.dlgFocus)
+	}
+	h.advance(200 * time.Millisecond)
+	h.press(input.Back) // B is Don't download
+	if svc.Count("enqueue:") != 0 {
+		t.Fatal("B must not queue")
+	}
+	h.mustHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.") // the row is as it was
+
+	h.press(input.Confirm)
+	h.press(input.Confirm)
+	h.advance(200 * time.Millisecond)
+	h.press(input.Right)
+	h.press(input.Confirm)
+	reqs := svc.Requests()
+	if len(reqs) != 1 || reqs[0].Ref.Slug != "zelda-001" || reqs[0].Link.Index != 2 || reqs[0].SizeConsent != real {
+		t.Fatalf("requests %+v: the same link with the consent for %d", reqs, real)
+	}
+	h.mustNotHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.")
+
+	// A catalog with no size for the file: the dialog drops the catalog part.
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "9", Slug: "zelda-002", Title: "Zelda 002", State: app.StateFailed, Expected: real,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}})
+	focusJob(t, h, "9")
+	h.mustHave("Needs your OK: the file is 700.0 MB.")
+	h.press(input.Confirm)
+	h.press(input.Confirm)
+	h.mustHave("This file is 700.0 MB.", "The catalog had no size for it. It will be saved to /roms/gbc.")
+}
