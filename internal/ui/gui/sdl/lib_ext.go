@@ -84,6 +84,13 @@ func (l *Library) JoystickGUID(index int) (guid string, ok bool) {
 	if l.a.joystickDeviceGUID == nil {
 		return "", false
 	}
+	// The GUID is only for the notices and About: a failure of the call itself, which would be an ABI problem of
+	// purego on this platform, must never take the GUI down.
+	defer func() {
+		if r := recover(); r != nil {
+			guid, ok = "", false
+		}
+	}()
 	return l.a.joystickDeviceGUID(int32(index)).String(), true //nolint:gosec // a device index is small
 }
 

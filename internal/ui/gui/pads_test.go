@@ -61,7 +61,7 @@ func TestPadNoticesWaitForTheToastOnScreenAndCutOnlyTheName(t *testing.T) {
 	h.mustNotHave("See Settings › About.")
 	h.advance(7 * time.Second)
 	got := strings.Join(h.texts(), " ")
-	if !strings.Contains(got, "…") || !strings.Contains(got, ". See Settings › About.") || strings.Contains(got, "Connect a controller") {
+	if !strings.Contains(got, "…") || strings.Contains(got, "….") || !strings.Contains(got, " See Settings › About.") || strings.Contains(got, "Connect a controller") {
 		t.Fatalf("the second notice follows the first, with only the name cut:\n%s", got)
 	}
 }
@@ -105,4 +105,60 @@ func TestAboutListsTheControllersAndWhereToAddAMapping(t *testing.T) {
 	if !strings.Contains(strings.ReplaceAll(joined, " ", ""), "Notrecognized.Addamappingto/userdata/system/mothdex/data/gamecontrollerdb.txt.") {
 		t.Fatalf("the whole path, wrapped but not shortened:\n%v", h.texts())
 	}
+}
+
+// Four joysticks fit at the smallest size with normal text, so the panel does not scroll there; with large text it does.
+func TestAboutDoesNotScrollWhenFourControllersFit(t *testing.T) {
+	svc := settingsFixture()
+	h := started(t, svc, 640, 480, func(o *Options) { o.MappingsPath = "/userdata/system/mothdex/data/gamecontrollerdb.txt" })
+	var pads []input.PadInfo
+	for _, n := range []string{"First Pad", "Second Pad", "Third Pad", "Fourth Pad"} {
+		pads = append(pads, input.PadInfo{Name: n, GUID: "0300", Mapped: n != "Third Pad"})
+	}
+	h.send(PadsMsg{Pads: pads})
+	h.advance(7 * time.Second)
+	if h.m.infoScrolls("about") {
+		t.Fatal("it fits")
+	}
+}
+
+// With more joysticks than the panel can hold the About panel scrolls instead of running off the screen, and says so in
+// the hint bar (Bússola, T-80).
+func TestAboutScrollsWhenThereAreMoreControllersThanFit(t *testing.T) {
+	svc := settingsFixture()
+	for i := range svc.Settings {
+		if svc.Settings[i].Key == "gui.text_size" {
+			svc.Settings[i].Value = "large" // the configuration is read at start and wins over the option
+		}
+	}
+	h := started(t, svc, 640, 480, func(o *Options) { o.MappingsPath = "/userdata/system/mothdex/data/gamecontrollerdb.txt" })
+	var pads []input.PadInfo
+	for _, n := range []string{"First Pad", "Second Pad", "Third Pad", "Fourth Pad", "Fifth Pad", "Sixth Pad", "Seventh Pad", "Eighth Pad"} {
+		pads = append(pads, input.PadInfo{Name: n, GUID: "0300" + strings.ToLower(n[:1]), Mapped: n != "Third Pad"})
+	}
+	h.send(PadsMsg{Pads: pads})
+	h.advance(7 * time.Second)
+	h.press(input.Menu)
+	for i := 0; i < 3; i++ {
+		h.press(input.Down)
+	}
+	h.press(input.Confirm)
+	for i := 0; i < 12; i++ {
+		h.press(input.Down)
+	}
+	h.press(input.Confirm) // About
+	h.mustHave("Controller: First Pad")
+	h.mustNotHave("Controller: Eighth Pad") // below the panel
+	h.mustHave("Move")                      // the hint that Up and Down scroll
+	assertInsideSafe(t, h, "about")
+	for i := 0; i < 20; i++ {
+		h.press(input.Down)
+	}
+	h.mustHave("Controller: Eighth Pad", "GUID: 0300e")
+	h.mustNotHave("Controller: First Pad")
+	assertInsideSafe(t, h, "about, scrolled")
+	for i := 0; i < 20; i++ {
+		h.press(input.Up)
+	}
+	h.mustHave("Controller: First Pad")
 }

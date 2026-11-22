@@ -274,6 +274,9 @@ func fitCrumbs(p painter, size int, crumbs []string, maxW int) string {
 			return t
 		}
 	}
+	if len(crumbs) == 0 { // Home: only the brand, and the right side left it less room than it needs
+		return p.fit(size, brand, max(maxW, 1))
+	}
 	last := crumbs[len(crumbs)-1]
 	return "…" + crumb + p.fit(size, last, max(maxW-p.width(size, "…"+crumb), p.width(size, "…")))
 }

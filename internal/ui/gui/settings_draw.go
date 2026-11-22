@@ -111,6 +111,9 @@ func (m Model) settingsFrame() frameSpec {
 			spec.hints = []hint{{role: input.Left, role2: input.Right, label: m.tr("ui.gui.hint.change", nil)}, {role: input.Confirm, label: m.tr("ui.gui.hint.save", nil)}, {role: input.Back, label: m.tr("ui.gui.hint.cancel", nil)}}
 		case edInfo:
 			spec.hints = []hint{{role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
+			if m.infoScrolls(e.row) {
+				spec.hints = append([]hint{{role: input.Up, role2: input.Down, label: m.tr("ui.gui.buttons.move", nil)}}, spec.hints...)
+			}
 		default:
 			spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.choose", nil)}, {role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
 		}
@@ -344,72 +347,149 @@ func (m Model) drawMargin(p painter, e *settingsEditor) {
 	}
 }
 
-// drawInfoPanel is the read-only panel of System and About.
+// infoLine is one logical line of the read-only panels: indented by indent units, in the warn color when warn, with a
+// unit of space above when gap (it starts a group).
+type infoLine struct {
+	text   string
+	indent int
+	warn   bool
+	gap    bool
+}
+
+// visualLine is one drawn line of an info panel, after wrapping.
+type visualLine struct {
+	text string
+	x    int // from the left edge of the text
+	c    draw.Color
+	gap  int // space above, in pixels
+}
+
+// infoLines are the lines of System or About.
+func (m Model) infoLines(p painter, row string) []infoLine {
+	met := m.metrics
+	u := met.Unit
+	var lines []infoLine
+	switch row {
+	case "system":
+		root := shortenPath(p, met.Secondary, app.SanitizeText(m.profile.RomRoot), min(met.Safe.W-8*u, 24*met.Body))
+		lines = append(lines, infoLine{text: app.SanitizeText(m.profile.Name) + " · " + root})
+		if m.profile.Verified && len(m.profile.Warnings) == 0 {
+			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.sys_verified", nil)})
+		}
+		for _, w := range append(append([]string{}, m.profile.Unverified...), m.profile.Warnings...) {
+			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.sys_unverified", map[string]any{"warning": app.SanitizeText(w)})})
+		}
+	default:
+		lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_version", nil) + ": " + app.SanitizeText(m.o.Version)})
+		if m.entriesText != "" {
+			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_entries", nil) + ": " + m.entriesText})
+		}
+		lines = append(lines, m.controllerLines()...)
+		if m.o.LogPath != "" {
+			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_log", nil) + ": " + app.SanitizeText(m.o.LogPath), gap: true})
+		}
+	}
+	return lines
+}
+
+// infoGeometry lays an info panel out: the wrapped lines that fit from offset on, the panel, and the largest offset (0
+// when everything fits, so the panel does not scroll). The panel is at most as tall as the safe rectangle allows.
+func (m Model) infoGeometry(p painter, row string, offset int) (panel draw.Rect, shown []visualLine, maxOffset int) {
+	met := m.metrics
+	u := met.Unit
+	maxW := min(met.Safe.W-4*u, 28*met.Body)
+	var all []visualLine
+	for _, l := range m.infoLines(p, row) {
+		for i, w := range p.wrap(met.Secondary, l.text, maxW-4*u-l.indent*2*u, 8) {
+			vl := visualLine{text: w, x: l.indent * 2 * u, c: colText}
+			if l.warn {
+				vl.c = colWarn
+			}
+			if i == 0 && l.gap {
+				vl.gap = u
+			}
+			all = append(all, vl)
+		}
+	}
+	lh := LineHeight(met.Secondary)
+	fixed := LineHeight(met.Body) + 5*u
+	room := met.Safe.H - 4*u - fixed
+	fits := func(from int) (n, h int) {
+		for i := from; i < len(all); i++ {
+			if h+lh+all[i].gap > room && i > from {
+				break
+			}
+			h += lh + all[i].gap
+			n++
+		}
+		return n, h
+	}
+	for maxOffset = 0; maxOffset < len(all); maxOffset++ { // the first offset from which everything left fits
+		if n, _ := fits(maxOffset); maxOffset+n >= len(all) {
+			break
+		}
+	}
+	offset = min(max(offset, 0), maxOffset)
+	n, h := fits(offset)
+	shown = all[offset : offset+n]
+	panelH := min(h+fixed, met.Safe.H-4*u)
+	panel = draw.Rect{X: met.Safe.X + (met.Safe.W-maxW)/2, Y: met.Safe.Y + max((met.Safe.H-panelH)/2, 0), W: maxW, H: panelH}
+	return panel, shown, maxOffset
+}
+
+// drawInfoPanel is the read-only panel of System and About. When its lines do not all fit, Up and Down scroll it and
+// a small triangle at the edge says which way there is more.
 func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 	met := m.metrics
 	u := met.Unit
 	title := m.tr("ui.gui.settings.row."+e.row, nil)
-	var lines []string
-	switch e.row {
-	case "system":
-		root := shortenPath(p, met.Secondary, app.SanitizeText(m.profile.RomRoot), min(met.Safe.W-8*u, 24*met.Body))
-		lines = append(lines, app.SanitizeText(m.profile.Name)+" · "+root)
-		if m.profile.Verified && len(m.profile.Warnings) == 0 {
-			lines = append(lines, m.tr("ui.gui.settings.sys_verified", nil))
-		}
-		for _, w := range append(append([]string{}, m.profile.Unverified...), m.profile.Warnings...) {
-			lines = append(lines, m.tr("ui.gui.settings.sys_unverified", map[string]any{"warning": app.SanitizeText(w)}))
-		}
-	default:
-		lines = append(lines, m.tr("ui.gui.settings.about_version", nil)+": "+app.SanitizeText(m.o.Version))
-		if m.entriesText != "" {
-			lines = append(lines, m.tr("ui.gui.settings.about_entries", nil)+": "+m.entriesText)
-		}
-		lines = append(lines, m.controllerLines()...)
-		if m.o.LogPath != "" {
-			lines = append(lines, m.tr("ui.gui.settings.about_log", nil)+": "+app.SanitizeText(m.o.LogPath))
-		}
-	}
-	maxW := min(met.Safe.W-4*u, 28*met.Body)
-	var wrapped []string
-	for _, l := range lines {
-		wrapped = append(wrapped, p.wrap(met.Secondary, l, maxW-4*u, 6)...) // the path of the mapping file is shown whole
-	}
-	h := len(wrapped)*LineHeight(met.Secondary) + LineHeight(met.Body) + 5*u
-	panel := draw.Rect{X: met.Safe.X + (met.Safe.W-maxW)/2, Y: met.Safe.Y + max((met.Safe.H-h)/2, 0), W: maxW, H: min(h, met.Safe.H)}
+	panel, shown, maxOff := m.infoGeometry(p, e.row, e.focus)
 	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
 	p.l.Fill(panel, met.Radius, colSurface)
 	y := panel.Y + 2*u
-	p.text(panel.X+2*u, y, met.Body, colText, p.fit(met.Body, title, maxW-4*u))
+	p.text(panel.X+2*u, y, met.Body, colText, p.fit(met.Body, title, panel.W-4*u))
 	y += LineHeight(met.Body) + u
-	for _, l := range wrapped {
-		p.text(panel.X+2*u, y, met.Secondary, colText, l)
+	for _, l := range shown {
+		y += l.gap
+		p.text(panel.X+2*u+l.x, y, met.Secondary, l.c, l.text)
 		y += LineHeight(met.Secondary)
+	}
+	off := min(max(e.focus, 0), maxOff)
+	tri := LineHeight(met.Secondary) / 2
+	if off > 0 {
+		drawTriangle(p.l, panel.Right()-2*u-tri, panel.Y+u, tri, 'u', colDim)
+	}
+	if off < maxOff {
+		drawTriangle(p.l, panel.Right()-2*u-tri, panel.Bottom()-u-tri, tri, 'd', colDim)
 	}
 }
 
-// controllerLines are the About lines for the joysticks present, for whoever has to add a mapping or report a problem:
-// the name, for a joystick SDL has no mapping for the line that says where to add one (the whole path, never shortened),
-// and the GUID. With none present, "None connected".
-func (m Model) controllerLines() []string {
+// infoScrolls reports whether the open info panel has more lines than fit.
+func (m Model) infoScrolls(row string) bool {
+	_, _, maxOff := m.infoGeometry(m.painter(nil), row, 0)
+	return maxOff > 0
+}
+
+// controllerLines are the About lines for the joysticks present, for whoever has to add a mapping or report a problem.
+// Each joystick is a group: its name at the left edge; under it, indented, for one SDL has no mapping for the line
+// that says where to add one (the whole path, never shortened, in the warn color) and the GUID. With none present,
+// "None connected".
+func (m Model) controllerLines() []infoLine {
 	pad := m.tr("ui.gui.settings.about_pad", nil)
 	if len(m.pads) == 0 {
-		return []string{pad + ": " + m.tr("ui.gui.settings.about_none", nil)}
+		return []infoLine{{text: pad + ": " + m.tr("ui.gui.settings.about_none", nil)}}
 	}
-	var lines []string
-	for _, p := range m.pads[:min(len(m.pads), maxAboutPads)] {
-		lines = append(lines, pad+": "+app.SanitizeText(p.Name))
+	var lines []infoLine
+	for i, p := range m.pads {
+		lines = append(lines, infoLine{text: pad + ": " + app.SanitizeText(p.Name), gap: i > 0})
 		if !p.Mapped {
-			lines = append(lines, m.tr("ui.gui.settings.about_unmapped", map[string]any{"path": app.SanitizeText(m.o.MappingsPath)}))
+			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_unmapped", map[string]any{"path": app.SanitizeText(m.o.MappingsPath)}), indent: 1, warn: true})
 		}
 		guid := app.SanitizeText(p.GUID)
 		if guid == "" {
 			guid = m.tr("ui.gui.settings.about_guid_none", nil)
 		}
-		lines = append(lines, m.tr("ui.gui.settings.about_guid", nil)+": "+guid)
+		lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_guid", nil) + ": " + guid, indent: 1})
 	}
 	return lines
 }
-
-// maxAboutPads is how many joysticks About lists: the panel has to fit the screen.
-const maxAboutPads = 4

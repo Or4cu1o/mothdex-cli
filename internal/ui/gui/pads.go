@@ -33,6 +33,8 @@ func (m Model) hasMappedPad() bool {
 // noPad is true once the backend has reported and no joystick that SDL maps is present.
 func (m Model) noPad() bool { return m.padsKnown && !m.hasMappedPad() }
 
+// padKey says which device a notice was already given for: its name and GUID, so two joysticks of the same model are one
+// device (one notice), and where the GUID is not available (32-bit platforms) only the name counts.
 func padKey(p input.PadInfo) string { return p.Name + "|" + p.GUID }
 
 // onPads takes the list of joysticks and queues the notices its change calls for.
@@ -79,6 +81,9 @@ func (m Model) unmappedNotice(p input.PadInfo) string {
 		mm.toast.text = sentence(cand)
 		lines := mm.toastLines(pp)
 		if strings.Join(lines, " ") == mm.toast.text {
+			if k < len(runes) { // a cut name ends in an ellipsis: it takes the place of the period after it
+				return strings.Replace(mm.toast.text, cand+".", cand, 1)
+			}
 			return mm.toast.text
 		}
 	}

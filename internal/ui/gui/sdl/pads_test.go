@@ -10,7 +10,7 @@ import (
 
 // The GUID is written the way SDL_JoystickGetGUIDString does and gamecontrollerdb.txt lines start: 32 lower-case hex digits.
 func TestJoystickGUIDIsTheHexFormOfItsBytes(t *testing.T) {
-	g := JoystickGUID{Data: [16]uint8{0x03, 0, 0, 0, 0x5e, 0x04, 0, 0, 0x8e, 0x02, 0, 0, 0x14, 0x05, 0, 0}}
+	g := JoystickGUID{Lo: 0x0000045e00000003, Hi: 0x000005140000028e} // the bytes 03 00 00 00 5e 04 00 00 8e 02 00 00 14 05 00 00
 	if got, want := g.String(), "030000005e0400008e02000014050000"; got != want {
 		t.Fatalf("%s, want %s", got, want)
 	}

@@ -9,6 +9,8 @@
 package sdl
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"unsafe"
 )
@@ -212,17 +214,18 @@ func (e *Event) ControllerDevice() *ControllerDeviceEvent {
 // a device index for DEVICEADDED and an instance id for DEVICEREMOVED. The caller checks Type first.
 func (e *Event) JoyDevice() *ControllerDeviceEvent { return e.ControllerDevice() }
 
-// JoystickGUID is SDL_JoystickGUID: 16 bytes that name a model of device.
-type JoystickGUID struct{ Data [16]uint8 }
+// JoystickGUID is SDL_JoystickGUID, 16 bytes that name a model of device. It is declared as two 64-bit words, not
+// as the C struct { Uint8 data[16] }: purego cannot return a struct with an array field (it panics when the function
+// is called), while a struct of two integers is returned in registers exactly as the C one is on amd64 and arm64
+// (found by Crivo's probe against a virtual joystick). Lo holds bytes 0 to 7 and Hi bytes 8 to 15, little-endian.
+type JoystickGUID struct{ Lo, Hi uint64 }
 
 // String is the 32 lower-case hex digits SDL_JoystickGetGUIDString writes, the form of gamecontrollerdb.txt.
 func (g JoystickGUID) String() string {
-	const digits = "0123456789abcdef"
-	out := make([]byte, 0, 32)
-	for _, b := range g.Data {
-		out = append(out, digits[b>>4], digits[b&15])
-	}
-	return string(out)
+	var raw [16]byte
+	binary.LittleEndian.PutUint64(raw[:8], g.Lo)
+	binary.LittleEndian.PutUint64(raw[8:], g.Hi)
+	return hex.EncodeToString(raw[:])
 }
 
 // SetType makes the event an otherwise empty event of the given type, as SDL_UserEvent is for a wake-up.

@@ -118,6 +118,10 @@ func Hint(role Action, t ControllerType, confirmEast bool) string {
 		return "←"
 	case Right:
 		return "→"
+	case Up:
+		return "↑"
+	case Down:
+		return "↓"
 	}
 	b, ok := RoleButton(role, confirmEast)
 	if !ok {

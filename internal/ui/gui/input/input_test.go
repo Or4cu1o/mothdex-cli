@@ -315,7 +315,12 @@ func TestHintsFollowTheRoleTheSwapAndThePad(t *testing.T) {
 		{PageDown, TypeXboxOne, false, "RB"},
 		{Menu, TypeXboxOne, false, "Menu"},
 		{Queue, TypeXboxOne, false, "View"},
-		{Up, TypeXbox360, false, ""}, // a direction has no button label
+		{Up, TypeXbox360, false, "↑"}, // a direction has no printed label: the hint bar draws it as a triangle
+		{Down, TypePS4, false, "↓"},
+		{Left, TypeSwitchPro, false, "←"},
+		{Right, TypeXbox360, true, "→"},
+		{Download, TypeXbox360, false, "X"},
+		{None, TypeXbox360, false, ""}, // no role, no label
 	}
 	for _, tc := range tests {
 		if got := Hint(tc.role, tc.typ, tc.confirmEast); got != tc.want {

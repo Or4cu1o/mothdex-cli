@@ -191,6 +191,16 @@ func (p *player) openFromMenu(downs int) {
 	p.press(input.Confirm)
 }
 
+// fourPads are four joysticks: three that SDL maps and one it does not.
+func fourPads() []input.PadInfo {
+	return []input.PadInfo{
+		{Name: "Pad One", GUID: "03000000aaaa0000", Type: input.TypeXbox360, Mapped: true},
+		{Name: "Pad Two", GUID: "03000000bbbb0000", Type: input.TypePS4, Mapped: true},
+		{Name: "Pad Three", GUID: "03000000cccc0000", Mapped: true},
+		{Name: "Pad Four", GUID: "03000000dddd0000"},
+	}
+}
+
 func (p *player) repeat(a input.Action, n int) {
 	p.t.Helper()
 	for i := 0; i < n; i++ {
@@ -348,6 +358,24 @@ var renderScenes = []scene{
 	}},
 	{name: "settings-about-pads", what: "T-80: About lists each controller, where to add a mapping for the unknown one, and the GUID", expect: []string{"Controller: Xbox 360 Controller", "GUID: 030000005e0400008e02000014050000", "Controller: Mystery Gamepad", "GUID: Unavailable on this system"}, steps: func(p *player) {
 		p.send(gui.PadsMsg{Pads: []input.PadInfo{{Name: "Xbox 360 Controller", GUID: "030000005e0400008e02000014050000", Type: 1, Mapped: true}, {Name: "Mystery Gamepad"}}})
+		p.advance(7 * time.Second)
+		p.openFromMenu(3)
+		p.repeat(input.Down, 12)
+		p.press(input.Confirm)
+	}},
+	{name: "settings-about-pads-4", what: "T-80: About with four controllers, one unknown: each is a group", expect: []string{"Controller: Pad One", "Controller: Pad Four", "GUID: 03000000dddd0000"}, steps: func(p *player) {
+		p.send(gui.PadsMsg{Pads: fourPads()})
+		p.advance(7 * time.Second)
+		p.openFromMenu(3)
+		p.repeat(input.Down, 12)
+		p.press(input.Confirm)
+	}},
+	{name: "settings-about-pads-many", what: "T-80: About with eight controllers scrolls: a triangle says which way there is more, Move in the hint bar", expect: []string{"Controller: Pad One", "Move"}, steps: func(p *player) {
+		pads := fourPads()
+		for _, n := range []string{"Pad Five", "Pad Six", "Pad Seven", "Pad Eight"} {
+			pads = append(pads, input.PadInfo{Name: n, GUID: "0300000099990000", Mapped: true})
+		}
+		p.send(gui.PadsMsg{Pads: pads})
 		p.advance(7 * time.Second)
 		p.openFromMenu(3)
 		p.repeat(input.Down, 12)
