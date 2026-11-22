@@ -3,7 +3,7 @@
   Invoke-WebRequest is shadowed by a function that serves a local fake release and refuses any other URL, and the
   "binary" in the fake zips is a copy of whoami.exe. Covers launcher quoting (TH-30), ACL (TH-31), marker and atomic
   launcher (TH-32) and verification (TH-33), and the Ports part (ports.md, T-70 IC-1 to IC-11): GUI archive, probe,
-  launcher v2, default flip, upgrade and uninstall. The fake mothdex-gui.exe files are compiled with csc.exe.
+  launcher v3 (GUI only, D32), upgrade and uninstall. The fake mothdex-gui.exe files are compiled with csc.exe.
 #>
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
@@ -108,31 +108,29 @@ Check 'binary under LocalAppData' (Test-Path $exe)
 Check 'only GitHub release URLs used' (@($global:urls | Where-Object { -not $_.StartsWith($base) }).Count -eq 0)
 Remove-Item (Split-Path $exe) -Recurse -Force -ErrorAction SilentlyContinue
 
-# 2. RetroBat: launcher with the fixed template (TH-30)
+# 2. RetroBat, a release without a GUI archive: no launcher, even with -Launcher (D32: a Port has no terminal for tui)
 $rb = New-RetroBat 'RetroBat'
 Invoke-Install @{ Version = '1.2.3'; Launcher = $true; RetroBatPath = $rb }
 $launcher = Join-Path $rb 'roms\windows\Mothdex.bat'
 Check 'retrobat install succeeds' (-not $script:threw)
-Check 'launcher written' (Test-Path $launcher)
-$lines = @(Get-Content $launcher)
-$guiPath = Join-Path (Split-Path $exe) 'mothdex-gui.exe'
-Check 'launcher template (v2, no argument forwarding)' (($lines.Count -eq 8) -and ($lines[0] -ceq '@echo off') -and ($lines[1] -ceq 'rem mothdex-launcher v2') -and
-  ($lines[2] -ceq 'setlocal DisableDelayedExpansion') -and ($lines[3] -ceq "if not exist `"$guiPath`" goto tui") -and ($lines[4] -ceq "`"$guiPath`"") -and
-  ($lines[5] -ceq 'exit /b %errorlevel%') -and ($lines[6] -ceq ':tui') -and ($lines[7] -ceq "`"$exe`" tui"))
-Check 'no temp launcher left' (@(Get-ChildItem (Split-Path $launcher) -Force -Filter '.Mothdex*').Count -eq 0)
+Check 'no launcher without the GUI, even with -Launcher' (-not (Test-Path $launcher))
+Check 'and it says why' ($script:output -match 'written only when the GUI is installed')
 
-# 2b. launcher is opt-in (D22): without -Launcher nothing is written to the RetroBat folder
+# 2b. nothing is written to the RetroBat folder without the GUI, with or without the flag
 $rbOff = New-RetroBat 'RetroBatOff'
 Invoke-Install @{ Version = '1.2.3'; RetroBatPath = $rbOff; BinDir = (Join-Path $root 'off') }
-Check 'no launcher by default' ((-not $script:threw) -and (-not (Test-Path (Join-Path $rbOff 'roms\windows\Mothdex.bat'))))
+Check 'no launcher by default without the GUI' ((-not $script:threw) -and (-not (Test-Path (Join-Path $rbOff 'roms\windows\Mothdex.bat'))))
 
-# 3. a user's launcher without the marker is kept; ours is refreshed (TH-32)
+# 3. without the GUI: a user's launcher without the marker is never touched; a launcher of ours is removed (TH-32, D32)
 Set-Content -Path $launcher -Value 'echo mine'
 Invoke-Install @{ Version = '1.2.3'; Launcher = $true; RetroBatPath = $rb }
 Check 'user launcher kept' ((Get-Content $launcher -Raw).Trim() -ceq 'echo mine')
-Set-Content -Path $launcher -Value @('@echo off', 'rem mothdex-launcher v1', 'echo stale')
-Invoke-Install @{ Version = '1.2.3'; Launcher = $true; RetroBatPath = $rb }
-Check 'marked launcher refreshed to v2' (((Get-Content $launcher -Raw) -match 'rem mothdex-launcher v2') -and ((Get-Content $launcher -Raw) -notmatch 'stale'))
+foreach ($old in 'v1', 'v2', 'v3') {
+  Set-Content -Path $launcher -Value @('@echo off', "rem mothdex-launcher $old", 'echo stale')
+  Invoke-Install @{ Version = '1.2.3'; Launcher = $true; RetroBatPath = $rb }
+  Check "a $old launcher of ours is removed when the GUI is not installed" ((-not (Test-Path $launcher)) -and ($script:output -match 'Removed .*Mothdex.bat'))
+}
+Check 'the refresh asked RetroBat to reload after the removal' ($global:refreshCalls.Count -ge 1)
 
 # 4. unsafe path characters: binary installed, launcher skipped (TH-30)
 $rb2 = New-RetroBat 'RetroBat2'
@@ -222,6 +220,7 @@ $dry = Join-Path $root 'dry'
 Invoke-Install @{ Version = '1.2.3'; Launcher = $true; RetroBatPath = $rb3; BinDir = $dry; DryRun = $true }
 Check 'dry run writes nothing' ((-not (Test-Path $dry)) -and (-not (Test-Path (Join-Path $rb3 'roms\windows\Mothdex.bat'))))
 Invoke-Install @{ Version = '1.2.3'; Launcher = $true; RetroBatPath = $rb3; BinDir = (Join-Path $root 'un') }
+Set-Content -Path (Join-Path $rb3 'roms\windows\Mothdex.bat') -Value @('@echo off', 'rem mothdex-launcher v2', 'echo old')
 Invoke-Install @{ Launcher = $true; RetroBatPath = $rb3; BinDir = (Join-Path $root 'un'); Uninstall = $true }
 Check 'uninstall removes binary and launcher' ((-not (Test-Path (Join-Path $root 'un\mothdex.exe'))) -and
   (-not (Test-Path (Join-Path $rb3 'roms\windows\Mothdex.bat'))))
@@ -244,7 +243,7 @@ Check 'failed signature aborts' ($script:threw -and (-not (Test-Path (Join-Path 
 $env:PATH = $oldPath
 
 
-# 10. Ports: GUI archive, eligibility, launcher v2, default flip (ports.md sections 2 and 5; T-70 IC-1 to IC-12).
+# 10. Ports: GUI archive, eligibility, launcher v3 (GUI only, D32) (ports.md sections 2 and 5; T-70 IC-1 to IC-12).
 # The fake mothdex-gui.exe files are compiled once with the .NET Framework compiler that ships with Windows.
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 function New-FakeExe([string]$Name, [string]$Source) {
@@ -343,7 +342,7 @@ $tempDir = [IO.Path]::GetTempPath()
 function Clear-ProbeFiles { Remove-Item -LiteralPath (Join-Path $tempDir 'mothdex-probe-env.txt'), (Join-Path $tempDir 'mothdex-probe-where.txt') -Force -ErrorAction SilentlyContinue }
 function Lines([string]$Path) { return @(Get-Content -LiteralPath $Path) }
 
-# the default flip: the release lists a GUI archive, so the launcher is on without -Launcher (IC-3, D22)
+# the launcher is on whenever the GUI is installed, without -Launcher (D32)
 Clear-ProbeFiles
 $rbG = New-RetroBat 'RetroBatG'
 $g1 = Join-Path $root 'g1'
@@ -357,11 +356,10 @@ Check 'GUI and SDL2.dll installed beside the CLI' ((Test-Path (Join-Path $g1 'mo
 Check 'notices installed read-only' ((Test-Path (Join-Path $g1 'mothdex-licenses\NotoSans-OFL-1.1.txt')) -and (Test-Path (Join-Path $g1 'mothdex-licenses\SDL2-zlib.txt')) -and
   (Get-Item (Join-Path $g1 'mothdex-licenses\SDL2-zlib.txt')).IsReadOnly)
 Check 'no staging leftovers in BinDir' (@(Get-ChildItem $g1 -Force | Where-Object { $_.Name -like '.mothdex*' }).Count -eq 0)
-Check 'launcher on by default for a release with a GUI archive' (Test-Path $portBat)
-$expect = @('@echo off', 'rem mothdex-launcher v2', 'setlocal DisableDelayedExpansion', "if not exist `"$g1\mothdex-gui.exe`" goto tui",
-  "`"$g1\mothdex-gui.exe`"", 'exit /b %errorlevel%', ':tui', "`"$g1\mothdex.exe`" tui")
+Check 'launcher on by default when the GUI is installed' (Test-Path $portBat)
+$expect = @('@echo off', 'rem mothdex-launcher v3', 'setlocal DisableDelayedExpansion', "`"$g1\mothdex-gui.exe`"", 'exit /b %errorlevel%')
 $got = Lines $portBat
-Check 'launcher content equals the v2 template' (($got.Count -eq $expect.Count) -and (@(0..($expect.Count - 1) | Where-Object { $got[$_] -cne $expect[$_] }).Count -eq 0))
+Check 'launcher content equals the v3 template (the GUI only, no tui fallback)' (($got.Count -eq $expect.Count) -and (@(0..($expect.Count - 1) | Where-Object { $got[$_] -cne $expect[$_] }).Count -eq 0))
 Check 'launcher has no percent-star (IC-6)' (-not ((Get-Content $portBat -Raw).Contains('%*')))
 Check 'launcher is CRLF without a BOM' (([IO.File]::ReadAllBytes($portBat)[0] -eq 64) -and ((Get-Content $portBat -Raw).Contains("`r`n")))
 $probeEnv = Lines (Join-Path $tempDir 'mothdex-probe-env.txt')
@@ -407,7 +405,7 @@ foreach ($pair in @(@('v1.3.1', 'no'), @('v1.3.2', 'crash'), @('v1.4.0', 'long')
   Check "probe '$($pair[1])': neither the GUI nor SDL2.dll installed" ((-not (Test-Path (Join-Path $dir 'mothdex-gui.exe'))) -and (-not (Test-Path (Join-Path $dir 'SDL2.dll'))))
   Check "probe '$($pair[1])': reported as an error, exit code 1" (($script:output -match 'mothdex-gui.exe --probe failed') -and ($script:exitCode -eq 1))
   Check "probe '$($pair[1])': staging folder removed" (@(Get-ChildItem $dir -Force | Where-Object { $_.Name -like '.mothdex*' }).Count -eq 0)
-  Check "probe '$($pair[1])': the launcher falls back to tui" ((Test-Path (Join-Path $rbP 'roms\windows\Mothdex.bat')) -and (-not (Test-Path (Join-Path $dir 'mothdex-licenses'))))
+  Check "probe '$($pair[1])': no launcher (a Port has no terminal for tui) and no notices" ((-not (Test-Path (Join-Path $rbP 'roms\windows\Mothdex.bat'))) -and (-not (Test-Path (Join-Path $dir 'mothdex-licenses'))))
 }
 Check 'probe message cut to 200 characters without control characters (IC-10)' (($script:output -notmatch [char]27) -and ($script:output -notmatch '0{201}'))
 
@@ -416,7 +414,7 @@ $rbL = New-RetroBat 'RetroBatL'
 Invoke-Install @{ Version = 'v1.2.3'; RetroBatPath = $rbL; BinDir = (Join-Path $root 'l1') }
 Check 'not listed: CLI only, with a note' ((-not $script:threw) -and (Test-Path (Join-Path $root 'l1\mothdex.exe')) -and ($script:output -match 'no GUI archive') -and
   (-not (Test-Path (Join-Path $root 'l1\mothdex-gui.exe'))))
-Check 'not listed: the launcher stays opt-in' (-not (Test-Path (Join-Path $rbL 'roms\windows\Mothdex.bat')))
+Check 'not listed: no launcher' (-not (Test-Path (Join-Path $rbL 'roms\windows\Mothdex.bat')))
 Check 'not listed: no GUI download attempted' (@($global:urls | Where-Object { $_ -like '*mothdex-gui_*' }).Count -eq 0)
 Invoke-Install @{ Version = 'v1.2.3'; RetroBatPath = $rbL; BinDir = (Join-Path $root 'l1'); Gui = $true }
 Check '-Gui before the GUI release does nothing' ((-not $script:threw) -and (-not (Test-Path (Join-Path $root 'l1\mothdex-gui.exe'))))
@@ -474,15 +472,17 @@ $g6 = Join-Path $root 'g6'
 $v1Bat = Join-Path $rbV 'roms\windows\Mothdex.bat'
 Set-Content -Path $v1Bat -Value @('@echo off', 'rem mothdex-launcher v1', 'echo old')
 Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbV; BinDir = $g6 }
-Check 'a v1 launcher becomes v2' ((Get-Content $v1Bat -Raw) -match 'rem mothdex-launcher v2')
+Check 'a v1 launcher becomes v3' ((Get-Content $v1Bat -Raw) -match 'rem mothdex-launcher v3')
 Set-Content -Path $v1Bat -Value 'echo mine'
 Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbV; BinDir = $g6 }
 Check 'a file without a marker is kept' ((Get-Content $v1Bat -Raw).Trim() -ceq 'echo mine')
 Remove-Item $v1Bat
+Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbV; BinDir = $g6 }
+Check 'a deleted launcher comes back when the GUI is installed' ((Get-Content $v1Bat -Raw) -match 'rem mothdex-launcher v3')
 Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbV; BinDir = $g6; NoGui = $true }
 Check '-NoGui removes the GUI, SDL2.dll and the notices' ((-not (Test-Path (Join-Path $g6 'mothdex-gui.exe'))) -and (-not (Test-Path (Join-Path $g6 'SDL2.dll'))) -and
   (-not (Test-Path (Join-Path $g6 'mothdex-licenses'))))
-Check '-NoGui keeps the launcher (the default follows the release), which falls back to tui' ((Test-Path $v1Bat) -and ((Get-Content $v1Bat -Raw) -match 'rem mothdex-launcher v2'))
+Check '-NoGui removes the launcher of ours (a Port has no terminal for tui)' ((-not (Test-Path $v1Bat)) -and ($script:output -match 'Removed .*Mothdex.bat'))
 Check '-NoGui does not download the GUI archive' (@($global:urls | Where-Object { $_ -like '*mothdex-gui_*' }).Count -eq 0)
 Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbV; BinDir = $g6 }
 Set-Content -Path (Join-Path $g6 'mothdex-licenses\notes.txt') -Value 'mine'
@@ -514,6 +514,68 @@ foreach ($pair in @(@('v1.3.1', 'probe error', 1), @('v1.2.3', 'not listed', 0))
   Check "$($pair[1]): said so" ($script:output -match 'Removed .*mothdex-gui.exe and SDL2.dll')
   Check "$($pair[1]): the CLI of the new release is installed" (Test-Path (Join-Path $upDir 'mothdex.exe'))
 }
+
+# D32 (PRT-G8): the three ways of not installing the GUI (a failing probe, no GUI archive, -NoGui): a launcher of ours goes, a file
+# without our marker never does
+$d32 = @(@{ v = 'v1.3.1'; extra = @{}; what = 'the probe failed' }, @{ v = 'v1.2.3'; extra = @{}; what = 'no GUI archive' }, @{ v = 'v1.3.0'; extra = @{ NoGui = $true }; what = '-NoGui' })
+$d32i = 0
+foreach ($c in $d32) {
+  $d32i++
+  $rbX = New-RetroBat "RetroBatD32-$d32i"
+  $batX = Join-Path $rbX 'roms\windows\Mothdex.bat'
+  $binX = Join-Path $root "d32-$d32i"
+  foreach ($marker in 'v1', 'v2', 'v3') {
+    Set-Content -Path $batX -Value @('@echo off', "rem mothdex-launcher $marker", 'echo old')
+    $params = @{ Version = $c.v; RetroBatPath = $rbX; BinDir = $binX }
+    foreach ($k in $c.extra.Keys) { $params[$k] = $c.extra[$k] }
+    Invoke-Install $params
+    Check "$($c.what): a $marker launcher of ours is removed and the removal reported" ((-not (Test-Path $batX)) -and ($script:output -match 'Removed .*Mothdex.bat'))
+    Check "$($c.what), $marker launcher: the CLI install is there" (Test-Path (Join-Path $binX 'mothdex.exe'))
+  }
+  Set-Content -Path $batX -Value 'echo mine'
+  Invoke-Install $params
+  Check "$($c.what): a launcher without our marker is never touched" ((Get-Content $batX -Raw).Trim() -ceq 'echo mine')
+  Remove-Item $batX -Force
+  Invoke-Install $params
+  Check "$($c.what): a fresh install writes no launcher" (-not (Test-Path $batX))
+}
+# -NoLauncher without the GUI: a launcher of ours would start nothing, so it is still removed
+$rbN2 = New-RetroBat 'RetroBatD32-nolauncher'
+$batN2 = Join-Path $rbN2 'roms\windows\Mothdex.bat'
+Set-Content -Path $batN2 -Value @('@echo off', 'rem mothdex-launcher v2', 'echo old')
+Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbN2; BinDir = (Join-Path $root 'd32-nl'); NoGui = $true; NoLauncher = $true }
+Check '-NoLauncher without the GUI: a marked launcher is removed' ((-not (Test-Path $batN2)) -and ($script:output -match 'Removed .*Mothdex.bat'))
+# a marked launcher that is a symbolic link is never touched on the removal path: the link stays and so does its target
+$rbL2 = New-RetroBat 'RetroBatD32-link'
+$batL2 = Join-Path $rbL2 'roms\windows\Mothdex.bat'
+$victimBat = Join-Path $root 'victim-launcher.bat'
+Set-Content -Path $victimBat -Value @('@echo off', 'rem mothdex-launcher v2', 'echo precious')
+$linked = $false
+try { New-Item -ItemType SymbolicLink -Path $batL2 -Target $victimBat | Out-Null; $linked = $true } catch { }
+Check 'a symbolic link could be created for the link case (the runner is an administrator)' $linked
+if ($linked) {
+  Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbL2; BinDir = (Join-Path $root 'd32-link'); NoGui = $true }
+  Check 'a marked launcher that is a link is left alone (the link is still there)' ((Get-Item -LiteralPath $batL2 -Force).LinkType -eq 'SymbolicLink')
+  Check 'and the target of the link is intact' ((Get-Content $victimBat -Raw) -match 'echo precious')
+  Invoke-Install @{ Version = 'v1.3.1'; RetroBatPath = $rbL2; BinDir = (Join-Path $root 'd32-link') }
+  Check 'also when the GUI is not eligible' (((Get-Item -LiteralPath $batL2 -Force).LinkType -eq 'SymbolicLink') -and ((Get-Content $victimBat -Raw) -match 'echo precious'))
+}
+# upgrade from the v2 template (with the tui fallback) while the GUI is installed: it becomes v3; -NoLauncher leaves it as it is
+$rbY = New-RetroBat 'RetroBatD32-up'
+$batY = Join-Path $rbY 'roms\windows\Mothdex.bat'
+$binY = Join-Path $root 'd32-up'
+$v2Text = @('@echo off', 'rem mothdex-launcher v2', 'setlocal DisableDelayedExpansion', "if not exist `"$binY\mothdex-gui.exe`" goto tui", "`"$binY\mothdex-gui.exe`"", 'exit /b %errorlevel%', ':tui', "`"$binY\mothdex.exe`" tui")
+Set-Content -Path $batY -Value $v2Text
+Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbY; BinDir = $binY; NoLauncher = $true }
+Check '-NoLauncher with the GUI: an existing v2 launcher is left as it is' (((Get-Content $batY -Raw) -match 'rem mothdex-launcher v2') -and ((Get-Content $batY -Raw) -match 'goto tui'))
+Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbY; BinDir = $binY }
+Check 'a v2 launcher (with the tui fallback) becomes v3 when the GUI is installed' (((Get-Content $batY -Raw) -match 'rem mothdex-launcher v3') -and ((Get-Content $batY -Raw) -notmatch 'tui'))
+# dry run: the launcher follows the GUI
+Set-Content -Path $batY -Value $v2Text
+Invoke-Install @{ Version = 'v1.3.1'; RetroBatPath = $rbY; BinDir = $binY; DryRun = $true }
+Check 'dry run, probe failure: says it would remove the launcher and removes nothing' (($script:output -match 'Would remove .*Mothdex.bat') -and (Test-Path $batY))
+Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbY; BinDir = $binY; DryRun = $true }
+Check 'dry run, eligible: says it would write the launcher' ($script:output -match 'Would write: .*Mothdex.bat')
 
 # dry run (5.1)
 $rbD = New-RetroBat 'RetroBatD'
