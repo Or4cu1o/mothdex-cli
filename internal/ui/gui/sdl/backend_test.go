@@ -4,18 +4,19 @@ package sdl
 
 import (
 	"context"
+	"image"
+	"image/color"
 	"runtime"
 	"slices"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/assets"
 	gdraw "github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/guitest"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/loop"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
@@ -36,33 +37,6 @@ var (
 )
 
 var testEpoch = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
-
-type fakeService struct {
-	mu    sync.Mutex
-	calls []string
-}
-
-func (f *fakeService) record(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
-func (f *fakeService) order() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.calls)
-}
-
-func (f *fakeService) DBInfo(context.Context) (app.Result[mothdex.DBInfo], error) {
-	return app.Result[mothdex.DBInfo]{Value: mothdex.DBInfo{TotalEntries: 1284019}}, nil
-}
-func (f *fakeService) ConfigList() ([]app.Setting, error) { return nil, nil }
-func (f *fakeService) Jobs() []app.JobSnapshot            { return nil }
-func (f *fakeService) Cancel(id app.JobID) error          { f.record("cancel:" + string(id)); return nil }
-func (f *fakeService) Wait(context.Context) (app.BatchResult, error) {
-	f.record("wait")
-	return app.BatchResult{}, nil
-}
-func (f *fakeService) Close() error { f.record("close"); return nil }
-func (f *fakeService) ActiveProfile() app.ProfileInfo {
-	return app.ProfileInfo{ID: "batocera", Name: "Batocera", RomRoot: "/userdata/roms"}
-}
 
 // headless opens a hidden software window of w x h on the dummy driver, or skips the test.
 func headless(t *testing.T, w, h int) (*Backend, *text.Font) {
@@ -134,7 +108,7 @@ func TestHomeRendersAtThreeSizes(t *testing.T) {
 			if gw, gh := be.Size(); gw != w || gh != h {
 				t.Fatalf("window is %dx%d, want %dx%d", gw, gh, w, h)
 			}
-			m := homeModel(t, font, w, h, &fakeService{})
+			m := homeModel(t, font, w, h, guitest.New())
 			var list gdraw.List
 			m.Render(testEpoch, &list)
 			if err := be.Draw(layoutOf(m), &list); err != nil {
@@ -188,7 +162,7 @@ func TestHomeRendersAtThreeSizes(t *testing.T) {
 // is scaled, not cropped.
 func TestASmallDisplayIsLetterboxedNotCropped(t *testing.T) {
 	be, font := headless(t, 480, 320)
-	m := homeModel(t, font, 480, 320, &fakeService{})
+	m := homeModel(t, font, 480, 320, guitest.New())
 	if !m.Metrics().FitLogical || m.Metrics().W != 640 || m.Metrics().H != 480 {
 		t.Fatalf("metrics %+v", m.Metrics())
 	}
@@ -222,6 +196,10 @@ func TestEventsRoundTripThroughSDL(t *testing.T) {
 		*e.ControllerAxis() = ControllerAxisEvent{Type: EventControllerAxisMotion, Axis: ControllerAxisLeftX, Value: 20000}
 	})
 	push(func(e *Event) { e.SetControllerButton(EventControllerButtonDown, 0, 8, 1) }) // a stick click: not used
+	push(func(e *Event) {
+		*e.TextInput() = TextInputEvent{Type: EventTextInput}
+		copy(e.TextInput().Text[:], "ñ")
+	})
 	push(func(e *Event) { e.SetType(EventQuit) })
 
 	want := []input.Incoming{
@@ -229,6 +207,7 @@ func TestEventsRoundTripThroughSDL(t *testing.T) {
 		{Kind: input.IncomingInput, Input: input.Event{Kind: input.KeyRelease, Key: input.KeyRune, Rune: 'x'}},
 		{Kind: input.IncomingInput, Input: input.Event{Kind: input.ButtonPress, Button: input.South}},
 		{Kind: input.IncomingInput, Input: input.Event{Kind: input.AxisMotion, Axis: input.LeftX, Value: 20000}},
+		{Kind: input.IncomingText, Text: "ñ"},
 		{Kind: input.IncomingQuit},
 	}
 	first, ok := be.Wait(2 * time.Second)
@@ -300,7 +279,7 @@ func (p *pushOnFrame) Wait(timeout time.Duration) (input.Incoming, bool) {
 // the exit sequence runs against the fake service and the loop ends.
 func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
 	be, font := headless(t, 1280, 720)
-	svc := &fakeService{}
+	svc := guitest.New()
 	p := &pushOnFrame{Backend: be, now: testEpoch, steps: []pushStep{
 		{afterText: "1,284,019 entries · Batocera · /userdata/roms", sym: KeycodeEscape},
 		{afterText: "Quit and return to Batocera?", sym: KeycodeRight},
@@ -327,10 +306,94 @@ func TestQuitFlowEndToEndThroughSDL(t *testing.T) {
 	if !final.Done() {
 		t.Fatal("the loop ended before the exit screen was done")
 	}
-	if got := svc.order(); !slices.Equal(got, []string{"wait", "close"}) {
+	if got := svc.ExitCalls(); !slices.Equal(got, []string{"wait", "close"}) {
 		t.Fatalf("service calls %v", got)
 	}
 	if len(p.steps) != 0 {
 		t.Fatalf("keys never pushed: %+v", p.steps)
+	}
+}
+
+// A cover is a texture uploaded once per id and drawn scaled into its rectangle; the cache keeps at most 48.
+func TestImagesAreDrawnScaledAndTheTextureCacheIsBounded(t *testing.T) {
+	be, _ := headless(t, 640, 480)
+	solid := func(c color.RGBA) *image.RGBA {
+		img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+		for y := 0; y < 4; y++ {
+			for x := 0; x < 4; x++ {
+				img.SetRGBA(x, y, c)
+			}
+		}
+		return img
+	}
+	var list gdraw.List
+	list.Reset(640, 480)
+	list.Fill(gdraw.Rect{W: 640, H: 480}, 0, gdraw.Color{R: 0x0F, G: 0x13, B: 0x17, A: 0xff})
+	for i := 0; i < 50; i++ {
+		list.Image(gdraw.Rect{X: 10, Y: 10, W: 100, H: 80}, uint64(i), solid(color.RGBA{R: 200, G: uint8(i), B: 50, A: 255}))
+	}
+	if err := be.Draw(gdraw.Layout{W: 640, H: 480, Scale: 1}, &list); err != nil {
+		t.Fatal(err)
+	}
+	if be.images.len() != maxImageTextures {
+		t.Fatalf("%d textures held, want %d", be.images.len(), maxImageTextures)
+	}
+	r, g, b, _, err := be.Pixel(60, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != 200 || g != 49 || b != 50 { // the last image drawn wins, scaled from 4x4 to 100x80
+		t.Errorf("pixel inside the image is %d,%d,%d", r, g, b)
+	}
+	expectPixel(t, be, 300, 300, colorBG, "outside the image")
+}
+
+// A cover goes the whole way through real SDL: the service serves a PNG, the model decodes it with
+// app.DecodeCover, the draw list carries the picture and the renderer shows it in the cover panel.
+func TestACoverIsDecodedDrawnAndVisibleInTheCoverPanel(t *testing.T) {
+	be, font := headless(t, 1280, 720)
+	svc := guitest.New()
+	svc.Catalog = []mothdex.Entry{guitest.Game("zelda-1", "Zelda One", "snes", "us")}
+	svc.Covers = map[string]bool{"zelda-1": true}
+	now := testEpoch
+	m, cmds := gui.New(guiOptions(t, font, svc, 1280, 720), now)
+	run := func(cmds []gui.Cmd) {
+		for len(cmds) > 0 {
+			next := cmds[0]
+			cmds = cmds[1:]
+			var more []gui.Cmd
+			m, more = m.Update(next(), now)
+			cmds = append(cmds, more...)
+		}
+	}
+	run(cmds)
+	send := func(msg gui.Msg) { var c []gui.Cmd; m, c = m.Update(msg, now); run(c) }
+	send(gui.InputMsg{Action: input.Confirm}) // Search
+	send(gui.TextMsg{Text: "zelda"})
+	send(gui.InputMsg{Action: input.Menu}) // run it
+	now = now.Add(400 * time.Millisecond)
+	send(gui.TickMsg{}) // the focus settled: the cover is asked, decoded and cached
+
+	var list gdraw.List
+	m.Render(now, &list)
+	var img *gdraw.Op
+	for i := range list.Ops {
+		if list.Ops[i].Kind == gdraw.KindImage {
+			img = &list.Ops[i]
+		}
+	}
+	if img == nil {
+		t.Fatal("no image op in the Results frame")
+	}
+	if err := be.Draw(layoutOf(m), &list); err != nil {
+		t.Fatal(err)
+	}
+	cx, cy := img.Rect.X+img.Rect.W/2, img.Rect.Y+img.Rect.H/2
+	r, g, b, _, err := be.Pixel(cx, cy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != 200 || g != 80 || b != 40 { // the solid color guitest.PNG makes
+		t.Errorf("the cover pixel at %d,%d is %d,%d,%d", cx, cy, r, g, b)
 	}
 }

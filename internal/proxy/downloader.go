@@ -102,7 +102,8 @@ type Job struct {
 	Slug     string
 	Platform string // Mothdex platform id
 	DestDir  string // absolute, from library.Profile.DestDir or -o
-	// SizeConsent is the consent for the real size (downloader.md 3.2 step 6): 0 is the default rule,
+	// SizeConsent is the consent for the real size (downloader.md 3.2 step 6): 0 is the default rule
+	// (a real size over 500 MiB, or over 2x a catalog size already above it, asks),
 	// ConsentAny skips the confirmation, a value above 0 is the exact Content-Length accepted.
 	SizeConsent int64
 }

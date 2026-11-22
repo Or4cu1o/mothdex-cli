@@ -99,3 +99,13 @@ func (l *Library) ControllerInstanceID(c Controller) (int32, error) {
 	}
 	return l.a.joystickInstanceID(joy), nil
 }
+
+// SetTextInput turns SDL_TEXTINPUT events on or off. They are on only while the keyboard screen is open, so a
+// pad's play does not pop up an on-screen keyboard on platforms that have one.
+func (l *Library) SetTextInput(on bool) {
+	if on {
+		l.a.startTextInput()
+		return
+	}
+	l.a.stopTextInput()
+}

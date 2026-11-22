@@ -16,12 +16,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The lists live once in the script as named scopes (`release`, `gui`, `gui-qemu`) and include the go:embed folders `locales/` and
   `profiles/`; a path that is quoted by git or a pattern that matches no tracked file (a moved path) answers "run". The `static`
   GUI job always runs. Matrix jobs are never skipped whole, only their steps.
+- T-64: when the catalog size is already above 500 MiB and was confirmed, a `Content-Length` over 2x that size asks for
+  confirmation again (`confirmation_required`); `-f` still skips it and the exact-length pin across retries stays
+  (downloader.md 3.2 step 6).
 - T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
   and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does; the tag check is the
   last step before the release is created, and `publish` refuses to upload files that `checksums.txt` does not list.
 
 ### Added
 
+- PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
+  drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
+  cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a
+  missing one is not; the row size follows the first listed link like the service's own sort; query ids are sanitized. UX: the hint bar fits
+  in every language (drops L/R, then the Start word where Start is the menu, then Y, then X; A and B stay), compact keeps the Start word on
+  Search and the multi pickers, finished jobs show their bytes alone in Details, the Entry shows the platform name (the list is loaded once),
+  a transferring Queue row is two lines, failed rows keep only the message, the badge says `1 queued`, the Queue's state texts use the
+  ellipsis (`ui.gui.queue.*`), an error in place is marked with a `!`, and the Downloaded mark has a gap before its word.
+- T-55 (GUI PR 2, Medium): browse and download with the pad. Search with the virtual keyboard (abc, àé and, for Russian or Cyrillic text,
+  абв layouts, an 80-character limit with a counter, cursor with L and R, a held B that deletes and only leaves at an empty field, the
+  physical keyboard through `SDL_TEXTINPUT`), the Platform and Region pickers (multi-select from Search, single-select from Home ›
+  Platforms), Results as one continuous list over service pages of 25 (next page in the last five rows, at most 200 rows, earlier pages come
+  back from the service cache), the cover panel (asked 250 ms after the focus settles, decoded one at a time with `app.DecodeCover`,
+  scaled to 512 px, a memory cache of 50, a texture cache of 48 in the backend, a placeholder when there is none), Entry with the link
+  chooser (unavailable links skipped, Why line, L/R to the neighbouring result), downloads from Results and Entry with the
+  already-downloaded and over-500-MB confirmations, `download.boxart` after each finished job, and the Queue (active, queued and
+  finished jobs with the Warming counter, the action sheet by state, details, Cancel all and Hide finished from the Start menu, a summary
+  toast, Quit when finished now opens the Queue). Errors and empty states are drawn in place with Retry, using the GUI hints of
+  docs/ux/gui.md section 6. Recent searches are saved to `<paths.data>/tui_state`. New: `internal/ui/gui/guitest` (a shared fake
+  service for the GUI tests), the image draw op, `SDL_StartTextInput`/`SDL_StopTextInput` and `SDL_TEXTINPUT` in the binding, and
+  `ui.gui.*` strings in en_us, pt_br, es_es and ru_ru.
 - PR-71 review rounds (Crivo, Bússola): Quit when finished quits at once when the last job ended under the dialog; `SDL_GAMECONTROLLERCONFIG`
   and `SDL_GAMECONTROLLERCONFIG_FILE` are read in Go and added after the embedded database and the user file so they win (SDL applies them
   at `SDL_Init`, before our lines, which would have replaced them; `gui.md` and the contract say so now); when the exit sequence runs out of
@@ -196,6 +220,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/ux/gui.md` v1.1 (PR-71-ux, from the UX review of cli#71): top bar fit rule (the title keeps the screen name,
+  `ui.gui.bar.will_quit_short`, `Offline` and the badge are never cut), toast width and 2-line wrap with a 6 s locale
+  notice, `bg` discs and dialog buttons on `surface`, symbols drawn as shapes, no cut text except titles (wrap, then a
+  middle-shortened path), Home tile and footer wrapping, stacked dialog buttons, spinner on the right, and an
+  `(A) Continue` hint on the exit notice. After the cli#71 recheck (PR-71-ux-2): a toast that would cover the focus
+  moves above the hint bar, a single long word in a tile label shrinks before it is cut, and a disc on `bg` uses `surface`. From the cli#76 review (PR-76-ux): the hint bar fit rule, and the Start word kept
+  where Start is the screen's main action.
 - Downloader size authority (T-28, implements T-27 / downloader.md 3.2, T-16 cases 31, 32b-32d, 35, 36): the proxy's `Content-Length` decides a transfer. It must be present, ASCII digits and at least 1 (missing, chunked, `0` or malformed is `size_mismatch`, not retried, no body byte read), is pinned across retries (a change is `size_mismatch`), is held to `download.max_file_size`, and replaces the `link.size` space claim in one atomic ledger swap (`disk_full` before the body, a smaller length shrinks the claim). When only the real size crosses 500 MiB (`interface.confirm_downloads` on, `link.size` below it) the job ends `confirmation_required` before the first body byte, carrying the size and a hint; `DownloadRequest.SizeConsent` is `0` (default rule), `app.ConsentAny` (the `-f` of that command, never a session's start-up flag) or the exact Content-Length accepted through Download anyway. `link.size` stays a preflight estimate and a drift warning beyond 1.5x or 0.5x (`JobSnapshot.SizeDrift`, worded by the UI in its language with sizes, also in `warnings[]`); a Content-Length with a leading zero is refused like mothdex-mcp does. By design (downloader.md 3.2 step 6) a catalog size already above 500 MiB skips the real-size confirmation, so the cap and the free space are its only bounds. History records `catalog_size` and `content_length`; the download JSON jobs carry `catalog_size`. The CLI does not offer Download anyway interactively: it fails with the hint to add `-f` (the TUI, Shell and GUI wire the re-queue).
 - Downloader contract (T-27, downloader.md §3.2, T-16): the proxy's `Content-Length` is now the size authority for a
   transfer, because the maintainer states `link.size` is scraped and only a rough indicator (cavv-dev/mothdex-api#1).
