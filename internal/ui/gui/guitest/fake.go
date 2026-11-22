@@ -25,6 +25,7 @@ import (
 type Fake struct {
 	mu    sync.Mutex
 	calls []string
+	reqs  []app.DownloadRequest
 	next  int
 
 	Profile  app.ProfileInfo
@@ -72,6 +73,13 @@ func (f *Fake) Calls() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.calls)
+}
+
+// Requests are the download requests Enqueue received, in order, with their size consent.
+func (f *Fake) Requests() []app.DownloadRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.reqs)
 }
 
 // Count is how many recorded calls start with prefix.
@@ -278,6 +286,9 @@ func (f *Fake) Enqueue(_ context.Context, reqs []app.DownloadRequest) ([]app.Job
 	for _, r := range reqs {
 		f.record("enqueue:%s:%d", r.Ref.Slug, r.Link.Index)
 	}
+	f.mu.Lock()
+	f.reqs = append(f.reqs, reqs...)
+	f.mu.Unlock()
 	if f.EnqueueErr != nil {
 		return nil, f.EnqueueErr
 	}

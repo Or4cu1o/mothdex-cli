@@ -109,8 +109,9 @@ type pendingBatch struct {
 	text string
 }
 
-// confirmBytes is the size above which one file also asks (cli-conventions section 6).
-const confirmBytes = 500 << 20
+// confirmBytes is the size above which one file also asks (cli-conventions section 6); the downloader's
+// check at the real size uses the same constant.
+const confirmBytes = app.ConfirmBytes
 
 // needsConfirm is the rule of cli-conventions section 6: with interface.confirm_downloads on, ask when
 // more than one file is queued or the total is above 500 MB.

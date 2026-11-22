@@ -165,7 +165,10 @@ executable; cosign when available; TH-30 paths; TH-31 directory ownership; the e
 - The flip is an owner decision already taken (D22: on by default once E-M3 ships, gui.md §6). T-70 §6 keeps it, on
   condition of IC-7 (`install.ps1` writes `Mothdex.bat` only into a trusted `roms\windows`, as `install.sh` already does)
   and IC-12 (every run that writes the launcher prints its path and how to opt out).
-- `--dry-run` prints the GUI archive, the eligibility result (§5.2) and the launcher path, and changes nothing.
+- `--dry-run` prints the GUI archive, the eligibility result (§5.2) and the launcher path, and leaves nothing changed
+  (PR-88 decision a). It probes only when `bin_dir` already exists and passed the trust check: it stages the binary
+  there, runs `--probe` as in §5.2 step 3 and always removes the staged file. When `bin_dir` does not exist yet, it
+  creates nothing and prints "eligibility not checked".
 
 ### 5.2 GUI eligibility (Linux)
 
@@ -182,6 +185,9 @@ The GUI is dynamic on Linux, so the installer must prove it can start before it 
    (126, 127, `ENOEXEC`) is an installer error that is reported, never a silent "not eligible".
 4. Not eligible (missing interpreter, missing or too old SDL2, wrong userland arch): warn with the probe's one-line
    reason, do not install the GUI, and keep the CLI install. The launcher, when on, then runs `mothdex tui`.
+5. Exit status (PR-88 decision b): not eligible, or no GUI archive in the release, is a normal outcome, exit 0. A
+   probe that cannot run, or any exit code other than 0 and 1, is an installer error: the CLI install and the launcher
+   still complete, and the installer exits 1. On Windows every non-zero probe result is that error (IC-9).
 
 **`mothdex-gui --probe`** (gap PRT-G3, Vitral):
 - loads SDL2 exactly as at normal start (§3), calls `SDL_GetVersion` and applies the version rule;
@@ -233,6 +239,10 @@ Re-running the installer is the upgrade path:
 - A file without a marker is kept, with the existing warning.
 - An upgrade with `--no-gui` removes an installed `mothdex-gui` (and `SDL2.dll` on Windows), so the `v2` launcher
   falls back to `tui`.
+- **Versions are never mixed (§5.2 step 1).** Any install that does not install this release's GUI (no archive
+  listed, not eligible, probe error, or `--no-gui`) also removes a `mothdex-gui`, its `SDL2.dll` and `mothdex-licenses/`
+  left by an earlier install, and says so. Otherwise the launcher would keep starting an older GUI next to the new CLI,
+  or a GUI the probe has just shown cannot start.
 - After writing a new launcher, the installer runs the profile's refresh once (profiles.md §4: `http_get` only where
   verified, never fatal), so the Port shows in the list. On Recalbox and other `manual` profiles it prints the hint.
 
@@ -244,6 +254,11 @@ Re-running the installer is the upgrade path:
 
 It keeps the config, data, history, cache and every downloaded ROM. It never removes a file without a marker, and it
 lists what it removed. `--dry-run` lists without removing.
+
+`mothdex-licenses/` has no manifest (PR-88 decision c). The folder name belongs to the installer, so uninstall, upgrade
+and `--no-gui` remove the regular files in it whose names match `^[A-Za-z0-9._-]+$`, never follow a link or reparse
+point, and then remove the folder only if it is empty. Anything else is kept, with a warning. `SDL2.dll` is removed only
+when `mothdex-gui.exe` is next to it.
 
 ## 6. Third-party notices
 
