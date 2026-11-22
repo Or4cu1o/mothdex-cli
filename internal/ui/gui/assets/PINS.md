@@ -51,6 +51,9 @@ the file together; `assets_test.go` fails if they disagree.
     --output-file=Handjet-Regular-subset.ttf
   ```
 
+- Tool: fonttools 4.68.0 (`uv run --with fonttools`). The output is not byte-reproducible: the `head` table records the
+  time of each run (`modified`), so a rerun gives another hash. The pin is the file in the repository, not the recipe; to
+  change the font, rerun the recipe and update the file and its hash together.
 - Result: 54,900 bytes, SHA-256 `2ba7ebeb0d6cd9a7e962b6cbf608e04a28c799564422144099bec4c306fd057c`.
 - Checked glyphs: `ç ã õ ñ ¿ ё й ъ О П › … ·` (pt_br, es_es, en, ru_ru). The em is 8160 units: ascenders reach 0.71 em, accented
   capitals 0.82 em, descenders 0.24 em. The face is used only for short labels (`display`).

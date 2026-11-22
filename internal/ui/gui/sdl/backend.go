@@ -3,6 +3,7 @@
 package sdl
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -462,11 +463,18 @@ func (b *Backend) drawSpinner(op gdraw.Op) error {
 	return nil
 }
 
+// errNoDisplayFont is a wiring mistake, not a runtime condition: the model was given a display face and the backend was not
+// (the two are set from one font in cmd/mothdex-gui), so a run in the display face has nothing to draw with.
+var errNoDisplayFont = errors.New("sdl: the draw list has display text but the backend has no display font")
+
 // drawText draws one line: each glyph is looked up in the atlas (rasterized the first time), the changed
 // part of the atlas is uploaded, and the glyphs are copied tinted with the color of the run.
 func (b *Backend) drawText(op gdraw.Op) error {
 	f := b.font
-	if op.Display && b.disp != nil {
+	if op.Display {
+		if b.disp == nil {
+			return errNoDisplayFont
+		}
 		f = b.disp
 	}
 	face, err := f.Face(op.Size)

@@ -4,6 +4,7 @@ package sdl
 
 import (
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"runtime"
@@ -41,6 +42,12 @@ var testEpoch = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
 // headless opens a hidden software window of w x h on the dummy driver, or skips the test.
 func headless(t *testing.T, w, h int) (*Backend, *text.Font) {
 	t.Helper()
+	return headlessWith(t, w, h, true)
+}
+
+// headlessWith is headless with or without the display font in the backend.
+func headlessWith(t *testing.T, w, h int, withDisplay bool) (*Backend, *text.Font) {
+	t.Helper()
 	runtime.LockOSThread() // SDL calls stay on one OS thread
 	t.Cleanup(runtime.UnlockOSThread)
 	lib, err := Open()
@@ -58,6 +65,9 @@ func headless(t *testing.T, w, h int) (*Backend, *text.Font) {
 	display, err := text.Parse(assets.Handjet)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !withDisplay {
+		display = nil
 	}
 	be, err := OpenBackend(lib, font, BackendOptions{Driver: "dummy", Windowed: true, Width: w, Height: h, Hidden: true, Software: true, Display: display})
 	if err != nil {
@@ -103,6 +113,24 @@ func expectPixel(t *testing.T, be *Backend, x, y int, want [3]uint8, what string
 	}
 	if got := [3]uint8{r, g, b}; got != want {
 		t.Errorf("%s: pixel (%d,%d) is %v, want %v", what, x, y, got, want)
+	}
+}
+
+// A model given a display face and a backend without one is a wiring mistake: the frame fails loudly instead of drawing the
+// labels in the body face at the display size.
+func TestADisplayRunWithoutADisplayFontInTheBackendIsRefused(t *testing.T) {
+	be, _ := headlessWith(t, 640, 480, false)
+	var list gdraw.List
+	list.Reset(640, 480)
+	list.Fill(gdraw.Rect{W: 640, H: 480}, gdraw.Color{R: colorBG[0], G: colorBG[1], B: colorBG[2], A: 0xff})
+	list.DisplayText(10, 40, 35, gdraw.Color{R: 255, G: 255, B: 255, A: 255}, "mothdex")
+	if err := be.Draw(gdraw.Layout{W: 640, H: 480, Scale: 1}, &list); !errors.Is(err, errNoDisplayFont) {
+		t.Fatalf("Draw returned %v, want errNoDisplayFont", err)
+	}
+	list.Reset(640, 480)
+	list.Text(10, 40, 20, gdraw.Color{R: 255, G: 255, B: 255, A: 255}, "mothdex")
+	if err := be.Draw(gdraw.Layout{W: 640, H: 480, Scale: 1}, &list); err != nil {
+		t.Fatalf("a body run needs no display font: %v", err)
 	}
 }
 
