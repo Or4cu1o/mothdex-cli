@@ -231,26 +231,35 @@ func (m Model) topBarItems(p painter, avail int, extra string) ([]topBarItem, in
 		}
 		return w
 	}
-	assemble := func(notice string) []topBarItem {
+	// When the bar does not fit even with the short forms, items give way in this order (docs/ux/gui.md 4, decided by
+	// Bússola in T-80): the pending-quit notice is hidden (the Start menu keeps Don't quit, so the state is still
+	// reachable), then, on Home only, the queue badge (the Queue tile shows the count). Offline, No controller and the
+	// screen name in the title are never cut or hidden.
+	assemble := func(notice string, badge bool) []topBarItem {
 		items := append([]topBarItem{}, fixedBefore...)
 		if notice != "" {
 			items = append(items, topBarItem{s: notice, c: colWarn})
 		}
-		return append(items, fixedAfter...)
+		if badge {
+			items = append(items, fixedAfter...)
+		}
+		return items
 	}
-	if !m.quitPending {
-		items := assemble("")
-		return items, total(items)
-	}
-	for _, key := range []string{"ui.gui.bar.will_quit", "ui.gui.bar.will_quit_short"} {
-		if items := assemble(m.tr(key, nil)); total(items) <= avail {
-			return items, total(items)
+	if m.quitPending {
+		for _, key := range []string{"ui.gui.bar.will_quit", "ui.gui.bar.will_quit_short"} {
+			if items := assemble(m.tr(key, nil), true); total(items) <= avail {
+				return items, total(items)
+			}
 		}
 	}
-	// Even the short text does not fit: cut only that item, to what is left after the fixed ones.
-	rest := total(assemble("x")) - p.width(size, "x")
-	room := max(avail-rest-gap, 0)
-	items := assemble(p.fit(size, m.tr("ui.gui.bar.will_quit_short", nil), room))
+	if items := assemble("", true); total(items) <= avail {
+		return items, total(items)
+	}
+	if m.screen == screenHome {
+		items := assemble("", false)
+		return items, total(items)
+	}
+	items := assemble("", true)
 	return items, total(items)
 }
 

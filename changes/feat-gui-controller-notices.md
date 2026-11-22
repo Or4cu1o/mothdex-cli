@@ -15,5 +15,6 @@
   - About lists each joystick as a group (`Controller: <name>`, under it, indented, the whole path of the `gamecontrollerdb.txt` to add a mapping to
     for an unknown one in the warn color, and `GUID: <guid>`), or `None connected`; with more joysticks than fit, Up and Down scroll it.
   - 8 render scenes (the toast and badge, in ru_ru, a long device name, About with one, four and eight controllers, and without).
-  - A pending-quit notice, the title and the badges did not all fit next to each other in es_es and ru_ru with large text at 640x480 once the new
-    badge was added: the title no longer panics when it is cut (it did for the Home title), and which item gives way there is open with Bússola.
+  - The Home title no longer panics when the right side of the top bar leaves it too little room (the new badge exposed it).
+  - Top bar fit (decided by Bússola): when the bar does not fit even with the short forms, the pending-quit notice is hidden instead of cut (the Start menu keeps
+    Don't quit), then, on Home only, the queue badge (the Queue tile shows the count); Offline, No controller and the screen name are never cut or hidden.
