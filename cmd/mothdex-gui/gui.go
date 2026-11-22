@@ -88,7 +88,7 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	defer be.Close()
 	w, h := be.Size()
 	log.Info("gui: diagnostics", diagnostics{
-		SDLVersion: lib.Version().String(), Driver: be.Driver(), Getenv: os.Getenv, Mappings: mappingCounts, Pads: be.ControllerTypes(),
+		SDLVersion: lib.Version().String(), Driver: be.Driver(), Lookup: os.LookupEnv, Mappings: mappingCounts, Pads: be.ControllerTypes(),
 	}.attrs()...)
 	log.Info("gui: started", "driver", be.Driver(), "width", w, "height", h, "version", buildinfo.Get().Version)
 

@@ -16,8 +16,8 @@ import (
 // plain words (the video driver, and the locale), and only when they look like words.
 type diagnostics struct {
 	SDLVersion string
-	Driver     string // the video driver SDL chose
-	Getenv     func(string) string
+	Driver     string                      // the video driver SDL chose
+	Lookup     func(string) (string, bool) // os.LookupEnv: a variable set to the empty string is "set"
 	Mappings   input.MappingCounts
 	Pads       []input.ControllerType
 }
@@ -36,12 +36,14 @@ var wordValue = regexp.MustCompile(`^[A-Za-z0-9_.@-]{1,40}$`)
 func (d diagnostics) attrs() []any {
 	out := []any{"sdl", d.SDLVersion, "driver", wordOrNot(d.Driver)}
 	for _, name := range setOnly {
-		out = append(out, name, setOrUnset(d.Getenv(name)))
+		_, set := d.Lookup(name)
+		out = append(out, name, setOrUnset(set))
 	}
+	value := func(name string) string { v, _ := d.Lookup(name); return v }
 	out = append(out,
-		"SDL_VIDEODRIVER_value", wordOrNot(d.Getenv("SDL_VIDEODRIVER")),
-		"LANG", wordOrNot(d.Getenv("LANG")),
-		"LC_ALL", wordOrNot(d.Getenv("LC_ALL")),
+		"SDL_VIDEODRIVER_value", wordOrNot(value("SDL_VIDEODRIVER")),
+		"LANG", wordOrNot(value("LANG")),
+		"LC_ALL", wordOrNot(value("LC_ALL")),
 		"mappings_embedded", d.Mappings.Embedded, "mappings_user", d.Mappings.User,
 		"mappings_file", d.Mappings.File, "mappings_env", d.Mappings.Env,
 		"controller_types", padTypes(d.Pads),
@@ -49,8 +51,8 @@ func (d diagnostics) attrs() []any {
 	return out
 }
 
-func setOrUnset(v string) string {
-	if v == "" {
+func setOrUnset(set bool) string {
+	if !set {
 		return "unset"
 	}
 	return "set"

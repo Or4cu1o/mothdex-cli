@@ -134,7 +134,7 @@ func TestDiagnosticsNameVariablesWithoutValuesAndLogNoPath(t *testing.T) {
 		"SDL_VIDEODRIVER":               "KMSDRM", "LANG": "pt_BR.UTF-8", "LC_ALL": "/home/alice/locale\n",
 	}
 	d := diagnostics{
-		SDLVersion: "2.32.4", Driver: "KMSDRM", Getenv: func(k string) string { return env[k] },
+		SDLVersion: "2.32.4", Driver: "KMSDRM", Lookup: func(k string) (string, bool) { v, ok := env[k]; return v, ok },
 		Mappings: input.MappingCounts{Embedded: 1200, User: 2, File: 0, Env: 1},
 		Pads:     []input.ControllerType{input.TypeXbox360, input.TypePS5},
 	}
@@ -164,13 +164,13 @@ func TestDiagnosticsNameVariablesWithoutValuesAndLogNoPath(t *testing.T) {
 			t.Errorf("%s is %v, want %v", k, got[k], v)
 		}
 	}
-	for k := range map[string]bool{"LD_LIBRARY_PATH": true, "LD_PRELOAD": true, "SDL_DYNAMIC_API": true} {
-		env[k] = ""
+	env["LD_PRELOAD"] = "" // set to nothing is still set: it changes what the loader does
+	delete(env, "SDL_DYNAMIC_API")
+	after := d.attrs()
+	if !contains(after, "LD_PRELOAD", "set") || !contains(after, "SDL_DYNAMIC_API", "unset") {
+		t.Errorf("a variable set to the empty string is set, an absent one unset: %v", after)
 	}
-	if after := d.attrs(); !contains(after, "LD_PRELOAD", "unset") || !contains(after, "SDL_DYNAMIC_API", "unset") {
-		t.Errorf("unset variables are named unset: %v", after)
-	}
-	if got := (diagnostics{Getenv: func(string) string { return "" }}).attrs(); !contains(got, "controller_types", "none") {
+	if got := (diagnostics{Lookup: func(string) (string, bool) { return "", false }}).attrs(); !contains(got, "controller_types", "none") {
 		t.Errorf("no pad: %v", got)
 	}
 }
@@ -182,4 +182,28 @@ func contains(attrs []any, key, value string) bool {
 		}
 	}
 	return false
+}
+
+// -spike is the full check of the binding (the old -probe), and the name of the probe executable only chooses it when
+// no flag does: an explicit --probe wins. Whatever SDL the machine has, the two are told apart by what they print.
+func TestSpikeIsNotTheEligibilityCheckAndProbeBeatsTheName(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := run([]string{"mothdex-gui", "-spike", "-driver", "dummy"}, &out, &errOut)
+	spike := strings.Contains(out.String(), "probe ok") || strings.Contains(errOut.String(), "probe load")
+	if !spike {
+		t.Errorf("-spike did not run the full check: exit %d, stdout %q, stderr %q", code, out.String(), errOut.String())
+	}
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"mothdex-gui-probe", "--probe"}, &out, &errOut)
+	switch code {
+	case exitOK:
+		if !regexp.MustCompile(`^sdl [0-9]+\.[0-9]+\.[0-9]+\n$`).MatchString(out.String()) {
+			t.Errorf("the probe name with --probe must give the one line: %q", out.String())
+		}
+	default:
+		if code != exitSDL || out.Len() != 0 || strings.Contains(errOut.String(), "probe load") || strings.Count(errOut.String(), "\n") != 1 {
+			t.Errorf("the probe name with --probe must give one line of reason: exit %d, stdout %q, stderr %q", code, out.String(), errOut.String())
+		}
+	}
 }
