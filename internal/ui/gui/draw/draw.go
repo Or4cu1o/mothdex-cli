@@ -62,9 +62,10 @@ type Op struct {
 	Text          string
 	Display       bool
 
-	// KindSpinner: the center of the square, Cell (the pixel cell P; the blocks are 2 cells and the square 6) and
-	// Step, the block that is at full color now (0..7); the others fade behind it to 25 %.
-	CX, CY, Step int
+	// KindSpinner: the center of the square, Cell (the pixel cell P, the gap between blocks), Side (the side of a block,
+	// a multiple of P) and Step, the block at full color now (0..7); the others fade behind it to 25 %. The square is
+	// three blocks and two gaps wide, with an empty centre.
+	CX, CY, Side, Step int
 
 	// KindImage: Rect is where the picture goes. ImageID names the picture for the backend's texture cache
 	// (the same id is the same pixels); Pixels is the picture, not modified after it was made.
@@ -121,9 +122,9 @@ func (l *List) DisplayText(x, base, size int, c Color, s string) {
 	l.Ops = append(l.Ops, Op{Kind: KindText, X: x, Base: base, Size: size, Color: c, Text: s, Display: true})
 }
 
-// Spinner appends a spinner: eight blocks of two cells around a square of six, the one at step at full color.
-func (l *List) Spinner(cx, cy, cell, step int, c Color) {
-	l.Ops = append(l.Ops, Op{Kind: KindSpinner, CX: cx, CY: cy, Cell: cell, Step: step, Color: c})
+// Spinner appends a spinner: eight blocks of side around a square, a cell apart, the one at step at full color.
+func (l *List) Spinner(cx, cy, cell, side, step int, c Color) {
+	l.Ops = append(l.Ops, Op{Kind: KindSpinner, CX: cx, CY: cy, Cell: cell, Side: side, Step: step, Color: c})
 }
 
 // Image appends a picture to be scaled into r.

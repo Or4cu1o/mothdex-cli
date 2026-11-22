@@ -63,16 +63,16 @@ func TestNotchedRectsClampTheStepsAndKeepPlainRectangles(t *testing.T) {
 	}
 }
 
-func TestSpinnerHasEightBlocksWithAFullHeadAndAFadeToAQuarter(t *testing.T) {
-	op := gdraw.Op{CX: 100, CY: 100, Cell: 3, Step: 3}
+func TestSpinnerHasEightBlocksAroundAnEmptyCentreWithAFullHeadAndAFadeToAQuarter(t *testing.T) {
+	op := gdraw.Op{CX: 100, CY: 100, Cell: 3, Side: 9, Step: 3} // three blocks of 9 and two gaps of 3: 33 px
 	seen := map[[2]int]bool{}
 	var alphas [spinnerBlocks]uint8
 	for k := range alphas {
 		x, y, side, alpha := spinnerBlock(op, k)
-		if side != 6 || x < 100-9 || x+side > 100+9 || y < 100-9 || y+side > 100+9 {
-			t.Fatalf("block %d at %d,%d side %d is outside the 6-cell square", k, x, y, side)
+		if side != 9 || x < 100-16 || x+side > 100+17 || y < 100-16 || y+side > 100+17 {
+			t.Fatalf("block %d at %d,%d side %d is outside the 33 px square", k, x, y, side)
 		}
-		if x == 100-3 && y == 100-3 {
+		if x == 100-16+12 && y == 100-16+12 {
 			t.Fatalf("block %d is in the middle of the ring", k)
 		}
 		if seen[[2]int{x, y}] {
@@ -80,6 +80,12 @@ func TestSpinnerHasEightBlocksWithAFullHeadAndAFadeToAQuarter(t *testing.T) {
 		}
 		seen[[2]int{x, y}] = true
 		alphas[k] = alpha
+	}
+	// a gap of one cell separates every pair of neighbours on a side
+	x0, _, _, _ := spinnerBlock(op, 0)
+	x1, _, _, _ := spinnerBlock(op, 1)
+	if x1-x0 != 9+3 {
+		t.Errorf("neighbouring blocks are %d px apart, want the side plus a gap (12)", x1-x0)
 	}
 	if alphas[3] != 255 {
 		t.Errorf("the block at the step is opaque, got %d", alphas[3])

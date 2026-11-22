@@ -531,8 +531,8 @@ func (m Model) drawLoading(p painter, r draw.Rect, text string, since, now time.
 	x := r.X + met.Unit
 	p.text(x, top, met.Body, colDim, text)
 	if spinnerShown(since, now) {
-		rad := 3 * met.Pixel // half the spinner square
-		p.spinner(x+p.width(met.Body, text)+met.Unit+rad, top+LineHeight(met.Body)/2, now)
+		lh := LineHeight(met.Body)
+		p.spinner(x+p.width(met.Body, text)+met.Unit+p.spinnerSize(lh)/2, top+lh/2, lh, now)
 	}
 }
 

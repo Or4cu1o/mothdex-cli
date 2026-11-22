@@ -743,7 +743,7 @@ func TestEverythingIsDrawnInsideTheSafeRectangle(t *testing.T) {
 								t.Errorf("%dx%d safe=%d large=%v %s: text %q at (%d,%d) width %d outside %+v", size[0], size[1], safe.Percent, large, where(), op.Text, op.X, op.Base, width, met.Safe)
 							}
 						case draw.KindSpinner:
-							if !(draw.Rect{X: op.CX - 3*op.Cell, Y: op.CY - 3*op.Cell, W: 6 * op.Cell, H: 6 * op.Cell}).Within(met.Safe) {
+							if !(draw.Rect{X: op.CX - (3*op.Side+2*op.Cell)/2, Y: op.CY - (3*op.Side+2*op.Cell)/2, W: 3*op.Side + 2*op.Cell, H: 3*op.Side + 2*op.Cell}).Within(met.Safe) {
 								t.Errorf("%dx%d %s: spinner outside the safe rectangle", size[0], size[1], where())
 							}
 						}

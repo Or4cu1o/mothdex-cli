@@ -106,6 +106,7 @@ type Metrics struct {
 	Pixel                             int // P, the pixel cell every shape snaps to: 2, 3 or 4
 	Title, Body, Secondary, Minimum   int // type sizes in pixels
 	Display                           int // the size of the display face
+	Header                            int // the size of a Settings section header: body x 1.35, in the display face
 }
 
 // NewMetrics computes the layout metrics for a display of w x h pixels.
@@ -141,6 +142,7 @@ func NewMetrics(w, h int, safe SafeArea, largeText bool) Metrics {
 		grow = largerText
 	}
 	m.Title, m.Body, m.Display = grow(fontTitle.at(t)), grow(fontBody.at(t)), grow(fontDisplay.at(t))
+	m.Header = m.Body * 135 / 100
 	m.Secondary, m.Minimum = grow(fontSecondary.at(t)), grow(fontMinimum.at(t))
 	m.TopBar, m.HintBar = grow(topBarHeight.at(t)), grow(hintBarHeight.at(t))
 	m.Row1, m.Row2, m.Key = grow(rowOneLine.at(t)), grow(rowTwoLines.at(t)), grow(keyMin.at(t))

@@ -16,7 +16,10 @@ import (
 func (m Model) settingItemHeight(it settingItem) int {
 	met := m.metrics
 	switch {
-	case it.header != "" || it.more:
+	case it.header != "":
+		h, _, _, _ := m.headerLayout(m.painter(nil), it.header)
+		return h
+	case it.more:
 		return LineHeight(met.Secondary) + met.Unit
 	}
 	h := m.settingRowBase(it.row)
@@ -43,6 +46,30 @@ func (m Model) settingsLabelWidth(p painter, contentW int) int {
 // settingLabelLines is the label of a row, wrapped to two lines when even the widest column is too narrow for it.
 func (m Model) settingLabelLines(p painter, r *settingRow, labelW int) []string {
 	return p.wrap(m.metrics.Body, m.tr("ui.gui.settings.row."+r.label, nil), labelW-3*m.metrics.Unit, 2)
+}
+
+// headerLayout lays out a section header: its band has 1u above the text and half a unit below it, so a header never
+// touches the row above or the focus frame of the row under it (Bússola, T-83). It returns the band height, the painter and
+// size to draw the text with (the display face at body x 1.35, or the body face at the secondary size when the face lacks a
+// glyph of the label) and the top of the text box from the top of the band.
+func (m Model) headerLayout(p painter, label string) (h int, hp painter, size, textTop int) {
+	met := m.metrics
+	hp = p.display(label)
+	size = met.Secondary
+	if hp.disp {
+		size = met.Header
+	}
+	ascent, descent := size*4/5, size/5
+	if f := hp.face(size); f != nil {
+		ascent, descent = f.Ascent(), f.Descent()
+	}
+	inkAscent, inkDescent := ascent, descent
+	if hp.disp { // a header has no accented capital, so its ink is the ascenders (0.71 em) and descenders (0.24 em) of the face
+		inkAscent, inkDescent = size*71/100, size*24/100+1
+	}
+	baseline := met.Unit + inkAscent // from the top of the band: the ink starts 1u below it
+	textTop = baseline - ascent - (LineHeight(size)-(ascent+descent))/2
+	return met.Unit + inkAscent + inkDescent + met.Unit/2, hp, size, textTop
 }
 
 // settingRowBase is the height of a row without the lines under it: one button-sized line, or two lines of text when
@@ -227,8 +254,8 @@ func (m Model) drawSettings(p painter) {
 		h := m.settingItemHeight(it)
 		switch {
 		case it.header != "":
-			hp := p.display(it.header) // a section header is a short label: the display face, in the dim text color
-			hp.text(c.X+met.Unit, y+(h-LineHeight(hp.dsize()))/2, hp.dsize(), colDim, it.header)
+			_, hp, size, top := m.headerLayout(p, it.header)
+			hp.text(c.X+met.Unit, y+top, size, colDim, it.header) // a short label: the display face, in the dim text color
 		case it.more:
 			p.text(c.X+met.Unit, y+(h-LineHeight(met.Secondary))/2, met.Secondary, colDim, p.fit(met.Secondary, m.tr("ui.gui.settings.more", nil), c.W-2*met.Unit))
 		default:

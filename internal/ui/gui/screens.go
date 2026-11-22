@@ -35,8 +35,8 @@ func (m Model) drawSplash(p painter, now time.Time) {
 	x := s.X + (s.W-w)/2
 	p.text(x, top, met.Body, colDim, line)
 	if spinnerShown(m.start, now) { // on the right of the text, as on the exit screen
-		r := 3 * met.Pixel // half the spinner square
-		p.spinner(x+w+u+r, top+LineHeight(met.Body)/2, now)
+		lh := LineHeight(met.Body)
+		p.spinner(x+w+u+p.spinnerSize(lh)/2, top+lh/2, lh, now)
 	}
 
 	infoTop := s.Bottom() - LineHeight(met.Secondary) - 2*u
@@ -103,8 +103,8 @@ func (m Model) drawExit(p painter, now time.Time) {
 		x := s.X + (s.W-w)/2
 		p.text(x, y, met.Secondary, colDim, line)
 		if spinnerShown(e.started, now) {
-			r := 3 * met.Pixel // half the spinner square
-			p.spinner(x+w+u+r, y+LineHeight(met.Secondary)/2, now)
+			lh := LineHeight(met.Secondary)
+			p.spinner(x+w+u+p.spinnerSize(lh)/2, y+lh/2, lh, now)
 		}
 		y += LineHeight(met.Secondary) + u
 	case e != nil && e.finished && e.res.Batch.RefreshWarning != "":

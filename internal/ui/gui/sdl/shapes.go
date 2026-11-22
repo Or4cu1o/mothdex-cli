@@ -50,9 +50,10 @@ var spinnerRing = [spinnerBlocks][2]int{{0, 0}, {1, 0}, {2, 0}, {2, 1}, {2, 2}, 
 // spinnerBlock is block k of a spinner: its top left corner, its side and its opacity. The block at the step is
 // opaque and the ones behind it fade to a quarter.
 func spinnerBlock(op gdraw.Op, k int) (x, y, side int, alpha uint8) {
-	side = 2 * op.Cell
-	x = op.CX - 3*op.Cell + spinnerRing[k][0]*side
-	y = op.CY - 3*op.Cell + spinnerRing[k][1]*side
+	side = op.Side
+	half := (3*side + 2*op.Cell) / 2
+	x = op.CX - half + spinnerRing[k][0]*(side+op.Cell)
+	y = op.CY - half + spinnerRing[k][1]*(side+op.Cell)
 	age := ((op.Step-k)%spinnerBlocks + spinnerBlocks) % spinnerBlocks
 	alpha = uint8(255 - age*(255-spinnerFadeFloor)/(spinnerBlocks-1))
 	return x, y, side, alpha

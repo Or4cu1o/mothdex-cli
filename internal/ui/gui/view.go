@@ -164,11 +164,21 @@ func (p painter) window(r rect) {
 	p.shape(r, colRaised)
 }
 
-// spinner draws the spinner of DESIGN.md Components, centered at (cx, cy): eight blocks around a square, one step
-// per 100 ms.
-func (p painter) spinner(cx, cy int, now time.Time) {
-	p.l.Spinner(cx, cy, p.m.Pixel, int(now.UnixNano()/int64(spinnerFrame))%spinnerBlocks, colAccent)
+// spinner draws the spinner of DESIGN.md Components, centered at (cx, cy) and as tall as a line of text of height lineH: eight
+// blocks around an empty centre, one step per 100 ms.
+func (p painter) spinner(cx, cy, lineH int, now time.Time) {
+	p.l.Spinner(cx, cy, p.m.Pixel, p.spinnerSide(lineH), int(now.UnixNano()/int64(spinnerFrame))%spinnerBlocks, colAccent)
 }
+
+// spinnerSide is the side of a block that makes the whole spinner (three blocks and two gaps of P) as tall as a line of
+// text of height lineH, so the ring and its steps read beside the text it waits for. A block is at least two cells.
+func (p painter) spinnerSide(lineH int) int {
+	cell := p.m.Pixel
+	return max((2*lineH-cell)/(6*cell), 2) * cell
+}
+
+// spinnerSize is the width and height of the spinner beside a line of text of height lineH.
+func (p painter) spinnerSize(lineH int) int { return 3*p.spinnerSide(lineH) + 2*p.m.Pixel }
 
 // Render draws the whole frame for time now into l.
 func (m Model) Render(now time.Time, l *draw.List) {
