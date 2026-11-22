@@ -30,8 +30,10 @@ MARKER_V1="# mothdex-launcher v1"
 MARKER="# mothdex-launcher v2"
 LAUNCHER_NAME="Mothdex.sh"
 LICENSES_NAME="mothdex-licenses"
-# Names allowed for a THIRD_PARTY member (IC-4) and removed from mothdex-licenses/ by name (IC-5).
+# A THIRD_PARTY member must have a plain name (IC-4) and be one of the notices this installer ships; only those names are
+# ever removed from mothdex-licenses/ (IC-5), so a file of the user's in that folder is never deleted.
 NAME_RE='^[A-Za-z0-9._-]+$'
+NOTICE_NAMES="NotoSans-OFL-1.1.txt SDL_GameControllerDB-zlib.txt SDL2-zlib.txt purego-Apache-2.0.txt x-image-BSD-3-Clause.txt"
 # Scrubbed environment and time bound of the probe (IC-1, IC-10).
 PROBE_PATH=/usr/sbin:/usr/bin:/sbin:/bin
 PROBE_SECONDS=20
@@ -359,6 +361,13 @@ verify_signature() {
   fi
 }
 
+notice_known() {
+  for known in $NOTICE_NAMES; do
+    if [ "$1" = "$known" ]; then return 0; fi
+  done
+  return 1
+}
+
 # The archive $1 in $TMP must match its one line of the verified checksums.txt.
 check_sha() {
   want=$(awk -v n="$1" '{ f = $2; sub(/^\*/, "", f); if (f == n) print tolower($1) }' "$TMP/checksums.txt")
@@ -453,6 +462,7 @@ extract_gui() {
         base=${m#THIRD_PARTY/}
         case $base in . | .. | '') die "$GUI_ARCHIVE has an unsafe member name: nothing was installed" ;; esac
         printf '%s\n' "$base" | grep -Eq "$NAME_RE" || die "$GUI_ARCHIVE has an unsafe member name: nothing was installed"
+        notice_known "$base" || die "$GUI_ARCHIVE has an unexpected member: nothing was installed"
         list="$list THIRD_PARTY/$base"
         GUI_NOTICES="$GUI_NOTICES $base"
         ;;
@@ -467,6 +477,10 @@ EOF
   tar -xzf "$TMP/$GUI_ARCHIVE" -C "$TMP/g" $list || die "$GUI_ARCHIVE could not be extracted: nothing was installed"
   if [ ! -f "$TMP/g/mothdex-gui" ] || [ -L "$TMP/g/mothdex-gui" ]; then
     die "$GUI_ARCHIVE: 'mothdex-gui' is not a regular file"
+  fi
+  # busybox tar lists a hard link like a file: after extracting, every file must have exactly one link
+  if [ -n "$(find "$TMP/g" -type f -links +1 2>/dev/null)" ]; then
+    die "$GUI_ARCHIVE has a member that is not a regular file (a hard link): nothing was installed"
   fi
   if [ -e "$TMP/g/THIRD_PARTY" ] || [ -L "$TMP/g/THIRD_PARTY" ]; then
     if [ ! -d "$TMP/g/THIRD_PARTY" ] || [ -L "$TMP/g/THIRD_PARTY" ]; then die "$GUI_ARCHIVE: THIRD_PARTY is not a directory"; fi
@@ -557,7 +571,7 @@ install_gui() {
   esac
 }
 
-# Removes the regular files named like a THIRD_PARTY member from a licences directory, then the directory itself if it
+# Removes the regular files named like a notice this installer ships from a licences directory, then the directory itself if it
 # is empty (IC-5): no recursive delete, no link followed, anything else is kept.
 remove_licenses() {
   d=$1
@@ -569,7 +583,7 @@ remove_licenses() {
   for f in "$d"/* "$d"/.[!.]*; do
     if [ ! -e "$f" ] && [ ! -L "$f" ]; then continue; fi
     n=${f##*/}
-    if [ -f "$f" ] && [ ! -L "$f" ] && printf '%s\n' "$n" | grep -Eq "$NAME_RE"; then
+    if [ -f "$f" ] && [ ! -L "$f" ] && notice_known "$n"; then
       rm -f "$f"
     elif [ "${2:-}" != quiet ]; then
       warn "keeping $f: this installer did not write it"

@@ -2,6 +2,7 @@
 # curl stand-in: takes the same arguments install.sh passes (-o <dest> and a URL). The frontend refresh (a literal
 # loopback URL) is recorded with its arguments in $FAKE_LOG.refresh and answers REFRESH_RC (default 0); every other URL
 # goes to fake-fetch, which only serves the GitHub release files.
+printf '%s\n' "${1:-}" >>"$FAKE_LOG.curlfirst"
 dest=""; url=""; args="$*"
 while [ $# -gt 0 ]; do
   case $1 in

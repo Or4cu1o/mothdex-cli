@@ -269,6 +269,7 @@ $fakeGui = @{
   ok    = New-FakeExe 'gui-ok' $okSource
   no    = New-FakeExe 'gui-no' 'class P { static int Main(string[] a) { System.Console.Error.WriteLine("SDL2.dll not found"); return 1; } }'
   crash = New-FakeExe 'gui-crash' 'class P { static int Main(string[] a) { return 2; } }'
+  hang  = New-FakeExe 'gui-hang' 'class P { static int Main(string[] a) { System.Threading.Thread.Sleep(120000); return 0; } }'
   long  = New-FakeExe 'gui-long' 'class P { static int Main(string[] a) { System.Console.Error.WriteLine("\u001b[31m" + new string((char)48, 300)); return 1; } }'
 }
 
@@ -287,7 +288,7 @@ function New-Zip([string]$Path, [hashtable]$Entries, [string[]]$LinkEntries = @(
 }
 
 # New-GuiTag <tag> <variant>: a release like New-Tag plus a mothdex-gui_ archive for windows amd64.
-# Variants: ok no crash long (probe behaviour), extra dotdot backslash symlink nomember (archive layout),
+# Variants: ok no crash long hang (probe behaviour), extra dotdot backslash symlink nomember badspace badstar (archive layout),
 # missing (listed, not downloadable), tamper (checksum mismatch).
 function New-GuiTag([string]$Tag, [string]$Variant) {
   New-Tag $Tag $false
@@ -305,6 +306,8 @@ function New-GuiTag([string]$Tag, [string]$Variant) {
   $links = @()
   switch ($Variant) {
     'extra' { $entries['evil.exe'] = 'x' }
+    'badspace' { $entries['THIRD_PARTY/a b.txt'] = 'x' }
+    'badstar' { $entries['THIRD_PARTY/a*b.txt'] = 'x' }
     'dotdot' { $entries['../evil.exe'] = 'x' }
     'backslash' { $entries['THIRD_PARTY\evil.txt'] = 'x' }
     'symlink' { $links = @('SDL2.dll') }
@@ -328,6 +331,9 @@ New-GuiTag 'v1.3.7' 'nomember'
 New-GuiTag 'v1.3.8' 'missing'
 New-GuiTag 'v1.3.9' 'tamper'
 New-GuiTag 'v1.4.0' 'long'
+New-GuiTag 'v1.4.1' 'badspace'
+New-GuiTag 'v1.4.2' 'badstar'
+New-GuiTag 'v1.4.3' 'hang'
 
 $tempDir = [IO.Path]::GetTempPath()
 function Clear-ProbeFiles { Remove-Item -LiteralPath (Join-Path $tempDir 'mothdex-probe-env.txt'), (Join-Path $tempDir 'mothdex-probe-where.txt') -Force -ErrorAction SilentlyContinue }
@@ -435,6 +441,24 @@ Check 'nothing written through the junction' ((-not (Test-Path (Join-Path $victi
 Invoke-Install @{ BinDir = $g5; Uninstall = $true }
 Check 'uninstall does not follow the junction' ((Test-Path (Join-Path $victim 'keep.txt')) -and (Test-Path (Join-Path $g5 'mothdex-licenses')))
 
+
+# IC-4: a member name outside A-Za-z0-9._- is refused as unsafe, not only as unknown
+foreach ($pair in @(@('v1.4.1', 'space'), @('v1.4.2', 'star'))) {
+  $dir = Join-Path $root ('bn-' + $pair[1])
+  Invoke-Install @{ Version = $pair[0]; BinDir = $dir }
+  Check "member name with a $($pair[1]) aborts as unsafe" ($script:threw -and ($script:message -match 'unsafe member name') -and (-not (Test-Path (Join-Path $dir 'mothdex.exe'))))
+}
+
+# IC-10: a probe that hangs is killed after 20 seconds and means not eligible (the staging folder can only be removed
+# once the process is gone, so its absence proves the Kill)
+$hangDir = Join-Path $root 'hang'
+$rbH = New-RetroBat 'RetroBatHang'
+Invoke-Install @{ Version = 'v1.4.3'; RetroBatPath = $rbH; BinDir = $hangDir }
+Check 'a hanging probe: not eligible, exit code 0, CLI installed, no GUI' ((-not $script:threw) -and ($script:exitCode -eq 0) -and (Test-Path (Join-Path $hangDir 'mothdex.exe')) -and
+  (-not (Test-Path (Join-Path $hangDir 'mothdex-gui.exe'))) -and (-not (Test-Path (Join-Path $hangDir 'SDL2.dll'))))
+Check 'a hanging probe: says it did not finish' ($script:output -match 'did not finish within 20 seconds')
+Check 'a hanging probe: the process was killed (staging folder removed)' (@(Get-ChildItem $hangDir -Force | Where-Object { $_.Name -like '.mothdex*' }).Count -eq 0)
+
 # upgrade (5.5) and uninstall (5.6)
 $rbV = New-RetroBat 'RetroBatV'
 $g6 = Join-Path $root 'g6'
@@ -452,14 +476,14 @@ Check '-NoGui removes the GUI, SDL2.dll and the notices' ((-not (Test-Path (Join
 Check '-NoGui keeps the launcher (the default follows the release), which falls back to tui' ((Test-Path $v1Bat) -and ((Get-Content $v1Bat -Raw) -match 'rem mothdex-launcher v2'))
 Check '-NoGui does not download the GUI archive' (@($global:urls | Where-Object { $_ -like '*mothdex-gui_*' }).Count -eq 0)
 Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbV; BinDir = $g6 }
-Set-Content -Path (Join-Path $g6 'mothdex-licenses\my notes.txt') -Value 'mine'
+Set-Content -Path (Join-Path $g6 'mothdex-licenses\notes.txt') -Value 'mine'
 New-Item -ItemType Directory -Path (Join-Path $root 'cfg') | Out-Null
 Invoke-Install @{ RetroBatPath = $rbV; BinDir = $g6; Uninstall = $true; DryRun = $true }
 Check 'uninstall dry run removes nothing' ((Test-Path (Join-Path $g6 'mothdex-gui.exe')) -and ($script:output -match 'Would remove'))
 Invoke-Install @{ RetroBatPath = $rbV; BinDir = $g6; Uninstall = $true }
 Check 'uninstall removes the binaries, SDL2.dll and the launcher' ((-not (Test-Path (Join-Path $g6 'mothdex.exe'))) -and (-not (Test-Path (Join-Path $g6 'mothdex-gui.exe'))) -and
   (-not (Test-Path (Join-Path $g6 'SDL2.dll'))) -and (-not (Test-Path $v1Bat)))
-Check 'uninstall keeps a foreign file in the notices folder, and the folder' ((Test-Path (Join-Path $g6 'mothdex-licenses\my notes.txt')) -and (-not (Test-Path (Join-Path $g6 'mothdex-licenses\SDL2-zlib.txt'))))
+Check 'uninstall keeps a foreign file with a plain name in the notices folder, and the folder' ((Test-Path (Join-Path $g6 'mothdex-licenses\notes.txt')) -and (-not (Test-Path (Join-Path $g6 'mothdex-licenses\SDL2-zlib.txt'))))
 $g7 = Join-Path $root 'g7'
 New-Item -ItemType Directory -Path $g7 | Out-Null
 Set-Content -Path (Join-Path $g7 'SDL2.dll') -Value 'someone else'

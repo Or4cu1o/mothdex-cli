@@ -26,3 +26,14 @@ none of them. RetroBat is a Windows install with a per-user folder, so the ARM, 
 
 Everything the installers cannot prove in a container, they print: the eligibility result of `--probe`, the launcher
 path, and how to opt out. A tester pastes that output into the report.
+
+## Installer paths CI does not exercise
+
+These are covered only by stand-ins in CI (a `timeout`, a `curl`), so a real run on a device or a tester's machine is what
+confirms them. All are **Unverified**.
+
+| Path | What CI shows | What is not shown |
+|---|---|---|
+| A hung probe killed by `timeout` (POSIX) | the installer treats exit 124, 137 and 143 as "did not finish" when the bound is active | the exit code a real GNU, busybox or toybox `timeout` gives after a real kill of a real hung probe |
+| `curl` configuration files | every `curl` call starts with `-q`, checked through a stand-in | that a real `~/.curlrc` (proxy, insecure) is ignored by a real `curl` |
+| A `.sh` Port on exFAT without an execute bit | n/a (B8 above) | whether the frontend runs it (OQ-PRT-5) |

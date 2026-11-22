@@ -37,6 +37,7 @@ mode_is() { [ "$(stat -c %a "$1")" = "$2" ]; }
 owned_by_me() { [ "$(stat -c %u "$1")" = "$(id -u)" ]; }
 out_has() { grep -qF -- "$1" "$OUT"; }
 file_has() { grep -qF -- "$2" "$1"; }
+only_dash_q() { [ -s "$1" ] && ! grep -vqx -- '-q' "$1"; }
 log_lacks() { ! grep -qF -- "$1" "$FAKE_LOG"; }
 runs_ok() { "$@" >/dev/null 2>&1; }
 no_downloads() { [ ! -s "$FAKE_LOG" ]; }
@@ -145,8 +146,12 @@ make_gui_tag() {
         members="LICENSE THIRD_PARTY"
         ;;
       hardlink)
-        ln /tmp/build/THIRD_PARTY/NotoSans-OFL-1.1.txt /tmp/build/THIRD_PARTY/dup.txt
+        # a notice name that is a hard link to another member (busybox tar lists it like a file)
+        rm -f /tmp/build/THIRD_PARTY/SDL_GameControllerDB-zlib.txt
+        ln /tmp/build/THIRD_PARTY/NotoSans-OFL-1.1.txt /tmp/build/THIRD_PARTY/SDL_GameControllerDB-zlib.txt
         ;;
+      badspace) echo x >"/tmp/build/THIRD_PARTY/a b" ;;
+      badstar) echo x >"/tmp/build/THIRD_PARTY/a*b" ;;
     esac
     case $variant in
       dotdot) (cd /tmp/build && tar -czPf "$d/$name" mothdex-gui --transform 's,^mothdex-gui$,../mothdex-gui,') ;;
@@ -198,8 +203,10 @@ setup_release() {
   if gnu_tar; then
     make_gui_tag v1.4.1 dotdot
     make_gui_tag v1.4.2 absolute
-    make_gui_tag v1.4.3 hardlink
   fi
+  make_gui_tag v1.4.3 hardlink
+  make_gui_tag v1.4.4 badspace
+  make_gui_tag v1.4.5 badstar
 }
 
 # --- simulated systems ------------------------------------------------------------------------------------------
@@ -207,7 +214,7 @@ setup_release() {
 reset() {
   CASE=$1
   rm -rf /userdata /storage /recalbox /usr/share/batocera /etc/os-release /home/u "/home/a b" /opt/* /run/media \
-    /tmp/pwn /tmp/pwn-abs /tmp/victim /tmp/victimdir /tmp/nocurl /tmp/nocurl2 /tmp/ghonly /tmp/probe.env /tmp/probe.where "$FAKE_LOG.refresh" "$FAKE_LOG.timeout" "$FAKE_LOG" "$FAKE_LOG.cosign" "$FAKE_LOG.gh" 2>/dev/null
+    /tmp/pwn /tmp/pwn-abs /tmp/victim /tmp/victimdir /tmp/nocurl /tmp/nocurl2 /tmp/ghonly /tmp/probe.env /tmp/probe.where "$FAKE_LOG.refresh" "$FAKE_LOG.timeout" "$FAKE_LOG.curlfirst" "$FAKE_LOG" "$FAKE_LOG.cosign" "$FAKE_LOG.gh" 2>/dev/null
   : >"$FAKE_LOG"
   mkdir -p /home/u /opt
   HOME=/home/u
@@ -717,6 +724,7 @@ check "refresh asked on batocera" test -s "$FAKE_LOG.refresh"
 check "refresh: literal loopback URL, no proxy, no redirect, bounded (IC-11)" file_has "$FAKE_LOG.refresh" \
   "--noproxy * --max-redirs 0 --max-time 3 -fs -o /dev/null http://127.0.0.1:1234/reloadgames"
 check "only GitHub release URLs downloaded" log_lacks BLOCKED
+check "every curl call starts with -q, so a curlrc cannot change it" only_dash_q "$FAKE_LOG.curlfirst"
 
 reset refresh-failure-is-not-fatal
 fs_batocera
@@ -870,10 +878,10 @@ check "the link is left alone" test -L $BATOCERA_BIN/mothdex-licenses
 reset licenses-uninstall-keeps-foreign
 fs_batocera
 inst --version v1.3.0
-echo mine >"$BATOCERA_BIN/mothdex-licenses/my notes.txt"
+echo mine >"$BATOCERA_BIN/mothdex-licenses/notes.txt"
 inst --uninstall
 check "notice files removed" absent $BATOCERA_BIN/mothdex-licenses/NotoSans-OFL-1.1.txt
-check "a foreign file is kept" test -f "$BATOCERA_BIN/mothdex-licenses/my notes.txt"
+check "a foreign file with a plain name is kept" file_has "$BATOCERA_BIN/mothdex-licenses/notes.txt" mine
 check "so is the directory, with a note" out_has "kept $BATOCERA_BIN/mothdex-licenses"
 
 # upgrade and --no-gui (5.5), uninstall (5.6)
@@ -989,14 +997,22 @@ check "dry run: not eligible prints the removal" out_has "Would remove $BATOCERA
 inst --dry-run --version v1.2.3
 check "dry run: not listed prints the removal" out_has "Would remove $BATOCERA_BIN/mothdex-gui (this release has no GUI archive)"
 check "dry run removes nothing" test -x $BATOCERA_BIN/mothdex-gui
-if gnu_tar; then
-  reset gui-archive-hardlink
+reset gui-archive-hardlink
+fs_batocera
+inst --version v1.4.3
+check "a hard link member is refused (by type on GNU tar, by link count on busybox)" rc_not0
+check "refusal says so" out_has "not a regular file"
+check "nothing installed" absent $BATOCERA_BIN/mothdex
+for pair in 'v1.4.4 a-space' 'v1.4.5 a-star'; do
+  # shellcheck disable=SC2086  # intentional word splitting of the "tag name" pair
+  set -- $pair
+  reset "gui-archive-badname-$2"
   fs_batocera
-  inst --version v1.4.3
-  check "a hard link member is refused by type" rc_not0
-  check "refusal says so" out_has "not a regular file"
-  check "nothing installed" absent $BATOCERA_BIN/mothdex
-fi
+  inst --version "$1"
+  check "$2: a member name outside A-Za-z0-9._- aborts as unsafe (IC-4)" rc_not0
+  check "$2: says unsafe member name" out_has "unsafe member name"
+  check "$2: nothing installed" absent $BATOCERA_BIN/mothdex
+done
 
 # arch mapping of the GUI archive (the same as the CLI archive)
 reset gui-arch-armv7

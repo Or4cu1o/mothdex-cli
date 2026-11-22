@@ -62,6 +62,8 @@ $MarkerV1 = 'rem mothdex-launcher v1'
 $Marker = 'rem mothdex-launcher v2'
 $LauncherName = 'Mothdex.bat'
 $LicensesName = 'mothdex-licenses'
+# The notices this installer ships (T-70 IC-5): the only names ever removed from mothdex-licenses.
+$NoticeNames = @('NotoSans-OFL-1.1.txt', 'SDL_GameControllerDB-zlib.txt', 'SDL2-zlib.txt', 'purego-Apache-2.0.txt', 'x-image-BSD-3-Clause.txt')
 $ProbeSeconds = 20
 $RefreshUrl = 'http://127.0.0.1:1234/reloadgames'
 $script:Failed = $false
@@ -249,8 +251,11 @@ function Expand-GuiArchive([string]$Zip, [string]$ZipName, [string]$Dest) {
       if ($name -ceq 'mothdex-gui.exe') { $haveExe = $true; [void]$wanted.Add(@($entry, 'mothdex-gui.exe')); continue }
       if ($name -ceq 'SDL2.dll') { $haveDll = $true; [void]$wanted.Add(@($entry, 'SDL2.dll')); continue }
       if (@('LICENSE', 'README.md', 'CHANGELOG.md', 'THIRD_PARTY/') -ccontains $name) { continue }
-      if ($name.StartsWith('THIRD_PARTY/', [StringComparison]::Ordinal) -and (Test-SafeName $name.Substring(12))) {
-        [void]$wanted.Add(@($entry, ('THIRD_PARTY\' + $name.Substring(12)))); continue
+      if ($name.StartsWith('THIRD_PARTY/', [StringComparison]::Ordinal)) {
+        $base = $name.Substring(12)
+        if (-not (Test-SafeName $base)) { Fail "$ZipName has an unsafe member name: nothing was installed" }
+        if ($NoticeNames -cnotcontains $base) { Fail "$ZipName has an unexpected member: nothing was installed" }
+        [void]$wanted.Add(@($entry, ('THIRD_PARTY\' + $base))); continue
       }
       Fail "$ZipName has an unexpected member: nothing was installed"
     }
@@ -335,13 +340,13 @@ function Install-Gui([string]$GuiStage, [string]$BinDirPath, [bool]$Move) {
   }
 }
 
-# T-70 IC-5: removes the regular files named like a THIRD_PARTY member from a licences folder, then the folder itself
+# T-70 IC-5: removes the regular files named like a notice this installer ships from a licences folder, then the folder itself
 # if it is empty: no recursive delete, no link followed, anything else is kept.
 function Remove-Licenses([string]$Dir, [bool]$Quiet) {
   if (Test-ReparsePoint $Dir) { if (-not $Quiet) { Write-Warning "not touching ${Dir}: it is a link" }; return }
   if (-not (Test-Path -LiteralPath $Dir -PathType Container)) { return }
   foreach ($item in @(Get-ChildItem -LiteralPath $Dir -Force)) {
-    if ((-not $item.PSIsContainer) -and (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) -and (Test-SafeName $item.Name)) {
+    if ((-not $item.PSIsContainer) -and (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) -and ($NoticeNames -ccontains $item.Name)) {
       $item.Attributes = [IO.FileAttributes]::Normal
       Remove-Item -LiteralPath $item.FullName -Force
     } elseif (-not $Quiet) { Write-Warning "keeping $($item.FullName): this installer did not write it" }
