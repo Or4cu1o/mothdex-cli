@@ -365,6 +365,7 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 		if m.entriesText != "" {
 			lines = append(lines, m.tr("ui.gui.settings.about_entries", nil)+": "+m.entriesText)
 		}
+		lines = append(lines, m.controllerLines()...)
 		if m.o.LogPath != "" {
 			lines = append(lines, m.tr("ui.gui.settings.about_log", nil)+": "+app.SanitizeText(m.o.LogPath))
 		}
@@ -372,7 +373,7 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 	maxW := min(met.Safe.W-4*u, 28*met.Body)
 	var wrapped []string
 	for _, l := range lines {
-		wrapped = append(wrapped, p.wrap(met.Secondary, l, maxW-4*u, 3)...)
+		wrapped = append(wrapped, p.wrap(met.Secondary, l, maxW-4*u, 6)...) // the path of the mapping file is shown whole
 	}
 	h := len(wrapped)*LineHeight(met.Secondary) + LineHeight(met.Body) + 5*u
 	panel := draw.Rect{X: met.Safe.X + (met.Safe.W-maxW)/2, Y: met.Safe.Y + max((met.Safe.H-h)/2, 0), W: maxW, H: min(h, met.Safe.H)}
@@ -386,3 +387,29 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 		y += LineHeight(met.Secondary)
 	}
 }
+
+// controllerLines are the About lines for the joysticks present, for whoever has to add a mapping or report a problem:
+// the name, for a joystick SDL has no mapping for the line that says where to add one (the whole path, never shortened),
+// and the GUID. With none present, "None connected".
+func (m Model) controllerLines() []string {
+	pad := m.tr("ui.gui.settings.about_pad", nil)
+	if len(m.pads) == 0 {
+		return []string{pad + ": " + m.tr("ui.gui.settings.about_none", nil)}
+	}
+	var lines []string
+	for _, p := range m.pads[:min(len(m.pads), maxAboutPads)] {
+		lines = append(lines, pad+": "+app.SanitizeText(p.Name))
+		if !p.Mapped {
+			lines = append(lines, m.tr("ui.gui.settings.about_unmapped", map[string]any{"path": app.SanitizeText(m.o.MappingsPath)}))
+		}
+		guid := app.SanitizeText(p.GUID)
+		if guid == "" {
+			guid = m.tr("ui.gui.settings.about_guid_none", nil)
+		}
+		lines = append(lines, m.tr("ui.gui.settings.about_guid", nil)+": "+guid)
+	}
+	return lines
+}
+
+// maxAboutPads is how many joysticks About lists: the panel has to fit the screen.
+const maxAboutPads = 4

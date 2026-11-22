@@ -209,6 +209,9 @@ func (m Model) topBarItems(p painter, avail int, extra string) ([]topBarItem, in
 	if m.offline {
 		fixedBefore = append(fixedBefore, topBarItem{s: m.tr("ui.gui.bar.offline", nil), c: colWarn})
 	}
+	if m.noPad() { // no controller SDL can use: a toast alone can be missed, so the bar keeps saying it (never cut)
+		fixedBefore = append(fixedBefore, topBarItem{s: m.tr("ui.gui.bar.no_pad", nil), c: colWarn})
+	}
 	if badge := m.queueBadge(); badge != "" && m.screen != screenQueue { // the Queue shows its own counts
 		fixedAfter = append(fixedAfter, topBarItem{s: badge, c: colAccent, arrow: true})
 	}

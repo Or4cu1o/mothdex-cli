@@ -64,6 +64,8 @@ type (
 	ResizeMsg struct{ W, H int }
 	// ControllerMsg is the type of the pad now in use, for the hint labels.
 	ControllerMsg struct{ Type input.ControllerType }
+	// PadsMsg is every joystick present, as the backend last saw them: the start-up list and each plug or unplug.
+	PadsMsg struct{ Pads []input.PadInfo }
 	// JobMsg is one event of the downloader.
 	JobMsg struct{ Job app.JobSnapshot }
 	// SignalMsg is SIGTERM or SIGINT: no dialog, cancel, Wait, Close, exit.
@@ -83,6 +85,7 @@ type Options struct {
 	Clock          Clock
 	Log            *slog.Logger
 	DataDir        string // paths.data, where tui_state lives
+	MappingsPath   string // the user's gamecontrollerdb.txt: where a mapping for a joystick SDL does not know is added
 	LogPath        string // the log file, for the internal error text
 	Version        string // shown on the Splash
 	LocaleFallback bool   // the interface language needs a font this screen mode lacks: English is shown

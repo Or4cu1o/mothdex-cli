@@ -381,6 +381,8 @@ ui:
       about_guid: 'GUID'
       about_log: 'Log file'
       about_none: 'None connected'
+      about_unmapped: 'Not recognized. Add a mapping to {path}.'
+      about_guid_none: 'Unavailable on this system'
     buttons:
       move: 'Move'
     confirm:
@@ -433,6 +435,9 @@ ui:
       invalid_config: 'Reset this setting in Settings, or run "mothdex config reset {key}".'
       untrusted_url: 'This link is not from a trusted host. Choose another link.'
     locale_fallback: 'This language is not available in this screen mode yet. Showing English.'
+    pad:
+      none: 'Connect a controller. On a keyboard: arrows, Enter, Esc.'
+      unmapped: 'Controller not recognized: {name}. See Settings › About.'
     not_yet: '{name} is not available yet.'
     splash:
       starting: 'Starting…'
@@ -455,6 +460,7 @@ ui:
       badge_active: '{active}'
       badge_queued: '{active} · {queued} queued'
       will_quit_short: 'Quit pending'
+      no_pad: 'No controller'
     hint:
       menu: 'Menu'
       open: 'Open'

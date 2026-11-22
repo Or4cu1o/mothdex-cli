@@ -394,6 +394,8 @@ ui:
       about_guid: 'GUID'
       about_log: 'Файл журнала'
       about_none: 'Не подключён'
+      about_unmapped: 'Не распознан. Добавьте раскладку кнопок в {path}.'
+      about_guid_none: 'Недоступен в этой системе'
     buttons:
       move: 'Перемещение'
     confirm:
@@ -450,6 +452,9 @@ ui:
       invalid_config: 'Сбросьте этот параметр в настройках или выполните «mothdex config reset {key}».'
       untrusted_url: 'Эта ссылка не с доверенного узла. Выберите другую ссылку.'
     locale_fallback: 'Этот язык пока недоступен в этом режиме экрана. Показан английский.'
+    pad:
+      none: 'Подключите контроллер. На клавиатуре: стрелки, Enter, Esc.'
+      unmapped: 'Контроллер не распознан: {name}. См. Настройки › О программе.'
     not_yet: '{name}: пока недоступно.'
     splash:
       starting: 'Запуск…'
@@ -472,6 +477,7 @@ ui:
       badge_active: '{active}'
       badge_queued: '{active} · в очереди {queued}'
       will_quit_short: 'Ожидается выход'
+      no_pad: 'Нет контроллера'
     hint:
       menu: 'Меню'
       open: 'Открыть'

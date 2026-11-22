@@ -65,6 +65,28 @@ func (l *Library) HideCursor() { l.a.showCursor(0) }
 // JoystickCount is the number of joysticks SDL sees now.
 func (l *Library) JoystickCount() int { return int(l.a.numJoysticks()) }
 
+// JoystickName is the name SDL gives the joystick at a device index, mapped to a game controller or not.
+func (l *Library) JoystickName(index int) string { return l.a.joystickNameForIndex(int32(index)) } //nolint:gosec // a device index is small
+
+// JoystickDeviceInstanceID is the id the events of the joystick at a device index carry once it is open, or -1 when
+// this SDL2 (before 2.0.6) cannot say.
+func (l *Library) JoystickDeviceInstanceID(index int) int32 {
+	if l.a.joystickDeviceInstance == nil {
+		return -1
+	}
+	return l.a.joystickDeviceInstance(int32(index)) //nolint:gosec // a device index is small
+}
+
+// JoystickGUID is the GUID of the joystick at a device index as 32 hex digits, the form a gamecontrollerdb.txt line
+// starts with. It is not available (ok is false) before SDL 2.0.6, or where purego cannot return the 16-byte struct
+// (32-bit ARM and x86).
+func (l *Library) JoystickGUID(index int) (guid string, ok bool) {
+	if l.a.joystickDeviceGUID == nil {
+		return "", false
+	}
+	return l.a.joystickDeviceGUID(int32(index)).String(), true //nolint:gosec // a device index is small
+}
+
 // IsController reports whether the joystick at index has a game controller mapping.
 func (l *Library) IsController(index int) bool { return l.a.isGameController(int32(index)) != 0 } //nolint:gosec // a device index is small
 

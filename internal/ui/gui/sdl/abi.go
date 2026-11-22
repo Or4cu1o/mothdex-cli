@@ -46,6 +46,11 @@ const (
 	EventControllerButtonUp      = 0x652
 	EventControllerDeviceAdded   = 0x653
 	EventControllerDeviceRemoved = 0x654
+	// EventJoyDeviceAdded is SDL_JOYDEVICEADDED: SDL_JOYAXISMOTION is 0x600, then JOYBALLMOTION, JOYHATMOTION,
+	// JOYBUTTONDOWN, JOYBUTTONUP, DEVICEADDED and DEVICEREMOVED follow in that order. A joystick that has no
+	// game controller mapping only ever gives these two events.
+	EventJoyDeviceAdded   = 0x605
+	EventJoyDeviceRemoved = 0x606
 
 	WindowEventShown       = 1 // SDL_WINDOWEVENT_SHOWN
 	WindowEventExposed     = 3 // SDL_WINDOWEVENT_EXPOSED
@@ -201,6 +206,23 @@ type ControllerDeviceEvent struct {
 // ControllerDevice views the event as a controller device event. The caller checks Type first.
 func (e *Event) ControllerDevice() *ControllerDeviceEvent {
 	return (*ControllerDeviceEvent)(unsafe.Pointer(e)) //nolint:gosec // 12 bytes at the start of a 56-byte event, same layout (abi_test.go)
+}
+
+// JoyDevice views the event as a joystick device event, which has the layout of a controller device event: Which is
+// a device index for DEVICEADDED and an instance id for DEVICEREMOVED. The caller checks Type first.
+func (e *Event) JoyDevice() *ControllerDeviceEvent { return e.ControllerDevice() }
+
+// JoystickGUID is SDL_JoystickGUID: 16 bytes that name a model of device.
+type JoystickGUID struct{ Data [16]uint8 }
+
+// String is the 32 lower-case hex digits SDL_JoystickGetGUIDString writes, the form of gamecontrollerdb.txt.
+func (g JoystickGUID) String() string {
+	const digits = "0123456789abcdef"
+	out := make([]byte, 0, 32)
+	for _, b := range g.Data {
+		out = append(out, digits[b>>4], digits[b&15])
+	}
+	return string(out)
 }
 
 // SetType makes the event an otherwise empty event of the given type, as SDL_UserEvent is for a wake-up.
