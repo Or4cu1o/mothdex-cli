@@ -47,7 +47,7 @@ func TestProbeBudgetEndsBeforeTheInstallerBound(t *testing.T) {
 func TestDiagnosticsNeverCopyAPathValue(t *testing.T) {
 	for _, bad := range []string{"/home/alice", `C:\Users\alice`, "~/alice", "alice/x", "a b", strings.Repeat("a", 41)} {
 		env := map[string]string{"SDL_VIDEODRIVER": bad, "LANG": bad, "LC_ALL": bad}
-		d := diagnostics{SDLVersion: "2.32.4", Driver: bad, Getenv: func(k string) string { return env[k] }}
+		d := diagnostics{SDLVersion: "2.32.4", Driver: bad, Lookup: func(k string) (string, bool) { v, ok := env[k]; return v, ok }}
 		if got := wordOrNot(bad); got != "not shown" {
 			t.Errorf("value %q is shown as %q", bad, got)
 		}
