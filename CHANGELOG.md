@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type and size on the open handle and caps the read, so a file that grew after the stat cannot pass the 1 MiB limit.
   Production loads the user's locale folder only through `LoadDir` (os.Root); `Load(locales.FS)` is used with the embedded
   files alone.
+- T-72 contract text: `gui.md` §2 and `ports.md` §3 say that on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories`
+  with the application folder and System32 before it loads `SDL2.dll`, and does not load it if the call fails (T-70 IC-8).
 - T-69: backlog cleanup. The stale-session search warning already existed (T-25) and now has a CLI test; the
   `config.Set` overwrite refusal already had tests; a retry after a 503 under the 2x size rule keeps the pinned
   `Content-Length` across the 503 (test); the duplicated edge case of T-64 was removed from `TestCase32e`.
