@@ -14,9 +14,8 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/locales"
 )
 
-var bidi = string(rune(0x202E))
-
 var (
+	bidi    = string(rune(0x202E)) // right-to-left override
 	lineSep = string(rune(0x2028))
 	paraSep = string(rune(0x2029))
 ) // right-to-left override
@@ -345,6 +344,17 @@ type sizedInfo struct{ fs.FileInfo }
 
 func (sizedInfo) Size() int64 { return 10 }
 
+func (l lyingFS) Stat(name string) (fs.FileInfo, error) {
+	f, err := l.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return f.Stat()
+}
+
+func (l lyingFS) ReadFile(name string) ([]byte, error) { return l.MapFS.ReadFile(name) }
+
 func (l lyingFS) Open(name string) (fs.File, error) {
 	f, err := l.MapFS.Open(name)
 	if err != nil || name != "big_xx.yaml" {
@@ -362,13 +372,16 @@ func TestCatalogReadIsCappedWhateverTheStatSaid(t *testing.T) {
 	}
 }
 
-func (l lyingFS) Stat(name string) (fs.FileInfo, error) {
-	f, err := l.Open(name)
+// T-74 S2 through the loader: the warning of a skipped file carries no control character even though the
+// YAML error echoes the file text.
+func TestLoaderWarningsAreSanitised(t *testing.T) {
+	bad := fstest.MapFS{"fr_fr.yaml": {Data: []byte("a: [\x1b]52;c;AAAA\x07" + bidi + " " + lineSep + "\n")}}
+	b, err := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("a: 'A'\n")}}, bad)
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
-	defer func() { _ = f.Close() }()
-	return f.Stat()
+	ws := b.Warnings()
+	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b\x07"+bidi+lineSep) {
+		t.Fatalf("warnings: %q", ws)
+	}
 }
-
-func (l lyingFS) ReadFile(name string) ([]byte, error) { return l.MapFS.ReadFile(name) }

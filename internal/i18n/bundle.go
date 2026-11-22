@@ -86,26 +86,38 @@ func Load(sources ...fs.FS) (*Bundle, error) {
 	return b, nil
 }
 
+func checkCatalogInfo(info fs.FileInfo, err error) error {
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxFileBytes {
+		return errors.New("not a regular file or larger than 1 MiB")
+	}
+	return nil
+}
+
 // warn records a skipped file. The text can echo a file name or YAML text from the locale folder, so
 // it is cleaned like a substituted argument before it can reach a terminal.
 func (b *Bundle) warn(format string, args ...any) {
 	b.warnings = append(b.warnings, stripArgument(fmt.Sprintf(format, args...)))
 }
 
-// readCatalog opens the file once: the type and size checks run on the open handle, and the read
-// is capped, so a file replaced or grown between a stat and a read cannot slip past the limit.
+// readCatalog checks the entry before touching it (opening a FIFO blocks until a writer appears, so a
+// special file is refused from the stat alone), then opens it once: type and size are checked again on
+// the open handle and the read is capped, so a file replaced or grown in between cannot slip past
+// the limit.
 func readCatalog(src fs.FS, name string) (Catalog, error) {
-	f, err := src.Open(path.Clean(name))
+	name = path.Clean(name)
+	if err := checkCatalogInfo(fs.Stat(src, name)); err != nil {
+		return nil, err
+	}
+	f, err := src.Open(name)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	info, err := f.Stat()
-	if err != nil {
+	if err := checkCatalogInfo(f.Stat()); err != nil {
 		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > maxFileBytes {
-		return nil, errors.New("not a regular file or larger than 1 MiB")
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
 	if err != nil {
