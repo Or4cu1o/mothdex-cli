@@ -7,8 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
+  and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does; the tag check is the
+  last step before the release is created, and `publish` refuses to upload files that `checksums.txt` does not list.
+
 ### Added
 
+- PR-71 review rounds (Crivo, Bússola): Quit when finished quits at once when the last job ended under the dialog; `SDL_GAMECONTROLLERCONFIG`
+  and `SDL_GAMECONTROLLERCONFIG_FILE` are read in Go and added after the embedded database and the user file so they win (SDL applies them
+  at `SDL_Init`, before our lines, which would have replaced them; `gui.md` and the contract say so now); when the exit sequence runs out of
+  its 2 s budget the process leaves without calling `Close` again; closing the window asks like Quit; window shown/exposed/restored redraw;
+  `-h` exits 0; a progress event no longer copies the job tally. UX (gui.md v1.1): the top bar keeps its title and uses the short pending-quit
+  text (`ui.gui.bar.will_quit_short`) when the full one does not fit, Offline and the badge are never cut; the Home footer wraps to two lines
+  and a long ROM folder is shortened in the middle; tile labels wrap and a long single word drops to a smaller size instead of being split;
+  toasts take at most 60 % of the width, wrap to two lines, stay off the focused element, and the language notice stays 6 s; stacked dialog
+  buttons fill the panel; hint pills have air around words; the Splash spinner is on the right; the exit notice shows `(A) Continue`.
+- T-54 (GUI PR 1, Medium; the SDL binding stays under the High review of the spike): `mothdex-gui` now runs. Foundation, Splash,
+  Home, the Start menu, the quit dialogs of docs/ux/gui.md section 5.13, the exit screen and SIGTERM, with the screens behind the
+  tiles (Search, Platforms, Random, Queue, History, Settings) saying "not available yet" until the next pull requests.
+  - `internal/ui/gui` (pure Go, no SDL): size tiers and the safe rectangle (section 1), focus engine by geometry (section 3), frame
+    with top bar, hint bar, toast and queue badge, the model as a value with `Update`/`Render`, the quit decision table and the exit
+    sequence (Cancel, Wait, Close inside the 2 s budget, with an injectable clock). `internal/ui/gui/input`: button positions, the
+    confirm/back swap, repeat, stick hysteresis, Select on release, the keyboard fallback, hint labels by controller type, and the
+    controller database loader (embedded, then `<paths.data>/gamecontrollerdb.txt`, foreign `platform:` lines dropped before SDL).
+    `internal/ui/gui/text`: measuring, truncation, wrapping and a glyph atlas on `golang.org/x/image` v0.48.0.
+    `internal/ui/gui/draw`: the draw list. `internal/ui/gui/loop`: the run loop over a `Backend` interface, tested with a scripted
+    backend.
+  - `internal/ui/gui/assets`: Noto Sans Regular (subset to Latin and Cyrillic, OFL-1.1) and `gamecontrollerdb.txt` (commit
+    `4e87e3c6c257`, zlib), embedded and pinned by SHA-256 in `PINS.md` and `assets_test.go`; licences in `THIRD_PARTY/`. The font has no
+    arrows, check marks or crosses, so the queue arrow is drawn as a shape.
+  - `internal/ui/gui/sdl`: 17 more SDL2 functions (renderer size and logical size, blend and color mods, `SDL_WaitEventTimeout`,
+    game controllers; `SDL_GameControllerGetType` is optional and only bound on SDL 2.0.12 or later, so the minimum stays 2.0.0),
+    the event views and key and button maps, and `Backend`, which executes a draw list and turns SDL events into loop events.
+    `scripts/check-sdl-constants.sh` covers every new constant and event layout.
+  - `cmd/mothdex-gui`: composes the service through `internal/compose`, opens SDL and runs the loop; exit codes 0, 1 (SDL or
+    display), 2 (configuration), 3 (internal), every failure also in the log file. `-probe` (or an executable named
+    `mothdex-gui-probe`, which is how the CI legs run it) keeps the spike's headless check; `-window WxH` opens a window on a desktop.
+    Interface languages the font cannot draw (`zh_cn`, `ja_jp`, `hi_in`) show `en_us` and one notice on Home.
+  - Locales: `ui.gui.*` in en_us, pt_br, es_es and ru_ru.
+- PR-69 review (Ensaio V1/S1): a test with a fake `api` proves `ReadPixels` and `UpdateTexture` refuse short buffers, a pitch below the row
+  and a rect outside the texture before SDL is called; `GUI_REQUIRE_SDL=1` turns the missing-SDL skip into a failure and is set in the
+  amd64 and Windows test steps.
+- T-52b: CI for the GUI spike (`.github/workflows/gui-spike.yml`, read-only, actions pinned by SHA): the probe and `go test -tags gui`
+  on linux amd64 with the distro libsdl2 (dummy driver), on windows amd64 with `SDL2.dll` 2.32.10 fetched by the exact release URL and verified against a
+  pinned SHA-256 (`scripts/sdl2-windows.pin`); `readelf` per Linux target, the isolation check and a size report. The arm64, armv7 and armv6 legs (qemu-user, pinned
+  Debian images) are in `gui-spike-qemu.yml` (qemu-user from the runner's apt and the pinned Debian images through docker, because the
+  repository does not allow `docker/setup-qemu-action`; if binfmt does not work in containers it falls back to `qemu-<arch>`
+  with a sysroot). The spike CI also runs negative library-planting tests (a garbage `libSDL2-2.0.so.0` or `SDL2.dll` in the
+  working directory, next to the probe or on `PATH` must not load), requires a program interpreter and no RPATH or RUNPATH
+  on every Linux probe, and reports the ARMv6 CPU-model run (attempted, exit code, `/bin/true` and ld.so control runs) in the job
+  summary and as a warning. The result of the spike is recorded in `docs/qa/T-52-gui-spike-report.md`. New
+  `scripts/check-sdl-constants.sh` compiles a C program against the libsdl2-dev headers and fails when a binding constant
+  or struct layout differs.
+- `internal/ui/gui/sdl` and `cmd/mothdex-gui` (T-52, spike): our own thin purego binding of 23 SDL2 functions (video, renderer,
+  textures, events, `SDL_GameControllerAddMapping`), loaded from the system SDL2 at run time. Pointers, integers and floats
+  only; `SDL_Event` and `SDL_Rect` go by pointer and their layout is tested per architecture. Linux opens `libSDL2-2.0.so.0` by
+  soname only; Windows opens `SDL2.dll` from the executable folder or System32 only, never the current directory. The probe
+  (`mothdex-gui`, tag `gui`, `CGO_ENABLED=0`) runs the headless check of the contract in order (load, version, mapping, window and
+  renderer, atlas texture, draw, pixel read-back, render scale, event round trip), prints the SDL version and exits 0, or 1 when
+  SDL2 is missing, too old or has no display, or 3 for a failed check. `scripts/gui-probe.sh` builds and inspects it for one
+  target (ELF interpreter and `NEEDED`, the armhf `-I` flag) and runs it on the host; `scripts/check-gui-isolation.sh` fails
+  if `mothdex` ever depends on purego or a GUI package. `purego` v0.11.3 is pinned in `go.mod`; `mothdex` does not contain it. `ReadPixels` and `UpdateTexture` check that the buffer holds every byte SDL will touch (pitch*(h-1)+w*bytes) before the call and refuse a shorter one; SDL2 is opened with `RTLD_LOCAL`.
 - `docs/qa/T-43-shell-acceptance.md` (T-43): Shell acceptance at `b45d433` against shell.md and ui.md with a snapshot binary and a
   local fixture API (banner, paging, ranges and overflow inputs, link chooser, per-line flags, Tab, history mode, Ctrl+C and Ctrl+D,
   script mode and SIGINT), the findings S1 to S5 and the list of what was not verified.
@@ -135,6 +196,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `(A) Continue` hint on the exit notice. After the cli#71 recheck (PR-71-ux-2): a toast that would cover the focus
   moves above the hint bar, a single long word in a tile label shrinks before it is cut, and a disc on `bg` uses `surface`. From the cli#76 review (PR-76-ux): the hint bar fit rule, and the Start word kept
   where Start is the screen's main action.
+- Downloader size authority (T-28, implements T-27 / downloader.md 3.2, T-16 cases 31, 32b-32d, 35, 36): the proxy's `Content-Length` decides a transfer. It must be present, ASCII digits and at least 1 (missing, chunked, `0` or malformed is `size_mismatch`, not retried, no body byte read), is pinned across retries (a change is `size_mismatch`), is held to `download.max_file_size`, and replaces the `link.size` space claim in one atomic ledger swap (`disk_full` before the body, a smaller length shrinks the claim). When only the real size crosses 500 MiB (`interface.confirm_downloads` on, `link.size` below it) the job ends `confirmation_required` before the first body byte, carrying the size and a hint; `DownloadRequest.SizeConsent` is `0` (default rule), `app.ConsentAny` (the `-f` of that command, never a session's start-up flag) or the exact Content-Length accepted through Download anyway. `link.size` stays a preflight estimate and a drift warning beyond 1.5x or 0.5x (`JobSnapshot.SizeDrift`, worded by the UI in its language with sizes, also in `warnings[]`); a Content-Length with a leading zero is refused like mothdex-mcp does. By design (downloader.md 3.2 step 6) a catalog size already above 500 MiB skips the real-size confirmation, so the cap and the free space are its only bounds. History records `catalog_size` and `content_length`; the download JSON jobs carry `catalog_size`. The CLI does not offer Download anyway interactively: it fails with the hint to add `-f` (the TUI, Shell and GUI wire the re-queue).
+- Downloader contract (T-27, downloader.md §3.2, T-16): the proxy's `Content-Length` is now the size authority for a
+  transfer, because the maintainer states `link.size` is scraped and only a rough indicator (cavv-dev/mothdex-api#1).
+  The length is required and strict (missing, chunked or `0` is `size_mismatch`), pinned across retries, and the
+  file cap, the space ledger and the 500 MB confirmation re-run on it before the first body byte (`confirmation_required`,
+  then Download anyway with `DownloadRequest.SizeConsent`). `link.size` stays a preflight estimate and a drift warning.
 - `internal/proxy/testdata/sanitize-vectors.json` (T-61 F-1): the `Sanitize` vectors as a shared fixture (`input`, optional `fallback` and `allow_executable`, and an `output` or a stable `error`: `unsafe_name` or `empty_name`). `TestSanitizeVectors` reads it; mothdex-mcp copies the file and checks it for divergence (mcp `download_file`).
 - `docs/ux/shell.md` and `docs/ux/tui.md` (UX-sync): record the E-M2 deviations accepted in Decisions D24, and
   three changes from the D24 review: `download` with several indexes prints the `Link n chosen` line for each entry
@@ -275,6 +342,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `download` with no `-o` and no `download.dir`, when the profile's default ROM folder does not exist, now fails with `path_rejected` (exit 6) and a hint that names the folder and the two ways out (`-o <folder>` or `mothdex config set download.dir <folder>`), instead of a generic `invalid_request` with an unrelated hint (T-26, from Ensaio's T-43 S5). The folder is not created for the user.
+- Shell (T-41-fix, from the T-43 acceptance, S1): `info` and `boxart` with a list or a range (`info 2-3`, `boxart 1-2`) now run once for each entry with the same flags,
+  as shell.md section 4 always said, instead of failing with "accepts 1 arg(s)"; the exit code is the first failure and the later
+  entries still run. shell.md also records that Ctrl+D with stdout redirected ends with the last command's code (S4) and the 0-column
+  terminal limit (S3). The double Ctrl+C of S2 is already gone from main (#64: Ctrl+C never leaves the Shell).
+- T-25 backlog sweep: `Enqueue` removes the directories it created for earlier `-o` roots when a later root cannot be opened; `config.Set` itself refuses a stored `download.on_exists=overwrite` (the check moved from `app.ConfigSet`); `SaveJobBoxart` looks the job up by `JobID` in what the service recorded (bounded to 1000), so a forged snapshot cannot choose the folder or the entry; `history -e json` goes through the same C1 escaper as `--json` (`app.EscapeC1`); `SearchPage.SessionStale` and a warning when the search session can be neither saved nor cleared; a page whose results were all dropped says so instead of advising fewer words. Already done earlier and kept: journal entries carry their root (one root's Cleanup leaves the others), U+2028/2029 are stripped.
 - T-20c and T-22 follow-ups: `mothdex.ValidSlug` (`^[a-z0-9][a-z0-9-]{0,255}$`, one rule with mothdex-mcp) and the inbound policy of api-client section 2. `Search` drops results with an unsafe slug before numbering and before the session is saved (`SearchPage.Dropped`, the `dropped` field of the search JSON, and a warning on stderr and in `warnings[]`), `Entry` returns `api_incompatible` for such an answer, `Random` skips it, and `Entry` refuses an unsafe slug locally. `isTerminal` is a real TTY check (`golang.org/x/term`, BSD-3, maintained by the Go team): `/dev/null` and `NUL` are character devices, so `mothdex download a b </dev/null` prompted, read EOF and exited 130 instead of `confirmation_required` (2) (F3; the Shell uses the same check). `info` on an unknown slug says `No entry found for <slug>.` instead of repeating the code (F5). Crivo's suggestions: byte counts in error messages are sizes (`1.5 MB`), `info` without an argument points at `mothdex info --help`, and a single download cancelled with Ctrl+C prints nothing besides the exit code 130.
 - `internal/cache` on Windows: readers open cache files with `FILE_SHARE_DELETE`, and the replace uses `FileRenameInfoEx` with `FILE_RENAME_POSIX_SEMANTICS` (Windows 10 1809, NTFS; `os.Rename` falls back where unsupported), because `MoveFileEx` still refuses a target with an open handle. A `Put` renaming a new version over an item that a reader holds open no longer fails with "Access is denied". The bounded rename retry could not beat a busy reader (`TestConcurrentGetAndPutKeepTheLatestItem` failed after 59 s on windows-latest); the retry stays as a second line of defence. Regression test `TestPutReplacesAnItemThatAReaderHoldsOpen` holds a reader open across the Put, with no waits.
 - `internal/app` test `TestCoverFromCacheThenFetchSingleflightAndNegativeCache` no longer fails about 1 run in 40 under `-race`: the gate opens only after all five callers joined the single fetch (a join counter on the in-flight call replaces the sleep polling).

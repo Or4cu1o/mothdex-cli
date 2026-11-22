@@ -1,6 +1,6 @@
 # Contract: downloader (`internal/proxy`)
 
-Status: draft v2 (T-2 + T-16 change requests) · Owner: Alicerce · Implementer: Forja (T-17) · Risk: **High** (writes files named by the server)
+Status: draft v3 (T-2 + T-16 change requests; T-27 size authority) · Owner: Alicerce · Implementer: Forja (T-17) · Risk: **High** (writes files named by the server)
 Sources: [`mothdex-proxy/src/main.cpp`](https://github.com/cavv-dev/mothdex-proxy/blob/main/src/main.cpp) (`streamFile`, `getFileDetails`, `pieceWaitTimeout`) · Covers A1–A4. See [ADR-0002](../../adr/ADR-0002-downloader-without-range.md).
 Threat model: Sentinela, T-16 ([`T-16-threat-model-downloader.md`](../../security/T-16-threat-model-downloader.md); TH-nn and CR-n ids below). Every
 **MUST** here maps to at least one Ensaio test (T-18).
@@ -14,6 +14,7 @@ came from the network or from the cache (CR-11).
 | Fact | Consequence |
 |---|---|
 | Proxy: `Range` is ignored; it always answers `200` with the whole file and `Content-Length` | no resume, no segments; every retry starts from byte 0 |
+| API: `link.size` is scraped from the sources and is only a rough indicator; the real size is the proxy's `Content-Length` (maintainer, [cavv-dev/mothdex-api#1](https://github.com/cavv-dev/mothdex-api/issues/1)) | `Content-Length` is the transfer authority (§3.2); `link.size` is a preflight estimate only (T-27) |
 | Proxy: headers are written **before** the first piece is available | "warming" = headers received, 0 body bytes |
 | Proxy: each piece may wait up to `pieceWaitTimeout` = 15 min; on timeout the stream just ends | short stream: detect `bytes < expected` and retry |
 | Proxy: `404 "not found"` both for unknown names and when `makeRoom` cannot free disk | 404 is **possibly transient** |
@@ -37,7 +38,7 @@ HTTP client: `GET`, no `Range`, `Accept-Encoding: identity`, `Transport.DisableC
 same User-Agent and TLS settings as the API client (api-client §6). **Redirects: 0** for the proxy host (any 3xx is
 `Failed(untrusted_url)`). A future explicit host table may allow ≤ 3 redirects, each re-checked against the policy above.
 A response with a `Content-Encoding` other than empty or `identity` is `Failed(integrity)`. The body is always read
-through `io.LimitReader(body, size+1)`.
+through `io.LimitReader(body, cl+1)`, where `cl` is the checked `Content-Length` (§3.2).
 
 ## 3. State machine
 
@@ -55,10 +56,10 @@ any state ── Cancel / ctx ─▶ Canceled (staging removed, reservations rel
 | Queued | accepted by `Enqueue` | Preflight when a worker is free |
 | Preflight | §3.1 checks, in order | Connecting · Skipped · Failed |
 | Connecting | request sent; `connect_timeout` 30 s, `header_timeout` 60 s | Warming · RetryWait · Failed |
-| Warming | `200` + headers received, 0 body bytes; `first_byte_timeout` (default 10 m) | Transferring · RetryWait |
+| Warming | `200` + headers received and the §3.2 header checks passed, 0 body bytes; `first_byte_timeout` (default 10 m) | Transferring · RetryWait |
 | Transferring | ≥ 1 byte; streaming to the staging file with SHA-256 computed on the fly; `idle_timeout` (default 5 m) between reads | Verifying · RetryWait · Failed |
 | RetryWait | retryable failure, budget left (§5) | Connecting (staging file truncated to 0 **on the same fd**) · Failed |
-| Verifying | EOF with `bytes == expected` | Finalizing · RetryWait (one integrity retry) · Failed |
+| Verifying | EOF with `bytes == cl` (§3.2) | Finalizing · RetryWait (one integrity retry) · Failed |
 | Finalizing | `fsync` file, no-replace finalize (§6.3), `fsync` destdir, history record | Done · Skipped (`on_exists` hit at finalize) · Failed |
 
 `Done` is reported only after both `fsync` calls succeed (CR-5).
@@ -66,30 +67,70 @@ any state ── Cancel / ctx ─▶ Canceled (staging removed, reservations rel
 ### 3.1 Preflight (CR-2, CR-5, CR-7; TH-08, TH-14, TH-15, TH-20)
 
 1. URL policy (§2).
-2. **Size sanity:** `size ≤ 0` or `size > download.max_file_size` (default 256 GiB) → `Failed(size_mismatch)`.
+2. **Size estimate:** `link.size ≤ 0` or `link.size > download.max_file_size` (default 256 GiB) → `Failed(size_mismatch)`,
+   no connection. `link.size` is a rough catalog value (T-27): it is used only here, in the step 7 estimate and in the
+   500 MB confirmation (cli-conventions §6). It never decides whether a transfer is correct.
 3. **Name:** `Sanitize(link.filename)` (§6.1); a deny-listed extension → `Failed(unsafe_name)` unless `--allow-executable`.
 4. **Destination dir** per §6.2 (platform id validation, confinement).
 5. **Name reservation:** an in-process set keyed by `casefold(NFC(destdir + "/" + name))`, taken here and released at
    the terminal state. A collision inside the batch applies `on_exists` against the reserved name.
 6. **`on_exists`** against the filesystem (`skip` → `Skipped`; `rename`; `overwrite` only with `--force`).
 7. **Space reservation ledger**, one per filesystem (staging and destination may be on different filesystems):
-   `need = size + max(size / 20, 256 MiB)` with overflow-checked `int64` math (no floats). The job starts only if
+   `need = size + max(size / 20, 256 MiB)`, with `size = link.size` here and `cl` after §3.2, in overflow-checked `int64` math (no floats). The job starts only if
    `free − reserved(fs) ≥ need` on each filesystem it will write; otherwise `Failed(disk_full)`. Released at the
    terminal state. `ENOSPC` while writing → `Failed(disk_full)` and immediate cleanup.
 8. **In-flight journal:** append `{jobID, staging paths, destdir, root, started_at}` to `<paths.data>/inflight.jsonl`;
    the entry is removed at the terminal state (§6.4).
 
-`Content-Length` present and different from `link.size` → `Failed(size_mismatch)`, not retryable (the catalog and the
-proxy disagree, so re-downloading cannot fix it). Missing `Content-Length`: proceed with `link.size`. More bytes than
-expected (the `size+1` limit reader yields the extra byte) → abort immediately, `Failed(size_mismatch)`.
+### 3.2 Header checks (T-27; TH-19, TH-20)
+
+`Content-Length` is the size authority for the transfer. These checks run on every attempt, after the `200` headers
+and **before the first body byte is read**; a failure closes the response unread and removes nothing but the empty
+staging file.
+
+1. **Encoding:** `Content-Encoding` empty or `identity` (§2), checked first, because `Content-Length` is now the only
+   length.
+2. **Length present and strict:** `resp.ContentLength` (Go parses the header; chunked or missing gives `-1`) must be
+   `≥ 1`. The raw header must be ASCII digits with no leading zero (the same rule as mothdex-mcp, `/^[1-9][0-9]*$/`) and parse with `strconv.ParseInt(v, 10, 64)` to the same value.
+   Missing, chunked, `0`, or malformed → `Failed(size_mismatch)`, not retryable. Call the value `cl`.
+3. **Cap:** `cl > download.max_file_size` → `Failed(size_mismatch)`, not retryable.
+4. **Pin across retries:** the first attempt that passes step 2 pins `cl` for the job. A later attempt with a
+   different `Content-Length` → `Failed(size_mismatch)`, not retryable (the file changed upstream).
+5. **Space, again:** the job's ledger claim (§3.1 step 7) is recomputed with `cl` and swapped atomically under the
+   ledger lock: the job keeps going only if `free − (reserved(fs) − own claim) ≥ need(cl)` on each filesystem it
+   writes; otherwise `Failed(disk_full)`, not retryable. A smaller `cl` shrinks the claim.
+6. **Consent at the real size:** the job carries `SizeConsent` (app-service §2). When it is the default rule,
+   `interface.confirm_downloads` is on, `link.size ≤ 500 MB` and `cl > 500 MB`, the job ends
+   `Failed(confirmation_required)`, not retryable, with `cl` in the event. When it is an exact value, `cl` must equal
+   it, or the job ends the same way. Interactive UIs offer **Download anyway**, which re-queues that one job with
+   `SizeConsent = cl`; non-interactive runs fail unless `-f/--force` (cli-output §1). No body byte is written
+   without consent at the real size, and no worker waits on a prompt.
+   - **Threshold:** 500 MB is the same constant as the cli-conventions §6 prompt, `524 288 000` bytes (sizes are
+     binary-based, §5 there), so the two gates cannot disagree.
+   - **`ConsentAny` follows `compose.startupGrants`:** only a per-command `-f/--force` sets it. A `-f` given when the
+     Shell, TUI or GUI started never becomes `ConsentAny` for later jobs; in a session, consent comes only from a
+     per-command `-f` or from Download anyway.
+7. **Drift record:** `link.size` and `cl` are both recorded (§8 `Record`). No tolerance band applies: a catalog
+   size off by a unit (MB vs MiB, KB vs MB) is common and is not an error. When `cl > 1.5 × link.size` or
+   `cl < link.size / 2`, the job adds a warning (`warnings[]` and stderr) once.
+
+Body: exactly `cl` bytes. The `cl+1` limit reader yielding the extra byte → abort immediately,
+`Failed(size_mismatch)`. EOF with `bytes < cl` is a truncated stream (§5, retryable).
+
+**What the checks prove (T-27).** `cl` and the body come from the same TLS-authenticated proxy, so the exact length
+proves transport self-consistency only: no truncation, no extra bytes, no transparent decoding. It no longer detects
+the proxy serving a different file than the catalog lists (the old `Content-Length == link.size` rule did, by
+accident, for files of a different size). The zip CRC (§4) still detects corruption inside zip members, and the
+local SHA-256 still records what was received. Upstream hashes (U3/U4) are parked by the maintainer, so T-16 TH-25
+stays the accepted residual.
 
 ## 4. Verification (A4; CR-8; TH-24)
 
 Order, all on the staging file:
-1. **Size**: `bytes == link.size` (always).
+1. **Size**: `bytes == cl` (always; §3.2).
 2. **Zip CRC**: if the first bytes are `PK\x03\x04` (magic bytes, not the extension), read every member to EOF with
    `archive/zip`, which checks CRC32, discarding the output (**never extract**). Caps, all enforced: cumulative
-   uncompressed bytes ≤ `min(64 GiB, max(1 GiB, 20 × size))`; ≤ 65 535 members; reading stops on `ctx` cancel.
+   uncompressed bytes ≤ `min(64 GiB, max(1 GiB, 20 × cl))`; ≤ 65 535 members; reading stops on `ctx` cancel.
    A cap hit is `Failed(integrity)`. 7z/rar: not checked (backlog), and history records `crc: "skipped"`.
 3. **Upstream hashes** (future, `link.hashes != nil`): `scope=file` compares against the staging file;
    `scope=content` compares against the single archive member, or the file itself if it is not an archive
@@ -107,7 +148,7 @@ An integrity failure gets **one** re-download; a second one ends in `Failed(inte
 | truncated stream (`EOF` with `bytes < expected`) | yes | same |
 | `5xx`, `429` | yes; `Retry-After` honored when larger, capped at 15 min (a worker slot is held while waiting) | same |
 | `404` | yes (A3) | separate: `not_found_retries` (default 3) with fixed delays 30 s, 60 s, 120 s |
-| other `4xx`, any 3xx, `size_mismatch`, `untrusted_url`, `unsafe_name`, `path_rejected`, disk full, permission | no | — |
+| other `4xx`, any 3xx, `size_mismatch` (including a `Content-Length` change, §3.2), `confirmation_required`, `untrusted_url`, `unsafe_name`, `path_rejected`, disk full, permission | no | — |
 
 Backoff: full jitter, `sleep = rand(0, min(60 s, 2 s × 2^(attempt-1)))`, through an injected `Sleeper` and `Clock`.
 Each attempt is recorded (state, cause, bytes) for history.
@@ -234,7 +275,8 @@ Everything that touches the outside world is an injected port (`internal/proxy/p
 
 `Record` (input to history, T-19): `JobID, Slug, Platform, State, Code` (empty unless failed), `RawName` (the received
 `link.filename`, escaped before display), `Name` (sanitized; empty if the job failed before naming), `Path`, `Bytes`,
-`SHA256`, `CRC` and `Hash` (`ok|skipped|failed`), `Attempts`, `Started`, `Finished`. Entry and link metadata (`title`,
+`SHA256`, `CRC` and `Hash` (`ok|skipped|failed`), `CatalogSize` (`link.size`), `ContentLength` (the pinned `cl`; 0 if
+no attempt passed §3.2 step 2), `Attempts`, `Started`, `Finished`. Entry and link metadata (`title`,
 `source_name`, `link_index`) are added by the history layer. `Record.Path` is the **absolute** final path (the
 destination root joined with the name), because history outlives a profile or `-o` change; a root-relative path
 would need a migration later.
@@ -246,7 +288,7 @@ downloader therefore assigns ids at submission and supports per-job cancel by id
 cli-output §4 (a destdir outside the root is `path_rejected`).
 
 The fake proxy covers: stall before the first byte, stall mid-stream, truncation, transient 404, 429,
-any 3xx, `Content-Length` mismatch, extra bytes, `Content-Encoding: gzip`, malicious filenames, off-policy URLs (http,
+any 3xx, `Content-Length` missing, chunked, malformed, above the cap or changed between attempts, extra bytes, `Content-Encoding: gzip`, malicious filenames, off-policy URLs (http,
 userinfo, port, IP literal, IDN, trailing dot) and zip bombs. [T-16 §8](../../security/T-16-threat-model-downloader.md) lists the full test set.
 
 ## Resolved questions (Regente, T-2 phase 1)
@@ -254,6 +296,9 @@ userinfo, port, IP literal, IDN, trailing dot) and zip bombs. [T-16 §8](../../s
 - OQ-DL-1: accepted. `scope=content` is checked only for single-member archives (or non-archives); otherwise history records `hash: "skipped"`.
 - OQ-DL-2: keep first byte 10 m and idle 5 m, hard cap 15 m. Tuning after real measurements is in the backlog.
 - OQ-DL-3: `download.allowed_hosts` is a config value defaulting to `["proxy.mothdex.net"]`; the T-10 fixtures confirm the host.
+
+- T-27 (Regente, Sentinela): `Content-Length` is the size authority (§3.2); `link.size` is an estimate. No tolerance
+  band; the 500 MB confirmation re-runs on `cl`.
 
 ## Open questions
 

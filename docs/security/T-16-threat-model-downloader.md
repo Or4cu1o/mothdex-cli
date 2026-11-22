@@ -2,6 +2,8 @@
 
 Status: v1 · Author: Sentinela · Date: 2026-11-20 · Risk: **High** · Consumers: Alicerce (contract), Forja (T-17),
 Ensaio (T-18), Guindaste (T-21 installer)
+Changed by T-27 (Alicerce, agreed with Sentinela): `Content-Length` is the size authority, `link.size` an estimate;
+TH-19, the §9 residual and cases 31, 32b–32d, 35 and 36 below.
 Gate: T-17 starts only after the contract changes in §7 are accepted (or explicitly rejected by Regente).
 
 ## 0. Scope, method, limits
@@ -118,7 +120,7 @@ severity of the **current contract gap** (risk-process scale); "covered" means t
 | TH-16 | Link URL off the allowlist: SSRF to LAN/loopback (`http://192.168.1.1/...`, `https://127.0.0.1:1234/...`), userinfo trick (`https://proxy.mothdex.net@evil/`), IP literals, odd ports, trailing-dot host, IDN homoglyphs, `http` downgrade (S, I) | Med | Med | Parse with `net/url`; require scheme `https`, empty `User`, `Port()` empty or `443`, host = exact lowercase ASCII match (after stripping one trailing dot) against `allowed_hosts`; reject IP literals and non-ASCII hosts; checked in Preflight on every attempt (cache-sourced links too) | downloader §2 | covered; tightened by CR-1 |
 | TH-17 | Redirects: proxy never redirects (F3) but the contract allows 3; each hop could downgrade or leak headers (S, I) | Low | Med | For the proxy host: `CheckRedirect` returns an error on any 3xx → `Failed(untrusted_url)`. Keep "≤ 3, each re-checked, https only" only if non-proxy hosts are enabled later (CR-1) | downloader §2 | **Minor** (CR-1) |
 | TH-18 | Non-proxy links (F2) silently selected by ranking and then failing, or, if the allowlist is widened, fetched from hosts with different semantics (IA redirects to `ia*.us.archive.org`; NPS over plain `http`) (S, D) | **High** | Med | v0.1: links whose host is not allowed are **filtered out before ranking** and shown as "unavailable (host not allowed)"; non-interactive commands never pick them. Widening is a separate decision with its own host table (exact hosts + redirect targets), never wildcard by default, and `http` never allowed | app-service §3 ranking, downloader §2, config §2 | **Major** (CR-1, owner decision) |
-| TH-19 | Response tampering/abuse: `Content-Encoding: gzip` despite `identity` (Go transport would decompress transparently if not disabled), chunked body with no length, body longer than `link.size`, `Content-Length` ≠ `link.size`, slowloris (S, D) | Med | Med | `Transport.DisableCompression = true` and reject any non-identity `Content-Encoding`; copy with `io.LimitReader(body, size+1)` and fail on the extra byte; CL mismatch → `size_mismatch` (covered); idle/first-byte timeouts (covered); no cookie jar | downloader §2–§3 | **Minor** (CR-8) |
+| TH-19 | Response tampering/abuse: `Content-Encoding: gzip` despite `identity` (Go transport would decompress transparently if not disabled), chunked body with no length, body longer than `Content-Length`, a `Content-Length` far larger than the catalog `link.size` (disk fill, consent bypass; T-27), slowloris (S, D) | Med | Med | `Transport.DisableCompression = true` and reject any non-identity `Content-Encoding`; require a strict `Content-Length` (missing, chunked or `0` → `size_mismatch`); copy with `io.LimitReader(body, cl+1)` and fail on the extra byte; re-run the cap, the space ledger and the 500 MB confirmation on `cl` before the first body byte (downloader §3.2, T-27); idle/first-byte timeouts (covered); no cookie jar | downloader §2–§3.2 | **Minor** (CR-8) |
 | TH-20 | Absurd sizes: `link.size` ≤ 0, > disk, near `MaxInt64` so `size × 1.05` overflows and passes the free-space check (D) | Low | Med | Reject `size ≤ 0` (`Failed(size_mismatch)`, except a documented 0-byte case, none known) and `size > download.max_file_size` (default 256 GiB, config); compute margins with overflow-checked integer math, no floats | downloader §3 Preflight, config §2 | **Minor** (CR-5) |
 | TH-21 | MITM where TLS is weak: Lakka/EmuELEC may lack an up-to-date CA bundle (T1e: unverified), pushing users toward an "insecure" flag (S, T) | Med | High | Never offer `--insecure`/`InsecureSkipVerify`; import `golang.org/x/crypto/x509roots/fallback` so the binary carries roots when the system has none; TLS ≥ 1.2 | api-client §5, downloader §2 | **Suggestion** (CR-12) |
 | TH-22 | Refresh hook abused: loader accepts `http://localhost.evil.com:1234`, `http://127.0.0.1.nip.io`, DNS-resolved `localhost`, redirect to a LAN host, `HTTP_PROXY` applied, large body (S, D) | Low | Low | `url.Host` must be the IP literal `127.0.0.1` or `[::1]` (parsed with `netip`), scheme `http`, path fixed; `Transport.Proxy = nil`; no redirects; 3 s timeout; body discarded through `io.LimitReader(…, 64 KiB)`; once per batch only if ≥ 1 `Done`; no API data in the request | profiles §4 | **Minor** (CR-10) |
@@ -253,14 +255,19 @@ Parametrize the name cases in one table test (testing rule: lean parametrization
 28. Link from a non-allowed host (archive.org fixture) is excluded from ranking; `download --link n` pointing to it → `untrusted_url` with a clear message.
 29. Cached `entry` JSON edited to carry a malicious `filename` and `url` → same rejections as from the network (validation at use).
 30. Server sends `Content-Encoding: gzip` body → failure, file never finalized; request carried `Accept-Encoding: identity`.
-31. `Content-Length` ≠ `link.size` → `size_mismatch`, not retried; chunked with no length and `size+1` bytes → abort at byte `size+1`, `.part` removed.
+31. (T-27) `Content-Length` missing, chunked, `0`, or malformed (`+5`, ` 5`, `5.0`) → `size_mismatch`, not retried, no body byte read; body of `cl+1` bytes → abort at byte `cl+1`, `.part` removed; short body → truncated, retried. `Content-Length` ≠ `link.size` (half and double) → `Done`, both values in the record, one drift warning.
 32. `link.size` = 0, −1, `math.MaxInt64`, `> download.max_file_size` → `Failed` in Preflight, no connection.
+32b. (T-27) `Content-Length > download.max_file_size` with a small `link.size` → `size_mismatch` before the first body byte.
+32c. (T-27) Attempt 1 truncated with `Content-Length` N, attempt 2 answers N+1 → `size_mismatch`, no third attempt.
+32d. (T-27) `confirm_downloads` on, `link.size` 5 MB, `Content-Length` 2 GB → `confirmation_required` before the first body byte; re-queued with `SizeConsent` = 2 GB → `Done`; with `SizeConsent` = 2 GB but `Content-Length` 3 GB → `confirmation_required` again; `-f` (`ConsentAny`) → `Done`.
 33. TLS with a self-signed cert → fails; no code path disables verification (grep test is **not** allowed; assert via behavior).
 
 **Disk, partials, cleanup**
 34. Fake FS returns `ENOSPC` mid-stream → `Failed(disk_full)`, not retried, `.part` gone, reservation released.
 35. Two jobs of 60 % of free space each with concurrency 2 → second fails in Preflight (`disk_full`), not mid-stream.
+    (T-27) `link.size` 1 % of free space, `Content-Length` 90 %, a second job holding 20 % → `disk_full` before the first body byte; a smaller `Content-Length` shrinks the claim (the second job then fits).
 36. Temp and dest on different filesystems (fake device ids) with enough space in temp but not in dest → `disk_full` in Preflight.
+    (T-27) The same split reached only through `Content-Length` (small `link.size`) → `disk_full` after the headers, before the body.
 37. EXDEV path: rename returns `EXDEV` → copy to staging, fsync called (spy), rename within destdir; a crash injected after copy leaves only the staging file, never a partial final name.
 38. Cancel during Transferring and during Verifying → `.part`/staging removed, `Canceled`, one history record.
 39. Startup cleanup: `.part` files with mtime 25 h (deleted), 23 h (kept), a symlink named like a `.part` (not followed, not deleted target), `notes.part` (kept), a dir named `x.part` (kept), staging file in a destdir from the in-flight journal (deleted when old).
@@ -289,7 +296,9 @@ Parametrize the name cases in one table test (testing rule: lean parametrization
 ## 9. Residual risk (after all CRs)
 
 - **Malicious ROM content** (TH-25): we verify transport integrity, not authenticity; emulators parse the files.
-  Rated Med likelihood / Med impact; reduced when upstream hashes ship (U2–U4).
+  Rated Med likelihood / Med impact. Upstream hashes (U3/U4) are parked by the maintainer
+  (cavv-dev/mothdex-api#1), so no reduction is expected. Since T-27 the exact length is checked against the proxy's
+  own `Content-Length`, not the catalog, so a substitute of a different size is no longer caught either.
 - **Local attacker with write access to the ROM tree** (SMB share, shared desktop): can race directory components
   between the confinement check and `os.Root` open; with share write access they already have equal power on the
   device. Low.

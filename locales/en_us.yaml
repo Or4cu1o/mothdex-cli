@@ -15,6 +15,8 @@ errors:
   confirmation_required:
     message: 'This command needs confirmation.'
     hint: 'Add --force to skip the prompt.'
+    size_hint: 'The file is {size}; the catalog said {estimate}. It needs your OK to download.'
+    size_hint_cli: 'The file is {size}; the catalog said {estimate}. Add -f to download it anyway.'
   unmapped_platform:
     message: 'No folder is set for platform {platform}.'
     hint: 'Pass -o <dir>, or set profile.folders.{platform} in the configuration.'
@@ -63,6 +65,7 @@ errors:
   path_rejected:
     message: 'Refusing to write to {path}.'
     hint: 'Nothing was written. Choose another folder with -o, or check profile.folders.'
+    missing_hint: '{path} does not exist. Create it, pass -o <folder>, or run: mothdex config set download.dir <folder>'
   unsafe_name:
     message: 'Refusing to save {name}: its file type can run code.'
     hint: 'Nothing was written. Choose another link with --link, or pass --allow-executable if you trust it.'
@@ -135,6 +138,8 @@ ui:
       none: 'No results for "{text}". Try fewer words, or remove -p/-r.'
       past_last: 'Page {asked} does not exist; showing page {shown}.'
       dropped: '{n} results were hidden because their slug has an unexpected form.'
+      session_stale: 'The search could not be saved, so result numbers may still refer to an earlier search. Use slugs.'
+      all_dropped: 'All {n} results on this page were hidden. Try the next page.'
     info:
       slug: 'Slug'
       platform: 'Platform'
@@ -151,6 +156,7 @@ ui:
         one: 'Downloading {count} file'
         other: 'Downloading {count} files'
       link_chosen: 'Link {index} chosen ({why}, 1 of {count}).'
+      size_drift: '{title}: the proxy reports {real} but the catalog said {catalog}; the catalog size is only an estimate.'
       confirm: 'Download {count} files ({size}) to {dest} ?  [y/N]'
       dest_default: 'the library folder'
       connecting: 'Connecting...'
@@ -234,6 +240,63 @@ ui:
       sort: 'Sort the current page: relevance, title or size'
       number: 'Show the entry with that number (same as info)'
       d: 'Download entries by number: d 1 3, or d 2-4'
+  gui:
+    locale_fallback: 'This language is not available in this screen mode yet. Showing English.'
+    not_yet: '{name} is not available yet.'
+    splash:
+      starting: 'Starting…'
+    home:
+      search: 'Search'
+      platforms: 'Platforms'
+      random: 'Random'
+      queue: 'Queue'
+      history: 'History'
+      settings: 'Settings'
+      recent: 'Recent'
+      footer: '{entries} entries · {profile} · {root}'
+      footer_pending: '{profile} · {root}'
+      footer_offline: 'Catalog unavailable. Cached searches still work.'
+      footer_generic: 'No emulation system detected. Games go to {path}.'
+    bar:
+      offline: 'Offline'
+      will_quit: 'Will quit when downloads finish'
+      badge_active: '{active}'
+      badge_queued: '{active} · {queued} queued'
+      will_quit_short: 'Quit pending'
+    hint:
+      menu: 'Menu'
+      open: 'Open'
+      quit: 'Quit'
+      continue: 'Continue'
+    menu:
+      home: 'Home'
+      queue: 'Queue'
+      history: 'History'
+      settings: 'Settings'
+      buttons: 'Buttons'
+      dont_quit: 'Don''t quit'
+      quit: 'Quit'
+    quit:
+      ask: 'Quit and return to {frontend}?'
+      ask_generic: 'Quit?'
+      stay: 'Stay'
+      quit: 'Quit'
+      busy:
+        one: '{count} download is still running.'
+        other: '{count} downloads are still running.'
+      keep: 'Keep downloading'
+      when_finished: 'Quit when finished'
+      cancel_and_quit: 'Cancel and quit'
+    exit:
+      downloaded: '{count} downloaded'
+      skipped: '{count} skipped'
+      failed: '{count} failed'
+      canceled: '{count} canceled'
+      refreshing: 'Updating the game list…'
+      returning: 'Returning to {frontend}'
+      closing: 'Closing'
+    toast:
+      download_failed: 'Download failed: {title}'
   tui:
     needs_terminal: 'The TUI needs an interactive terminal.'
     too_small: 'Terminal too small (need {need_w}x{need_h}, have {w}x{h}). Resize or press q.'

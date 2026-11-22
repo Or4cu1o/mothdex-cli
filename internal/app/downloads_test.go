@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/history"
+	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeclock"
 	"github.com/Or4cu1o/mothdex-cli/internal/testutil/fakeproxy"
@@ -463,5 +464,47 @@ func TestFailedSharedBuildLeavesNoEntryAndRootCanRecover(t *testing.T) {
 	r.svc.closeDownloads()
 	if _, err := d.downloaderFor(filepath.Join(t.TempDir()), known); code(err) != CodeCanceled {
 		t.Fatalf("a build after Close must not keep handles: %v", err)
+	}
+}
+
+// T-26 (Ensaio T-43 S5): with no -o and no download.dir, a profile whose default ROM folder does not
+// exist fails with path_rejected (filesystem) naming the folder, not a generic invalid_request.
+func TestMissingDefaultFolderIsPathRejectedWithTheFolder(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "roms-not-created")
+	prof := ProfileInfo{ID: "generic", RomRoot: missing}
+	prof.Profile.Roms.Root = missing
+	prof.Profile.Roms.Layout = library.LayoutPerPlatformID
+	r := newDLRigEnv(t, DownloadConfig{}, func(e *Env) { e.Profile = prof })
+	_, err := r.svc.Enqueue(context.Background(), []DownloadRequest{{Ref: Ref{Slug: "game"}}})
+	var ae *Error
+	if !errors.As(err, &ae) || ae.Code != "path_rejected" || ae.Args["path"] != missing || ae.Args["hint_key"] == "" {
+		t.Fatalf("%v", err)
+	}
+	if _, serr := os.Stat(missing); serr == nil {
+		t.Fatal("the default folder must not be created behind the user's back")
+	}
+}
+
+// Sentinela S2: when a later -o root cannot be opened, the directories this call created for the
+// earlier ones do not stay on disk, and nothing is queued.
+func TestEnqueueRemovesRootsItCreatedWhenALaterRootFails(t *testing.T) {
+	r := newDLRig(t, DownloadConfig{})
+	first := filepath.Join(r.out, "a", "b")
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reqs := []DownloadRequest{
+		{Ref: Ref{Slug: "game"}, DestDir: first},
+		{Ref: Ref{Slug: "game"}, DestDir: filepath.Join(blocker, "sub")}, // cannot be created under a file
+	}
+	if _, err := r.svc.Enqueue(context.Background(), reqs); code(err) != "path_rejected" {
+		t.Fatalf("%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(r.out, "a")); err == nil {
+		t.Fatal("the first root stayed on disk")
+	}
+	if jobs := r.svc.Jobs(); len(jobs) != 0 {
+		t.Fatalf("%d jobs queued", len(jobs))
 	}
 }

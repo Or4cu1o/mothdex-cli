@@ -15,6 +15,8 @@ errors:
   confirmation_required:
     message: 'Эта команда требует подтверждения.'
     hint: 'Добавьте --force, чтобы пропустить вопрос.'
+    size_hint: 'Размер файла {size}, в каталоге указано {estimate}. Для загрузки нужно ваше подтверждение.'
+    size_hint_cli: 'Размер файла {size}, в каталоге указано {estimate}. Добавьте -f, чтобы всё равно скачать.'
   unmapped_platform:
     message: 'Для платформы {platform} не задана папка.'
     hint: 'Укажите -o <папка> или задайте profile.folders.{platform} в настройках.'
@@ -63,6 +65,7 @@ errors:
   path_rejected:
     message: 'Запись в {path} отклонена.'
     hint: 'Ничего не записано. Выберите другую папку через -o или проверьте profile.folders.'
+    missing_hint: '{path} не существует. Создайте папку, укажите -o <папка> или выполните: mothdex config set download.dir <папка>'
   unsafe_name:
     message: 'Отказ сохранить {name}: этот тип файла может выполнять код.'
     hint: 'Ничего не записано. Выберите другую ссылку через --link или укажите --allow-executable, если доверяете файлу.'
@@ -139,6 +142,8 @@ ui:
       none: 'Нет результатов для "{text}". Попробуйте меньше слов или уберите -p/-r.'
       past_last: 'Страницы {asked} нет; показана страница {shown}.'
       dropped: 'Результатов скрыто: {n}, потому что их slug имеет неожиданный вид.'
+      session_stale: 'Поиск не удалось сохранить, поэтому номера результатов могут относиться к предыдущему поиску. Используйте slug.'
+      all_dropped: 'Все результаты этой страницы ({n}) скрыты. Попробуйте следующую страницу.'
     info:
       slug: 'Slug'
       platform: 'Платформа'
@@ -155,6 +160,7 @@ ui:
         one: 'Загрузка: {count} файл'
         other: 'Загрузка: файлов {count}'
       link_chosen: 'Выбрана ссылка {index} ({why}, 1 из {count}).'
+      size_drift: '{title}: прокси сообщает {real}, а каталог указывал {catalog}; размер в каталоге лишь оценка.'
       confirm: 'Скачать файлов: {count} ({size}) в {dest} ?  [y/N]'
       dest_default: 'папка библиотеки'
       connecting: 'Подключение...'
@@ -242,6 +248,65 @@ ui:
       sort: 'Сортировать текущую страницу: relevance, title или size'
       number: 'Показать запись с этим номером (как info)'
       d: 'Скачать записи по номерам: d 1 3 или d 2-4'
+  gui:
+    locale_fallback: 'Этот язык пока недоступен в этом режиме экрана. Показан английский.'
+    not_yet: '{name}: пока недоступно.'
+    splash:
+      starting: 'Запуск…'
+    home:
+      search: 'Поиск'
+      platforms: 'Платформы'
+      random: 'Случайно'
+      queue: 'Очередь'
+      history: 'История'
+      settings: 'Настройки'
+      recent: 'Недавние'
+      footer: 'Записей: {entries} · {profile} · {root}'
+      footer_pending: '{profile} · {root}'
+      footer_offline: 'Каталог недоступен. Поиск по кэшу работает.'
+      footer_generic: 'Система эмуляции не найдена. Игры сохраняются в {path}.'
+    bar:
+      offline: 'Нет сети'
+      will_quit: 'Выход после завершения загрузок'
+      badge_active: '{active}'
+      badge_queued: '{active} · в очереди {queued}'
+      will_quit_short: 'Ожидается выход'
+    hint:
+      menu: 'Меню'
+      open: 'Открыть'
+      quit: 'Выход'
+      continue: 'Продолжить'
+    menu:
+      home: 'Главная'
+      queue: 'Очередь'
+      history: 'История'
+      settings: 'Настройки'
+      buttons: 'Кнопки'
+      dont_quit: 'Не выходить'
+      quit: 'Выход'
+    quit:
+      ask: 'Выйти и вернуться в {frontend}?'
+      ask_generic: 'Выйти?'
+      stay: 'Остаться'
+      quit: 'Выйти'
+      busy:
+        one: 'Ещё идёт {count} загрузка.'
+        few: 'Ещё идут {count} загрузки.'
+        many: 'Ещё идут {count} загрузок.'
+        other: 'Ещё идут {count} загрузки.'
+      keep: 'Продолжить загрузку'
+      when_finished: 'Выйти по завершении'
+      cancel_and_quit: 'Отменить и выйти'
+    exit:
+      downloaded: 'Загружено: {count}'
+      skipped: 'Пропущено: {count}'
+      failed: 'Ошибок: {count}'
+      canceled: 'Отменено: {count}'
+      refreshing: 'Обновление списка игр…'
+      returning: 'Возврат в {frontend}'
+      closing: 'Закрытие'
+    toast:
+      download_failed: 'Ошибка загрузки: {title}'
   tui:
     needs_terminal: 'TUI требует интерактивного терминала.'
     too_small: 'Терминал слишком мал (нужно {need_w}x{need_h}, сейчас {w}x{h}). Измените размер или нажмите q.'

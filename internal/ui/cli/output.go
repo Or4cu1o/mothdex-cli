@@ -192,7 +192,7 @@ func (p *printer) envelope(command string, data any, err error) envelope {
 
 // writeJSON prints the envelope as one document on stdout.
 func (p *printer) writeJSON(command string, data any, err error) error {
-	enc := json.NewEncoder(c1Escaper{p.out})
+	enc := json.NewEncoder(app.EscapeC1(p.out))
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	return enc.Encode(p.envelope(command, data, err))
@@ -230,6 +230,9 @@ func (p *printer) renderError(err error) {
 	hintKey := "errors." + ae.Code + ".hint"
 	if k, ok := ae.Args["hint_key"].(string); ok {
 		hintKey = k
+	}
+	if hintKey == "errors.confirmation_required.size_hint" {
+		hintKey += "_cli" // only the command line and the Shell have -f; other UIs use the neutral text
 	}
 	if ae.Code == app.CodeUsage && ae.Args["command"] == "" {
 		hintKey = "ui.cli.usage_root_hint"
@@ -274,7 +277,7 @@ func errorArgs(e *app.Error) i18n.Args {
 	for k, v := range e.Args {
 		a[k] = v
 	}
-	for _, k := range []string{"got", "expected", "needed"} { // byte counts read as sizes
+	for _, k := range []string{"got", "expected", "needed", "size", "estimate"} { // byte counts read as sizes
 		if n, ok := byteCount(e.Args[k]); ok {
 			a[k] = humanSize(n)
 		}
@@ -443,25 +446,4 @@ func humanSize(n int64) string {
 		return fmt.Sprintf("%.1f MB", f/(k*k))
 	}
 	return fmt.Sprintf("%.1f GB", f/(k*k*k))
-}
-
-// c1Escaper writes JSON with the C1 control runes U+0080-U+009F as \u00XX escapes. encoding/json
-// escapes C0 but writes C1 raw, and U+009B (CSI) and U+009D (OSC) act as escape sequences on
-// xterm-class terminals. These runes can only occur inside JSON strings, so the rewrite is safe.
-type c1Escaper struct{ w io.Writer }
-
-func (c c1Escaper) Write(p []byte) (int, error) {
-	out := make([]byte, 0, len(p))
-	for i := 0; i < len(p); i++ {
-		if p[i] == 0xC2 && i+1 < len(p) && p[i+1] >= 0x80 && p[i+1] <= 0x9F {
-			out = append(out, fmt.Sprintf("\\u%04x", rune(p[i+1]))...)
-			i++
-			continue
-		}
-		out = append(out, p[i])
-	}
-	if _, err := c.w.Write(out); err != nil {
-		return 0, err
-	}
-	return len(p), nil
 }

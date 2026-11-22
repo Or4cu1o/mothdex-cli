@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -28,7 +29,20 @@ type DownloadRequest struct {
 	Ref     Ref
 	Link    LinkSelector
 	DestDir string // "" = download.dir if set, else the active profile's folder for the platform
+	// SizeConsent is the consent for the real size (downloader.md 3.2 step 6): 0 is the default rule
+	// (a download whose Content-Length alone crosses 500 MiB fails with confirmation_required), ConsentAny
+	// is -f/--force of that command, a value above 0 is the exact Content-Length accepted through
+	// "Download anyway". A UI sets ConsentAny only from a flag of the command being run, never from a
+	// start-up flag of a session (the startupGrants rule of ui.md 2.1).
+	SizeConsent int64
 }
+
+// ConfirmBytes is the size above which a download needs confirmation (500 MiB). The prompt of a UI and
+// the downloader's check at the real size use this one constant, so the two gates cannot drift apart.
+const ConfirmBytes = proxy.DefaultConfirmBytes
+
+// ConsentAny skips the confirmation at the real size (DownloadRequest.SizeConsent).
+const ConsentAny = proxy.ConsentAny
 
 // JobSnapshot is the state of a job at one moment.
 type JobSnapshot struct {
@@ -40,7 +54,7 @@ type JobSnapshot struct {
 	State     State
 	Attempt   int
 	Bytes     int64
-	Expected  int64
+	Expected  int64 // the Content-Length once the headers are in, else the catalog size
 	RateBps   int64
 	Name      string // sanitized file name, once known
 	Path      string // final absolute path of a finished job
@@ -48,6 +62,10 @@ type JobSnapshot struct {
 	Err       *Error
 	Started   time.Time
 	Finished  time.Time
+	// CatalogSize is link.size, a rough estimate; SizeDrift reports that the real size (Expected) is beyond
+	// 1.5x or below 0.5x of it (downloader.md 3.2 step 7): the UI words the warning in its own language.
+	CatalogSize int64
+	SizeDrift   bool
 }
 
 // Terminal reports whether the job reached a final state.
@@ -78,6 +96,8 @@ type DownloadConfig struct {
 	AllowExecutable bool   // --allow-executable
 	Force           bool   // --force
 	Dir             string // download.dir
+	Confirm         bool   // interface.confirm_downloads: the size confirmation of downloader.md 3.2 step 6
+	ConfirmBytes    int64  // the threshold of that confirmation; 0 is 500 MiB
 }
 
 // Env holds what the downloader needs from the machine.
@@ -105,13 +125,15 @@ type jobMeta struct {
 
 // downloads is the Downloads capability state of a Service.
 type downloads struct {
-	env   Env
-	mu    sync.Mutex
-	roots map[string]*rootEntry // by absolute destination root
-	jobs  map[JobID]*JobSnapshot
-	meta  map[JobID]jobMeta
-	subs  map[int]*subscriber
-	next  int
+	env       Env
+	mu        sync.Mutex
+	roots     map[string]*rootEntry // by absolute destination root
+	jobs      map[JobID]*JobSnapshot
+	meta      map[JobID]jobMeta
+	done      map[JobID]doneJob // finished downloads, newest last, for SaveJobBoxart
+	doneOrder []JobID
+	subs      map[int]*subscriber
+	next      int
 
 	doneSinceWait int
 	active        int           // jobs queued or running
@@ -127,7 +149,7 @@ func (s *Service) EnableDownloads(env Env) error {
 		return errors.New("app: TempDir, DataDir and History are required for downloads")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.dl = &downloads{env: env, roots: map[string]*rootEntry{}, jobs: map[JobID]*JobSnapshot{}, meta: map[JobID]jobMeta{}, subs: map[int]*subscriber{}, ctx: ctx, cancel: cancel}
+	s.dl = &downloads{env: env, roots: map[string]*rootEntry{}, jobs: map[JobID]*JobSnapshot{}, meta: map[JobID]jobMeta{}, done: map[JobID]doneJob{}, subs: map[int]*subscriber{}, ctx: ctx, cancel: cancel}
 	return nil
 }
 
@@ -141,8 +163,8 @@ type plan struct {
 
 // Enqueue validates every request, opens every destination, and only then queues the jobs: a bad
 // request, an unusable root or a failed Downloader build leaves nothing queued. Destination
-// directories are created only after the whole batch validated; when two requests name different
-// roots and a later root fails to open, the roots opened before it may stay on disk (empty).
+// directories are created only after the whole batch validated; when a later root fails to open, the
+// directories this call created for the earlier ones are removed again (only if still empty).
 func (s *Service) Enqueue(ctx context.Context, reqs []DownloadRequest) ([]JobID, error) {
 	d := s.dl
 	if d == nil {
@@ -168,15 +190,31 @@ func (s *Service) Enqueue(ctx context.Context, reqs []DownloadRequest) ([]JobID,
 		plans = append(plans, p)
 	}
 	dls := make([]*proxy.Downloader, len(plans))
+	var undo []func()  // removes the directories this call created, when a later root fails to open
+	var built []string // roots whose Downloader this call built: nothing was queued on them yet
+	fail := func(err error) ([]JobID, error) {
+		for _, root := range built {
+			d.release(root) // Windows cannot remove a directory that a handle still has open
+		}
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
+		}
+		return nil, err
+	}
 	for i, p := range plans { // phase 2: every root opens before any job starts
 		if p.mkRoot {
-			if merr := os.MkdirAll(p.root, 0o700); merr != nil {
-				return nil, &Error{Code: string(proxy.CodePathRejected), Message: "the output directory cannot be created", Cause: merr}
+			rm, merr := mkdirAllTracked(p.root)
+			if merr != nil {
+				return fail(&Error{Code: string(proxy.CodePathRejected), Message: "the output directory cannot be created", Cause: merr})
 			}
+			undo = append(undo, rm)
+		}
+		if !d.hasRoot(p.root) {
+			built = append(built, p.root)
 		}
 		dl, err := d.downloaderFor(p.root, known)
 		if err != nil {
-			return nil, err
+			return fail(err)
 		}
 		dls[i] = dl
 	}
@@ -226,7 +264,7 @@ func (s *Service) planFor(ctx context.Context, r DownloadRequest, known map[stri
 		return plan{}, err
 	}
 	return plan{
-		job:    proxy.Job{Link: c.Link, Slug: e.Slug, Platform: e.Platform, DestDir: dest},
+		job:    proxy.Job{Link: c.Link, Slug: e.Slug, Platform: e.Platform, DestDir: dest, SizeConsent: r.SizeConsent},
 		root:   root,
 		mkRoot: mk,
 		entry:  e,
@@ -252,6 +290,13 @@ func (d *downloads) destination(explicit, platform string) (root, dest string, m
 		return "", "", false, &Error{Code: CodeUnmappedPlatform, Message: "no folder is set for the platform", Cause: derr}
 	}
 	return p.RomRoot, dest, false, nil
+}
+
+func firstPositive(a, b int64) int64 {
+	if a > 0 {
+		return a
+	}
+	return b
 }
 
 func firstNonEmpty(a, b string) string {
@@ -304,6 +349,29 @@ func (d *downloads) downloaderFor(root string, known map[string]bool) (*proxy.Do
 	return e.dl, nil
 }
 
+func (d *downloads) hasRoot(root string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	_, ok := d.roots[root]
+	return ok
+}
+
+// release closes the Downloader built for root and forgets it, so a later use opens it afresh. It is
+// only for a root this call built and queued nothing on.
+func (d *downloads) release(root string) {
+	d.mu.Lock()
+	e := d.roots[root]
+	delete(d.roots, root)
+	d.mu.Unlock()
+	if e == nil {
+		return
+	}
+	e.once.Do(func() {}) // a build that never ran must not run later
+	for _, c := range e.closers {
+		_ = c.Close()
+	}
+}
+
 // confiner confines destination directories to dest and refuses the profile's launcher folders,
 // through the links of either side (see proxy.Confiner).
 func (d *downloads) confiner(dest *proxy.RootFS) *proxy.Confiner {
@@ -328,6 +396,10 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 	dest, err := proxy.OpenRootFS(root)
 	if err != nil {
 		_ = staging.Close()
+		if errors.Is(err, fs.ErrNotExist) { // the profile's default ROM folder is not there (an -o root is created first)
+			return nil, nil, &Error{Code: string(proxy.CodePathRejected), Message: "the default download folder does not exist", Cause: err,
+				Args: map[string]any{"path": root, "hint_key": "errors.path_rejected.missing_hint"}}
+		}
 		return nil, nil, &Error{Code: CodeInvalidRequest, Message: "cannot open the destination root", Cause: err}
 	}
 	conf := d.confiner(dest)
@@ -344,7 +416,7 @@ func (d *downloads) build(root string, known map[string]bool) (*proxy.Downloader
 		DestRoot: root, OnEvent: d.onEvent,
 		Config: proxy.Config{
 			AllowedHosts: cfg.AllowedHosts, Concurrency: cfg.Concurrency, OnExists: proxy.OnExists(cfg.OnExists), SkipVerify: cfg.SkipVerify,
-			Platforms: known, AllowExecutable: cfg.AllowExecutable, Force: cfg.Force, NotFoundRetries: -1,
+			Platforms: known, AllowExecutable: cfg.AllowExecutable, Force: cfg.Force, NotFoundRetries: -1, ConfirmDownloads: cfg.Confirm, ConfirmBytes: cfg.ConfirmBytes,
 		},
 	})
 	if err != nil {
@@ -433,8 +505,11 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 				j.Err = d.withJobArgs(ae, d.meta[id], res)
 			}
 		}
+		j.CatalogSize = d.meta[id].expected
+		j.SizeDrift = res.SizeDrift
 		if res.State == proxy.StateDone {
 			d.doneSinceWait++
+			d.rememberDone(id, doneJob{slug: j.Slug, path: res.Path})
 		}
 		snap = *j
 	}
@@ -443,6 +518,29 @@ func (d *downloads) collect(id JobID, results <-chan proxy.Result) {
 	}
 	d.finishLocked()
 	d.mu.Unlock()
+}
+
+// doneJob is what the service itself recorded about a finished download: SaveJobBoxart trusts this, never
+// the Path or Slug a caller puts in a snapshot.
+type doneJob struct{ slug, path string }
+
+// maxDoneJobs bounds the memory of finished downloads kept for SaveJobBoxart.
+const maxDoneJobs = 1000
+
+func (d *downloads) rememberDone(id JobID, j doneJob) {
+	d.done[id] = j
+	d.doneOrder = append(d.doneOrder, id)
+	if len(d.doneOrder) > maxDoneJobs {
+		delete(d.done, d.doneOrder[0])
+		d.doneOrder = d.doneOrder[1:]
+	}
+}
+
+func (d *downloads) doneJob(id JobID) (doneJob, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	j, ok := d.done[id]
+	return j, ok
 }
 
 // publish queues a snapshot for every subscriber; it never blocks. The caller holds d.mu.
@@ -676,7 +774,7 @@ func (h historyAdapter) Append(r proxy.Record) error {
 	h.d.mu.Unlock()
 	rec := history.Record{
 		ID: r.JobID, StartedAt: r.Started, FinishedAt: r.Finished, State: string(r.State), Slug: r.Slug, Title: m.title, Platform: r.Platform,
-		SourceName: m.sourceName, LinkIndex: m.linkIndex, Filename: r.Name, RawName: r.RawName, Path: r.Path, Bytes: r.Bytes, Expected: m.expected,
+		SourceName: m.sourceName, LinkIndex: m.linkIndex, Filename: r.Name, RawName: r.RawName, Path: r.Path, Bytes: r.Bytes, Expected: firstPositive(r.ContentLength, m.expected), CatalogSize: r.CatalogSize, ContentLength: r.ContentLength,
 		SHA256: r.SHA256, CRC: r.CRC, Hash: r.Hash, Attempts: r.Attempts,
 	}
 	if r.Code != "" {
@@ -772,5 +870,36 @@ func (d *downloads) withJobArgs(e *Error, m jobMeta, res proxy.Result) *Error {
 	set("got", res.Bytes)
 	set("expected", m.expected)
 	set("needed", m.expected)
+	if e.Code == string(proxy.CodeConfirmationRequired) { // the real size and the way out (downloader.md 3.2 step 6)
+		set("size", res.ContentLength)
+		set("estimate", m.expected) // the catalog size, always above 0 here: a link without one fails in Preflight
+		set("hint_key", "errors.confirmation_required.size_hint")
+	}
 	return e
+}
+
+// mkdirAllTracked is os.MkdirAll that returns a function removing the directories it created, deepest
+// first, each only while it is empty (os.Remove never deletes content).
+func mkdirAllTracked(dir string) (remove func(), err error) {
+	var created []string // deepest first
+	for p := dir; ; p = filepath.Dir(p) {
+		if _, serr := os.Stat(p); serr == nil {
+			break
+		}
+		created = append(created, p)
+		if filepath.Dir(p) == p {
+			break
+		}
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		for _, p := range created {
+			_ = os.Remove(p)
+		}
+		return nil, err
+	}
+	return func() {
+		for _, p := range created {
+			_ = os.Remove(p)
+		}
+	}, nil
 }

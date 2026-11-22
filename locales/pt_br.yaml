@@ -15,6 +15,8 @@ errors:
   confirmation_required:
     message: 'Este comando precisa de confirmação.'
     hint: 'Adicione --force para pular a pergunta.'
+    size_hint: 'O arquivo tem {size}; o catálogo indicava {estimate}. Ele precisa da sua confirmação para ser baixado.'
+    size_hint_cli: 'O arquivo tem {size}; o catálogo indicava {estimate}. Use -f para baixar mesmo assim.'
   unmapped_platform:
     message: 'Nenhuma pasta definida para a plataforma {platform}.'
     hint: 'Use -o <pasta>, ou defina profile.folders.{platform} na configuração.'
@@ -63,6 +65,7 @@ errors:
   path_rejected:
     message: 'Recusando gravar em {path}.'
     hint: 'Nada foi gravado. Escolha outra pasta com -o, ou confira profile.folders.'
+    missing_hint: '{path} não existe. Crie a pasta, use -o <pasta> ou execute: mothdex config set download.dir <pasta>'
   unsafe_name:
     message: 'Recusando salvar {name}: o tipo de arquivo pode executar código.'
     hint: 'Nada foi gravado. Escolha outro link com --link, ou use --allow-executable se confiar nele.'
@@ -135,6 +138,8 @@ ui:
       none: 'Nenhum resultado para "{text}". Use menos palavras ou tire -p/-r.'
       past_last: 'A página {asked} não existe; mostrando a página {shown}.'
       dropped: '{n} resultados foram ocultados porque o slug tem um formato inesperado.'
+      session_stale: 'A busca não pôde ser salva, então os números dos resultados ainda podem se referir a uma busca anterior. Use slugs.'
+      all_dropped: 'Todos os {n} resultados desta página foram ocultados. Tente a próxima página.'
     info:
       slug: 'Slug'
       platform: 'Plataforma'
@@ -151,6 +156,7 @@ ui:
         one: 'Baixando {count} arquivo'
         other: 'Baixando {count} arquivos'
       link_chosen: 'Link {index} escolhido ({why}, 1 de {count}).'
+      size_drift: '{title}: o proxy informa {real}, mas o catálogo dizia {catalog}; o tamanho do catálogo é só uma estimativa.'
       confirm: 'Baixar {count} arquivos ({size}) para {dest} ?  [s/N]'
       dest_default: 'a pasta da biblioteca'
       connecting: 'Conectando...'
@@ -234,6 +240,63 @@ ui:
       sort: 'Ordena a página atual: relevance, title ou size'
       number: 'Mostra a entrada com esse número (igual a info)'
       d: 'Baixa entradas pelo número: d 1 3, ou d 2-4'
+  gui:
+    locale_fallback: 'Este idioma ainda não está disponível neste modo de tela. Mostrando inglês.'
+    not_yet: '{name} ainda não está disponível.'
+    splash:
+      starting: 'Iniciando…'
+    home:
+      search: 'Buscar'
+      platforms: 'Plataformas'
+      random: 'Aleatório'
+      queue: 'Fila'
+      history: 'Histórico'
+      settings: 'Configurações'
+      recent: 'Recentes'
+      footer: '{entries} entradas · {profile} · {root}'
+      footer_pending: '{profile} · {root}'
+      footer_offline: 'Catálogo indisponível. As buscas em cache ainda funcionam.'
+      footer_generic: 'Nenhum sistema de emulação detectado. Os jogos vão para {path}.'
+    bar:
+      offline: 'Offline'
+      will_quit: 'Vai sair quando os downloads terminarem'
+      badge_active: '{active}'
+      badge_queued: '{active} · {queued} na fila'
+      will_quit_short: 'Saída pendente'
+    hint:
+      menu: 'Menu'
+      open: 'Abrir'
+      quit: 'Sair'
+      continue: 'Continuar'
+    menu:
+      home: 'Início'
+      queue: 'Fila'
+      history: 'Histórico'
+      settings: 'Configurações'
+      buttons: 'Botões'
+      dont_quit: 'Não sair'
+      quit: 'Sair'
+    quit:
+      ask: 'Sair e voltar ao {frontend}?'
+      ask_generic: 'Sair?'
+      stay: 'Ficar'
+      quit: 'Sair'
+      busy:
+        one: '{count} download ainda está em andamento.'
+        other: '{count} downloads ainda estão em andamento.'
+      keep: 'Continuar baixando'
+      when_finished: 'Sair ao terminar'
+      cancel_and_quit: 'Cancelar e sair'
+    exit:
+      downloaded: '{count} baixado(s)'
+      skipped: '{count} ignorado(s)'
+      failed: '{count} com falha'
+      canceled: '{count} cancelado(s)'
+      refreshing: 'Atualizando a lista de jogos…'
+      returning: 'Voltando ao {frontend}'
+      closing: 'Fechando'
+    toast:
+      download_failed: 'Falha no download: {title}'
   tui:
     needs_terminal: 'O TUI precisa de um terminal interativo.'
     too_small: 'Terminal pequeno demais (precisa de {need_w}x{need_h}, tem {w}x{h}). Redimensione ou pressione q.'

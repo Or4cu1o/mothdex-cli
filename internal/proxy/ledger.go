@@ -63,6 +63,38 @@ func (l *ledger) reserve(claims []claim) bool {
 	return true
 }
 
+// swap replaces a job's own claims by new ones in one step under the ledger lock (downloader.md 3.2
+// step 5): the job keeps going only if free - (reserved - its own claim) covers the new need on
+// every file system, and its old claim stays untouched when it does not (the caller then fails the
+// job, which releases it). A smaller need shrinks the claim.
+func (l *ledger) swap(old, next []claim) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	own, want, free := map[uint64]int64{}, map[uint64]int64{}, map[uint64]int64{}
+	for _, c := range old {
+		own[c.dev] += c.need
+	}
+	for _, c := range next {
+		if c.need > math.MaxInt64-want[c.dev] {
+			return false
+		}
+		want[c.dev] += c.need
+		free[c.dev] = c.free
+	}
+	for dev, n := range want {
+		if free[dev]-(l.reserved[dev]-own[dev]) < n {
+			return false
+		}
+	}
+	for dev, n := range own {
+		l.reserved[dev] = max(l.reserved[dev]-n, 0)
+	}
+	for dev, n := range want {
+		l.reserved[dev] += n
+	}
+	return true
+}
+
 func (l *ledger) release(claims []claim) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
