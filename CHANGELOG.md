@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ports.md` §5.6: `mothdex-licenses/` is handled by a fixed list of shipped notice names equal to `THIRD_PARTY/`
+  (`README.md` included), kept in step with it by a test; uninstall removes only those names (PR-88 re-check).
 - PR-88 contract decisions in `ports.md` §5: a dry run probes only in an existing trusted `bin_dir` and leaves nothing
   changed; a probe error exits 1 after the CLI install completes, while not eligible exits 0; an install that does not
   install the release's GUI removes an older `mothdex-gui`, `SDL2.dll` and `mothdex-licenses/`, so versions never mix;
