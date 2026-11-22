@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `64:ff9b::/32`; the well-known NAT64 `/96` is still judged by its embedded IPv4 address, so DNS64 networks keep
   working (cache.md). The GIF first-frame and WebP frame-against-canvas checks were already in place and tested.
   A small test pins the VP8 14-bit mask.
+- T-74 (PR-37 backlog): `stripArgument` maps U+2028 and U+2029 to a space; the locale loader's warnings (which can echo a
+  path or YAML text from the locale folder) are cleaned of control characters; `readCatalog` opens the file once, checks
+  type and size on the open handle and caps the read, so a file that grew after the stat cannot pass the 1 MiB limit.
+  Production loads the user's locale folder only through `LoadDir` (os.Root); `Load(locales.FS)` is used with the embedded
+  files alone.
 - T-72 contract text: `gui.md` §2 and `ports.md` §3 say that on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories`
   with the application folder and System32 before it loads `SDL2.dll`, and does not load it if the call fails (T-70 IC-8).
 - T-69: backlog cleanup. The stale-session search warning already existed (T-25) and now has a CLI test; the
