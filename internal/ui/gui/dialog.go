@@ -15,6 +15,20 @@ const (
 	btnKeep         = "keep"
 	btnWhenFinished = "when_finished"
 	btnCancelQuit   = "cancel_quit"
+	btnCancel       = "cancel"
+	btnDownload     = "download"
+	btnAgain        = "again"
+	btnCancelAll    = "cancel_all"
+)
+
+// dialogKind says what a dialog is about, so its buttons know what to do.
+type dialogKind int
+
+const (
+	dialogQuit            dialogKind = iota // the quit questions of section 5.13
+	dialogConfirmDownload                   // a download above 500 MB with interface.confirm_downloads on
+	dialogDownloadAgain                     // the link was downloaded before
+	dialogCancelAll                         // the Queue's Cancel all downloads
 )
 
 type dialogButton struct {
@@ -25,9 +39,12 @@ type dialogButton struct {
 // dialogState is one dialog (docs/ux/gui.md section 5.12): a title, an optional detail, up to three buttons.
 // The first button is the safe one: it has the initial focus and B activates it.
 type dialogState struct {
+	kind    dialogKind
 	title   string
 	detail  string
 	buttons []dialogButton
+	initial int      // the button that has focus first; 0, the safe one, unless a screen says otherwise
+	pending download // the download a confirmation is about
 }
 
 // askQuit starts a quit by the table of section 5.13.
@@ -59,7 +76,7 @@ func (m Model) askQuit(from QuitRequest, now time.Time) (Model, []Cmd) {
 // openDialog shows a dialog with focus on its first button and ignores input for a moment, so a button the
 // person was still holding does not answer it.
 func (m Model) openDialog(d dialogState, now time.Time) Model {
-	m.overlay, m.dlg, m.dlgFocus = overlayDialog, &d, d.buttons[0].id
+	m.overlay, m.dlg, m.dlgFocus = overlayDialog, &d, d.buttons[min(d.initial, len(d.buttons)-1)].id
 	m.ignoreUntil = now.Add(dialogIgnore)
 	m.epoch++
 	return m
@@ -84,7 +101,20 @@ func (m Model) onDialogAction(a input.Action, now time.Time) (Model, []Cmd) {
 }
 
 func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
+	d := m.dlg
 	m = m.closeOverlay()
+	switch d.kind {
+	case dialogConfirmDownload, dialogDownloadAgain:
+		if id == btnDownload || id == btnAgain {
+			return m.enqueue(d.pending)
+		}
+		return m, nil
+	case dialogCancelAll:
+		if id == btnCancelAll {
+			return m, []Cmd{m.cancelAllCmd()}
+		}
+		return m, nil
+	}
 	switch id {
 	case btnQuit:
 		return m.startExit(false, false, now)
@@ -93,6 +123,7 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 			return m.startExit(false, false, now)
 		}
 		m.quitPending = true
+		return m.openQueue(), nil // the Queue opens so the person sees what is being waited for
 	case btnCancelQuit:
 		return m.startExit(false, true, now)
 	}

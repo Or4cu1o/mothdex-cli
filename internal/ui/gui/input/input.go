@@ -129,7 +129,7 @@ type Mapper struct {
 	cfg Config
 
 	// TextMode is on while the virtual keyboard is open: letters arrive as text, so x, y and q are not
-	// the X, Y and Select of the keyboard fallback, and Backspace deletes.
+	// the X, Y and Select of the keyboard fallback, Backspace deletes, and Enter is Start (run the search).
 	TextMode bool
 	// RepeatBack makes a held B repeat (deleting on the keyboard screen).
 	RepeatBack bool
@@ -322,6 +322,9 @@ func (m *Mapper) keyDown(e Event, now time.Time) []Action {
 		a = Right
 	case KeyEnter:
 		a = Confirm
+		if m.TextMode {
+			a = Menu // on the keyboard screen Enter runs the search, which Start does
+		}
 	case KeyEscape:
 		a = Back
 	case KeyBackspace:

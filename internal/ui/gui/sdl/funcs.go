@@ -71,6 +71,8 @@ type api struct {
 	gameControllerGetJoy   func(controller uintptr) uintptr
 	joystickInstanceID     func(joystick uintptr) int32
 	gameControllerGetType  func(controller uintptr) int32 // SDL 2.0.12; nil on an older SDL2
+	startTextInput         func()
+	stopTextInput          func()
 }
 
 // binding is one function to look up: its C name, the SDL2 release that introduced it, and where the
@@ -128,6 +130,8 @@ func (a *api) table() []binding {
 		{"SDL_GameControllerGetJoystick", v200, &a.gameControllerGetJoy, false},
 		{"SDL_JoystickInstanceID", v200, &a.joystickInstanceID, false},
 		{"SDL_GameControllerGetType", v2012, &a.gameControllerGetType, true},
+		{"SDL_StartTextInput", v200, &a.startTextInput, false},
+		{"SDL_StopTextInput", v200, &a.stopTextInput, false},
 	}
 }
 

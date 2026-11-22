@@ -28,6 +28,7 @@ const footerLines = 2
 const (
 	regionTiles = 0
 	regionChips = 1
+	regionKeys  = 2 // the keys of the virtual keyboard; chips above them are region 0
 )
 
 type tileBox struct {
@@ -132,24 +133,39 @@ func (m Model) onHomeAction(a input.Action, now time.Time) (Model, []Cmd) {
 	}
 	switch a {
 	case input.Confirm:
-		return m.activateHome(now), nil
+		return m.activateHome(now)
 	case input.Back:
 		return m.askQuit(QuitFromBack, now)
 	case input.Menu:
 		return m.openMenu(), nil
-	case input.Queue:
-		return m.notYet(tileQueue, now), nil
 	}
 	return m, nil
 }
 
 // activateHome opens what has focus. The screens behind the tiles come with the next pull requests: until
 // then a tile says so in a toast.
-func (m Model) activateHome(now time.Time) Model {
-	if strings.HasPrefix(m.focus, chipPrefix) {
-		return m.notYet(tileSearch, now)
+func (m Model) activateHome(now time.Time) (Model, []Cmd) {
+	if strings.HasPrefix(m.focus, chipPrefix) { // a recent search runs again with no filters
+		for _, c := range m.homeGeometry().chips {
+			if c.id == m.focus {
+				if i, err := strconv.Atoi(strings.TrimPrefix(c.id, chipPrefix)); err == nil && i < len(m.recent) {
+					return m.startResults(app.SearchQuery{Text: m.recent[i]}, false, now)
+				}
+			}
+		}
+		return m, nil
 	}
-	return m.notYet(m.focus, now)
+	switch m.focus {
+	case tileSearch:
+		return m.enterSearch(), nil
+	case tilePlatforms:
+		return m.openPicker(pickPlatform, true, now)
+	case tileRandom:
+		return m.startResults(app.SearchQuery{}, true, now)
+	case tileQueue:
+		return m.openQueue(), nil
+	}
+	return m.notYet(m.focus, now), nil
 }
 
 func (m Model) notYet(tile string, now time.Time) Model {
