@@ -1,6 +1,6 @@
 # UX: gamepad GUI (`mothdex-gui`, emulator mode)
 
-Status: v1.5 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56; GUI PR 3 rules and review, T-78; controller notices, T-80) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
+Status: v1.5 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56; GUI PR 3 rules and review, T-78; controller notices and top bar give-way order, T-80) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
 Contract: [`gui.md`](../contracts/cli/gui.md) (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Flows mirror [`tui.md`](tui.md); wording, units and the
 Warming rules come from [`cli-conventions.md`](cli-conventions.md); link ranking from [`prefer-syntax.md`](prefer-syntax.md).
@@ -267,10 +267,13 @@ SDL GameController buttons are read **by position** (SDL_GameControllerDB names:
   2. When the status items do not fit, `Will quit when downloads finish` switches to its short form
      `ui.gui.bar.will_quit_short` (en `Quit pending`, pt_br `Saída pendente`, es_es `Salida pendiente`, ru_ru
      `Ожидается выход`).
-  3. If they still do not fit, only that item is cut with `…`. `Offline`, `No controller` (§2.3) and the queue badge
-     are never cut.
-  4. Whatever room is left goes to the title, cut at the end with `…` (crumbs are dropped from the left first:
-     `… › Results "zelda"`).
+  3. If they still do not fit, items are hidden, one at a time, in this order, until the bar fits (on every screen):
+     1. the pending-quit notice (the Start menu keeps `Don't quit`, so the state stays reachable);
+     2. the screen's dim extra (History `All · 128 records`, the Results page, the Settings source). Its
+        information is still on the screen: the Y hint, the L/R paging and the list;
+     3. the queue badge (the Start menu shows Queue with its count, and Select opens it).
+  4. `Offline`, `No controller` (§2.3) and the screen name in the title are never hidden or cut. Crumbs before the
+     screen name are dropped from the left first (`… › Results "zelda"`); whatever room is left goes to them.
 - **Hint bar:** the screen's actions, at most 5, right-aligned in the order A, X, Y, B, with `Start Menu` on the left.
   Each hint is the controller label on a `bg` disc (`text` letter, §1.5) plus the action word in `text.dim`. A label
   longer than one letter (`Start`, `Cross`, `Circle`) becomes a pill with `1u` padding on each side. `compact` shows
