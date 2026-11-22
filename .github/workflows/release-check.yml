@@ -38,7 +38,7 @@ jobs:
           cache: false
         if: steps.scope.outputs.run == 'true'
       - name: Install verification tools
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user file jq unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user file jq unzip libsdl2-2.0-0
         if: steps.scope.outputs.run == 'true'
       - name: Install pinned release tools (goreleaser, cosign, syft)
         run: |
@@ -51,8 +51,11 @@ jobs:
         if: steps.scope.outputs.run == 'true'
       - run: goreleaser release --snapshot --clean --skip=sign
         if: steps.scope.outputs.run == 'true'
-      - name: Verify the build output (9 targets)
+      - name: Verify the build output (9 CLI targets, 5 GUI archives)
         run: scripts/verify-dist.sh dist
+        if: steps.scope.outputs.run == 'true'
+      - name: The GUI archives are what install.sh and install.ps1 extract
+        run: scripts/check-gui-archives.sh dist
         if: steps.scope.outputs.run == 'true'
       - name: Build again and compare the archives (reproducibility)
         run: |

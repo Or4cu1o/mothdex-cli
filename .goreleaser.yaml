@@ -10,6 +10,9 @@ project_name: mothdex
 before:
   hooks:
     - go mod verify
+    # The Windows GUI archive ships the pinned SDL2.dll (scripts/sdl2-windows.pin): exact URL, SHA-256 checked before
+    # extraction, never cached. Linux archives never ship SDL2.
+    - scripts/fetch-sdl2-windows.sh dist-sdl2
 
 builds:
   - id: mothdex
@@ -38,8 +41,46 @@ builds:
       - goos: windows
         goarch: arm
 
+  # The GUI (docs/contracts/cli/gui.md section 6, ports.md): a second binary built with the gui tag, still CGO_ENABLED=0
+  # (purego loads SDL2 at run time). On Linux it is dynamic, so the arm interpreter is set to the armhf glibc loader
+  # (gui.md section 2). Two builds only so that the Windows archive can carry SDL2.dll and the Linux ones cannot.
+  - id: mothdex-gui-linux
+    main: ./cmd/mothdex-gui
+    binary: mothdex-gui
+    tags: [gui]
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Version={{ .Version }}
+        -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Commit={{ .FullCommit }}
+        -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Date={{ .CommitDate }}
+        {{ if eq .Arch "arm" }}-I /lib/ld-linux-armhf.so.3{{ end }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    targets: [linux_amd64, linux_arm64, linux_arm_6, linux_arm_7]
+  - id: mothdex-gui-windows
+    main: ./cmd/mothdex-gui
+    binary: mothdex-gui
+    tags: [gui]
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Version={{ .Version }}
+        -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Commit={{ .FullCommit }}
+        -X github.com/Or4cu1o/mothdex-cli/internal/buildinfo.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    targets: [windows_amd64]
+
 archives:
   - id: mothdex
+    ids: [mothdex]
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -55,6 +96,54 @@ archives:
         info:
           mtime: "{{ .CommitDate }}"
       - src: CHANGELOG.md
+        info:
+          mtime: "{{ .CommitDate }}"
+
+  # GUI archives: mothdex-gui_<version>_<os>_<arch>, never inside the mothdex_ archives. The members are exactly what
+  # install.sh and install.ps1 extract by name: the binary, LICENSE, README.md, CHANGELOG.md, the files of THIRD_PARTY/
+  # (their fixed notice lists equal that folder, checked by tests/installer) and, on Windows only, SDL2.dll.
+  - id: mothdex-gui-linux
+    ids: [mothdex-gui-linux]
+    formats: [tar.gz]
+    name_template: >-
+      mothdex-gui_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: CHANGELOG.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: THIRD_PARTY/*
+        dst: THIRD_PARTY
+        strip_parent: true
+        info:
+          mtime: "{{ .CommitDate }}"
+  - id: mothdex-gui-windows
+    ids: [mothdex-gui-windows]
+    formats: [zip]
+    name_template: >-
+      mothdex-gui_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: CHANGELOG.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: THIRD_PARTY/*
+        dst: THIRD_PARTY
+        strip_parent: true
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: dist-sdl2/SDL2.dll
+        strip_parent: true
         info:
           mtime: "{{ .CommitDate }}"
 

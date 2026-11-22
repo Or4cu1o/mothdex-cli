@@ -9,9 +9,14 @@ describes the pipeline that produces them and how to verify a download.
 
 `mothdex_<version>_<os>_<arch>[.tar.gz|.zip]` for 9 targets (armv6 and armv7 are
 separate archives; never map `armv6l` to `armv7`), one `<archive>.sbom.json` per
-archive, `checksums.txt` and `checksums.txt.sigstore.json`. `checksums.txt` lists
-all 18 archives and SBOMs, and the cosign bundle signs it. The names, contents,
-targets and the `uname` mapping are in the contract above.
+archive, `checksums.txt` and `checksums.txt.sigstore.json`. The GUI has its own archives,
+`mothdex-gui_<version>_<os>_<arch>` for linux amd64, arm64, armv7, armv6 and windows amd64
+(the Windows one carries the pinned `SDL2.dll`, fetched by `scripts/fetch-sdl2-windows.sh` with its
+SHA-256 checked, never cached). `checksums.txt` lists all 28 archives and SBOMs, and the cosign
+bundle signs it; the attestation covers every listed file. `scripts/verify-dist.sh` checks the
+members, the loader and the build flags of every archive, and the snapshot check runs the
+installers' own member rules against the GUI archives (`scripts/check-gui-archives.sh`). The
+names, contents, targets and the `uname` mapping are in the contract above.
 
 ## Version information
 

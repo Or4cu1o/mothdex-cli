@@ -20,7 +20,7 @@
 set -u
 
 # Everything compiled into the archives or the GUI probe: go:embed data (locales, profiles) counts.
-release_scope='.goreleaser.yaml .github/workflows/release.yml .github/workflows/release-check.yml scripts/verify-dist.sh scripts/ci-scope.sh tools/* cmd/* internal/* pkg/* locales/* profiles/* go.mod go.sum LICENSE README.md CHANGELOG.md'
+release_scope='.goreleaser.yaml scripts/fetch-sdl2-windows.sh scripts/sdl2-windows.pin scripts/check-gui-archives.sh scripts/check-gui-zip.ps1 install.sh install.ps1 tests/installer/shims/* THIRD_PARTY/* .github/workflows/release.yml .github/workflows/release-check.yml scripts/verify-dist.sh scripts/ci-scope.sh tools/* cmd/* internal/* pkg/* locales/* profiles/* go.mod go.sum LICENSE README.md CHANGELOG.md'
 gui_scope='internal/ui/gui/* cmd/mothdex-gui/* locales/* profiles/* scripts/gui-probe.sh scripts/ci-scope.sh go.mod go.sum'
 gui_probe_scope="$gui_scope scripts/check-gui-isolation.sh scripts/check-sdl-constants.sh scripts/sdl2-windows.pin .github/workflows/gui-spike.yml"
 gui_qemu_scope="$gui_scope .github/workflows/gui-spike-qemu.yml"
