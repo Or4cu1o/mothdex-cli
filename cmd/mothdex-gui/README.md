@@ -14,7 +14,7 @@ mothdex-gui -spike [-driver dummy]
 |---|---|
 | `-window WxH` | a window of that size instead of the full screen (desktop session) |
 | `-driver name` | force an SDL video driver, such as `dummy` |
-| `--probe` | the installer's eligibility check: load SDL2, check the version, open no window, read no config, write no file or log; prints `sdl X.Y.Z` and exits 0, or the reason (one line, at most 200 bytes) on stderr and exits 1 |
+| `--probe` | the installer's eligibility check: load SDL2, check the version, open no window, read no config, write no file or log; prints `sdl X.Y.Z` and, on Linux, one word for where SDL2 was loaded from (`system`, `ld_library_path`, `other` or `unknown`, never a path), and exits 0, or the reason (one line, at most 200 bytes) on stderr and exits 1 |
 | `-spike` | check the whole SDL2 binding on a hidden window and exit (the CI smoke test); an executable named `mothdex-gui-probe` does this with no flag |
 
 Exit codes: 0 normal exit or SIGTERM/SIGINT, 1 SDL missing, too old or no display, 2 configuration error, 3 internal error. Every

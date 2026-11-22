@@ -45,8 +45,20 @@ func headless(t *testing.T, w, h int) (*Backend, *text.Font) {
 	return headlessWith(t, w, h, true)
 }
 
+// openVisible is headless with a window that is not hidden, which the backend must show.
+func openVisible(t *testing.T, w, h int) *Backend {
+	t.Helper()
+	be, _ := openHeadless(t, w, h, true, false)
+	return be
+}
+
 // headlessWith is headless with or without the display font in the backend.
 func headlessWith(t *testing.T, w, h int, withDisplay bool) (*Backend, *text.Font) {
+	t.Helper()
+	return openHeadless(t, w, h, withDisplay, true)
+}
+
+func openHeadless(t *testing.T, w, h int, withDisplay, hidden bool) (*Backend, *text.Font) {
 	t.Helper()
 	runtime.LockOSThread() // SDL calls stay on one OS thread
 	t.Cleanup(runtime.UnlockOSThread)
@@ -69,7 +81,7 @@ func headlessWith(t *testing.T, w, h int, withDisplay bool) (*Backend, *text.Fon
 	if !withDisplay {
 		display = nil
 	}
-	be, err := OpenBackend(lib, font, BackendOptions{Driver: "dummy", Windowed: true, Width: w, Height: h, Hidden: true, Software: true, Display: display})
+	be, err := OpenBackend(lib, font, BackendOptions{Driver: "dummy", Windowed: true, Width: w, Height: h, Hidden: hidden, Software: true, Display: display})
 	if err != nil {
 		t.Fatal(err)
 	}

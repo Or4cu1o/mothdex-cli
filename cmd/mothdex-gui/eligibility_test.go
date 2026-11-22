@@ -72,10 +72,10 @@ func TestProbeKeepsItsContract(t *testing.T) {
 }
 
 func TestProbeSaysWhyInOneCleanLineWhenTheCheckFails(t *testing.T) {
-	defer func(old func() (sdl.Version, error)) { checkSDL = old }(checkSDL)
+	defer func(old func() (sdl.Found, error)) { checkSDL = old }(checkSDL)
 	hostile := "libSDL2.so: wrong ELF class\n\x1b[31mERROR\x1b[0m " + strings.Repeat("x", 500)
 	for _, err := range []error{errors.New(hostile), sdl.ErrTooOld, sdl.ErrNotFound} {
-		checkSDL = func() (sdl.Version, error) { return sdl.Version{Major: 2, Minor: 0, Patch: 4}, err }
+		checkSDL = func() (sdl.Found, error) { return sdl.Found{Version: sdl.Version{Major: 2, Minor: 0, Patch: 4}}, err }
 		var out, errOut bytes.Buffer
 		if code := run([]string{"mothdex-gui", "--probe"}, &out, &errOut); code != exitSDL || out.Len() != 0 {
 			t.Fatalf("exit %d, stdout %q", code, out.String())
@@ -94,7 +94,7 @@ func TestProbeGivesUpByItselfWhenSDLDoesNotAnswer(t *testing.T) {
 	release := make(chan struct{})
 	var mu sync.Mutex
 	var exited []int
-	checkSDL = func() (sdl.Version, error) { <-release; return sdl.Version{}, errors.New("late") }
+	checkSDL = func() (sdl.Found, error) { <-release; return sdl.Found{}, errors.New("late") }
 	probeBudget = 20 * time.Millisecond
 	watchdogExit = func(code int) {
 		mu.Lock()

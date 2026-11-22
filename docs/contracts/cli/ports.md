@@ -150,10 +150,10 @@ It releases input and renderer only when `HideWindow` is set, which is off by de
 EmuELEC on Amlogic and off on Windows. Whether the GUI actually gets focus, display and pads is B2.
 
 **Diagnostics for the beta (Vitral, small).** At start, `mothdex-gui` writes one log line with:
-- the loaded SDL version and the video driver SDL chose;
+- the loaded SDL version, where SDL2 was loaded from as one word (`system`, `ld_library_path`, `other`, `unknown`; `n/a` on Windows; never a path), and the video driver SDL chose. On EmuELEC the stock SDL2 is in `/usr/lib`, so `ld_library_path` there means a user override;
 - whether `LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`, `SDL_GAMECONTROLLERCONFIG` and `SDL_GAMECONTROLLERCONFIG_FILE` are
   set, as names with `set` or `unset`, and the value of `SDL_VIDEODRIVER` only;
-- `LANG` and `LC_ALL`;
+- `LANG`, `LC_ALL` and the first entry of `LANGUAGE`, each only when it looks like a word (PRT-G10);
 - the number of mapping lines added from each source and the type of each connected controller;
 - whether `LD_PRELOAD` and `SDL_DYNAMIC_API` are set, as names only (T-70 IC-13).
 
@@ -212,7 +212,7 @@ The GUI is dynamic on Linux, so the installer must prove it can start before it 
 - opens no window, initializes no video or input subsystem, reads no config and writes no file or log;
 - gives up by itself after 15 s (one line "SDL2 did not answer within 15 seconds", exit 1), inside the installer's
   own 20 s bound (T-70 IC-10), so a library that blocks in a constructor cannot hang the install even without `timeout`;
-- prints `sdl <major>.<minor>.<patch>` and exits 0, or prints the reason and exits 1, the code gui.md §5 uses for SDL
+- prints `sdl <major>.<minor>.<patch>` and, on Linux, a word for where the loader found SDL2 (`system`, `ld_library_path`, `other` or `unknown`; never a path), in one sanitized line of at most 200 bytes, and exits 0, or prints the reason and exits 1, the code gui.md §5 uses for SDL
   problems.
 
 This replaces the `ldconfig -p` check of gui.md §6. One run proves the interpreter, the userland arch and the SDL

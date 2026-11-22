@@ -23,7 +23,10 @@ type Texture struct {
 
 // Library is the SDL2 library bound through purego. All its methods must be called from the thread that
 // called Init (the main OS thread of the program, see runtime.LockOSThread).
-type Library struct{ a api }
+type Library struct {
+	a      api
+	origin string
+}
 
 // openLib is openLibrary, replaceable by a test.
 var openLib = openLibrary
@@ -43,6 +46,7 @@ func Open() (*Library, error) {
 	if err := l.a.bind(h); err != nil {
 		return nil, err
 	}
+	l.origin = originOf()
 	return l, nil
 }
 
@@ -52,6 +56,10 @@ func (l *Library) Version() Version {
 	l.a.getVersion(&v)
 	return v
 }
+
+// Origin says where the loaded SDL2 came from, as one word: OriginSystem, OriginLibraryPath, OriginOther or OriginUnknown.
+// It is empty where the question does not apply (Windows loads the DLL next to the executable).
+func (l *Library) Origin() string { return l.origin }
 
 // sdlError is the last SDL error, as a Go error with the context of the call that failed.
 func (l *Library) sdlError(call string) error {
@@ -92,6 +100,15 @@ func (l *Library) CreateWindow(title string, w, h int32, flags uint32) (Window, 
 	}
 	return win, nil
 }
+
+// ShowWindow asks for the window to be shown.
+func (l *Library) ShowWindow(w Window) { l.a.showWindow(uintptr(w)) }
+
+// RaiseWindow asks for the window to be on top with the input focus.
+func (l *Library) RaiseWindow(w Window) { l.a.raiseWindow(uintptr(w)) }
+
+// WindowFlags is the mask of the SDL_WINDOW_* values the window has now (WindowShown among them).
+func (l *Library) WindowFlags(w Window) uint32 { return l.a.getWindowFlags(uintptr(w)) }
 
 // DestroyWindow frees a window.
 func (l *Library) DestroyWindow(w Window) { l.a.destroyWindow(uintptr(w)) }

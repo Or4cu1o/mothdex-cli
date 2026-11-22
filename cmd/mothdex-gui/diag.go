@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/sdl"
 )
 
 // diagnostics is what the start-up log line tells a beta tester's report about the machine, and nothing else
@@ -16,6 +17,7 @@ import (
 // plain words (the video driver, and the locale), and only when they look like words.
 type diagnostics struct {
 	SDLVersion string
+	SDLOrigin  string                      // where the loader found SDL2, one word (sdl.Library.Origin); "" where it does not apply
 	Driver     string                      // the video driver SDL chose
 	Lookup     func(string) (string, bool) // os.LookupEnv: a variable set to the empty string is "set"
 	Mappings   input.MappingCounts
@@ -34,7 +36,7 @@ var wordValue = regexp.MustCompile(`^[A-Za-z0-9_.@-]{1,40}$`)
 
 // attrs are the key and value pairs of the one "gui: diagnostics" line, for slog.
 func (d diagnostics) attrs() []any {
-	out := []any{"sdl", d.SDLVersion, "driver", wordOrNot(d.Driver)}
+	out := []any{"sdl", d.SDLVersion, "sdl_origin", originWord(d.SDLOrigin), "driver", wordOrNot(d.Driver)}
 	for _, name := range setOnly {
 		_, set := d.Lookup(name)
 		out = append(out, name, setOrUnset(set))
@@ -44,11 +46,31 @@ func (d diagnostics) attrs() []any {
 		"SDL_VIDEODRIVER_value", wordOrNot(value("SDL_VIDEODRIVER")),
 		"LANG", wordOrNot(value("LANG")),
 		"LC_ALL", wordOrNot(value("LC_ALL")),
+		"LANGUAGE", wordOrNot(firstEntry(value("LANGUAGE"))),
 		"mappings_embedded", d.Mappings.Embedded, "mappings_user", d.Mappings.User,
 		"mappings_file", d.Mappings.File, "mappings_env", d.Mappings.Env,
 		"controller_types", padTypes(d.Pads),
 	)
 	return out
+}
+
+// originWord is the word for where SDL2 was loaded from, "n/a" where the question does not apply (Windows). Whatever else
+// comes in is not copied: the line carries one of the library's fixed words or nothing.
+func originWord(origin string) string {
+	switch origin {
+	case sdl.OriginSystem, sdl.OriginLibraryPath, sdl.OriginOther, sdl.OriginUnknown:
+		return origin
+	case "":
+		return "n/a"
+	}
+	return "not shown"
+}
+
+// firstEntry is the part of a colon-separated list before its first colon: LANGUAGE holds a list (pt_BR:en) whose first
+// entry is the one the locale resolver uses, and a whole list does not pass wordOrNot.
+func firstEntry(list string) string {
+	first, _, _ := strings.Cut(list, ":")
+	return first
 }
 
 func setOrUnset(set bool) string {

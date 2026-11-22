@@ -29,9 +29,10 @@ var (
 
 // runEligibility is `mothdex-gui --probe`, the check the installer runs on the staged binary before it installs
 // the GUI (docs/contracts/cli/ports.md section 5.2, gap PRT-G3). It loads SDL2 as a normal start does, calls
-// SDL_GetVersion, applies the version rule and says one line:
+// SDL_GetVersion, applies the version rule and says one line, sanitized and cut to reasonMax bytes like the reason:
 //
-//	exit 0, stdout "sdl X.Y.Z"      eligible
+//	exit 0, stdout "sdl X.Y.Z word" eligible; on Linux the word says where SDL2 was loaded from: system,
+//	                                ld_library_path, other or unknown (never a path; PRT-G9)
 //	exit 1, stderr the reason       not eligible (SDL2 missing, too old, or lacking a function; also a timeout)
 //
 // It opens no window, starts no video or input subsystem, reads no configuration, writes no file and no log:
@@ -44,12 +45,16 @@ func runEligibility(stdout, stderr io.Writer) int {
 	})
 	defer watchdog.Stop()
 
-	v, err := checkSDL()
+	found, err := checkSDL()
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, oneLine(err.Error(), reasonMax))
 		return exitSDL
 	}
-	_, _ = fmt.Fprintf(stdout, "sdl %s\n", v)
+	line := "sdl " + found.Version.String()
+	if found.Origin != "" { // Linux: where the loader found it, one word and never a path (PRT-G9)
+		line += " " + found.Origin
+	}
+	_, _ = fmt.Fprintln(stdout, oneLine(line, reasonMax))
 	return exitOK
 }
 
