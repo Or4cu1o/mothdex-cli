@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PR-88 contract decisions in `ports.md` §5: a dry run probes only in an existing trusted `bin_dir` and leaves nothing
+  changed; a probe error exits 1 after the CLI install completes, while not eligible exits 0; an install that does not
+  install the release's GUI removes an older `mothdex-gui`, `SDL2.dll` and `mothdex-licenses/`, so versions never mix;
+  `mothdex-licenses/` is removed by safe file name, with no manifest.
 - T-74 (PR-37 backlog): `stripArgument` maps U+2028 and U+2029 to a space; the locale loader's warnings (which can echo a
   path or YAML text from the locale folder) are cleaned of control characters; `readCatalog` opens the file once, checks
   type and size on the open handle and caps the read, so a file that grew after the stat cannot pass the 1 MiB limit.
