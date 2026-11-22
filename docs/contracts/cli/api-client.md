@@ -112,23 +112,64 @@ One concrete type; callers use `errors.As` or the `Is*` helpers. Never match on 
 
 ```go
 type Error struct {
-    Kind       Kind          // see table
+    Kind       Kind          // see the tables below
     Op         string        // "search", "entry", ...
     HTTPStatus int           // 0 for transport errors
-    Message    string        // info.error or transport text; untrusted, for logs/UI only
+    Code       string        // upstream info.error when it is a code (§3.1), "" for the old form and transport errors
+    Message    string        // upstream info.message (or info.error in the old form) or transport text; untrusted (§3.3)
     RetryAfter time.Duration // only for KindRateLimited, 0 if unknown
     Err        error         // wrapped cause
 }
 ```
 
+Upstream sends error codes since cavv-dev/mothdex-api `7a87af9` (2026-11-21; API docs "Error codes"): `info.error` is
+a machine code and `info.message` the human text, for example
+`{"info":{"error":"ENTRY_NOT_FOUND","message":"Entry not found"},"data":{}}`. Application errors such as a missing entry
+or a failed validation still come with HTTP 200. Checked live on 2026-11-22: `POST /v1/entry` with an unknown slug
+answers HTTP 200 with exactly that body.
+
+### 3.1 Classification order (A6: status, then `info.error`)
+
+Every response goes through these steps, in order. The first one that applies decides.
+
+1. **Transport, redirect and cancellation:** the rows of the last table below, as before.
+2. **HTTP status other than 200:** the status decides the kind (table "By HTTP status"). A code in the body is kept
+   in `Error.Code` for the log but does not change the kind, with one exception: `400` with code
+   `INVALID_API_VERSION` is `KindIncompatible` (our base URL or API version is wrong).
+3. **HTTP 200 with `info.error`:**
+   - a JSON string matching `^[A-Z][A-Z0-9_]{0,63}$` is a **code**. It is matched **exactly** (case-sensitive, no
+     trimming) against the table "By code". A code that is not in the table is `KindAPI`;
+   - any other non-empty string is the **old form**, in which `info.error` held the message. It is matched against
+     the table "Old form", unchanged from before the codes;
+   - `info.error` present but not a non-empty string (number, object, `null`, `""`) is `KindDecode`.
+4. **HTTP 200 without `info.error`:** `data` lacks the expected key, or the body is not valid JSON, is `KindDecode`.
+
+By code (HTTP 200):
+
+| Code | Kind | Retried by client |
+|---|---|---|
+| `ENTRY_NOT_FOUND` | `KindNotFound` | no |
+| `INVALID_API_VERSION` | `KindIncompatible` | no |
+| `MALFORMED_JSON`, `INVALID_JSON_OBJECT`, `MISSING_REQUIRED_FIELDS`, `INVALID_FIELD_TYPE`, `INVALID_INPUT` | `KindInvalidRequest` | no |
+| `DB_OPERATION_ERROR`, `DB_ERROR`, `UNEXPECTED_ERROR` | `KindUpstream` | yes (budget §5) |
+| `RATE_LIMIT_ERROR` | `KindRateLimited` | §4, exactly as a 429: `Retry-After` when present, and it counts toward the breach circuit |
+| `HTTP_ERROR` | `KindAPI` (upstream sends it with the real HTTP status, so step 2 normally decides; at 200 it is unexplained) | no |
+| any other code | `KindAPI` | no |
+
+Old form (HTTP 200, `info.error` is the message; kept for backward compatibility with an older or rolled-back API):
+
+| `info.error` | Kind | Retried by client |
+|---|---|---|
+| "Entry not found" | `KindNotFound` | no |
+| "Slug is required" / "Invalid input provided" | `KindInvalidRequest` | no |
+| "Database operation failed" / "A database error occurred" / "An unexpected error occurred" | `KindUpstream` | yes (budget §5) |
+| any other string | `KindAPI` | no |
+
+By HTTP status (step 2) and transport (step 1):
+
 | Condition | Kind | Retried by client |
 |---|---|---|
-| HTTP 200 + `info.error == "Entry not found"` | `KindNotFound` | no |
-| HTTP 200 + `info.error` "Slug is required" / "Invalid input provided" | `KindInvalidRequest` | no |
-| HTTP 200 + `info.error` "Database operation failed" / "A database error occurred" / "An unexpected error occurred" | `KindUpstream` | yes (budget §5) |
-| HTTP 200 + any other `info.error` | `KindAPI` | no |
-| HTTP 200, no `info.error`, but `data` lacks the expected key, or invalid JSON | `KindDecode` | no |
-| HTTP 400 (any body) | `KindInvalidRequest` | no |
+| HTTP 400 (any body; with code `INVALID_API_VERSION`: `KindIncompatible`) | `KindInvalidRequest` | no |
 | HTTP 404 (route missing: wrong base URL or API version) | `KindIncompatible` | no |
 | HTTP 429 | `KindRateLimited` | §4 |
 | HTTP 5xx, other unexpected statuses | `KindUpstream` | yes |
@@ -136,11 +177,26 @@ type Error struct {
 | DNS, connect, TLS, reset, timeout | `KindNetwork` | yes |
 | `ctx` cancelled or deadline exceeded | `KindCanceled` (wraps `ctx.Err()`) | no |
 
-The known-message table lives in one place (`errors.go`) and has a parametrized test against the fixtures.
-A6 rule: **every** response checks the HTTP status **and** `info.error`, in that order.
-Forward compatibility: if `info.code` appears (requested upstream in proposal U2), it takes
-precedence over message matching; unknown codes map to `KindAPI`. The code-to-kind mapping is **provisional** until
-the maintainers answer U2, since the code names are only our proposal (accepted deviation 2 from T-10).
+### 3.2 The code is the key
+
+- Only `Error.Kind` and `Error.Code` drive behavior. Callers outside this package use the kind; `Code` is for logs and
+  diagnostics. Nothing outside this package matches message text, and nothing inside matches it except the old-form
+  table.
+- Both tables (by code, old form) live in one place (`errors.go`), with a parametrized test (§7).
+- The `info.code` field proposed in U2 is not part of the API: upstream put the code in `info.error`. A response that
+  carries `info.code` is classified as if the field were absent.
+- A new upstream code needs no client release to stay safe: it is `KindAPI` until it is added to the table.
+
+### 3.3 The message is untrusted
+
+- `Error.Message` comes from `info.message` when it is a string, else from `info.error` in the old form, else empty.
+  For a code with no `info.message`, it is empty.
+- The client caps it at **512 bytes** on a UTF-8 boundary and replaces invalid UTF-8. It never parses, matches or
+  branches on it in the new form. Validation messages may include details such as field names.
+- **Display:** the CLI, Shell, TUI and GUI never show it as the error text. They show their own localized message for
+  the kind (cli-output §4). The upstream message is written only to the log, through `app.SanitizeText` (control,
+  bidi and escape characters removed), capped at **200 bytes**.
+- mothdex-mcp applies the same rule to tool output: see its `tools.md` Errors section.
 
 ## 4. Rate limiting and 429 (A5)
 
@@ -202,7 +258,18 @@ Contract tests with `httptest` and the recorded fixtures (search, empty search, 
 random, platforms, regions, info, 400, 429, 500, DB error with 200). Pure-rule tests: error classification
 (parametrized) and the retry/circuit decision with a fake clock.
 
+Error codes (T-77), one parametrized classification test over:
+- each of the 12 codes at HTTP 200;
+- the old form (the existing recorded fixtures);
+- an unknown code, a lower-case or over-long code-like string (old form);
+- a non-200 status with a code, including `400` with `INVALID_API_VERSION`;
+- `RATE_LIMIT_ERROR` at 200, which must open the circuit like a 429;
+- `info.error` as a number, `null` and `""`;
+- `info.code` present.
+New fixtures are built from the documented shape, so no live request is needed. A message over 512 bytes and one with
+control characters check the cap and the log sanitization.
+
 ## Resolved questions (Regente, T-2 phase 1)
 
 - OQ-API-1: the T-10 fixture-recording script records whether `Retry-After` is present; the policy above works either way.
-- OQ-API-2: the U2 upstream proposal (T-8) will also ask for stable error codes; until then the message table in `errors.go` is the only place that matches text.
+- OQ-API-2: resolved by upstream `7a87af9` (T-77): `info.error` carries a stable code and `info.message` the text (§3.1-§3.3). The old-form message table stays for backward compatibility.
