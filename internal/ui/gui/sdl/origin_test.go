@@ -55,3 +55,29 @@ func TestClassifyOriginFollowsLinksAndNeverReturnsAPath(t *testing.T) {
 		}
 	}
 }
+
+// A relative LD_LIBRARY_PATH entry is read from the current directory, as the loader does: LD_LIBRARY_PATH=lib with the
+// library in ./lib is a path-list origin, not "other" (Crivo, T-89 S1).
+func TestClassifyOriginResolvesRelativeEntriesFromTheCurrentDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "lib"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "other", "deep"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	lib := filepath.Join(dir, "lib", "libSDL2-2.0.so.0")
+	for _, ld := range []string{"lib", "./lib", "other/../lib", "/nonexistent:lib"} {
+		if got := classifyOrigin(lib, ld); got != OriginLibraryPath {
+			t.Errorf("LD_LIBRARY_PATH %q with the library in ./lib is %q, want %q", ld, got, OriginLibraryPath)
+		}
+	}
+	t.Chdir(filepath.Join(dir, "other", "deep"))
+	if got := classifyOrigin(lib, "../../lib"); got != OriginLibraryPath {
+		t.Errorf("a ../ entry from another directory is %q, want %q", got, OriginLibraryPath)
+	}
+	if got := classifyOrigin(lib, "lib"); got != OriginOther { // from here ./lib is another place
+		t.Errorf("the same relative entry from a directory without lib is %q, want %q", got, OriginOther)
+	}
+}

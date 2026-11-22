@@ -59,15 +59,21 @@ var systemDirs = []string{"/lib", "/lib32", "/lib64", "/usr/lib", "/usr/lib32", 
 var multiarchDir = regexp.MustCompile(`^/(usr/)?lib/[a-z0-9_]+-linux-[a-z0-9]+$`)
 
 // classifyOrigin names the directory of path. ldLibraryPath is the value of LD_LIBRARY_PATH: an empty entry means the
-// current directory and matches nothing. Both sides are resolved through symbolic links when they can be, so a path
-// list that goes through a link still matches. Only the word leaves this function.
+// current directory and matches nothing; a relative entry is read from the current directory, as the loader does. Both
+// sides are resolved through symbolic links when they can be, so a path list that goes through a link still matches. Only the word leaves this function.
 func classifyOrigin(path, ldLibraryPath string) string {
 	if path == "" || !filepath.IsAbs(path) {
 		return OriginUnknown
 	}
 	dir := resolveDir(filepath.Dir(path))
 	for _, entry := range strings.Split(ldLibraryPath, ":") {
-		if entry != "" && resolveDir(entry) == dir {
+		if entry == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(entry); err == nil { // the loader reads a relative entry from the current directory
+			entry = abs
+		}
+		if resolveDir(entry) == dir {
 			return OriginLibraryPath
 		}
 	}

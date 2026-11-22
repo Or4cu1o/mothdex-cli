@@ -409,6 +409,11 @@ func (m Model) infoLines(p painter, row string) []infoLine {
 		for _, w := range append(append([]string{}, m.profile.Unverified...), m.profile.Warnings...) {
 			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.sys_unverified", map[string]any{"warning": app.SanitizeText(w)})})
 		}
+		// Where files go is not a verification problem (PRT-G11): a RAM disk is its own warning, with no "Not verified"
+		// prefix, and the Verified line above does not depend on it.
+		for _, w := range m.profile.StorageWarnings {
+			lines = append(lines, infoLine{text: app.SanitizeText(w), warn: true})
+		}
 	default:
 		lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_version", nil) + ": " + app.SanitizeText(m.o.Version)})
 		if m.entriesText != "" {
