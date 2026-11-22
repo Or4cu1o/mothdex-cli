@@ -539,6 +539,27 @@ foreach ($c in $d32) {
   Invoke-Install $params
   Check "$($c.what): a fresh install writes no launcher" (-not (Test-Path $batX))
 }
+# -NoLauncher without the GUI: a launcher of ours would start nothing, so it is still removed
+$rbN2 = New-RetroBat 'RetroBatD32-nolauncher'
+$batN2 = Join-Path $rbN2 'roms\windows\Mothdex.bat'
+Set-Content -Path $batN2 -Value @('@echo off', 'rem mothdex-launcher v2', 'echo old')
+Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbN2; BinDir = (Join-Path $root 'd32-nl'); NoGui = $true; NoLauncher = $true }
+Check '-NoLauncher without the GUI: a marked launcher is removed' ((-not (Test-Path $batN2)) -and ($script:output -match 'Removed .*Mothdex.bat'))
+# a marked launcher that is a symbolic link is never touched on the removal path: the link stays and so does its target
+$rbL2 = New-RetroBat 'RetroBatD32-link'
+$batL2 = Join-Path $rbL2 'roms\windows\Mothdex.bat'
+$victimBat = Join-Path $root 'victim-launcher.bat'
+Set-Content -Path $victimBat -Value @('@echo off', 'rem mothdex-launcher v2', 'echo precious')
+$linked = $false
+try { New-Item -ItemType SymbolicLink -Path $batL2 -Target $victimBat | Out-Null; $linked = $true } catch { }
+Check 'a symbolic link could be created for the link case (the runner is an administrator)' $linked
+if ($linked) {
+  Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbL2; BinDir = (Join-Path $root 'd32-link'); NoGui = $true }
+  Check 'a marked launcher that is a link is left alone (the link is still there)' ((Get-Item -LiteralPath $batL2 -Force).LinkType -eq 'SymbolicLink')
+  Check 'and the target of the link is intact' ((Get-Content $victimBat -Raw) -match 'echo precious')
+  Invoke-Install @{ Version = 'v1.3.1'; RetroBatPath = $rbL2; BinDir = (Join-Path $root 'd32-link') }
+  Check 'also when the GUI is not eligible' (((Get-Item -LiteralPath $batL2 -Force).LinkType -eq 'SymbolicLink') -and ((Get-Content $victimBat -Raw) -match 'echo precious'))
+}
 # upgrade from the v2 template (with the tui fallback) while the GUI is installed: it becomes v3; -NoLauncher leaves it as it is
 $rbY = New-RetroBat 'RetroBatD32-up'
 $batY = Join-Path $rbY 'roms\windows\Mothdex.bat'

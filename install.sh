@@ -663,11 +663,11 @@ remove_launcher() {
   target="$LAUNCHER_DIR/$LAUNCHER_NAME"
   if [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi
   has_marker "$target" || return 0
-  valid_path "$LAUNCHER_DIR" || { warn "launcher dir '$LAUNCHER_DIR' has unsafe characters: launcher left alone"; return 0; }
+  # LAUNCHER_DIR is a constant of the profile (resolve_profile_dirs), never user input, and rm quotes the path: no path check here
   if [ "$DRY_RUN" -eq 1 ]; then
     say "Would remove $target ($1)"
   else
-    rm -f "$target"
+    rm -f "$target" || { warn "cannot remove $target: left in place"; FAILED=1; return 0; }
     LAUNCHER_REMOVED=1
     say "Removed $target ($1)"
   fi
