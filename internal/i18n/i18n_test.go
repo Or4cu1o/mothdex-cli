@@ -1,6 +1,8 @@
 package i18n
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,7 +14,11 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/locales"
 )
 
-var bidi = string(rune(0x202E)) // right-to-left override
+var (
+	bidi    = string(rune(0x202E)) // right-to-left override
+	lineSep = string(rune(0x2028))
+	paraSep = string(rune(0x2029))
+) // right-to-left override
 
 func embedded(t *testing.T) *Bundle {
 	t.Helper()
@@ -301,5 +307,81 @@ func TestEmbeddedLocalesTranslateTheErrorTable(t *testing.T) {
 	}
 	if b.New("zh_cn").T("ui.messages.yes", nil) != "是" {
 		t.Fatal("translated keys of a best-effort locale are used")
+	}
+}
+
+// T-74 S1: U+2028 and U+2029 are Zl/Zp, not Cc/Cf, and some terminals and log viewers break a line on them.
+func TestArgumentsCannotBreakLinesWithUnicodeSeparators(t *testing.T) {
+	b, _ := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("m: 'x {h} y'\n")}})
+	got := b.New("en_us").T("m", Args{"h": "a" + lineSep + "b" + paraSep + "c"})
+	if got != "x a b c y" {
+		t.Fatalf("U+2028 and U+2029 must become spaces: %q", got)
+	}
+}
+
+// T-74 S2: a warning that echoes text from the locale folder (a path, YAML text) carries no control character.
+// Built through warn, because Windows refuses such characters in a file name.
+func TestWarningsAreSanitised(t *testing.T) {
+	b := &Bundle{}
+	b.warn("%s skipped: %v", "a\x1b[31mb"+bidi, errors.New("invalid YAML: line\x1b]52;c;AAAA\x07 "+lineSep+"x"))
+	ws := b.Warnings()
+	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b\x07"+bidi+lineSep) {
+		t.Fatalf("warnings: %q", ws)
+	}
+}
+
+// lyingFS reports a small size for a file that is really large: a file that grew after the stat.
+type lyingFS struct{ fstest.MapFS }
+
+type smallStat struct{ fs.File }
+
+func (s smallStat) Stat() (fs.FileInfo, error) {
+	info, err := s.File.Stat()
+	return sizedInfo{info}, err
+}
+
+type sizedInfo struct{ fs.FileInfo }
+
+func (sizedInfo) Size() int64 { return 10 }
+
+func (l lyingFS) Stat(name string) (fs.FileInfo, error) {
+	f, err := l.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return f.Stat()
+}
+
+func (l lyingFS) ReadFile(name string) ([]byte, error) { return l.MapFS.ReadFile(name) }
+
+func (l lyingFS) Open(name string) (fs.File, error) {
+	f, err := l.MapFS.Open(name)
+	if err != nil || name != "big_xx.yaml" {
+		return f, err
+	}
+	return smallStat{f}, nil
+}
+
+// T-74 S3: the size limit holds on the bytes read, not only on the size a stat reported.
+func TestCatalogReadIsCappedWhateverTheStatSaid(t *testing.T) {
+	big := []byte("a: '" + strings.Repeat("x", 1<<20) + "'\n")
+	src := lyingFS{fstest.MapFS{"big_xx.yaml": {Data: big}}}
+	if _, err := readCatalog(src, "big_xx.yaml"); err == nil || !strings.Contains(err.Error(), "larger than 1 MiB") {
+		t.Fatalf("a file over the limit must be refused: %v", err)
+	}
+}
+
+// T-74 S2 through the loader: the YAML error of a duplicate key spans two lines and the parser echoes that
+// newline raw, so the warning of the skipped file must come out on one line.
+func TestLoaderWarningsAreSanitised(t *testing.T) {
+	bad := fstest.MapFS{"fr_fr.yaml": {Data: []byte("k: 1\nk: 2\n")}}
+	b, err := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("a: 'A'\n")}}, bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := b.Warnings()
+	if len(ws) != 1 || strings.ContainsAny(ws[0], "\n\r\x1b\x07"+bidi+lineSep) {
+		t.Fatalf("the warning must be a single clean line: %q", ws)
 	}
 }

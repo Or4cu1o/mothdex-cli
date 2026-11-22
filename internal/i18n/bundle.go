@@ -11,6 +11,7 @@ package i18n
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -58,7 +59,7 @@ func Load(sources ...fs.FS) (*Bundle, error) {
 		}
 		entries, err := fs.ReadDir(src, ".")
 		if err != nil {
-			b.warnings = append(b.warnings, fmt.Sprintf("locale folder unreadable: %v", err))
+			b.warn("locale folder unreadable: %v", err)
 			continue
 		}
 		for _, e := range entries {
@@ -68,7 +69,7 @@ func Load(sources ...fs.FS) (*Bundle, error) {
 			}
 			cat, err := readCatalog(src, e.Name())
 			if err != nil {
-				b.warnings = append(b.warnings, fmt.Sprintf("%s skipped: %v", e.Name(), err))
+				b.warn("%s skipped: %v", e.Name(), err)
 				continue
 			}
 			if b.locales[id] == nil {
@@ -85,17 +86,45 @@ func Load(sources ...fs.FS) (*Bundle, error) {
 	return b, nil
 }
 
-func readCatalog(src fs.FS, name string) (Catalog, error) {
-	info, err := fs.Stat(src, name)
+func checkCatalogInfo(info fs.FileInfo, err error) error {
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxFileBytes {
-		return nil, errors.New("not a regular file or larger than 1 MiB")
+		return errors.New("not a regular file or larger than 1 MiB")
 	}
-	data, err := fs.ReadFile(src, path.Clean(name))
+	return nil
+}
+
+// warn records a skipped file. The text can echo a file name or YAML text from the locale folder, so
+// it is cleaned like a substituted argument before it can reach a terminal.
+func (b *Bundle) warn(format string, args ...any) {
+	b.warnings = append(b.warnings, stripArgument(fmt.Sprintf(format, args...)))
+}
+
+// readCatalog checks the entry before touching it (opening a FIFO blocks until a writer appears, so a
+// special file is refused from the stat alone), then opens it once: type and size are checked again on
+// the open handle and the read is capped, so a file replaced or grown in between cannot slip past
+// the limit.
+func readCatalog(src fs.FS, name string) (Catalog, error) {
+	name = path.Clean(name)
+	if err := checkCatalogInfo(fs.Stat(src, name)); err != nil {
+		return nil, err
+	}
+	f, err := src.Open(name)
 	if err != nil {
 		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	if err := checkCatalogInfo(f.Stat()); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxFileBytes {
+		return nil, errors.New("not a regular file or larger than 1 MiB")
 	}
 	var doc map[string]any
 	if err := yaml.Unmarshal(data, &doc); err != nil {
@@ -166,7 +195,7 @@ func LoadDir(embedded fs.FS, dir string) (*Bundle, error) {
 	if err != nil {
 		b, lerr := Load(embedded)
 		if b != nil && !errors.Is(err, fs.ErrNotExist) {
-			b.warnings = append(b.warnings, fmt.Sprintf("locale folder unreadable: %v", err))
+			b.warn("locale folder unreadable: %v", err)
 		}
 		return b, lerr
 	}

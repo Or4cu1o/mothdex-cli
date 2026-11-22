@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -469,5 +470,79 @@ func TestSettingsDoNotOfferOverwriteAsADefault(t *testing.T) {
 	v := h.view()
 	if !strings.Contains(v, "skip") || !strings.Contains(v, "rename") || strings.Contains(v, "overwrite") {
 		t.Fatalf("the service refuses overwrite as a setting, so it is not listed:\n%s", v)
+	}
+}
+
+// A download that stopped on its real size waits for a person (T-56): its row is a warning, a bulk retry
+// leaves it alone, and r asks once with both sizes before queueing it again with the consent for exactly
+// the size shown.
+func TestDownloadAnywayAsksWithBothSizesAndConsentsToExactlyThat(t *testing.T) {
+	svc := &fakeSvc{}
+	h := newHarness(t, svc)
+	h.search("zelda")
+	h.keys("d")
+	real, catalog := int64(700<<20), int64(40<<20)
+	h.send(eventMsg{ev: app.Event{Job: app.JobSnapshot{
+		ID: "q1", Slug: "zelda", Title: "Title zelda", State: app.StateFailed, Expected: real, CatalogSize: catalog,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}},
+	}}, ok: true})
+	if v := h.view(); !strings.Contains(v, "0 downloaded, 0 skipped, 0 failed, 1 waiting for your OK") {
+		t.Fatalf("the summary does not call a stopped job a failure:\n%s", v)
+	}
+	h.send(eventMsg{ev: app.Event{Job: app.JobSnapshot{ID: "q2", Slug: "mario", Title: "Title mario", State: app.StateFailed, Err: &app.Error{Code: "size_mismatch", Message: "bad size"}}}, ok: true})
+	h.keys("Q")
+	row := "Needs your OK: the file is " + humanSize(real) + ", listed as " + humanSize(catalog) + "."
+	if v := h.view(); !strings.Contains(v, "! Title zelda: "+row) || strings.Contains(v, "[confirmation_required]") {
+		t.Fatalf("the row is a warning, not a failure:\n%s", v)
+	}
+	before := len(svc.enqueued)
+	h.keys("r") // the cursor is on q2, the newest finished job; q1 must stay out of it
+	if len(svc.enqueued) != before || strings.Contains(h.view(), "anyway?") {
+		t.Fatalf("a bulk retry must not queue the job that waits for its own OK, enqueued %+v", svc.enqueued)
+	}
+	h.keys("down")  // onto the job that waits
+	h.keys("enter") // Details: a Status line, not an Error one
+	if v := h.view(); !strings.Contains(v, "Status") || strings.Contains(v, "Error") {
+		t.Fatalf("details of a stopped job:\n%s", v)
+	}
+	h.keys("esc")
+	h.send(toastExpireMsg{id: h.m.toast.id}) // the batch summary toast would cover the key help
+	if !strings.Contains(h.view(), "r download anyway") {
+		t.Fatalf("the footer says what r does on this row:\n%s", h.view())
+	}
+	h.keys("r")
+	if v := h.view(); !strings.Contains(v, "[y/N]") {
+		t.Fatalf("at 80 columns the question is shortened, never cut off before [y/N]:\n%s", v)
+	}
+	h.resize(120, 30)
+	ask := "Download Title zelda anyway? It is " + humanSize(real) + ", not " + humanSize(catalog) + ", saved to /roms/gbc. [y/N]"
+	if !strings.Contains(h.view(), ask) {
+		t.Fatalf("the question:\n%s", h.view())
+	}
+	h.keys("n")
+	if len(svc.enqueued) != before {
+		t.Fatal("declining queues nothing")
+	}
+	h.keys("d", "y")
+	if len(svc.enqueued) != before+1 || svc.enqueued[before].Ref.Slug != "zelda" || svc.enqueued[before].SizeConsent != real {
+		t.Fatalf("y queues the request with the consent for %d: %+v", real, svc.enqueued)
+	}
+
+	// The proxy now answers another length: the row and the question show the new size, and the next consent is
+	// for it, not for the one accepted before.
+	again := int64(900 << 20)
+	id := app.JobID("q" + strconv.Itoa(len(svc.enqueued)))
+	h.send(eventMsg{ev: app.Event{Job: app.JobSnapshot{ID: id, Slug: "zelda", Title: "Title zelda", State: app.StateFailed, Expected: again, CatalogSize: catalog,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": again, "path": "/roms/gbc"}}}}, ok: true})
+	if v := h.view(); !strings.Contains(v, "the file is "+humanSize(again)+", listed as "+humanSize(catalog)) {
+		t.Fatalf("the row shows the new size:\n%s", v)
+	}
+	h.keys("r")
+	if v := h.view(); !strings.Contains(v, "It is "+humanSize(again)+", not "+humanSize(catalog)) {
+		t.Fatalf("the question shows the new size:\n%s", v)
+	}
+	h.keys("y")
+	if last := svc.enqueued[len(svc.enqueued)-1]; last.SizeConsent != again {
+		t.Fatalf("the new consent is for %d, got %d", again, last.SizeConsent)
 	}
 }

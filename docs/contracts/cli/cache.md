@@ -75,7 +75,7 @@ Options are variadic, so a plain call takes the defaults (T-12, Crivo suggestion
 - On `Put`, when the total exceeds the cap: delete expired items first, then least-recently-used items until the total
   is ≤ 90 % of the cap. A single item larger than 25 % of the cap is not stored.
 - **Cover fetch** (T-16 CR-9) is an untrusted-URL path with its own policy: `https` only; the dialer `Control` hook
-  rejects loopback, private, link-local, CGNAT, multicast and unspecified IPs **after** DNS resolution; ≤ 3 redirects,
+  rejects loopback, private, link-local, CGNAT, multicast, unspecified and reserved IPs (all of `::/8`; `64:ff9b::/32` except its well-known /96, which is judged by the IPv4 address it embeds) **after** DNS resolution; ≤ 3 redirects,
   each re-checked; body ≤ 5 MiB; `Content-Type` **and** magic bytes must agree on `jpeg|png|webp|gif` (SVG and
   anything else are rejected); `image.DecodeConfig` must report ≤ 4096 × 4096 px before any full decode. The blob is
   only stored in the cache, never written elsewhere. Any violation is a cache miss with a debug log, never an error.

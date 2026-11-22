@@ -95,6 +95,21 @@ ui:
     skipped: 'Пропущено'
     failed: 'Ошибка'
     canceled: 'Отменено'
+  consent:
+    row: 'Нужно ваше подтверждение: размер файла {size}, в каталоге указано {estimate}.'
+    row_unknown: 'Нужно ваше подтверждение: размер файла {size}.'
+    action: 'Всё равно скачать'
+    title: 'Размер файла {size}, а не {estimate}.'
+    title_unknown: 'Размер файла {size}.'
+    detail: 'В каталоге указан меньший размер. Файл будет сохранён в {dir}.'
+    detail_unknown: 'В каталоге нет размера этого файла. Файл будет сохранён в {dir}.'
+    keep: 'Не скачивать'
+    go: 'Скачать {size}'
+    tui_ask: 'Всё равно скачать {name}? Размер {size}, а не {estimate}; папка {dir}. [y/N]'
+    tui_ask_unknown: 'Всё равно скачать {name}? Размер {size}; папка {dir}. [y/N]'
+    footer: 'r всё равно скачать'
+    shell_ask: 'Размер {name}: {size}, а не {estimate}. Всё равно скачать в {dir}? [y/N]'
+    shell_ask_unknown: 'Размер {name}: {size}. Всё равно скачать в {dir}? [y/N]'
   units:
     b: 'Б'
     kb: 'КБ'
@@ -119,6 +134,7 @@ ui:
     starting: 'Начало загрузки...'
     completed: 'Загрузка завершена'
     summary: 'Загружено: {done}, пропущено: {skipped}, ошибок: {failed}, за {elapsed}'
+    summary_waiting: 'Загружено: {done}, пропущено: {skipped}, ошибок: {failed}, за {elapsed}; ждут подтверждения: {waiting}'
     speed: 'Скорость: {speed}'
     eta: 'Осталось: {eta}'
     files:
@@ -332,6 +348,7 @@ ui:
       d_attempts: 'Попытки'
       d_duration: 'Длительность'
       d_error: 'Ошибка'
+      d_status: 'Статус'
     hints:
       unmapped_platform: 'Для {platform} в этой системе пока нет папки. Задайте profile.folders.{platform} в командной строке.'
       size_mismatch: 'Повторите или откройте игру и выберите другую ссылку.'
@@ -419,12 +436,14 @@ ui:
       downloaded: 'Загружено: {count}'
       skipped: 'Пропущено: {count}'
       failed: 'Ошибок: {count}'
+      waiting: 'Ждут подтверждения: {count}'
       canceled: 'Отменено: {count}'
       refreshing: 'Обновление списка игр…'
       returning: 'Возврат в {frontend}'
       closing: 'Закрытие'
     toast:
       download_failed: 'Ошибка загрузки: {title}'
+      needs_ok: 'Нужно ваше подтверждение: {title}'
       boxart_failed: 'Не удалось сохранить обложку.'
   tui:
     needs_terminal: 'TUI требует интерактивного терминала.'
@@ -432,6 +451,7 @@ ui:
     loading: 'Загрузка...'
     more: '? ещё'
     summary: 'скачано: {done}, пропущено: {skipped}, с ошибкой: {failed}'
+    summary_waiting: 'скачано: {done}, пропущено: {skipped}, с ошибкой: {failed}, ждут подтверждения: {waiting}'
     title_active: 'активно: {count}'
     title_queued: 'в очереди: {count}'
     queued_one: 'В очереди: {title} (ссылка {link})'
@@ -510,6 +530,7 @@ ui:
         attempts: 'Попытки'
         duration: 'Длительность'
         error: 'Ошибка'
+        status: 'Статус'
     confirm_download:
       one: 'Скачать {count} файл ({size})? [y/N]'
       few: 'Скачать файлов: {count} ({size})? [y/N]'

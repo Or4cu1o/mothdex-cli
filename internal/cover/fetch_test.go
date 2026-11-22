@@ -368,15 +368,25 @@ func TestBodyIsReadOnlyUpToTheCap(t *testing.T) {
 
 func TestBlockedIPTable(t *testing.T) {
 	for _, s := range []string{"127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.0.1", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1",
-		"255.255.255.255", "198.18.0.1", "::1", "::", "fe80::1", "fc00::1", "ff02::1", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:7f00:1::", "0.1.2.3", "fec0::1", "::7f00:1"} {
+		"255.255.255.255", "198.18.0.1", "::1", "::", "fe80::1", "fc00::1", "ff02::1", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:7f00:1::", "0.1.2.3", "fec0::1", "::7f00:1",
+		"ff::1", "0:ff::1", "64:ff9b::1:0:0:1", "64:ff9b:0:1::5db8:d822", "2001:2::1", "2001:10::1"} {
 		if !blockedIP(netip.MustParseAddr(s)) {
 			t.Errorf("%s must be blocked", s)
 		}
 	}
-	for _, s := range []string{publicIP, "8.8.8.8", "2606:4700::1111", "64:ff9b::5db8:d822"} {
+	for _, s := range []string{publicIP, "8.8.8.8", "2606:4700::1111", "64:ff9b::5db8:d822", "::ffff:8.8.8.8", "2001:200::1"} {
 		if blockedIP(netip.MustParseAddr(s)) {
 			t.Errorf("%s must be allowed", s)
 		}
+	}
+}
+
+// T-75: the VP8 frame header keeps 14 bits of width and height; the top two bits are a scale hint.
+func TestVP8FrameSizeMasksTheScaleBits(t *testing.T) {
+	d := []byte{0, 0, 0, 0x9d, 0x01, 0x2a, 0x05, 0x40, 0x07, 0x80} // 0x4005 and 0x8007: scale bits set
+	w, h, err := frameSize("VP8 ", d)
+	if err != nil || w != 5 || h != 7 {
+		t.Fatalf("%d x %d, %v", w, h, err)
 	}
 }
 

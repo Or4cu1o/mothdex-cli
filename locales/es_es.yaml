@@ -95,6 +95,21 @@ ui:
     skipped: 'Omitido'
     failed: 'Falló'
     canceled: 'Cancelado'
+  consent:
+    row: 'Necesita tu confirmación: el archivo ocupa {size}; el catálogo indicaba {estimate}.'
+    row_unknown: 'Necesita tu confirmación: el archivo ocupa {size}.'
+    action: 'Descargar de todos modos'
+    title: 'Este archivo ocupa {size}, no {estimate}.'
+    title_unknown: 'Este archivo ocupa {size}.'
+    detail: 'El catálogo indicaba un tamaño menor. Se guardará en {dir}.'
+    detail_unknown: 'El catálogo no tenía su tamaño. Se guardará en {dir}.'
+    keep: 'No descargar'
+    go: 'Descargar {size}'
+    tui_ask: '¿Descargar {name} de todos modos? Ocupa {size}, no {estimate}, y se guardará en {dir}. [s/N]'
+    tui_ask_unknown: '¿Descargar {name} de todos modos? Ocupa {size} y se guardará en {dir}. [s/N]'
+    footer: 'r descargar de todos modos'
+    shell_ask: '{name} ocupa {size}, no {estimate}. ¿Descargarlo de todos modos en {dir}? [s/N]'
+    shell_ask_unknown: '{name} ocupa {size}. ¿Descargarlo de todos modos en {dir}? [s/N]'
   units:
     b: 'B'
     kb: 'KB'
@@ -117,6 +132,7 @@ ui:
     starting: 'Iniciando la descarga...'
     completed: 'Descarga completada'
     summary: '{done} descargados, {skipped} omitidos, {failed} con error en {elapsed}'
+    summary_waiting: '{done} descargados, {skipped} omitidos, {failed} con error en {elapsed}; {waiting} esperando tu confirmación'
     speed: 'Velocidad: {speed}'
     eta: 'Restante: {eta}'
     files:
@@ -316,6 +332,7 @@ ui:
       d_attempts: 'Intentos'
       d_duration: 'Duración'
       d_error: 'Error'
+      d_status: 'Estado'
     hints:
       unmapped_platform: 'Este sistema aún no tiene carpeta para {platform}. Define profile.folders.{platform} desde la línea de comandos.'
       size_mismatch: 'Inténtalo de nuevo, o abre el juego y elige otro enlace.'
@@ -401,12 +418,14 @@ ui:
       downloaded: '{count} descargado(s)'
       skipped: '{count} omitido(s)'
       failed: '{count} con error'
+      waiting: '{count} esperando tu confirmación'
       canceled: '{count} cancelado(s)'
       refreshing: 'Actualizando la lista de juegos…'
       returning: 'Volviendo a {frontend}'
       closing: 'Cerrando'
     toast:
       download_failed: 'Descarga fallida: {title}'
+      needs_ok: 'Necesita tu confirmación: {title}'
       boxart_failed: 'No se pudo guardar la carátula.'
   tui:
     needs_terminal: 'La TUI necesita un terminal interactivo.'
@@ -414,6 +433,7 @@ ui:
     loading: 'Cargando...'
     more: '? más'
     summary: '{done} descargados, {skipped} omitidos, {failed} fallidos'
+    summary_waiting: '{done} descargados, {skipped} omitidos, {failed} fallidos, {waiting} esperando tu confirmación'
     title_active: '{count} activas'
     title_queued: '{count} en cola'
     queued_one: 'En cola: {title} (enlace {link})'
@@ -488,6 +508,7 @@ ui:
         attempts: 'Intentos'
         duration: 'Duración'
         error: 'Error'
+        status: 'Estado'
     confirm_download:
       one: '¿Descargar {count} archivo ({size})? [s/N]'
       other: '¿Descargar {count} archivos ({size})? [s/N]'
