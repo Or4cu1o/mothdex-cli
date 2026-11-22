@@ -202,15 +202,19 @@ func (m Model) topBarItems(p painter, avail int, extra string) ([]topBarItem, in
 	met := m.metrics
 	gap := 2 * met.Unit
 	size := met.Secondary
-	var fixedBefore, fixedAfter []topBarItem
+	var extraItem *topBarItem
+	var offline, noPad, badge []topBarItem
 	if extra != "" {
-		fixedBefore = append(fixedBefore, topBarItem{s: extra, c: colDim})
+		extraItem = &topBarItem{s: extra, c: colDim}
 	}
 	if m.offline {
-		fixedBefore = append(fixedBefore, topBarItem{s: m.tr("ui.gui.bar.offline", nil), c: colWarn})
+		offline = append(offline, topBarItem{s: m.tr("ui.gui.bar.offline", nil), c: colWarn})
 	}
-	if badge := m.queueBadge(); badge != "" && m.screen != screenQueue { // the Queue shows its own counts
-		fixedAfter = append(fixedAfter, topBarItem{s: badge, c: colAccent, arrow: true})
+	if m.noPad() { // no controller SDL can use: a toast alone can be missed, so the bar keeps saying it (never cut)
+		noPad = append(noPad, topBarItem{s: m.tr("ui.gui.bar.no_pad", nil), c: colWarn})
+	}
+	if b := m.queueBadge(); b != "" && m.screen != screenQueue { // the Queue shows its own counts
+		badge = append(badge, topBarItem{s: b, c: colAccent, arrow: true})
 	}
 	widthOf := func(it topBarItem) int {
 		if it.arrow {
@@ -228,26 +232,38 @@ func (m Model) topBarItems(p painter, avail int, extra string) ([]topBarItem, in
 		}
 		return w
 	}
-	assemble := func(notice string) []topBarItem {
-		items := append([]topBarItem{}, fixedBefore...)
+	// When the bar does not fit even with the short forms, items are hidden in this order (docs/ux/gui.md 4, decided by
+	// Bússola in T-80) until it fits: the pending-quit notice (the Start menu keeps Don't quit), the screen's dim extra
+	// (its information is on the screen: the filter hint, the paging), then the queue badge on every screen (the Start menu
+	// has Queue with its count). Offline, No controller and the screen name in the title are never cut or hidden.
+	assemble := func(notice string, withExtra, withBadge bool) []topBarItem {
+		var items []topBarItem
+		if extraItem != nil && withExtra {
+			items = append(items, *extraItem)
+		}
+		items = append(items, offline...)
+		items = append(items, noPad...)
 		if notice != "" {
 			items = append(items, topBarItem{s: notice, c: colWarn})
 		}
-		return append(items, fixedAfter...)
+		if withBadge {
+			items = append(items, badge...)
+		}
+		return items
 	}
-	if !m.quitPending {
-		items := assemble("")
-		return items, total(items)
+	if m.quitPending {
+		for _, key := range []string{"ui.gui.bar.will_quit", "ui.gui.bar.will_quit_short"} {
+			if items := assemble(m.tr(key, nil), true, true); total(items) <= avail {
+				return items, total(items)
+			}
+		}
 	}
-	for _, key := range []string{"ui.gui.bar.will_quit", "ui.gui.bar.will_quit_short"} {
-		if items := assemble(m.tr(key, nil)); total(items) <= avail {
+	for _, step := range []struct{ extra, badge bool }{{true, true}, {false, true}, {false, false}} {
+		if items := assemble("", step.extra, step.badge); total(items) <= avail {
 			return items, total(items)
 		}
 	}
-	// Even the short text does not fit: cut only that item, to what is left after the fixed ones.
-	rest := total(assemble("x")) - p.width(size, "x")
-	room := max(avail-rest-gap, 0)
-	items := assemble(p.fit(size, m.tr("ui.gui.bar.will_quit_short", nil), room))
+	items := assemble("", false, false)
 	return items, total(items)
 }
 
@@ -270,6 +286,9 @@ func fitCrumbs(p painter, size int, crumbs []string, maxW int) string {
 		if p.width(size, t) <= maxW {
 			return t
 		}
+	}
+	if len(crumbs) == 0 { // Home: only the brand, and the right side left it less room than it needs
+		return p.fit(size, brand, max(maxW, 1))
 	}
 	last := crumbs[len(crumbs)-1]
 	return "…" + crumb + p.fit(size, last, max(maxW-p.width(size, "…"+crumb), p.width(size, "…")))

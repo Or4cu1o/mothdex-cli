@@ -9,6 +9,8 @@
 package sdl
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"unsafe"
 )
@@ -46,6 +48,11 @@ const (
 	EventControllerButtonUp      = 0x652
 	EventControllerDeviceAdded   = 0x653
 	EventControllerDeviceRemoved = 0x654
+	// EventJoyDeviceAdded is SDL_JOYDEVICEADDED: SDL_JOYAXISMOTION is 0x600, then JOYBALLMOTION, JOYHATMOTION,
+	// JOYBUTTONDOWN, JOYBUTTONUP, DEVICEADDED and DEVICEREMOVED follow in that order. A joystick that has no
+	// game controller mapping only ever gives these two events.
+	EventJoyDeviceAdded   = 0x605
+	EventJoyDeviceRemoved = 0x606
 
 	WindowEventShown       = 1 // SDL_WINDOWEVENT_SHOWN
 	WindowEventExposed     = 3 // SDL_WINDOWEVENT_EXPOSED
@@ -201,6 +208,24 @@ type ControllerDeviceEvent struct {
 // ControllerDevice views the event as a controller device event. The caller checks Type first.
 func (e *Event) ControllerDevice() *ControllerDeviceEvent {
 	return (*ControllerDeviceEvent)(unsafe.Pointer(e)) //nolint:gosec // 12 bytes at the start of a 56-byte event, same layout (abi_test.go)
+}
+
+// JoyDevice views the event as a joystick device event, which has the layout of a controller device event: Which is
+// a device index for DEVICEADDED and an instance id for DEVICEREMOVED. The caller checks Type first.
+func (e *Event) JoyDevice() *ControllerDeviceEvent { return e.ControllerDevice() }
+
+// JoystickGUID is SDL_JoystickGUID, 16 bytes that name a model of device. It is declared as two 64-bit words, not
+// as the C struct { Uint8 data[16] }: purego cannot return a struct with an array field (it panics when the function
+// is called), while a struct of two integers is returned in registers exactly as the C one is on amd64 and arm64
+// (found by Crivo's probe against a virtual joystick). Lo holds bytes 0 to 7 and Hi bytes 8 to 15, little-endian.
+type JoystickGUID struct{ Lo, Hi uint64 }
+
+// String is the 32 lower-case hex digits SDL_JoystickGetGUIDString writes, the form of gamecontrollerdb.txt.
+func (g JoystickGUID) String() string {
+	var raw [16]byte
+	binary.LittleEndian.PutUint64(raw[:8], g.Lo)
+	binary.LittleEndian.PutUint64(raw[8:], g.Hi)
+	return hex.EncodeToString(raw[:])
 }
 
 // SetType makes the event an otherwise empty event of the given type, as SDL_UserEvent is for a wake-up.

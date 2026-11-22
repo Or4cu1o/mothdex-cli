@@ -527,8 +527,18 @@ func (m Model) onEditorAction(a input.Action) (Model, []Cmd) {
 		m.settings.ed = &e
 		return m, nil
 	case edInfo:
-		if a == input.Back || a == input.Confirm {
+		switch a {
+		case input.Back, input.Confirm:
 			m.settings.ed = nil
+			return m, nil
+		case input.Up, input.Down: // scrolls a panel with more lines than fit
+			_, _, maxOff := m.infoGeometry(m.painter(nil), e.row, 0)
+			if a == input.Up {
+				e.focus = max(e.focus-1, 0)
+			} else {
+				e.focus = min(e.focus+1, maxOff)
+			}
+			m.settings.ed = &e
 		}
 		return m, nil
 	}

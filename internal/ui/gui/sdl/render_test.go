@@ -54,6 +54,7 @@ func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confi
 	o := guiOptions(t, font, svc, w, h)
 	o.Confirm = confirm
 	o.LogPath = "/userdata/system/logs/mothdex.log"
+	o.MappingsPath = "/userdata/system/mothdex/data/gamecontrollerdb.txt"
 	if lang != "" { // the screen in another language: the longest labels and reasons show what fits
 		bundle, err := i18n.Load(locales.FS)
 		if err != nil {
@@ -188,6 +189,16 @@ func (p *player) openFromMenu(downs int) {
 		p.press(input.Down)
 	}
 	p.press(input.Confirm)
+}
+
+// fourPads are four joysticks: three that SDL maps and one it does not.
+func fourPads() []input.PadInfo {
+	return []input.PadInfo{
+		{Name: "Pad One", GUID: "03000000aaaa0000", Type: input.TypeXbox360, Mapped: true},
+		{Name: "Pad Two", GUID: "03000000bbbb0000", Type: input.TypePS4, Mapped: true},
+		{Name: "Pad Three", GUID: "03000000cccc0000", Mapped: true},
+		{Name: "Pad Four", GUID: "03000000dddd0000"},
+	}
 }
 
 func (p *player) repeat(a input.Action, n int) {
@@ -336,6 +347,47 @@ var renderScenes = []scene{
 	{name: "settings-es", lang: "es_es", what: "T-78: Settings in es_es: long labels wrap, none is cut", expect: []string{"Ajustes", "Descargas simultáneas"}, steps: func(p *player) { p.openFromMenu(3) }},
 	{name: "settings-ru", lang: "ru_ru", what: "T-78: Settings in ru_ru, the longest labels", expect: []string{"Настройки", "Одновременных загрузок"}, steps: func(p *player) { p.openFromMenu(3) }},
 	{name: "settings-ru-scrolled", lang: "ru_ru", what: "T-78: Settings in ru_ru, last page", expect: []string{"Подтверждать большие загрузки"}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 12) }},
+	{name: "pad-none", what: "T-80: no controller: the warn toast and the No controller badge in the top bar", expect: []string{"No controller", "Connect a controller. On a keyboard: arrows, Enter, Esc."}, steps: func(p *player) { p.send(gui.PadsMsg{}) }},
+	{name: "pad-none-ru", lang: "ru_ru", what: "T-80: the same in ru_ru (the longest badge and sentence)", expect: []string{"Нет контроллера", "Подключите контроллер."}, steps: func(p *player) { p.send(gui.PadsMsg{}) }},
+	{name: "pad-unmapped", what: "T-80: a joystick SDL has no mapping for: the toast names it and points to About", expect: []string{"No controller", "Controller not recognized: Mystery Gamepad. See Settings › About."}, steps: func(p *player) {
+		p.send(gui.PadsMsg{Pads: []input.PadInfo{{Name: "Mystery Gamepad", GUID: "03000000aaaabbbb0000000000000000"}}})
+		p.advance(7 * time.Second) // past the first notice (no controller that works)
+	}},
+	{name: "pad-unmapped-long", what: "T-80: a long device name is the only thing cut", expect: []string{"See Settings › About."}, steps: func(p *player) {
+		p.send(gui.PadsMsg{Pads: []input.PadInfo{{Name: "Shenzhen Generic USB Two-Player Gamepad Adapter With Turbo Button Model 4000", GUID: "03000000aaaabbbb0000000000000000"}, {Name: "Xbox 360 Controller", Type: 1, Mapped: true}}})
+	}},
+	{name: "settings-about-pads", what: "T-80: About lists each controller, where to add a mapping for the unknown one, and the GUID", expect: []string{"Controller: Xbox 360 Controller", "GUID: 030000005e0400008e02000014050000", "Controller: Mystery Gamepad", "GUID: Unavailable on this system"}, steps: func(p *player) {
+		p.send(gui.PadsMsg{Pads: []input.PadInfo{{Name: "Xbox 360 Controller", GUID: "030000005e0400008e02000014050000", Type: 1, Mapped: true}, {Name: "Mystery Gamepad"}}})
+		p.advance(7 * time.Second)
+		p.openFromMenu(3)
+		p.repeat(input.Down, 12)
+		p.press(input.Confirm)
+	}},
+	{name: "settings-about-pads-4", what: "T-80: About with four controllers, one unknown: each is a group", expect: []string{"Controller: Pad One", "Controller: Pad Four", "GUID: 03000000dddd0000"}, steps: func(p *player) {
+		p.send(gui.PadsMsg{Pads: fourPads()})
+		p.advance(7 * time.Second)
+		p.openFromMenu(3)
+		p.repeat(input.Down, 12)
+		p.press(input.Confirm)
+	}},
+	{name: "settings-about-pads-many", what: "T-80: About with eight controllers scrolls: a triangle says which way there is more, Move in the hint bar", expect: []string{"Controller: Pad One", "Move"}, steps: func(p *player) {
+		pads := fourPads()
+		for _, n := range []string{"Pad Five", "Pad Six", "Pad Seven", "Pad Eight"} {
+			pads = append(pads, input.PadInfo{Name: n, GUID: "0300000099990000", Mapped: true})
+		}
+		p.send(gui.PadsMsg{Pads: pads})
+		p.advance(7 * time.Second)
+		p.openFromMenu(3)
+		p.repeat(input.Down, 12)
+		p.press(input.Confirm)
+	}},
+	{name: "settings-about-nopad", what: "T-80: About with no controller", expect: []string{"Controller: None connected"}, steps: func(p *player) {
+		p.send(gui.PadsMsg{})
+		p.advance(7 * time.Second)
+		p.openFromMenu(3)
+		p.repeat(input.Down, 12)
+		p.press(input.Confirm)
+	}},
 	{name: "quit-busy", what: "Quit with downloads running", expect: []string{"Keep downloading"}, steps: func(p *player) {
 		p.job(app.JobSnapshot{ID: "1", Slug: "mario-world", Title: "Super Mario World (USA)", State: app.StateTransferring, Bytes: 1 << 19, Expected: 1 << 20})
 		p.send(gui.QuitRequestMsg{})

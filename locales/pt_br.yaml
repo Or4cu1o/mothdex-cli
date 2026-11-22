@@ -380,6 +380,8 @@ ui:
       about_guid: 'GUID'
       about_log: 'Arquivo de log'
       about_none: 'Nenhum conectado'
+      about_unmapped: 'Não reconhecido. Adicione um mapeamento em {path}.'
+      about_guid_none: 'Indisponível neste sistema'
     buttons:
       move: 'Mover'
     confirm:
@@ -432,6 +434,9 @@ ui:
       invalid_config: 'Redefina esta configuração em Configurações, ou execute "mothdex config reset {key}".'
       untrusted_url: 'Este link não é de um host confiável. Escolha outro link.'
     locale_fallback: 'Este idioma ainda não está disponível neste modo de tela. Mostrando inglês.'
+    pad:
+      none: 'Conecte um controle. No teclado: setas, Enter, Esc.'
+      unmapped: 'Controle não reconhecido: {name}. Veja Configurações › Sobre.'
     not_yet: '{name} ainda não está disponível.'
     splash:
       starting: 'Iniciando…'
@@ -454,6 +459,7 @@ ui:
       badge_active: '{active}'
       badge_queued: '{active} · {queued} na fila'
       will_quit_short: 'Saída pendente'
+      no_pad: 'Sem controle'
     hint:
       menu: 'Menu'
       open: 'Abrir'

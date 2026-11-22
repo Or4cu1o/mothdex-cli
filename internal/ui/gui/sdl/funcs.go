@@ -5,6 +5,7 @@ package sdl
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -74,6 +75,9 @@ type api struct {
 	gameControllerGetJoy   func(controller uintptr) uintptr
 	joystickInstanceID     func(joystick uintptr) int32
 	gameControllerGetType  func(controller uintptr) int32 // SDL 2.0.12; nil on an older SDL2
+	joystickNameForIndex   func(index int32) string
+	joystickDeviceInstance func(index int32) int32        // SDL 2.0.6; nil on an older SDL2
+	joystickDeviceGUID     func(index int32) JoystickGUID // SDL 2.0.6; nil on an older SDL2 and where purego cannot return a struct
 	startTextInput         func()
 	stopTextInput          func()
 }
@@ -90,6 +94,7 @@ type binding struct {
 
 func (a *api) table() []binding {
 	v200 := Version{2, 0, 0}
+	v206 := Version{2, 0, 6}
 	v2012 := Version{2, 0, 12}
 	return []binding{
 		{"SDL_GetVersion", v200, &a.getVersion, false},
@@ -133,6 +138,9 @@ func (a *api) table() []binding {
 		{"SDL_GameControllerGetJoystick", v200, &a.gameControllerGetJoy, false},
 		{"SDL_JoystickInstanceID", v200, &a.joystickInstanceID, false},
 		{"SDL_GameControllerGetType", v2012, &a.gameControllerGetType, true},
+		{"SDL_JoystickNameForIndex", v200, &a.joystickNameForIndex, false},
+		{"SDL_JoystickGetDeviceInstanceID", v206, &a.joystickDeviceInstance, true},
+		{"SDL_JoystickGetDeviceGUID", v206, &a.joystickDeviceGUID, true},
 		{"SDL_StartTextInput", v200, &a.startTextInput, false},
 		{"SDL_StopTextInput", v200, &a.stopTextInput, false},
 	}
@@ -155,10 +163,21 @@ func (a *api) bind(handle uintptr) (err error) {
 		if b.optional && !loaded.AtLeast(b.since) {
 			continue // an older SDL2: the wrapper falls back
 		}
+		if returnsStruct[b.name] && !structsByValue() {
+			continue // purego cannot return a struct here: the wrapper says "unavailable"
+		}
 		purego.RegisterLibFunc(b.fn, handle, b.name)
 	}
 	return nil
 }
+
+// returnsStruct names the bound functions that return a C struct by value. purego supports that only on amd64 and
+// arm64 (its README, support notes 2 and 3), so on 32-bit ARM and x86 they stay unbound and their wrappers report
+// "unavailable".
+var returnsStruct = map[string]bool{"SDL_JoystickGetDeviceGUID": true}
+
+// structsByValue reports whether purego can return a struct from a C function on this architecture.
+func structsByValue() bool { return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" }
 
 // Functions lists the SDL2 functions the binding calls, for the spike report.
 func Functions() []string {

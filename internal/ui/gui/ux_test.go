@@ -2,6 +2,7 @@ package gui
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -46,31 +47,82 @@ func pendingQuit(t *testing.T, w, h int, offline bool, opts ...harnessOpt) *harn
 	return hn
 }
 
-// M1: with Offline, a pending quit and the badge, in a long language and large text at 640x480, the title is
-// whole, Offline and the badge are never cut, and nothing leaves the safe rectangle.
+// openScreen opens one of the screens that have a dim extra in the top bar (or Home, which has none).
+func openScreen(h *harness, name string) {
+	switch name {
+	case "history":
+		h.press(input.Menu)
+		h.press(input.Down)
+		h.press(input.Down)
+		h.press(input.Confirm)
+	case "settings":
+		h.press(input.Menu)
+		for i := 0; i < 3; i++ {
+			h.press(input.Down)
+		}
+		h.press(input.Confirm)
+	case "results":
+		h.press(input.Confirm) // Search
+		h.send(TextMsg{Text: "zelda"})
+		h.press(input.Menu)
+	}
+}
+
+// M1 and the T-80 order: with Offline, No controller, a pending quit and the queue badge, in a long language and large
+// text at 640x480, the title is whole on every screen, Offline and No controller are never cut, and nothing leaves the
+// safe rectangle. When the bar does not fit, items are hidden in the order of docs/ux/gui.md 4: the pending-quit notice,
+// the screen's dim extra, then the queue badge; nothing is cut with an ellipsis.
 func TestTopBarKeepsTheTitleAndNeverCutsOfflineOrTheBadge(t *testing.T) {
 	for _, loc := range []string{"en_us", "pt_br", "es_es", "ru_ru"} {
 		for _, size := range [][2]int{{640, 480}, {854, 480}, {1280, 720}} {
 			for _, large := range []bool{false, true} {
-				h := pendingQuit(t, size[0], size[1], true, withLocale(loc), func(o *Options) { o.LargeText = large })
-				texts := h.texts()
-				offline := h.m.tr("ui.gui.bar.offline", nil)
-				badge := h.m.tr("ui.gui.bar.badge_queued", map[string]any{"active": 1, "queued": 1})
-				for _, want := range []string{"mothdex", offline, badge} {
-					if !slices.Contains(texts, want) {
-						t.Errorf("%s %dx%d large=%v: %q is not drawn whole in %q", loc, size[0], size[1], large, want, texts)
+				for _, screen := range []string{"home", "history", "settings", "results"} {
+					h := pendingQuit(t, size[0], size[1], true, withLocale(loc), func(o *Options) { o.LargeText = large })
+					h.send(PadsMsg{}) // no controller: its badge joins Offline, the pending quit and the queue badge
+					openScreen(h, screen)
+					texts := h.texts()
+					where := loc + " " + screen + " " + strconv.Itoa(size[0]) + "x" + strconv.Itoa(size[1]) + " large=" + strconv.FormatBool(large)
+					offline := h.m.tr("ui.gui.bar.offline", nil)
+					noPad := h.m.tr("ui.gui.bar.no_pad", nil)
+					badge := h.m.tr("ui.gui.bar.badge_queued", map[string]any{"active": 1, "queued": 1})
+					for _, want := range []string{offline, noPad} {
+						if !slices.Contains(texts, want) {
+							t.Errorf("%s: %q is not drawn whole in %q", where, want, texts)
+						}
 					}
-				}
-				notice := ""
-				for _, txt := range texts {
-					if txt == h.m.tr("ui.gui.bar.will_quit", nil) || txt == h.m.tr("ui.gui.bar.will_quit_short", nil) || strings.HasSuffix(txt, "…") && strings.HasPrefix(h.m.tr("ui.gui.bar.will_quit_short", nil), strings.TrimSuffix(txt, "…")) {
-						notice = txt
+					// The screen name (the last crumb) is always whole; the brand and the crumbs before it may drop behind an
+					// ellipsis (docs/ux/gui.md 4). Home has only the brand.
+					last := map[string]string{"home": "mothdex", "history": h.m.tr("ui.gui.screen.history", nil), "settings": h.m.tr("ui.gui.screen.settings", nil), "results": `"zelda"`}[screen]
+					found := false
+					for _, txt := range texts {
+						if (strings.HasPrefix(txt, "mothdex") || strings.HasPrefix(txt, "…")) && strings.HasSuffix(txt, last) {
+							found = true
+						}
 					}
+					if !found {
+						t.Errorf("%s: the screen name %q is not whole in the title: %q", where, last, texts)
+					}
+					notice, extra := false, false
+					for _, txt := range texts {
+						if txt == h.m.tr("ui.gui.bar.will_quit", nil) || txt == h.m.tr("ui.gui.bar.will_quit_short", nil) {
+							notice = true
+						}
+						if strings.HasSuffix(txt, "…") && strings.HasPrefix(h.m.tr("ui.gui.bar.will_quit_short", nil), strings.TrimSuffix(txt, "…")) {
+							t.Errorf("%s: the pending-quit notice is cut (%q): it is hidden instead", where, txt)
+						}
+						if screen == "history" && strings.Contains(txt, " · ") && strings.Contains(txt, "0") && txt != badge {
+							extra = true
+						}
+					}
+					hasBadge := slices.Contains(texts, badge)
+					switch {
+					case notice && !extra && screen == "history":
+						t.Errorf("%s: the extra went before the pending-quit notice, against the order: %q", where, texts)
+					case notice && !hasBadge, extra && !hasBadge:
+						t.Errorf("%s: the badge went before the notice or the extra, against the order: %q", where, texts)
+					}
+					assertInsideSafe(t, h, where)
 				}
-				if notice == "" {
-					t.Errorf("%s %dx%d large=%v: the pending-quit notice is not drawn: %q", loc, size[0], size[1], large, texts)
-				}
-				assertInsideSafe(t, h, loc)
 			}
 		}
 	}
@@ -103,9 +155,11 @@ func TestPendingQuitKeepsItsFullTextWhenItFits(t *testing.T) {
 	tight := pendingQuit(t, 640, 480, true, withLocale("ru_ru"))
 	tight.mustHave("Ожидается выход") // the short form, when the full one does not fit
 	tight.mustNotHave("Выход после завершения загрузок")
-	// Where even the short form does not fit, only that item is cut, with an ellipsis; Offline stays whole.
+	// Where even the short form does not fit, the notice is hidden (not cut); Offline stays whole, and the Start menu keeps
+	// Don't quit, so the state is still reachable (docs/ux/gui.md 4, Bússola in T-80).
 	cut := pendingQuit(t, 640, 480, true, withLocale("ru_ru"), func(o *Options) { o.LargeText = true })
-	cut.mustHave("Нет сети", "Ожидается…")
+	cut.mustHave("Нет сети")
+	cut.mustNotHave("Ожидается…", "Ожидается выход")
 }
 
 // m3: a toast takes at most 60 % of the safe width and wraps to two lines; the language notice stays 6 s and

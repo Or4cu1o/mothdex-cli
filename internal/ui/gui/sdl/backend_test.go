@@ -214,11 +214,28 @@ func TestEventsRoundTripThroughSDL(t *testing.T) {
 	if !ok {
 		t.Fatal("no event came back")
 	}
-	got := []input.Incoming{first}
-	for ev, ok := be.Poll(); ok; ev, ok = be.Poll() {
-		got = append(got, ev)
+	var got []input.Incoming
+	// The start-up list of joysticks is reported even when it is empty (so the GUI knows no pad is there): it is
+	// not one of the events this test pushed.
+	if first.Kind != input.IncomingPadList {
+		got = append(got, first)
 	}
-	if !slices.Equal(got, want) {
+	for ev, ok := be.Poll(); ok; ev, ok = be.Poll() {
+		if ev.Kind != input.IncomingPadList {
+			got = append(got, ev)
+		}
+	}
+	if len(got) < len(want) { // the first Wait may have returned the list only: read what SDL has queued
+		if ev, ok := be.Wait(2 * time.Second); ok {
+			got = append(got, ev)
+		}
+		for ev, ok := be.Poll(); ok; ev, ok = be.Poll() {
+			got = append(got, ev)
+		}
+	}
+	if !slices.EqualFunc(got, want, func(a, b input.Incoming) bool {
+		return a.Kind == b.Kind && a.Input == b.Input && a.Text == b.Text && a.W == b.W && a.H == b.H && a.Pad == b.Pad
+	}) {
 		t.Fatalf("events %+v\nwant   %+v", got, want)
 	}
 

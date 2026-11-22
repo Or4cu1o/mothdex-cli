@@ -57,6 +57,7 @@ type Backend struct {
 
 	pads    map[int32]Controller
 	padType map[int32]input.ControllerType
+	joys    map[int32]padRecord  // every joystick present by instance id, mapped or not, for the notices and About
 	pad     input.ControllerType // the type of the pad last heard from
 	padSeen bool                 // a pad was reported to the loop at least once
 	pending []input.Incoming
@@ -71,7 +72,7 @@ func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, e
 	b = &Backend{
 		lib: lib, log: o.Log, font: font, ev: NewEvent(),
 		atlas: text.NewAtlas(atlasSide, atlasSide),
-		pads:  map[int32]Controller{}, padType: map[int32]input.ControllerType{},
+		pads:  map[int32]Controller{}, padType: map[int32]input.ControllerType{}, joys: map[int32]padRecord{},
 	}
 	b.images = newLRU(maxImageTextures, func(_ uint64, t Texture) { b.lib.DestroyTexture(t) })
 	defer func() {
@@ -177,8 +178,60 @@ func (b *Backend) openControllers() {
 	for i := 0; i < b.lib.JoystickCount(); i++ {
 		if b.lib.IsController(i) {
 			b.openController(i)
+		} else {
+			b.addUnmapped(i)
 		}
 	}
+	b.reportPads() // the list is reported even when it is empty, so the GUI knows there is no pad
+}
+
+// padRecord is what the backend knows of one joystick.
+type padRecord struct {
+	name, guid string
+	typ        input.ControllerType
+	mapped     bool
+}
+
+// padList is every joystick present, in the order SDL numbered them.
+func (b *Backend) padList() []input.PadInfo {
+	ids := make([]int32, 0, len(b.joys))
+	for id := range b.joys {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	out := make([]input.PadInfo, len(ids))
+	for i, id := range ids {
+		r := b.joys[id]
+		out[i] = input.PadInfo{Name: r.name, GUID: r.guid, Type: r.typ, Mapped: r.mapped}
+	}
+	return out
+}
+
+// reportPads tells the loop which joysticks are present. Only the latest list matters, so an earlier one that the
+// loop has not read yet is dropped.
+func (b *Backend) reportPads() {
+	kept := b.pending[:0]
+	for _, in := range b.pending {
+		if in.Kind != input.IncomingPadList {
+			kept = append(kept, in)
+		}
+	}
+	b.pending = append(kept, input.Incoming{Kind: input.IncomingPadList, Pads: b.padList()})
+}
+
+// addUnmapped remembers a joystick that has no game controller mapping: SDL reports it, but it cannot drive the GUI
+// until the person adds a line to gamecontrollerdb.txt (docs/ux/gui.md section 2.3). It is not opened. Its instance id
+// is the key, so SDL's own added event for the same device is not counted twice; before SDL 2.0.6 there is no id to
+// match its removal with, so it is not tracked.
+func (b *Backend) addUnmapped(index int) {
+	id := b.lib.JoystickDeviceInstanceID(index)
+	if id < 0 {
+		return
+	}
+	guid, _ := b.lib.JoystickGUID(index)
+	b.joys[id] = padRecord{name: b.lib.JoystickName(index), guid: guid}
+	b.log.Info("sdl: joystick without a mapping", "name", b.lib.JoystickName(index))
+	b.reportPads()
 }
 
 // openController opens the pad at a device index and remembers its type for the hint labels.
@@ -199,8 +252,11 @@ func (b *Backend) openController(index int) {
 	}
 	typ := input.ControllerType(b.lib.ControllerType(c))
 	b.pads[id], b.padType[id] = c, typ
+	guid, _ := b.lib.JoystickGUID(index)
+	b.joys[id] = padRecord{name: b.lib.ControllerName(c), guid: guid, typ: typ, mapped: true}
 	b.log.Info("sdl: controller", "name", b.lib.ControllerName(c), "type", int(typ))
 	b.setPad(typ)
+	b.reportPads()
 }
 
 // ControllerTypes are the types of the pads that are open, in the order SDL numbered them, for the start-up
@@ -550,6 +606,12 @@ func (b *Backend) translate(e *Event) {
 		b.openController(int(e.ControllerDevice().Which))
 	case EventControllerDeviceRemoved:
 		b.closeController(e.ControllerDevice().Which)
+	case EventJoyDeviceAdded: // a mapped one also gives the controller event, which opens it
+		if index := int(e.JoyDevice().Which); !b.lib.IsController(index) {
+			b.addUnmapped(index)
+		}
+	case EventJoyDeviceRemoved:
+		b.removeJoystick(e.JoyDevice().Which)
 	}
 }
 
@@ -595,5 +657,16 @@ func (b *Backend) closeController(id int32) {
 		b.lib.CloseController(c)
 		delete(b.pads, id)
 		delete(b.padType, id)
+		delete(b.joys, id)
+		b.reportPads()
+	}
+}
+
+// removeJoystick forgets a joystick that was unplugged and has no mapping; a mapped one is forgotten by its
+// controller event.
+func (b *Backend) removeJoystick(id int32) {
+	if r, ok := b.joys[id]; ok && !r.mapped {
+		delete(b.joys, id)
+		b.reportPads()
 	}
 }

@@ -118,6 +118,10 @@ func Hint(role Action, t ControllerType, confirmEast bool) string {
 		return "←"
 	case Right:
 		return "→"
+	case Up:
+		return "↑"
+	case Down:
+		return "↓"
 	}
 	b, ok := RoleButton(role, confirmEast)
 	if !ok {
@@ -126,17 +130,28 @@ func Hint(role Action, t ControllerType, confirmEast bool) string {
 	return PositionLabel(b, t)
 }
 
+// PadInfo is one joystick SDL sees. Mapped says SDL has a game controller mapping for it; a joystick without one cannot
+// drive the GUI until the person adds a line to gamecontrollerdb.txt (docs/ux/gui.md section 2.3). GUID is the 32 hex
+// digits of its model, "" where SDL cannot say.
+type PadInfo struct {
+	Name   string
+	GUID   string
+	Type   ControllerType
+	Mapped bool
+}
+
 // IncomingKind is what a backend reports to the run loop.
 type IncomingKind int
 
 // Kinds of Incoming.
 const (
-	IncomingInput  IncomingKind = iota // a button, stick or key event for the Mapper
-	IncomingResize                     // the display changed size
-	IncomingPad                        // the pad in hand changed type, for the hint labels
-	IncomingQuit                       // the window was asked to close
-	IncomingText                       // typed text, while text input is on
-	IncomingRedraw                     // the window was uncovered or restored and must be drawn again
+	IncomingInput   IncomingKind = iota // a button, stick or key event for the Mapper
+	IncomingResize                      // the display changed size
+	IncomingPad                         // the pad in hand changed type, for the hint labels
+	IncomingPadList                     // the joysticks present changed: the list of them, for the notices and About
+	IncomingQuit                        // the window was asked to close
+	IncomingText                        // typed text, while text input is on
+	IncomingRedraw                      // the window was uncovered or restored and must be drawn again
 )
 
 // Incoming is one thing a backend tells the run loop. It carries no SDL types, so the loop and its tests
@@ -146,5 +161,6 @@ type Incoming struct {
 	Input Event          // IncomingInput
 	W, H  int            // IncomingResize: the new size in pixels
 	Pad   ControllerType // IncomingPad
+	Pads  []PadInfo      // IncomingPadList: every joystick present, mapped or not
 	Text  string         // IncomingText: what the keyboard typed, as UTF-8
 }

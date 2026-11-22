@@ -232,6 +232,8 @@ func (l *loopState) handle(ev input.Incoming) {
 		l.apply(gui.ResizeMsg{W: ev.W, H: ev.H})
 	case input.IncomingPad:
 		l.apply(gui.ControllerMsg{Type: ev.Pad})
+	case input.IncomingPadList:
+		l.apply(gui.PadsMsg{Pads: ev.Pads})
 	case input.IncomingQuit:
 		l.apply(gui.QuitRequestMsg{})
 	case input.IncomingRedraw:

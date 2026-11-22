@@ -22,6 +22,7 @@ func TestStructLayoutMatchesTheSDL2Headers(t *testing.T) {
 	var a ControllerAxisEvent
 	var d ControllerDeviceEvent
 	var x TextInputEvent
+	var g JoystickGUID
 	tests := []struct {
 		name string
 		got  uintptr
@@ -59,6 +60,7 @@ func TestStructLayoutMatchesTheSDL2Headers(t *testing.T) {
 		{"SDL_ControllerAxisEvent.value", unsafe.Offsetof(a.Value), 16},
 		{"sizeof(SDL_ControllerDeviceEvent)", unsafe.Sizeof(d), 12},
 		{"SDL_ControllerDeviceEvent.which", unsafe.Offsetof(d.Which), 8},
+		{"sizeof(SDL_JoystickGUID)", unsafe.Sizeof(g), 16},
 		{"sizeof(SDL_TextInputEvent)", unsafe.Sizeof(x), 44},
 		{"SDL_TextInputEvent.windowID", unsafe.Offsetof(x.WindowID), 8},
 		{"SDL_TextInputEvent.text", unsafe.Offsetof(x.Text), 12},

@@ -138,16 +138,21 @@ type Model struct {
 	specs      []app.SettingSpec // the schema: the environment variable of each key
 	settings   settingsState
 	cacheTotal int64 // the cache size Settings shows; -1 when CacheStats failed
-	book       jobBook
-	batchBase  [4]int // done, skipped, failed and waiting for the OK when the queue last went busy, for the summary toast
-	covers     coverCache
-	coverBusy  string    // the slug whose cover is being decoded
-	coverSlug  string    // the slug the settle timer is for
-	coverSince time.Time // when focus reached coverSlug
-	downloaded map[string]bool
-	picker     pickerState
-	platforms  catalogLoad[mothdex.Platform]
-	regions    catalogLoad[mothdex.Region]
+
+	pads         []input.PadInfo // every joystick the backend sees, mapped or not
+	padsKnown    bool            // the backend has reported at least once
+	unmappedSeen map[string]bool // devices already announced this session
+	notices      []string        // toasts waiting for the one on screen to end
+	book         jobBook
+	batchBase    [4]int // done, skipped, failed and waiting for the OK when the queue last went busy, for the summary toast
+	covers       coverCache
+	coverBusy    string    // the slug whose cover is being decoded
+	coverSlug    string    // the slug the settle timer is for
+	coverSince   time.Time // when focus reached coverSlug
+	downloaded   map[string]bool
+	picker       pickerState
+	platforms    catalogLoad[mothdex.Platform]
+	regions      catalogLoad[mothdex.Region]
 }
 
 // Messages that carry the result of a Cmd.
@@ -255,6 +260,8 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 	case ControllerMsg:
 		m.pad = msg.Type
 		return m, nil
+	case PadsMsg:
+		return m.onPads(msg, now), nil
 	case JobMsg:
 		return m.onJob(msg.Job, now)
 	case SignalMsg:
@@ -348,6 +355,7 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 }
 
 func (m Model) onTick(now time.Time) (Model, []Cmd) {
+	m = m.showNotices(now)
 	switch m.screen {
 	case screenSplash:
 		if !now.Before(m.start.Add(splashMax)) {
@@ -370,7 +378,7 @@ func (m Model) goHome(now time.Time) Model {
 		m.noticeShown = true
 		m = m.withToastFor(m.tr("ui.gui.locale_fallback", nil), toastWarn, noticeFor, now)
 	}
-	return m
+	return m.showNotices(now) // the controller notices that came during the Splash wait for the language notice
 }
 
 func (m Model) onDBInfo(msg dbInfoMsg, now time.Time) (Model, []Cmd) {
