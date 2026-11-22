@@ -161,7 +161,8 @@ $(diff <(echo "$want_members") <(echo "$members") || true)"
   echo "$info" | grep -q 'CGO_ENABLED=0' || fail "$name: not built with CGO_ENABLED=0"
   echo "$info" | grep -q -- '-trimpath=true' || fail "$name: not built with -trimpath"
   echo "$info" | grep -Eq -- '-tags=.*gui' || fail "$name: not built with the gui tag"
-  echo "$info" | grep -q "buildinfo.Version=${version}" || fail "$name: the version is not stamped into the binary"
+  # go version -m does not print the linker flags; the full commit stamped by -X is in the binary's strings
+  grep -aqF -- "$want_commit" "$dir/$bin" || fail "$name: the commit is not stamped into the binary"
 
   if [ "$suffix" = windows_amd64.zip ]; then
     # SDL2.dll is the pinned release: refetch it (exact URL, SHA-256 checked) and compare
