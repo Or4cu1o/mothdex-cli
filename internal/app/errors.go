@@ -116,7 +116,7 @@ func wrap(err error) error {
 	}
 	var me *mothdex.Error
 	if errors.As(err, &me) {
-		return &Error{Code: codeOfKind(me.Kind), Kind: me.Kind, Message: me.Kind.String(), Retryable: retryable(me.Kind), Cause: err}
+		return &Error{Code: codeOfKind(me.Kind), Kind: me.Kind, Message: me.Kind.String(), Retryable: retryable(me.Kind), Cause: logSafeAPIError(me)}
 	}
 	var pe *proxy.Error
 	if errors.As(err, &pe) {
@@ -126,6 +126,21 @@ func wrap(err error) error {
 		return &Error{Code: CodeCanceled, Cause: err}
 	}
 	return &Error{Code: CodeInternal, Cause: err}
+}
+
+// maxUpstreamLogBytes bounds the upstream message that reaches the verbose cause line and the log.
+const maxUpstreamLogBytes = 200
+
+// logSafeAPIError returns a copy of the client error whose upstream message is sanitized and capped
+// for the log. The message is never part of the localized text and never drives logic (T-77).
+func logSafeAPIError(me *mothdex.Error) *mothdex.Error {
+	cp := *me
+	msg := SanitizeText(me.Message)
+	if len(msg) > maxUpstreamLogBytes {
+		msg = strings.ToValidUTF8(msg[:maxUpstreamLogBytes], "")
+	}
+	cp.Message = msg
+	return &cp
 }
 
 func codeOfKind(k mothdex.Kind) string {

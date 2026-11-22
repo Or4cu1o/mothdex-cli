@@ -135,11 +135,7 @@ func TestClassifyResponses(t *testing.T) {
 		{"db error", 200, info("A database error occurred"), KindUpstream},
 		{"unexpected", 200, info("An unexpected error occurred"), KindUpstream},
 		{"unknown message", 200, info("Something new"), KindAPI},
-		{"code beats message", 200, `{"info":{"code":"entry_not_found","error":"x"},"data":{}}`, KindNotFound},
-		{"code invalid_request", 200, `{"info":{"code":"invalid_request"},"data":{}}`, KindInvalidRequest},
-		{"code database_error", 200, `{"info":{"code":"database_error"},"data":{}}`, KindUpstream},
-		{"code internal_error", 200, `{"info":{"code":"internal_error"},"data":{}}`, KindUpstream},
-		{"unknown code", 200, `{"info":{"code":"zzz","error":"Entry not found"},"data":{}}`, KindAPI},
+		{"old code field is ignored", 200, `{"info":{"code":"entry_not_found"},"data":{}}`, 0},
 		{"400 any body", 400, "garbage", KindInvalidRequest},
 		{"400 with info", 400, info("Malformed JSON in request body"), KindInvalidRequest},
 		{"404", 404, "", KindIncompatible},
@@ -152,6 +148,12 @@ func TestClassifyResponses(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, e := parseResponse("op", tt.status, http.Header{}, []byte(tt.body), now)
+			if tt.want == 0 {
+				if e != nil {
+					t.Fatalf("got %#v, want success", e)
+				}
+				return
+			}
 			if e == nil || e.Kind != tt.want || e.HTTPStatus != tt.status {
 				t.Fatalf("got %#v, want %v", e, tt.want)
 			}
@@ -251,5 +253,114 @@ func TestEntryRefusesAnUnsafeSlugBeforeAnyRequest(t *testing.T) {
 	}
 	if h.hits.Load() != 0 {
 		t.Fatalf("an unsafe slug reached the server: %d requests", h.hits.Load())
+	}
+}
+
+// T-77: upstream cavv-dev/mothdex-api 7a87af9 sends info.error as a CODE and info.message as text.
+func TestUpstreamErrorCodes(t *testing.T) {
+	now := newFakeClock().Now()
+	tests := []struct {
+		code string
+		want Kind
+	}{
+		{"ENTRY_NOT_FOUND", KindNotFound},
+		{"INVALID_API_VERSION", KindIncompatible},
+		{"MALFORMED_JSON", KindInvalidRequest},
+		{"INVALID_JSON_OBJECT", KindInvalidRequest},
+		{"MISSING_REQUIRED_FIELDS", KindInvalidRequest},
+		{"INVALID_FIELD_TYPE", KindInvalidRequest},
+		{"INVALID_INPUT", KindInvalidRequest},
+		{"DB_OPERATION_ERROR", KindUpstream},
+		{"DB_ERROR", KindUpstream},
+		{"UNEXPECTED_ERROR", KindUpstream},
+		{"RATE_LIMIT_ERROR", KindRateLimited},
+		{"HTTP_ERROR", KindAPI},
+		{"SOMETHING_NEW", KindAPI},
+		{"entry_not_found", KindAPI}, // not code-shaped: the old message table, which does not know it
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			body := `{"info":{"error":"` + tt.code + `","message":"Human text"},"data":{}}`
+			_, e := parseResponse("op", 200, http.Header{}, []byte(body), now)
+			if e == nil || e.Kind != tt.want || e.HTTPStatus != 200 || e.Message != "Human text" {
+				t.Fatalf("got %#v, want %v", e, tt.want)
+			}
+			if wantCode := tt.code; tt.code != "entry_not_found" && e.Code != wantCode {
+				t.Fatalf("Code = %q, want %q", e.Code, wantCode)
+			}
+		})
+	}
+}
+
+func TestOldMessageFormKeepsWorking(t *testing.T) {
+	_, e := parseResponse("op", 200, http.Header{}, []byte(`{"info":{"error":"Entry not found"},"data":{}}`), time.Time{})
+	if e == nil || e.Kind != KindNotFound || e.Code != "" || e.Message != "Entry not found" {
+		t.Fatalf("got %#v", e)
+	}
+}
+
+func TestInfoErrorThatIsNotAString(t *testing.T) {
+	for _, in := range []string{`{"info":{"error":42},"data":{}}`, `{"info":{"error":{"a":1}},"data":{}}`, `{"info":{"error":""},"data":{}}`, `{"info":{"error":["X"]},"data":{}}`} {
+		if _, e := parseResponse("op", 200, http.Header{}, []byte(in), time.Time{}); e == nil || e.Kind != KindDecode {
+			t.Errorf("%s: got %#v, want decode", in, e)
+		}
+	}
+	// An explicit null is present but not a string, so it is a decode failure too (api-client 3.1);
+	// only an absent key is a success. A non-string info.message never breaks a code.
+	if _, e := parseResponse("op", 200, http.Header{}, []byte(`{"info":{"error":null},"data":{}}`), time.Time{}); e == nil || e.Kind != KindDecode {
+		t.Errorf("null error: %#v", e)
+	}
+	_, e := parseResponse("op", 200, http.Header{}, []byte(`{"info":{"error":"DB_ERROR","message":{"x":1}},"data":{}}`), time.Time{})
+	if e == nil || e.Kind != KindUpstream || e.Message != "" {
+		t.Errorf("object message: %#v", e)
+	}
+}
+
+func TestNonOKStatusWithACode(t *testing.T) {
+	now := newFakeClock().Now()
+	cases := []struct {
+		status int
+		body   string
+		want   Kind
+		code   string
+	}{
+		{400, `{"info":{"error":"INVALID_API_VERSION","message":"bad version"},"data":{}}`, KindIncompatible, "INVALID_API_VERSION"},
+		{400, `{"info":{"error":"MALFORMED_JSON","message":"bad json"},"data":{}}`, KindInvalidRequest, "MALFORMED_JSON"},
+		{400, `{"info":{"error":"ENTRY_NOT_FOUND"},"data":{}}`, KindInvalidRequest, "ENTRY_NOT_FOUND"}, // status decides, the code is only recorded
+		{500, `{"info":{"error":"UNEXPECTED_ERROR","message":"boom"},"data":{}}`, KindUpstream, "UNEXPECTED_ERROR"},
+		{429, `{"info":{"error":"RATE_LIMIT_ERROR"},"data":{}}`, KindRateLimited, "RATE_LIMIT_ERROR"},
+		{502, `<html>bad gateway</html>`, KindUpstream, ""},
+		{500, `{"info":{"error":"Database operation failed"},"data":{}}`, KindUpstream, ""}, // old form: no code
+	}
+	for _, c := range cases {
+		_, e := parseResponse("op", c.status, http.Header{}, []byte(c.body), now)
+		if e == nil || e.Kind != c.want || e.Code != c.code {
+			t.Errorf("%d %s: got %#v, want %v code %q", c.status, c.body, e, c.want, c.code)
+		}
+	}
+}
+
+func TestRateLimitCodeAtStatus200ReadsRetryAfter(t *testing.T) {
+	h := http.Header{"Retry-After": []string{"7"}}
+	_, e := parseResponse("op", 200, h, []byte(`{"info":{"error":"RATE_LIMIT_ERROR","message":"slow"},"data":{}}`), newFakeClock().Now())
+	if e == nil || e.Kind != KindRateLimited || e.RetryAfter != 7*time.Second {
+		t.Fatalf("got %#v", e)
+	}
+}
+
+func TestUpstreamMessageIsSanitizedAndCapped(t *testing.T) {
+	long := strings.Repeat("é", 400) // 800 bytes
+	body := `{"info":{"error":"INVALID_INPUT","message":"a\u001b[31mb\u202ec\ufffd` + long + `"},"data":{}}`
+	_, e := parseResponse("op", 200, http.Header{}, []byte(body), time.Time{})
+	if e == nil || len(e.Message) > maxMessageSize || !utf8.ValidString(e.Message) || strings.ContainsAny(e.Message, "\x1b\u202e") {
+		t.Fatalf("got %q", e.Message)
+	}
+	if !strings.HasPrefix(e.Message, "a[31mbc") {
+		t.Fatalf("prefix lost: %q", e.Message)
+	}
+	// Invalid UTF-8 in the raw body is replaced, never passed on.
+	_, e = parseResponse("op", 200, http.Header{}, []byte("{\"info\":{\"error\":\"DB_ERROR\",\"message\":\"x\xffy\"},\"data\":{}}"), time.Time{})
+	if e == nil || !utf8.ValidString(e.Message) {
+		t.Fatalf("got %#v", e)
 	}
 }
