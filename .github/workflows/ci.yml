@@ -28,6 +28,10 @@ jobs:
         with:
           version: v2.15.0
       - run: go vet -tags gui ./cmd/mothdex-gui
+      - name: shellcheck the release scripts
+        run: |
+          shellcheck -s sh scripts/fetch-sdl2-windows.sh
+          shellcheck -s bash scripts/check-gui-archives.sh scripts/verify-dist.sh
       - name: Changelog fragments are well formed
         run: scripts/changelog-fold.sh --check
 

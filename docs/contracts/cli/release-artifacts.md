@@ -21,8 +21,13 @@ Every GitHub release `vX.Y.Z` (tag with a `v`) contains exactly:
 - `<version>` is the tag **without** the leading `v` (`0.1.0`, `0.2.0-rc.1`). A tag containing `-` is a pre-release.
 - Inside each archive: the binary at the **root** (`mothdex`, or `mothdex.exe` on Windows; the tar keeps mode `0755`),
   plus `LICENSE`, `README.md` and `CHANGELOG.md`. No top-level directory.
-- A future GUI binary ships in its **own** archives with the prefix `mothdex-gui_` and is never added inside
-  `mothdex_` archives. Installers match `mothdex_<version>_` exactly, never a bare `mothdex*` glob.
+- The GUI binary ships in its **own** archives with the prefix `mothdex-gui_` and is never added inside
+  `mothdex_` archives. Installers match `mothdex_<version>_` or `mothdex-gui_<version>_` exactly, never a bare `mothdex*` glob.
+- GUI archives (`mothdex-gui_<version>_<os>_<arch>.<ext>`, each with its `.sbom.json`, all in `checksums.txt`) exist for `linux_amd64`,
+  `linux_arm64`, `linux_armv7`, `linux_armv6` and `windows_amd64`. Members, exactly: `mothdex-gui` (`mothdex-gui.exe`), `LICENSE`,
+  `README.md`, `CHANGELOG.md`, the files of `THIRD_PARTY/` under `THIRD_PARTY/`, and on Windows the pinned `SDL2.dll`
+  (`scripts/sdl2-windows.pin`). No `386`, `darwin` or `windows_arm64` GUI in this version; a release without a GUI archive for a machine is
+  a CLI-only release for it (ports.md 5.1).
 
 ## 2. Targets (9)
 

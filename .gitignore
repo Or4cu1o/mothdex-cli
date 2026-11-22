@@ -2,6 +2,7 @@
 /bin/
 /dist/
 /dist-gui/
+/dist-sdl2/
 /.bin/
 /mothdex
 /mothdex-gui
