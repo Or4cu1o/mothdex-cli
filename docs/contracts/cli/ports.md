@@ -255,9 +255,12 @@ Re-running the installer is the upgrade path:
 It keeps the config, data, history, cache and every downloaded ROM. It never removes a file without a marker, and it
 lists what it removed. `--dry-run` lists without removing.
 
-`mothdex-licenses/` has no manifest (PR-88 decision c). The folder name belongs to the installer, so uninstall, upgrade
-and `--no-gui` remove the regular files in it whose names match `^[A-Za-z0-9._-]+$`, never follow a link or reparse
-point, and then remove the folder only if it is empty. Anything else is kept, with a warning. `SDL2.dll` is removed only
+`mothdex-licenses/` has no manifest (PR-88 decision c). Each installer holds a fixed list of the notice names it ships,
+equal to the files of `THIRD_PARTY/` in the repository, `README.md` included. Extraction refuses any other
+`THIRD_PARTY/` member, and uninstall, upgrade and `--no-gui` remove only regular files with those names. They never
+follow a link or reparse point, and remove the folder only if it is then empty. Anything else is kept, with a warning,
+so a file of the user's in that folder is never deleted. A change to `THIRD_PARTY/` changes both lists in the same PR,
+and a test fails when they differ. `SDL2.dll` is removed only
 when `mothdex-gui.exe` is next to it.
 
 ## 6. Third-party notices
@@ -313,7 +316,7 @@ confirms each one on a named system and device:
 
 The beta report template (one issue per system and device, D4) asks for: system and version, device and CPU arch,
 the installer output, the GUI diagnostics line (§4), and each B-item as pass, fail or not tried. Guindaste writes the
-template; the compatibility matrix lists the B-items per system.
+template ([`ports-beta.yml`](../../../.github/ISSUE_TEMPLATE/ports-beta.yml)); the compatibility matrix lists the B-items per system ([`ports-beta-matrix.md`](../../qa/ports-beta-matrix.md)).
 
 ## 9. Open questions (research for Sonda, via Regente)
 

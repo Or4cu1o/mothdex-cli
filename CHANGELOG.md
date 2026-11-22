@@ -7,12 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- T-71: Ports in `install.sh` and `install.ps1` (ports.md, threat model T-70, IC-1 to IC-13). When the release's verified `checksums.txt`
+  lists a `mothdex-gui_<version>_<os>_<arch>` archive for the machine, the installer downloads and verifies it like the CLI archive, extracts by
+  exact member name only, proves that the GUI starts by running `mothdex-gui --probe` from `bin_dir` with a scrubbed environment and a 20 second
+  bound, installs `mothdex-gui` (and `SDL2.dll` on Windows) and the notices in `mothdex-licenses/`, and writes the `v2` launcher (the GUI when it
+  is installed, else `mothdex tui`; no argument forwarding, no environment). The launcher is on by default for such a release (D22) and
+  opt-in otherwise; new flags `--gui`, `--no-gui`, `--no-launcher` (`-Gui`, `-NoGui`, `-NoLauncher`). A `v1` launcher is upgraded, a file without a marker is kept,
+  `--no-gui` removes the GUI, uninstall removes only what was installed, and a frontend refresh follows a written launcher (curl or `Invoke-WebRequest`, loopback,
+  no proxy, no redirect, never fatal). `install.ps1` writes `Mothdex.bat` only into a `roms\windows` that other users cannot write to (IC-7). Tests:
+  GUI cases in `tests/installer/cases.sh` (both images, plus noexec temp and noexec `bin_dir` in the non-root pass) and Pester cases with compiled fake GUI executables.
+- T-71 (gaps of ports.md section 10): `profiles/retrobat.yaml` `bin_dir` now says the installer's folder (PRT-G1); `THIRD_PARTY/` gains the SDL2 zlib, purego
+  Apache-2.0 and `x/image` BSD-3 texts (PRT-G2); the beta report form `.github/ISSUE_TEMPLATE/ports-beta.yml` and `docs/qa/ports-beta-matrix.md` (every item Unverified);
+  gui.md and release-artifacts.md follow (PRT-G5).
+- T-71 (review hardening): whenever a release's GUI is not installed (not listed, not eligible, probe error, `--no-gui`) the GUI files of an earlier install are removed too, so the launcher
+  never starts an older GUI; a probe killed by the bound (124, 137, 143) is not eligible; curl runs with `-q`; GUI archive members are checked by type before extraction and hard links
+  are refused after it by link count (busybox tar lists them as files); a member name outside `A-Za-z0-9._-` is refused as unsafe and a safe name that is not a shipped notice as unexpected.
+  The notices folder is cleaned by a fixed list of the notice names the installers ship (a file of yours with another name is never deleted); the list includes `THIRD_PARTY/README.md`,
+  and a test fails when either installer's list and the files of `THIRD_PARTY/` differ. A Pester case kills a hanging probe after 20 seconds.
+
 ### Changed
 
 - T-75: the cover fetcher's address filter blocks all of `::/8` (it only had `::/96`) and the unassigned rest of
   `64:ff9b::/32`; the well-known NAT64 `/96` is still judged by its embedded IPv4 address, so DNS64 networks keep
   working (cache.md). The GIF first-frame and WebP frame-against-canvas checks were already in place and tested.
   A small test pins the VP8 14-bit mask.
+- `ports.md` §5.6: `mothdex-licenses/` is handled by a fixed list of shipped notice names equal to `THIRD_PARTY/`
+  (`README.md` included), kept in step with it by a test; uninstall removes only those names (PR-88 re-check).
 - `docs/ux/gui.md` §5.8, `tui.md` §5 and `shell.md` §4 v1.2 (T-56, Bússola): the Download anyway rules shipped in
   cli#80. A job stopped with `confirmation_required` waits for a person: warn row with `!`, facts-only copy (real
   size, catalog size, folder), one OK per job and never a bulk one, the GUI sheet and dialog, the TUI `[y/N]` on `r`
