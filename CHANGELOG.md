@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-69: backlog cleanup. The `config.Set` overwrite refusal and the stale-session search warning were already in place
+  (T-25) and are now pinned by a CLI regression test; a retry after a 503 under the 2x size rule keeps the pinned
+  `Content-Length` and does not ask again (test); the duplicated edge case of T-64 was removed from `TestCase32e`.
 - T-64: when the catalog size is already above 500 MiB and was confirmed, a `Content-Length` over 2x that size asks for
   confirmation again (`confirmation_required`); `-f` still skips it and the exact-length pin across retries stays
   (downloader.md 3.2 step 6).

@@ -41,3 +41,19 @@ func TestSizeGate2xBoundaries(t *testing.T) {
 		})
 	}
 }
+
+// T-69: a retry after a 503 keeps the pinned Content-Length and the first consent; the 2x rule is not asked again.
+func TestSizeGate2xIsNotReaskedOnRetry(t *testing.T) {
+	r := newRig(t, proxy.Config{ConfirmDownloads: true, ConfirmBytes: 10_000})
+	r.srv.Script("/f/b",
+		fakeproxy.Truncate(fakeproxy.Pattern(30_000), 400), // 2x of the estimate: passes and pins cl
+		fakeproxy.ServerError(503),
+		fakeproxy.OK(fakeproxy.Pattern(30_000)))
+	res := r.download(r.job("/f/b", "b.zip", 15_000))
+	if res.State != proxy.StateDone || res.ContentLength != 30_000 {
+		t.Fatalf("want done with the pinned length: %+v err %v", res, res.Err)
+	}
+	if n := len(r.srv.Requests()); n != 3 {
+		t.Fatalf("%d requests, want 3", n)
+	}
+}
