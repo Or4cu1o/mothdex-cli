@@ -133,6 +133,7 @@ ui:
     starting: 'Starting download...'
     completed: 'Download completed'
     summary: '{done} downloaded, {skipped} skipped, {failed} failed in {elapsed}'
+    summary_waiting: '{done} downloaded, {skipped} skipped, {failed} failed in {elapsed}; {waiting} waiting for your OK'
     speed: 'Speed: {speed}'
     eta: 'ETA: {eta}'
     files:
@@ -332,6 +333,7 @@ ui:
       d_attempts: 'Attempts'
       d_duration: 'Duration'
       d_error: 'Error'
+      d_status: 'Status'
     hints:
       unmapped_platform: 'This system has no folder for {platform} yet. Set profile.folders.{platform} from the command line.'
       size_mismatch: 'Try again, or open the game and choose another link.'
@@ -417,12 +419,14 @@ ui:
       downloaded: '{count} downloaded'
       skipped: '{count} skipped'
       failed: '{count} failed'
+      waiting: '{count} waiting for your OK'
       canceled: '{count} canceled'
       refreshing: 'Updating the game list…'
       returning: 'Returning to {frontend}'
       closing: 'Closing'
     toast:
       download_failed: 'Download failed: {title}'
+      needs_ok: 'Needs your OK: {title}'
       boxart_failed: 'Could not save the cover art.'
   tui:
     needs_terminal: 'The TUI needs an interactive terminal.'
@@ -430,6 +434,7 @@ ui:
     loading: 'Loading...'
     more: '? more'
     summary: '{done} downloaded, {skipped} skipped, {failed} failed'
+    summary_waiting: '{done} downloaded, {skipped} skipped, {failed} failed, {waiting} waiting for your OK'
     title_active: '{count} active'
     title_queued: '{count} queued'
     queued_one: 'Queued: {title} (link {link})'
@@ -504,6 +509,7 @@ ui:
         attempts: 'Attempts'
         duration: 'Duration'
         error: 'Error'
+        status: 'Status'
     confirm_download:
       one: 'Download {count} file ({size})? [y/N]'
       other: 'Download {count} files ({size})? [y/N]'

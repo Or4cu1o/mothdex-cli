@@ -25,7 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   500 MiB constant. New helper package `internal/ui/consent`. In the GUI the action sheet of such a row is Download anyway, Details,
   Close (Retry would only stop again); Download anyway opens the dialog of gui.md 5.12 (`This file is {size}, not {estimate}.`, buttons
   Don't download, the default and B, and Download {size}), and Download queues the request again with the consent and takes the stopped
-  row's place. The row is the warn color with `!` and the toast says the row's words instead of `Download failed`.
+  row's place. The row is the warn color with `!` and wraps to two lines (nothing is cut); the toast is `Needs your OK: {title}`
+  instead of `Download failed`. UX review (Bússola): a stopped job is counted apart from the failures, so the summaries (GUI and TUI
+  toasts, the Shell line, the GUI exit screen) say `N waiting for your OK` instead of `failed`; Details shows the real size and a
+  Status line instead of `0 B` and `Error`.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a

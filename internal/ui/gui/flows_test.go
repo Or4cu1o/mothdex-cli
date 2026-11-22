@@ -935,7 +935,7 @@ func TestDownloadAnywayAsksAndConsentsToExactlyTheSizeShown(t *testing.T) {
 	h, svc := queueHarness(t)
 	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Slug: "zelda-001", Title: "Zelda 001", LinkIndex: 2, State: app.StateFailed, Expected: real, CatalogSize: catalog,
 		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}})
-	h.mustHave("Zelda 001: Needs your OK: the file is 700.0 MB, listed as 40.0 MB.") // the toast, from the Home screen
+	h.mustHave("Needs your OK: Zelda 001") // the toast, from the Home screen: the title comes last, so a cut falls on it
 	h.mustNotHave("Download failed")
 	h.press(input.Queue)
 	h.mustHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.")
@@ -977,4 +977,32 @@ func TestDownloadAnywayAsksAndConsentsToExactlyTheSizeShown(t *testing.T) {
 	h.press(input.Confirm)
 	h.press(input.Confirm)
 	h.mustHave("This file is 700.0 MB.", "The catalog had no size for it. It will be saved to /roms/gbc.")
+}
+
+// What the review of the T-56 screens asked for: the row keeps the catalog size when it is long (it wraps to two
+// lines instead of being cut), the summary does not call a stopped job a failure, and Details shows the real size
+// and a Status line, not "0 B" and "Error".
+func TestDownloadAnywayRowSummaryAndDetails(t *testing.T) {
+	const real, catalog = int64(712 << 20), int64(40 << 20)
+	waiting := func(id app.JobID) app.JobSnapshot {
+		return app.JobSnapshot{ID: id, Slug: "zelda-001", Title: "Zelda 001", State: app.StateFailed, Expected: real, CatalogSize: catalog,
+			Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}
+	}
+
+	// The row at the smallest tier, in the longest language: nothing is cut.
+	pt := started(t, zeldaService(3), 640, 480, func(o *Options) { o.T = shared.bundle.New("pt_br") })
+	pt.send(JobMsg{Job: waiting("1")})
+	pt.press(input.Queue)
+	if got := strings.Join(pt.texts(), " "); !strings.Contains(got, "o catálogo indicava 40.0 MB.") || strings.Contains(got, "…") {
+		t.Fatalf("the row must wrap, not be cut:\n%s", got)
+	}
+
+	h, _ := queueHarness(t)
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Slug: "zelda-002", Title: "Zelda 002", State: app.StateTransferring, Bytes: 1, Expected: 10}})
+	h.send(JobMsg{Job: waiting("1")}) // the queue is idle again: the summary says it
+	h.mustHave("0 downloaded, 0 skipped, 0 failed, 1 waiting for your OK")
+	h.press(input.Queue)
+	h.press(input.Info)
+	h.mustHave("Status: Needs your OK: the file is 712.0 MB, listed as 40.0 MB.", "[confirmation_required]", "Size: 712.0 MB")
+	h.mustNotHave("Error: Needs your OK: the file is 712.0 MB, listed as 40.0 MB.")
 }

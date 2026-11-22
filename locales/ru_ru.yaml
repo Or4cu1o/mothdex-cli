@@ -134,6 +134,7 @@ ui:
     starting: 'Начало загрузки...'
     completed: 'Загрузка завершена'
     summary: 'Загружено: {done}, пропущено: {skipped}, ошибок: {failed}, за {elapsed}'
+    summary_waiting: 'Загружено: {done}, пропущено: {skipped}, ошибок: {failed}, за {elapsed}; ждут подтверждения: {waiting}'
     speed: 'Скорость: {speed}'
     eta: 'Осталось: {eta}'
     files:
@@ -347,6 +348,7 @@ ui:
       d_attempts: 'Попытки'
       d_duration: 'Длительность'
       d_error: 'Ошибка'
+      d_status: 'Статус'
     hints:
       unmapped_platform: 'Для {platform} в этой системе пока нет папки. Задайте profile.folders.{platform} в командной строке.'
       size_mismatch: 'Повторите или откройте игру и выберите другую ссылку.'
@@ -434,12 +436,14 @@ ui:
       downloaded: 'Загружено: {count}'
       skipped: 'Пропущено: {count}'
       failed: 'Ошибок: {count}'
+      waiting: 'Ждут подтверждения: {count}'
       canceled: 'Отменено: {count}'
       refreshing: 'Обновление списка игр…'
       returning: 'Возврат в {frontend}'
       closing: 'Закрытие'
     toast:
       download_failed: 'Ошибка загрузки: {title}'
+      needs_ok: 'Нужно ваше подтверждение: {title}'
       boxart_failed: 'Не удалось сохранить обложку.'
   tui:
     needs_terminal: 'TUI требует интерактивного терминала.'
@@ -447,6 +451,7 @@ ui:
     loading: 'Загрузка...'
     more: '? ещё'
     summary: 'скачано: {done}, пропущено: {skipped}, с ошибкой: {failed}'
+    summary_waiting: 'скачано: {done}, пропущено: {skipped}, с ошибкой: {failed}, ждут подтверждения: {waiting}'
     title_active: 'активно: {count}'
     title_queued: 'в очереди: {count}'
     queued_one: 'В очереди: {title} (ссылка {link})'
@@ -525,6 +530,7 @@ ui:
         attempts: 'Попытки'
         duration: 'Длительность'
         error: 'Ошибка'
+        status: 'Статус'
     confirm_download:
       one: 'Скачать {count} файл ({size})? [y/N]'
       few: 'Скачать файлов: {count} ({size})? [y/N]'

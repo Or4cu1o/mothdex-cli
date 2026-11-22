@@ -485,6 +485,9 @@ func TestDownloadAnywayAsksWithBothSizesAndConsentsToExactlyThat(t *testing.T) {
 		ID: "q1", Slug: "zelda", Title: "Title zelda", State: app.StateFailed, Expected: real, CatalogSize: catalog,
 		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}},
 	}}, ok: true})
+	if v := h.view(); !strings.Contains(v, "0 downloaded, 0 skipped, 0 failed, 1 waiting for your OK") {
+		t.Fatalf("the summary does not call a stopped job a failure:\n%s", v)
+	}
 	h.send(eventMsg{ev: app.Event{Job: app.JobSnapshot{ID: "q2", Slug: "mario", Title: "Title mario", State: app.StateFailed, Err: &app.Error{Code: "size_mismatch", Message: "bad size"}}}, ok: true})
 	h.keys("Q")
 	row := "Needs your OK: the file is " + humanSize(real) + ", listed as " + humanSize(catalog) + "."
@@ -496,7 +499,12 @@ func TestDownloadAnywayAsksWithBothSizesAndConsentsToExactlyThat(t *testing.T) {
 	if len(svc.enqueued) != before || strings.Contains(h.view(), "anyway?") {
 		t.Fatalf("a bulk retry must not queue the job that waits for its own OK, enqueued %+v", svc.enqueued)
 	}
-	h.keys("down")                           // onto the job that waits
+	h.keys("down")  // onto the job that waits
+	h.keys("enter") // Details: a Status line, not an Error one
+	if v := h.view(); !strings.Contains(v, "Status") || strings.Contains(v, "Error") {
+		t.Fatalf("details of a stopped job:\n%s", v)
+	}
+	h.keys("esc")
 	h.send(toastExpireMsg{id: h.m.toast.id}) // the batch summary toast would cover the key help
 	if !strings.Contains(h.view(), "r download anyway") {
 		t.Fatalf("the footer says what r does on this row:\n%s", h.view())

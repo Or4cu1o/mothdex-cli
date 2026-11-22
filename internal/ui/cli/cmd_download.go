@@ -468,7 +468,13 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 	if len(res.Jobs) == 1 && res.Jobs[0].State == app.StateCanceled {
 		return // Ctrl+C on a single download: the exit code says it, nothing else is printed
 	}
-	p.info("%s", p.T("ui.download.summary", i18n.Args{"done": res.Done, "skipped": res.Skipped, "failed": res.Failed + res.Cancel, "elapsed": humanDuration(elapsed)}))
+	waiting := len(consentJobs(res)) // stopped on their real size: nothing failed, the summary says so apart
+	args := i18n.Args{"done": res.Done, "skipped": res.Skipped, "failed": max(res.Failed-waiting, 0) + res.Cancel, "elapsed": humanDuration(elapsed), "waiting": waiting}
+	if waiting > 0 {
+		p.info("%s", p.T("ui.download.summary_waiting", args))
+		return
+	}
+	p.info("%s", p.T("ui.download.summary", args))
 }
 
 // consentLine prints a job that waits for the person's OK to its real size: a warning, not a failure,

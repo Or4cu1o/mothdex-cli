@@ -4,6 +4,7 @@ import (
 	"maps"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 )
 
 // jobTally is the GUI's count of the downloads of this run: the last snapshot of every job it has seen.
@@ -48,19 +49,32 @@ func (t jobTally) unfinished() int {
 	return active + queued
 }
 
-// summary counts the jobs of this run by how they ended.
-func (t jobTally) summary() (done, skipped, failed, canceled int) {
+// summary counts the jobs of this run by how they ended. A job that stopped on its real size and waits for the
+// person's OK (T-56) is counted apart: nothing failed, so it is not in failed.
+func (t jobTally) summary() (done, skipped, failed, canceled, waiting int) {
 	for _, j := range t.byID {
-		switch j.State {
-		case app.StateDone:
+		switch {
+		case j.State == app.StateDone:
 			done++
-		case app.StateSkipped:
+		case j.State == app.StateSkipped:
 			skipped++
-		case app.StateFailed:
+		case consent.Needed(j):
+			waiting++
+		case j.State == app.StateFailed:
 			failed++
-		case app.StateCanceled:
+		case j.State == app.StateCanceled:
 			canceled++
 		}
 	}
-	return done, skipped, failed, canceled
+	return done, skipped, failed, canceled, waiting
+}
+
+// without drops a job from the tally: a stopped job that was queued again is replaced by the new one.
+func (t jobTally) without(id app.JobID) jobTally {
+	if _, ok := t.byID[id]; !ok {
+		return t
+	}
+	next := maps.Clone(t.byID)
+	delete(next, id)
+	return jobTally{byID: next}
 }

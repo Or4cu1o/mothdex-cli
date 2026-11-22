@@ -817,10 +817,10 @@ func TestAProgressEventDoesNotCopyTheTally(t *testing.T) {
 		t.Fatal("a progress event must reuse the same map")
 	}
 	changed, _, _ := same.apply(app.JobSnapshot{ID: "1", State: app.StateDone})
-	if done, _, _, _ := changed.summary(); done != 1 {
+	if done, _, _, _, _ := changed.summary(); done != 1 {
 		t.Fatalf("a state change is recorded: %d done", done)
 	}
-	if done, _, _, _ := same.summary(); done != 0 {
+	if done, _, _, _, _ := same.summary(); done != 0 {
 		t.Fatal("the earlier tally must not change")
 	}
 }

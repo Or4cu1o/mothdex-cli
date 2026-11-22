@@ -372,10 +372,10 @@ func (m model) onEvent(msg eventMsg) (tea.Model, tea.Cmd) {
 		m = next.(model)
 		cmds = append(cmds, c)
 	}
-	if done, skipped, failed, ok := m.book.settled(); ok {
+	if done, skipped, failed, waiting, ok := m.book.settled(); ok {
 		m.book = m.book.resetBatch()
 		var c tea.Cmd
-		m, c = m.toastNow(m.summaryText(done, skipped, failed), summaryKind(failed))
+		m, c = m.toastNow(m.summaryText(done, skipped, failed, waiting), summaryKind(failed+waiting))
 		cmds = append(cmds, c)
 	}
 	return m, tea.Batch(cmds...)
@@ -388,7 +388,6 @@ func summaryKind(failed int) toastKind {
 	return toastInfo
 }
 
-// summaryText is "3 downloaded, 1 skipped, 0 failed".
 // saveCover writes the cover next to a finished file when download.boxart is on. The UI decides when
 // (a Done job, never after an interrupt); the service decides how (app-service.md, Boxart). A failure is
 // a warning, and an entry with no cover is normal.
@@ -403,7 +402,12 @@ func (m model) saveCover(j app.JobSnapshot) tea.Cmd {
 	}
 }
 
-func (m model) summaryText(done, skipped, failed int) string {
+// summaryText is "3 downloaded, 1 skipped, 0 failed"; a job that waits for the person's OK is not a failure, so
+// it has its own wording, used only when there is one.
+func (m model) summaryText(done, skipped, failed, waiting int) string {
+	if waiting > 0 {
+		return m.env.T("ui.tui.summary_waiting", i18n.Args{"done": done, "skipped": skipped, "failed": failed, "waiting": waiting})
+	}
 	return m.env.T("ui.tui.summary", i18n.Args{"done": done, "skipped": skipped, "failed": failed})
 }
 

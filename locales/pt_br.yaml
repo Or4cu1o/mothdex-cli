@@ -132,6 +132,7 @@ ui:
     starting: 'Iniciando o download...'
     completed: 'Download concluído'
     summary: '{done} baixados, {skipped} ignorados, {failed} com falha em {elapsed}'
+    summary_waiting: '{done} baixados, {skipped} ignorados, {failed} com falha em {elapsed}; {waiting} aguardando sua confirmação'
     speed: 'Velocidade: {speed}'
     eta: 'Restante: {eta}'
     files:
@@ -331,6 +332,7 @@ ui:
       d_attempts: 'Tentativas'
       d_duration: 'Duração'
       d_error: 'Erro'
+      d_status: 'Situação'
     hints:
       unmapped_platform: 'Este sistema ainda não tem pasta para {platform}. Defina profile.folders.{platform} pela linha de comando.'
       size_mismatch: 'Tente de novo, ou abra o jogo e escolha outro link.'
@@ -416,12 +418,14 @@ ui:
       downloaded: '{count} baixado(s)'
       skipped: '{count} ignorado(s)'
       failed: '{count} com falha'
+      waiting: '{count} aguardando sua confirmação'
       canceled: '{count} cancelado(s)'
       refreshing: 'Atualizando a lista de jogos…'
       returning: 'Voltando ao {frontend}'
       closing: 'Fechando'
     toast:
       download_failed: 'Falha no download: {title}'
+      needs_ok: 'Precisa da sua confirmação: {title}'
       boxart_failed: 'Não foi possível salvar a capa.'
   tui:
     needs_terminal: 'O TUI precisa de um terminal interativo.'
@@ -429,6 +433,7 @@ ui:
     loading: 'Carregando...'
     more: '? mais'
     summary: '{done} baixados, {skipped} ignorados, {failed} com falha'
+    summary_waiting: '{done} baixados, {skipped} ignorados, {failed} com falha, {waiting} aguardando sua confirmação'
     title_active: '{count} ativos'
     title_queued: '{count} na fila'
     queued_one: 'Na fila: {title} (link {link})'
@@ -503,6 +508,7 @@ ui:
         attempts: 'Tentativas'
         duration: 'Duração'
         error: 'Erro'
+        status: 'Situação'
     confirm_download:
       one: 'Baixar {count} arquivo ({size})? [s/N]'
       other: 'Baixar {count} arquivos ({size})? [s/N]'

@@ -382,7 +382,7 @@ func (s queueScreen) detailView(rt *shared, j app.JobSnapshot) screenView {
 	}
 	switch {
 	case consent.Needed(j):
-		lines = append(lines, row("error", consentRow(rt, j)))
+		lines = append(lines, row("status", consentRow(rt, j))) // the code stays out: the line is a sentence, and the frame would cut its end
 	case j.Err != nil:
 		f := rt.failureOf(j.Err)
 		lines = append(lines, row("error", f.msg+" ["+f.code+"]"))

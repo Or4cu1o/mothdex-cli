@@ -151,8 +151,9 @@ func (m Model) onEnqueued(msg enqueuedMsg, now time.Time) Model {
 		f := m.failureOf(msg.err)
 		return m.withToast(f.msg, toastError, now)
 	}
-	if msg.replaces != "" { // the stopped job is queued again: the new one takes its place in the list
+	if msg.replaces != "" { // the stopped job is queued again: the new one takes its place in the list and in the counts
 		m = m.hideJob(msg.replaces)
+		m.jobs = m.jobs.without(msg.replaces)
 	}
 	for _, j := range msg.jobs {
 		m.jobs, _, _ = m.jobs.apply(j)

@@ -163,13 +163,13 @@ func (m Model) followFocus() Model {
 }
 
 // itemHeight is how tall a Queue row is: a header is one line, a job two lines (name and state), and a job that
-// is warming up or waiting to retry three, since a notice can add a line.
+// is warming up, waiting to retry or waiting for the person's OK three, since a notice can add a line.
 func (m Model) itemHeight(it queueItem) int {
 	met := m.metrics
 	switch {
 	case it.header != "":
 		return LineHeight(met.Secondary) + met.Unit
-	case it.job.State == app.StateWarming || it.job.State == app.StateRetryWait: // these can show a hint line
+	case it.job.State == app.StateWarming || it.job.State == app.StateRetryWait || consent.Needed(it.job): // these can show a second line of text
 		return LineHeight(met.Body) + 2*LineHeight(met.Secondary) + met.Unit
 	}
 	return LineHeight(met.Body) + LineHeight(met.Secondary) + met.Unit
@@ -514,7 +514,9 @@ func (m Model) drawFinishedRow(p painter, r draw.Rect, j app.JobSnapshot) {
 		if consent.Needed(j) { // nothing failed: the job waits for a person (warn color and !, not error and the cross)
 			drawBang(p.l, x, y+2, mark, colWarn)
 			p.text(x+mark+met.Unit, y, met.Body, colText, p.fit(met.Body, label, w-mark-met.Unit))
-			p.text(x, y+LineHeight(met.Body), met.Secondary, colWarn, p.fit(met.Secondary, m.consentRow(j), w))
+			for i, line := range p.wrap(met.Secondary, m.consentRow(j), w, 2) { // nothing is cut: the catalog size is in the words
+				p.text(x, y+LineHeight(met.Body)+i*LineHeight(met.Secondary), met.Secondary, colWarn, line)
+			}
 			return
 		}
 		drawCross(p.l, x, y+2, mark, colError)
@@ -576,7 +578,10 @@ func (m Model) drawDetails(p painter) {
 	add("file", app.SanitizeText(j.Name))
 	add("path", app.SanitizeText(j.Path))
 	size := humanSize(j.Bytes)
-	if !j.Terminal() && j.Expected > 0 && j.Expected != j.Bytes { // "X / Y" only while the job runs
+	switch {
+	case consent.Needed(j): // nothing was transferred: the size is the real one the person is asked about
+		size = humanSize(consent.Size(j))
+	case !j.Terminal() && j.Expected > 0 && j.Expected != j.Bytes: // "X / Y" only while the job runs
 		size += " / " + humanSize(j.Expected)
 	}
 	add("size", size)
@@ -589,7 +594,7 @@ func (m Model) drawDetails(p painter) {
 	}
 	switch {
 	case consent.Needed(j):
-		add("error", m.consentRow(j)+" ["+j.Err.Code+"]")
+		add("status", m.consentRow(j)+" ["+j.Err.Code+"]")
 	case j.Err != nil:
 		f := m.failureOf(j.Err)
 		add("error", f.msg+" ["+f.code+"]")
@@ -620,10 +625,13 @@ func (m Model) drawDetails(p painter) {
 // summaryToast is shown when the queue goes idle after downloads (docs/ux/gui.md section 5.8): "3 downloaded,
 // 1 skipped, 0 failed" for the batch that just ended.
 func (m Model) summaryToast(now time.Time) Model {
-	done, skipped, failed, _ := m.jobs.summary()
+	done, skipped, failed, _, waiting := m.jobs.summary()
 	b := m.batchBase
-	text := m.tr("ui.tui.summary", i18n.Args{"done": done - b[0], "skipped": skipped - b[1], "failed": failed - b[2]})
-	kind := toastOK
+	args := i18n.Args{"done": done - b[0], "skipped": skipped - b[1], "failed": failed - b[2], "waiting": max(waiting-b[3], 0)}
+	text, kind := m.tr("ui.tui.summary", args), toastOK
+	if waiting-b[3] > 0 { // a stopped job is not a failure: its own wording, and the warn color stays
+		text, kind = m.tr("ui.tui.summary_waiting", args), toastWarn
+	}
 	if failed-b[2] > 0 {
 		kind = toastWarn
 	}
