@@ -37,15 +37,32 @@ func Normalize(name string) string {
 }
 
 // Detect returns the locale name the environment asks for. The first non-empty variable of
-// LC_ALL, LC_MESSAGES, LANG decides (POSIX): if it is C or POSIX (or unusable) the answer is "",
-// which Resolve turns into en_us, so LC_ALL=C gives stable English output whatever LANG says.
-// Only when none is set does system supply the user preferred UI languages (Windows). GNU
-// LANGUAGE is deliberately not read.
+// LC_ALL, LC_MESSAGES, LANG decides (POSIX): if it is POSIX (or unusable) the answer is "",
+// which Resolve turns into en_us.
+//
+// Two cases fall through to the first entry of GNU LANGUAGE (ports.md PRT-G10): none of the three
+// is set, or the one that decides is C or C.UTF-8. EmuELEC gives LANG=C.UTF-8 and keeps the UI
+// language only in LANGUAGE. An explicit C with LANGUAGE unset is still stable English. Only when
+// no variable names a language does system supply the user's preferred UI languages (Windows), and
+// not after a C that decided.
 func Detect(env func(string) string, system func() []string) string {
+	decided := false
 	for _, v := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
-		if strings.TrimSpace(env(v)) != "" {
-			return Normalize(env(v))
+		val := strings.TrimSpace(env(v))
+		if val == "" {
+			continue
 		}
+		if !isCLocale(val) {
+			return Normalize(val)
+		}
+		decided = true
+		break
+	}
+	if first, _, _ := strings.Cut(strings.TrimSpace(env("LANGUAGE")), ":"); Normalize(first) != "" {
+		return Normalize(first)
+	}
+	if decided {
+		return ""
 	}
 	if system != nil {
 		for _, name := range system() {
@@ -55,6 +72,14 @@ func Detect(env func(string) string, system func() []string) string {
 		}
 	}
 	return ""
+}
+
+// isCLocale reports whether a locale value is the C locale in any spelling glibc accepts: C,
+// C.UTF-8, C.utf8 (case of the C and of the codeset do not matter; a modifier is ignored).
+func isCLocale(v string) bool {
+	name, _, _ := strings.Cut(v, ".")
+	name, _, _ = strings.Cut(name, "@")
+	return strings.EqualFold(name, "C")
 }
 
 // Resolve picks the locale to use from the setting (interface.language: "auto" or xx_yy,

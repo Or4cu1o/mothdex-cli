@@ -254,6 +254,17 @@ func TestNormalizeAndDetect(t *testing.T) {
 		{"Windows UI language", nil, []string{"ja-JP", "en-US"}, "ja_jp"},
 		{"environment before Windows", map[string]string{"LANG": "ru_RU"}, []string{"ja-JP"}, "ru_ru"},
 		{"nothing", nil, nil, ""},
+		// PRT-G10 (EmuELEC): LANG is C.UTF-8 while LANGUAGE keeps the language.
+		{"LANGUAGE when all three are unset", map[string]string{"LANGUAGE": "pt_BR:en"}, nil, "pt_br"},
+		{"LANGUAGE behind C.UTF-8", map[string]string{"LANG": "C.UTF-8", "LANGUAGE": "es_ES:en_US"}, nil, "es_es"},
+		{"LANGUAGE behind C", map[string]string{"LC_ALL": "C", "LANGUAGE": "de"}, nil, "de"},
+		{"LANGUAGE behind c.utf8", map[string]string{"LANG": "c.utf8", "LANGUAGE": "fr_FR"}, nil, "fr_fr"},
+		{"LANGUAGE first entry only", map[string]string{"LANG": "C.UTF-8", "LANGUAGE": "C:pt_BR"}, nil, ""},
+		{"LANGUAGE is ignored when a real language decides", map[string]string{"LANG": "ru_RU.UTF-8", "LANGUAGE": "pt_BR"}, nil, "ru_ru"},
+		{"LANGUAGE is ignored behind POSIX", map[string]string{"LC_ALL": "POSIX", "LANGUAGE": "pt_BR"}, nil, ""},
+		{"empty LANGUAGE behind C is English", map[string]string{"LANG": "C.UTF-8", "LANGUAGE": " "}, nil, ""},
+		{"LANGUAGE before Windows", map[string]string{"LANGUAGE": "pt_BR"}, []string{"ja-JP"}, "pt_br"},
+		{"C still does not fall to Windows", map[string]string{"LANG": "C.UTF-8"}, []string{"ja-JP"}, ""},
 	}
 	for _, tt := range tests {
 		sys := func() []string { return tt.sys }

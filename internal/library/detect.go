@@ -23,6 +23,7 @@ type Config struct {
 	Folders        map[string]string // profile.folders overrides
 	RefreshOff     bool              // profile.refresh: false
 	GenericROMRoot string            // generic ROM root: <paths.data>/ROMs, or <exe dir>/ROMs in portable mode
+	DataDir        string            // paths.data, checked for RAM storage (PRT-G11)
 }
 
 // ProfileInfo is the result of Detect. Profile is the resolved profile: variables expanded,
@@ -35,7 +36,11 @@ type ProfileInfo struct {
 	Verified       bool     // false if any probe, path or hook used is unverified
 	Unverified     []string // what to confirm (profile show prints them)
 	Warnings       []string // why generic was chosen, ambiguity, unverified items
-	Profile        Profile
+	// StorageWarnings are facts about where files go, not about detection (PRT-G11): the ROM root
+	// or the data folder is on a RAM disk. They stay out of Warnings so that a RAM disk does not
+	// count as "not verified"; the CLI and the GUI show them as their own lines.
+	StorageWarnings []string
+	Profile         Profile
 }
 
 // Detect selects a profile: --profile, then profile.id, then auto-detection by priority. It is
@@ -264,7 +269,7 @@ func (d detector) build(p Profile, source string, res probeResult, warns []strin
 	}
 	info := ProfileInfo{
 		ID: p.ID, Name: p.Name, Host: d.host(), Source: source, RomRoot: resolved.Roms.Root,
-		Unverified: d.unverified(p, res), Warnings: warns, Profile: resolved,
+		Unverified: d.unverified(p, res), Warnings: warns, StorageWarnings: d.ramWarnings(resolved.Roms.Root), Profile: resolved,
 	}
 	info.Verified = len(info.Unverified) == 0
 	if !info.Verified {
@@ -341,6 +346,30 @@ func (d detector) unverified(p Profile, res probeResult) []string {
 	}
 	if (p.Hook.Kind == RefreshHTTPGet || p.Hook.Kind == RefreshManual) && !p.Hook.Verified && !d.cfg.RefreshOff {
 		out = append(out, "refresh hook: "+p.Hook.Kind)
+	}
+	return out
+}
+
+// Warnings for storage that lives in RAM (ports.md PRT-G11): Batocera falls back to a 256 MiB tmpfs
+// when its storage fails to mount, so downloads and history vanish at reboot. The texts are the
+// plain English strings the other profile warnings use (wording by Bússola).
+const (
+	warnROMRootInRAM = "Games folder is on a RAM disk: downloaded games are lost at reboot."
+	warnDataDirInRAM = "Data folder is on a RAM disk: history, cache and settings are lost at reboot."
+)
+
+// ramWarnings checks the ROM root and the data directory; a path that does not exist is not on a
+// RAM disk as far as this check can tell.
+func (d detector) ramWarnings(romRoot string) []string {
+	if d.env.MemoryBacked == nil {
+		return nil
+	}
+	var out []string
+	if romRoot != "" && d.env.MemoryBacked(romRoot) {
+		out = append(out, warnROMRootInRAM)
+	}
+	if d.cfg.DataDir != "" && d.env.MemoryBacked(d.cfg.DataDir) {
+		out = append(out, warnDataDirInRAM)
 	}
 	return out
 }

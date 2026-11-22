@@ -237,7 +237,7 @@ func (r *runtime) profileCmd() *cobra.Command {
 						return outcome{}, err
 					}
 				}
-				warns := nonNil(info.Warnings)
+				warns := nonNil(append(append([]string{}, info.Warnings...), info.StorageWarnings...))
 				data := map[string]any{
 					"profile":    map[string]any{"id": info.ID, "name": info.Name, "host": info.Host, "source": info.Source, "rom_root": info.RomRoot, "verified": info.Verified, "warnings": warns},
 					"unverified": nonNil(info.Unverified),
@@ -255,7 +255,7 @@ func (r *runtime) profileCmd() *cobra.Command {
 					kv("source", info.Source)
 					kv("rom_root", info.RomRoot)
 					kv("verified", strconv.FormatBool(info.Verified))
-					for _, w := range info.Warnings {
+					for _, w := range warns {
 						p.warning(w)
 					}
 					for _, u := range info.Unverified {

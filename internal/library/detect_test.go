@@ -2,6 +2,7 @@ package library
 
 import (
 	"io/fs"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -393,5 +394,55 @@ func TestLongUNCFormMatchesTheShortForm(t *testing.T) {
 		if got := p.IsLauncherPath(path); got != want {
 			t.Errorf("IsLauncherPath(%q) = %v, want %v", path, got, want)
 		}
+	}
+}
+
+// PRT-G11: Batocera falls back to a 256 MiB tmpfs when its storage fails to mount.
+func TestRAMStorageGivesItsOwnWarnings(t *testing.T) {
+	files := map[string]string{"usr/share/batocera/batocera.version": "40", "userdata/roms/.keep": ""}
+	ram := func(dirs ...string) func(string) bool {
+		return func(d string) bool {
+			for _, x := range dirs {
+				if d == x {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	tests := []struct {
+		name string
+		mem  func(string) bool
+		want []string
+	}{
+		{"none", ram(), nil},
+		{"no probe injected", nil, nil},
+		{"ROM root", ram("/userdata/roms"), []string{warnROMRootInRAM}},
+		{"data folder", ram("/userdata/system/mothdex"), []string{warnDataDirInRAM}},
+		{"both", ram("/userdata/roms", "/userdata/system/mothdex"), []string{warnROMRootInRAM, warnDataDirInRAM}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := testEnv(files)
+			env.MemoryBacked = tt.mem
+			info := detect(t, env, Config{DataDir: "/userdata/system/mothdex"})
+			if info.ID != "batocera" || !slices.Equal(info.StorageWarnings, tt.want) {
+				t.Fatalf("id %s storage warnings %q, want %q", info.ID, info.StorageWarnings, tt.want)
+			}
+			for _, w := range info.Warnings { // not a detection doubt: it must not make the profile "unverified"
+				if w == warnROMRootInRAM || w == warnDataDirInRAM {
+					t.Fatalf("%q leaked into Warnings", w)
+				}
+			}
+		})
+	}
+}
+
+func TestRAMStorageStillWarnsWhenGenericIsChosen(t *testing.T) {
+	env := testEnv(nil)
+	env.MemoryBacked = func(d string) bool { return d == "/data" }
+	info := detect(t, env, Config{DataDir: "/data"})
+	if !slices.Equal(info.StorageWarnings, []string{warnDataDirInRAM}) {
+		t.Fatalf("got %q", info.StorageWarnings)
 	}
 }
