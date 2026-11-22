@@ -237,7 +237,7 @@ func (m Model) drawSettingRow(p painter, r draw.Rect, row *settingRow, labelW, v
 	}
 	switch row.kind {
 	case kindStepper:
-		if focused {
+		if focused && m.readOnlyNote(row) == "" { // a row that cannot be changed does not offer the arrows
 			value = "‹ " + value + " ›"
 		}
 	case kindCache:

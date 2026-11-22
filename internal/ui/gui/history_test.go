@@ -127,3 +127,31 @@ func TestHistoryEmptyStatesAndReload(t *testing.T) {
 	}
 	h.mustHave("Fresh record", "All · 1 record")
 }
+
+// Download anyway from the history is guarded like Download again: the same file is never queued twice (Crivo, T-78).
+func TestHistoryDownloadAnywayDoesNotQueueTheSameFileTwice(t *testing.T) {
+	svc := historyService()
+	h := started(t, svc, 1280, 720)
+	openHistoryFromHome(t, h)
+	confirm := func() {
+		h.press(input.Down)
+		h.press(input.Down)
+		h.press(input.Confirm) // Details of the stopped record
+		h.press(input.Confirm) // Download anyway
+		h.advance(200 * time.Millisecond)
+	}
+	confirm()
+	h.press(input.Right)
+	h.press(input.Confirm) // Download 700.0 MB
+	if len(svc.Requests()) != 1 {
+		t.Fatalf("requests %+v", svc.Requests())
+	}
+	h.press(input.Up)
+	h.press(input.Up)
+	confirm() // the same record again, while its job is queued
+	h.mustHave("Already queued again.")
+	h.mustNotHave("This file is 700.0 MB, not 40.0 MB.")
+	if len(svc.Requests()) != 1 {
+		t.Fatalf("the file went into the queue twice: %+v", svc.Requests())
+	}
+}

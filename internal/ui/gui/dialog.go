@@ -110,6 +110,9 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 		return m, nil
 	case dialogAnyway:
 		if id == btnDownload {
+			if m.inQueue(d.pending.slug, d.pending.link) { // queued while the dialog was open
+				return m.withToast(m.tr("ui.tui.history.already_queued", nil), toastWarn, now), nil
+			}
 			return m.enqueue(d.pending)
 		}
 		return m, nil

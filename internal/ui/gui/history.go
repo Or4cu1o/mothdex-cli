@@ -360,9 +360,9 @@ func (m Model) drawHistoryDetails(p painter) {
 	add("duration", clock(time.Duration(rec.DurationMS)*time.Millisecond))
 	switch {
 	case consent.RecordNeeded(rec):
-		add("status", m.consentRow(consent.RecordJob(rec, ""))+" ["+rec.Error.Code+"]")
+		add("status", m.consentRow(consent.RecordJob(rec, ""))+" ["+app.SanitizeText(rec.Error.Code)+"]")
 	case rec.Error != nil:
-		add("error", m.recordReason(rec)+" ["+rec.Error.Code+"]")
+		add("error", m.recordReason(rec)+" ["+app.SanitizeText(rec.Error.Code)+"]")
 	}
 	maxW := min(met.Safe.W-4*u, 28*met.Body)
 	var wrapped []string

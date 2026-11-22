@@ -653,6 +653,9 @@ func (m Model) consentRow(j app.JobSnapshot) string {
 // askDownloadAnyway opens the dialog of gui.md 5.12 for a stopped job: Don't download is the default (and B),
 // Download {size} queues the request again with the consent for exactly that size.
 func (m Model) askDownloadAnyway(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
+	if m.inQueue(j.Slug, max(j.LinkIndex, 1)) { // the same file is already on its way: ask nothing, queue nothing
+		return m.withToast(m.tr("ui.tui.history.already_queued", nil), toastWarn, now), nil
+	}
 	suffix, args := m.consentArgs(j)
 	dir := consent.Dir(j)
 	if dir == "" {

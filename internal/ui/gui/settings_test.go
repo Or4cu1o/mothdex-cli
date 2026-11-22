@@ -1,7 +1,7 @@
 package gui
 
 import (
-	"strings"
+	"strconv"
 	"testing"
 	"time"
 
@@ -28,9 +28,13 @@ func TestSettingRowsAreKeysOfTheSchema(t *testing.T) {
 			t.Errorf("%s is not a key of the schema", r.id)
 			continue
 		}
+		wantKind := map[rowKind]string{kindStepper: config.KindInt, kindToggle: config.KindBool, kindLanguages: config.KindList}[r.kind]
+		if wantKind != "" && sp.Kind != wantKind {
+			t.Errorf("%s: the schema says %s, the row is a %s editor", r.id, sp.Kind, wantKind)
+		}
 		switch r.kind {
 		case kindStepper:
-			if sp.Min != strconvItoa(r.min) || sp.Max != strconvItoa(r.max) {
+			if sp.Min != strconv.Itoa(r.min) || sp.Max != strconv.Itoa(r.max) {
 				t.Errorf("%s: range %s-%s in the schema, %d-%d here", r.id, sp.Min, sp.Max, r.min, r.max)
 			}
 		case kindChoice:
@@ -57,19 +61,6 @@ func TestSettingRowsAreKeysOfTheSchema(t *testing.T) {
 			}
 		}
 	}
-}
-
-func strconvItoa(n int) string { return strings.TrimSpace(strings.Repeat(" ", 0) + itoa(n)) }
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var d []byte
-	for ; n > 0; n /= 10 {
-		d = append([]byte{byte('0' + n%10)}, d...)
-	}
-	return string(d)
 }
 
 func settingsFixture() *guitest.Fake {
