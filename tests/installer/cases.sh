@@ -144,6 +144,9 @@ make_gui_tag() {
       nomember)
         members="LICENSE THIRD_PARTY"
         ;;
+      hardlink)
+        ln /tmp/build/THIRD_PARTY/NotoSans-OFL-1.1.txt /tmp/build/THIRD_PARTY/dup.txt
+        ;;
     esac
     case $variant in
       dotdot) (cd /tmp/build && tar -czPf "$d/$name" mothdex-gui --transform 's,^mothdex-gui$,../mothdex-gui,') ;;
@@ -195,6 +198,7 @@ setup_release() {
   if gnu_tar; then
     make_gui_tag v1.4.1 dotdot
     make_gui_tag v1.4.2 absolute
+    make_gui_tag v1.4.3 hardlink
   fi
 }
 
@@ -955,6 +959,44 @@ fs_batocera
 inst --dry-run --version v1.3.0
 check "eligibility not checked when bin_dir does not exist" out_has "not checked"
 check "bin_dir not created" absent $BATOCERA_BIN
+
+# A GUI of an earlier install never outlives a release whose GUI is not installed (Alicerce, PR-88): the launcher must not
+# start an older GUI next to a newer CLI, or one the probe just showed cannot start.
+for pair in 'v1.3.1 not-eligible 0' 'v1.3.2 probe-error 1' 'v1.2.3 not-listed 0'; do
+  # shellcheck disable=SC2086  # intentional word splitting of the "tag name exit" triple
+  set -- $pair
+  reset "upgrade-drops-gui-$2"
+  fs_batocera
+  inst --version v1.3.0
+  check "$2: the first install has the GUI" test -x $BATOCERA_BIN/mothdex-gui
+  inst --version "$1"
+  check "$2: exit status $3" rc_is "$3"
+  check "$2: the older GUI is gone" absent $BATOCERA_BIN/mothdex-gui
+  check "$2: its notices are gone" absent $BATOCERA_BIN/mothdex-licenses
+  check "$2: said so" out_has "Removed $BATOCERA_BIN/mothdex-gui"
+  check "$2: the launcher runs tui next to the new CLI" text_is "$($PORT)" "mothdex ${1#v} linux_amd64 tui"
+done
+reset probe-killed-by-the-bound
+fs_batocera
+TIMEOUT_RC=143 inst --version v1.3.0
+check "a probe killed by the bound (143) is not eligible, exit 0" rc_is 0
+check "says it did not finish" out_has "did not finish within 20 seconds"
+reset dry-run-prints-the-removal
+fs_batocera
+inst --version v1.3.0
+inst --dry-run --version v1.3.1
+check "dry run: not eligible prints the removal" out_has "Would remove $BATOCERA_BIN/mothdex-gui (not eligible)"
+inst --dry-run --version v1.2.3
+check "dry run: not listed prints the removal" out_has "Would remove $BATOCERA_BIN/mothdex-gui (this release has no GUI archive)"
+check "dry run removes nothing" test -x $BATOCERA_BIN/mothdex-gui
+if gnu_tar; then
+  reset gui-archive-hardlink
+  fs_batocera
+  inst --version v1.4.3
+  check "a hard link member is refused by type" rc_not0
+  check "refusal says so" out_has "not a regular file"
+  check "nothing installed" absent $BATOCERA_BIN/mothdex
+fi
 
 # arch mapping of the GUI archive (the same as the CLI archive)
 reset gui-arch-armv7

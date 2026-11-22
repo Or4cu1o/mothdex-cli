@@ -295,7 +295,7 @@ signature_tool_present() {
 
 fetch() {
   if command -v curl >/dev/null 2>&1; then
-    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry 2 --connect-timeout 20 --max-time 600 \
+    curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry 2 --connect-timeout 20 --max-time 600 \
       -o "$2" "$1"
   elif command -v wget >/dev/null 2>&1; then
     gnu_wget || die "this wget is not GNU Wget (busybox wget does not verify TLS certificates): install curl and run again"
@@ -439,6 +439,9 @@ gui_prepare() {
 # everything extracted must be a regular file.
 extract_gui() {
   members=$(tar -tzf "$TMP/$GUI_ARCHIVE" 2>/dev/null) || die "$GUI_ARCHIVE cannot be read: nothing was installed"
+  # by type, before anything is extracted: only regular files and directories (a link, a device or a pipe is refused)
+  odd=$(tar -tvzf "$TMP/$GUI_ARCHIVE" 2>/dev/null | cut -c1 | grep -v '^[-d]' | head -n 1) || true
+  [ -z "$odd" ] || die "$GUI_ARCHIVE has a member that is not a regular file: nothing was installed"
   list=""
   have_bin=0
   GUI_NOTICES=""
@@ -488,12 +491,14 @@ install_binary() {
 GUI_INSTALLED=0
 PROBE_RC=0
 PROBE_MSG=""
+PROBE_BOUNDED=0
 
 # IC-1, IC-2, IC-10: the staged binary is probed where it will live (bin_dir, already proven trusted and executable,
 # never the temp dir), with a scrubbed environment (no LD_*, SDL_* or MOTHDEX_*) and a time bound. Leaves the staged file.
 run_probe() {
   bound=""
-  if command -v timeout >/dev/null 2>&1; then bound="timeout $PROBE_SECONDS"; fi
+  PROBE_BOUNDED=0
+  if command -v timeout >/dev/null 2>&1; then bound="timeout $PROBE_SECONDS"; PROBE_BOUNDED=1; fi
   # shellcheck disable=SC2086  # $bound is "timeout N" or empty
   if out=$($bound env -i PATH="$PROBE_PATH" "$1" --probe 2>&1); then PROBE_RC=0; else PROBE_RC=$?; fi
   # first line only, control characters removed, at most 200 bytes
@@ -512,6 +517,14 @@ stage_and_probe() {
     0) GUI_VERDICT=eligible ;;
     1) GUI_VERDICT=not-eligible ;;
     124) GUI_VERDICT=not-eligible; PROBE_MSG="the probe did not finish within $PROBE_SECONDS seconds" ;;
+    137 | 143) # killed by the bound (busybox timeout may report the signal instead of 124); otherwise a crash
+      if [ "$PROBE_BOUNDED" -eq 1 ]; then
+        GUI_VERDICT=not-eligible
+        PROBE_MSG="the probe did not finish within $PROBE_SECONDS seconds"
+      else
+        GUI_VERDICT=error
+      fi
+      ;;
     *) GUI_VERDICT=error ;; # 126, 127 (cannot be executed), a crash, anything unexpected: reported, never "not eligible"
   esac
 }
@@ -591,14 +604,16 @@ install_licenses() {
   NEWLIC=""
 }
 
-# --no-gui on an upgrade: the GUI files this installer put in bin_dir go, so the launcher falls back to tui.
+# Whenever this release's GUI is not installed (--no-gui, not listed, not eligible, probe error) the GUI files of an earlier
+# install go too: the launcher must not start an older GUI next to this CLI, or one the probe just showed cannot start.
 remove_gui() {
+  why=$1
   gui="$BIN_DIR/mothdex-gui"
   if [ -f "$gui" ] || [ -L "$gui" ]; then
-    if [ "$DRY_RUN" -eq 1 ]; then say "Would remove $gui (--no-gui)"; else rm -f "$gui"; say "Removed $gui (--no-gui)"; fi
+    if [ "$DRY_RUN" -eq 1 ]; then say "Would remove $gui ($why)"; else rm -f "$gui"; say "Removed $gui ($why)"; fi
   fi
   if [ -d "$BIN_DIR/$LICENSES_NAME" ] || [ -L "$BIN_DIR/$LICENSES_NAME" ]; then
-    if [ "$DRY_RUN" -eq 1 ]; then say "Would remove $BIN_DIR/$LICENSES_NAME (--no-gui)"; else remove_licenses "$BIN_DIR/$LICENSES_NAME"; fi
+    if [ "$DRY_RUN" -eq 1 ]; then say "Would remove $BIN_DIR/$LICENSES_NAME ($why)"; else remove_licenses "$BIN_DIR/$LICENSES_NAME"; fi
   fi
 }
 
@@ -662,7 +677,7 @@ refresh_frontend() {
   [ "$LAUNCHER_WRITTEN" -eq 1 ] || return 0
   case $PROFILE in batocera | emuelec) ;; *) return 0 ;; esac
   if command -v curl >/dev/null 2>&1 &&
-    curl --noproxy '*' --max-redirs 0 --max-time 3 -fs -o /dev/null "$REFRESH_URL" 2>/dev/null; then
+    curl -q --noproxy '*' --max-redirs 0 --max-time 3 -fs -o /dev/null "$REFRESH_URL" 2>/dev/null; then
     say "Asked the frontend to reload its game list."
   else
     say "note: could not ask the frontend to reload its game list; the Port shows after the frontend reloads or restarts."
@@ -739,14 +754,16 @@ if [ "$DRY_RUN" -eq 1 ]; then
       drop_stage
       case $GUI_VERDICT in
         eligible) say "GUI eligibility: eligible ($PROBE_MSG); would install $BIN_DIR/mothdex-gui and $BIN_DIR/$LICENSES_NAME" ;;
-        not-eligible) say "GUI eligibility: not eligible: ${PROBE_MSG:-no reason given}; the GUI would not be installed" ;;
-        *) say "GUI eligibility: the probe could not run (exit $PROBE_RC): ${PROBE_MSG:-no output}" ;;
+        not-eligible) say "GUI eligibility: not eligible: ${PROBE_MSG:-no reason given}; the GUI would not be installed"; remove_gui "not eligible" ;;
+        *) say "GUI eligibility: the probe could not run (exit $PROBE_RC): ${PROBE_MSG:-no output}"; remove_gui "probe error" ;;
       esac
     else
       say "GUI eligibility: not checked ($BIN_DIR does not exist yet)"
     fi
-  elif [ "$GUI_LISTED" -eq 1 ]; then
-    remove_gui
+  elif [ "$GUI_OPT" = 0 ]; then
+    remove_gui "--no-gui"
+  else
+    remove_gui "this release has no GUI archive"
   fi
   if [ "$LAUNCHER_ON" -eq 1 ]; then say "Would write: $LAUNCHER_DIR/$LAUNCHER_NAME"; fi
   exit 0
@@ -754,7 +771,11 @@ fi
 
 install_binary
 say "Installed $BIN_DIR/mothdex $VERSION ($SIGNATURE)"
-if [ "$GUI_OPT" = 0 ]; then remove_gui; else install_gui; fi
+install_gui
+if [ "$GUI_INSTALLED" -ne 1 ]; then
+  if [ "$GUI_OPT" = 0 ]; then why="--no-gui"; elif [ "$GUI_ON" -eq 1 ]; then why="not installed: see above"; else why="this release has no GUI archive"; fi
+  remove_gui "$why"
+fi
 install_licenses
 install_launcher
 refresh_frontend

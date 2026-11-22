@@ -372,6 +372,25 @@ function Install-Licenses([string]$GuiStage, [string[]]$Names, [string]$BinDirPa
   }
 }
 
+# Whenever this release's GUI is not installed (-NoGui, not listed, not eligible, probe error) the GUI files of an earlier
+# install go too: the launcher must not start an older GUI next to this CLI, or one the probe just showed cannot start.
+# SDL2.dll is ours only next to our mothdex-gui.exe.
+function Remove-GuiFiles([string]$BinDirPath, [string]$Why, [bool]$Dry) {
+  $gui = Join-Path $BinDirPath 'mothdex-gui.exe'
+  if (Test-Path -LiteralPath $gui) {
+    if ($Dry) { Write-Output "Would remove $gui and SDL2.dll ($Why)" } else {
+      Remove-Item -LiteralPath $gui -Force
+      $dll = Join-Path $BinDirPath 'SDL2.dll'
+      if (Test-Path -LiteralPath $dll) { Remove-Item -LiteralPath $dll -Force }
+      Write-Output "Removed $gui and SDL2.dll ($Why)"
+    }
+  }
+  $notices = Join-Path $BinDirPath $LicensesName
+  if ((Test-Path -LiteralPath $notices) -or (Test-ReparsePoint $notices)) {
+    if ($Dry) { Write-Output "Would remove $notices ($Why)" } else { Remove-Licenses $notices $false }
+  }
+}
+
 function Test-HasMarker([string]$Path) {
   if (Test-ReparsePoint $Path) { return $false }
   foreach ($line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) { if (($line -ceq $Marker) -or ($line -ceq $MarkerV1)) { return $true } }
@@ -548,11 +567,13 @@ try {
       if (Test-Path -LiteralPath $BinDir) {
         $result = Install-Gui $guiStage $BinDir $false
         if ($result.Verdict -eq 'eligible') { Write-Output "GUI eligibility: eligible ($($result.Message)); would install $guiExe, SDL2.dll and $(Join-Path $BinDir $LicensesName)" }
-        elseif ($result.Verdict -eq 'not-eligible') { Write-Output "GUI eligibility: not eligible: $($result.Message); the GUI would not be installed" }
-        else { Write-Output "GUI eligibility: the probe failed (exit $($result.Code)): $($result.Message)" }
+        elseif ($result.Verdict -eq 'not-eligible') { Write-Output "GUI eligibility: not eligible: $($result.Message); the GUI would not be installed"; Remove-GuiFiles $BinDir 'not eligible' $true }
+        else { Write-Output "GUI eligibility: the probe failed (exit $($result.Code)): $($result.Message)"; Remove-GuiFiles $BinDir 'probe error' $true }
       } else { Write-Output "GUI eligibility: not checked ($BinDir does not exist yet)" }
-    } elseif ($guiListed -and (Test-Path -LiteralPath $guiExe)) {
-      Write-Output "Would remove $guiExe and SDL2.dll (-NoGui)"
+    } else {
+      $why = 'this release has no GUI archive'
+      if ($NoGui) { $why = '-NoGui' }
+      Remove-GuiFiles $BinDir $why $true
     }
     if ($launcherOn) { Write-Output "Would write: $(Join-Path $launcherDir $LauncherName)" }
     return
@@ -567,18 +588,11 @@ try {
   Move-Item -LiteralPath $new -Destination $exe -Force
   Write-Output "Installed $exe $Version ($signature)"
 
-  if ($NoGui) {
-    # an upgrade with -NoGui removes the GUI files this installer wrote, so the launcher falls back to tui
-    if (Test-Path -LiteralPath $guiExe) {
-      Remove-Item -LiteralPath $guiExe -Force
-      if (Test-Path -LiteralPath (Join-Path $BinDir 'SDL2.dll')) { Remove-Item -LiteralPath (Join-Path $BinDir 'SDL2.dll') -Force }
-      Write-Output "Removed $guiExe (-NoGui)"
-    }
-    $licensesDir = Join-Path $BinDir $LicensesName
-    if ((Test-Path -LiteralPath $licensesDir) -or (Test-ReparsePoint $licensesDir)) { Remove-Licenses $licensesDir $false }
-  } elseif ($guiReady) {
+  $guiInstalled = $false
+  if ($guiReady) {
     $result = Install-Gui $guiStage $BinDir $true
     if ($result.Verdict -eq 'eligible') {
+      $guiInstalled = $true
       Write-Output "Installed $guiExe ($($result.Message))"
       Install-Licenses $guiStage $guiNotices $BinDir
     } elseif ($result.Verdict -eq 'not-eligible') {
@@ -589,6 +603,11 @@ try {
       Write-Warning 'error: mothdex-gui.exe and SDL2.dll were not installed; the CLI install is complete.'
       $script:Failed = $true
     }
+  }
+  if (-not $guiInstalled) {
+    $why = 'this release has no GUI archive'
+    if ($NoGui) { $why = '-NoGui' } elseif ($guiReady) { $why = 'not installed: see above' }
+    Remove-GuiFiles $BinDir $why $false
   }
 
   if ($launcherOn) { Install-Launcher $launcherDir $BinDir }

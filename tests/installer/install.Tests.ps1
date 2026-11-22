@@ -466,6 +466,22 @@ Set-Content -Path (Join-Path $g7 'SDL2.dll') -Value 'someone else'
 Invoke-Install @{ BinDir = $g7; Uninstall = $true }
 Check 'a SDL2.dll without our mothdex-gui.exe is not removed' (Test-Path (Join-Path $g7 'SDL2.dll'))
 
+# an older GUI never outlives a release whose GUI is not installed (Alicerce, PR-88): neither the exe, SDL2.dll nor the notices
+foreach ($pair in @(@('v1.3.1', 'probe error', 1), @('v1.2.3', 'not listed', 0))) {
+  $upDir = Join-Path $root ('up-' + $pair[0])
+  $rbUp = New-RetroBat ('RetroBatUp' + $pair[0])
+  Invoke-Install @{ Version = 'v1.3.0'; RetroBatPath = $rbUp; BinDir = $upDir }
+  Check "$($pair[1]): the first install has the GUI" ((Test-Path (Join-Path $upDir 'mothdex-gui.exe')) -and (Test-Path (Join-Path $upDir 'SDL2.dll')))
+  Invoke-Install @{ Version = $pair[0]; RetroBatPath = $rbUp; BinDir = $upDir; DryRun = $true }
+  Check "$($pair[1]): dry run prints the removal and removes nothing" (($script:output -match 'Would remove .*mothdex-gui.exe and SDL2.dll') -and (Test-Path (Join-Path $upDir 'mothdex-gui.exe')))
+  Invoke-Install @{ Version = $pair[0]; RetroBatPath = $rbUp; BinDir = $upDir }
+  Check "$($pair[1]): exit code $($pair[2])" ($script:exitCode -eq $pair[2])
+  Check "$($pair[1]): the older GUI, SDL2.dll and notices are gone" ((-not (Test-Path (Join-Path $upDir 'mothdex-gui.exe'))) -and (-not (Test-Path (Join-Path $upDir 'SDL2.dll'))) -and
+    (-not (Test-Path (Join-Path $upDir 'mothdex-licenses'))))
+  Check "$($pair[1]): said so" ($script:output -match 'Removed .*mothdex-gui.exe and SDL2.dll')
+  Check "$($pair[1]): the CLI of the new release is installed" (Test-Path (Join-Path $upDir 'mothdex.exe'))
+}
+
 # dry run (5.1)
 $rbD = New-RetroBat 'RetroBatD'
 $g8 = Join-Path $root 'g8'

@@ -50,7 +50,7 @@ archive for your machine (decided from the verified `checksums.txt` only), the i
 `mothdex-licenses/`, and the launcher is **on by default** (`--no-launcher` / `-NoLauncher` turns it off, `--no-gui` / `-NoGui`
 installs the CLI only). For a release without a GUI archive the launcher stays opt-in (`--launcher` / `-Launcher`). On Windows the launcher
 is written only when `<RetroBat>\roms\windows` cannot be written by other users. After writing a launcher on Batocera, EmuELEC or RetroBat the installer asks the
-frontend to reload its game list once (loopback, no proxy, never fatal). Details: [ports.md](contracts/cli/ports.md). `install.sh` needs curl (it forces https, redirects included), or GNU wget together with cosign or a logged-in `gh`:
+frontend to reload its game list once (loopback, no proxy, never fatal). A dry run executes the verified probe from a staging name in an existing `bin_dir` and removes it again. On a default `C:\RetroBat` the launcher check will usually skip the launcher, because the root of `C:\` lets Authenticated Users modify new subfolders (not verified on a real machine); restrict the permissions of `roms\windows` to enable it. Details: [ports.md](contracts/cli/ports.md). `install.sh` needs curl (it forces https, redirects included), or GNU wget together with cosign or a logged-in `gh`:
 wget can follow an https to http redirect, so the signature check is what protects that path (busybox wget does not
 verify TLS certificates and is refused). On Windows, an existing `-BinDir` outside `%LocalAppData%` is accepted only when its
 owner is you or an administrator and no other user can write to it; on a Batocera or Recalbox share partition without file permissions (exFAT, FAT, NTFS) the installer, as

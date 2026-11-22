@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no proxy, no redirect, never fatal). `install.ps1` writes `Mothdex.bat` only into a `roms\windows` that other users cannot write to (IC-7). Tests:
   GUI cases in `tests/installer/cases.sh` (both images, plus noexec temp and noexec `bin_dir` in the non-root pass) and Pester cases with compiled fake GUI executables.
   `profiles/retrobat.yaml` `bin_dir` now says the installer's folder (PRT-G1); `THIRD_PARTY/` gains the SDL2 zlib, purego Apache-2.0 and `x/image` BSD-3 texts (PRT-G2);
+  Whenever a release's GUI is not installed (not listed, not eligible, probe error, `--no-gui`) the GUI files of an earlier install are removed too, so the launcher never starts an older GUI (shell and Pester tests); a probe killed by the bound (124, 137, 143) is not eligible; curl runs with `-q`; GUI archive members are checked by type before extraction.
   the beta report form `.github/ISSUE_TEMPLATE/ports-beta.yml` and `docs/qa/ports-beta-matrix.md` (every item Unverified); gui.md and release-artifacts.md follow (PRT-G5).
 
 ### Changed
