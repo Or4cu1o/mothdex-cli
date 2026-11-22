@@ -54,7 +54,7 @@ func TestUnmappedJoystickIsAnnouncedOncePerDevice(t *testing.T) {
 func TestPadNoticesWaitForTheToastOnScreenAndCutOnlyTheName(t *testing.T) {
 	long := input.PadInfo{Name: strings.Repeat("Very Long Controller Name ", 12), GUID: "03000000"}
 	h := started(t, guitest.New(), 640, 480)
-	h.send(PadsMsg{Pads: []input.PadInfo{long}}) // no pad that works, and an unknown joystick: two notices
+	h.send(PadsMsg{Pads: []input.PadInfo{long}})                                                                     // no pad that works, and an unknown joystick: two notices
 	if !strings.Contains(strings.Join(h.texts(), " "), "Connect a controller. On a keyboard: arrows, Enter, Esc.") { // wrapped at 640
 		t.Fatalf("the first notice is on screen: %v", h.texts())
 	}
