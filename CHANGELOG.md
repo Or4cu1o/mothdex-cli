@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-65: `release-check.yml`, `gui-spike.yml` and `gui-spike-qemu.yml` no longer use a `paths:` filter, so their jobs can be
+  required status checks (a workflow skipped by a path filter never reports a check). The first step of each job runs
+  `scripts/ci-scope.sh`, which compares the pull request with its base using plain `git diff` (no new action, no token, fails
+  closed to "run"); when nothing the job checks changed, its later steps are skipped and the job succeeds under the same name.
+  The `static` GUI job always runs. Matrix jobs are never skipped whole, only their steps.
 - T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
   and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does; the tag check is the
   last step before the release is created, and `publish` refuses to upload files that `checksums.txt` does not list.

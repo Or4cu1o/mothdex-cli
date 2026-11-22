@@ -1,24 +1,12 @@
 name: Release check
 
 # Dry run of the release pipeline on pull requests that touch it. No signing
-# (no OIDC token on PRs), no publishing, no secrets. The job is path-filtered,
-# so it must not be a required status check.
+# (no OIDC token on PRs), no publishing, no secrets. The workflow runs on every
+# pull request so that the job can be a required status check: the first step
+# (scripts/ci-scope.sh) compares the pull request with its base, and when no
+# release-relevant path changed every later step is skipped and the job succeeds.
 on:
   pull_request:
-    paths:
-      - .goreleaser.yaml
-      - .github/workflows/release.yml
-      - .github/workflows/release-check.yml
-      - scripts/verify-dist.sh
-      - tools/**
-      - cmd/**
-      - internal/**
-      - pkg/**
-      - go.mod
-      - go.sum
-      - LICENSE
-      - README.md
-      - CHANGELOG.md
 
 permissions:
   contents: read
@@ -37,25 +25,39 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Scope (does this pull request touch what this job checks?)
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/ci-scope.sh '.goreleaser.yaml' '.github/workflows/release.yml' '.github/workflows/release-check.yml' 'scripts/verify-dist.sh' 'scripts/ci-scope.sh' 'tools/*' 'cmd/*' 'internal/*' 'pkg/*' 'go.mod' 'go.sum' 'LICENSE' 'README.md' 'CHANGELOG.md'
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
+        if: steps.scope.outputs.run == 'true'
       - name: Install verification tools
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user file jq unzip
+        if: steps.scope.outputs.run == 'true'
       - name: Install pinned release tools (goreleaser, cosign, syft)
         run: |
           for tool in goreleaser cosign syft; do
             GOBIN="$RUNNER_TEMP/bin" go -C "tools/$tool" install tool
           done
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+        if: steps.scope.outputs.run == 'true'
       - run: goreleaser check
+        if: steps.scope.outputs.run == 'true'
       - run: goreleaser release --snapshot --clean --skip=sign
+        if: steps.scope.outputs.run == 'true'
       - name: Verify the build output (9 targets)
         run: scripts/verify-dist.sh dist
+        if: steps.scope.outputs.run == 'true'
       - name: Build again and compare the archives (reproducibility)
         run: |
           grep -E '[.](tar[.]gz|zip)$' dist/checksums.txt | sort > "$RUNNER_TEMP/first.txt"
           goreleaser release --snapshot --clean --skip=sign
           grep -E '[.](tar[.]gz|zip)$' dist/checksums.txt | sort > "$RUNNER_TEMP/second.txt"
           diff "$RUNNER_TEMP/first.txt" "$RUNNER_TEMP/second.txt"
+        if: steps.scope.outputs.run == 'true'

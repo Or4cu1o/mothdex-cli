@@ -4,16 +4,12 @@ name: GUI spike (qemu)
 # from the runner distro (qemu-user-static and binfmt-support from apt), not from docker/setup-qemu-action: the
 # repository's allowed-actions policy does not list that action, and a workflow that uses it fails at startup. The Debian
 # images are pinned by digest. The armv6 leg is best effort. Same rules as gui-spike.yml: read-only token, actions pinned
-# by SHA, no cache. Like it, this workflow is path-filtered: do not mark its jobs as required checks.
+# by SHA, no cache. Like it, this workflow runs on every pull request and each job decides
+# in its first step (scripts/ci-scope.sh) whether the pull request touches the GUI; if not, the later steps are skipped
+# and the job succeeds, so the jobs can be required status checks. A matrix job is never skipped as a whole (its name
+# would not be expanded and the required check would stay pending), only its steps are.
 on:
   pull_request:
-    paths:
-      - "internal/ui/gui/**"
-      - "cmd/mothdex-gui/**"
-      - "scripts/gui-probe.sh"
-      - ".github/workflows/gui-spike-qemu.yml"
-      - "go.mod"
-      - "go.sum"
   workflow_dispatch:
 
 permissions:
@@ -65,15 +61,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Scope (does this pull request touch what this job checks?)
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/ci-scope.sh 'internal/ui/gui/*' 'cmd/mothdex-gui/*' 'scripts/gui-probe.sh' 'scripts/ci-scope.sh' '.github/workflows/gui-spike-qemu.yml' 'go.mod' 'go.sum'
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
+        if: steps.scope.outputs.run == 'true'
       - name: Cross-build the probe and check its ELF (interpreter and NEEDED)
         env:
           TARGET: ${{ matrix.target }}
           GUI_PROBE_RUN: "0"
         run: scripts/gui-probe.sh "$TARGET"
+        if: steps.scope.outputs.run == 'true'
       - name: Cross-build the package tests
         env:
           GOARCH: ${{ matrix.goarch }}
@@ -84,6 +89,7 @@ jobs:
           [ "$GOARCH" = arm ] && ldflags="-I /lib/ld-linux-armhf.so.3"
           CGO_ENABLED=0 GOOS=linux go test -c -tags gui -trimpath ${ldflags:+-ldflags "$ldflags"} \
             -o "dist-gui/$DIR/sdl.test" ./internal/ui/gui/sdl
+        if: steps.scope.outputs.run == 'true'
       - name: Install qemu-user from the runner distro (no third-party action)
         run: |
           sudo apt-get update -qq
@@ -95,14 +101,16 @@ jobs:
           fi
           sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
           qemu-aarch64 --version | head -1 || qemu-aarch64-static --version | head -1
+        if: steps.scope.outputs.run == 'true'
       - name: Path 1, binfmt - does the foreign-architecture Debian image run in a container?
         id: binfmt
         continue-on-error: true
         env:
           PLATFORM: ${{ matrix.platform }}
         run: docker run --rm --platform "$PLATFORM" "$DEBIAN_IMAGE" uname -m
+        if: steps.scope.outputs.run == 'true'
       - name: Path 1, binfmt - probe and package tests in the Debian image with its libsdl2
-        if: steps.binfmt.outcome == 'success'
+        if: steps.binfmt.outcome == 'success' && steps.scope.outputs.run == 'true'
         env:
           PLATFORM: ${{ matrix.platform }}
           DIR: ${{ matrix.dir }}
@@ -118,7 +126,7 @@ jobs:
               /gui/sdl.test -test.v -test.count=1
             '
       - name: Path 2, no binfmt - build a sysroot (pinned Debian image plus the libsdl2 packages of the target)
-        if: steps.binfmt.outcome != 'success'
+        if: steps.binfmt.outcome != 'success' && steps.scope.outputs.run == 'true'
         env:
           PLATFORM: ${{ matrix.platform }}
           DEB_ARCH: ${{ matrix.deb_arch }}
@@ -140,7 +148,7 @@ jobs:
           find debs -name 'libsdl2*' -o -name 'libc6*'
           find sysroot -name 'libSDL2-2.0.so.0*' | head -3
       - name: Path 2, no binfmt - probe and package tests with qemu-user and the sysroot
-        if: steps.binfmt.outcome != 'success'
+        if: steps.binfmt.outcome != 'success' && steps.scope.outputs.run == 'true'
         env:
           QEMU_BIN: ${{ matrix.qemu_bin }}
           DIR: ${{ matrix.dir }}
@@ -151,7 +159,7 @@ jobs:
           "$QEMU_BIN" -L sysroot "dist-gui/$DIR/sdl.test" -test.v -test.count=1
       - name: armv6 CPU model (qemu arm1176), best effort - the result is reported in the summary and as a warning
         id: arm1176
-        if: matrix.goarm == '6'
+        if: matrix.goarm == '6' && steps.scope.outputs.run == 'true'
         continue-on-error: true
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -205,7 +213,7 @@ jobs:
             exit 1
           fi
       - name: Size report
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         env:
           NAME: ${{ matrix.name }}
           DIR: ${{ matrix.dir }}
