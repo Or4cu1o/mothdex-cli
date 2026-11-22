@@ -12,11 +12,13 @@ import (
 	"image/png"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/config"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
@@ -47,6 +49,11 @@ type Fake struct {
 	// each Search starts, so a test knows the call is in flight.
 	SearchBlock   chan struct{}
 	SearchEntered chan struct{}
+
+	// ConfigSetErr fails ConfigSet for a key (the key "*" fails every key); ConfigResetErr does the same for ConfigReset.
+	ConfigSetErr, ConfigResetErr map[string]error
+	Cache                        app.CacheStats // what CacheStats reports; CacheClear empties it
+	CacheErr                     error          // when set, CacheStats and CacheClear fail with it
 
 	SearchErr   error // when set, every Search fails with it
 	EnqueueErr  error
@@ -110,7 +117,94 @@ func (f *Fake) DBInfo(context.Context) (app.Result[mothdex.DBInfo], error) {
 }
 
 // ConfigList returns the configured settings.
-func (f *Fake) ConfigList() ([]app.Setting, error) { return f.Settings, nil }
+func (f *Fake) ConfigList() ([]app.Setting, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.Settings), nil
+}
+
+// ConfigSchema is the real schema: the GUI takes the environment variable of a key from it.
+func (f *Fake) ConfigSchema() []app.SettingSpec { return config.Specs() }
+
+// ConfigSet records the call and, unless the key is set to fail, stores the value as the file layer with the type
+// the key already has (bool, int or a list), so the GUI reads it back the way the service gives it.
+func (f *Fake) ConfigSet(key, value string) error {
+	f.record("config_set:%s=%s", key, value)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.ConfigSetErr[key]; err != nil {
+		return err
+	}
+	if err := f.ConfigSetErr["*"]; err != nil {
+		return err
+	}
+	for i, st := range f.Settings {
+		if st.Key != key {
+			continue
+		}
+		f.Settings[i].Source = config.SourceFile
+		switch st.Value.(type) {
+		case bool:
+			f.Settings[i].Value = value == "true"
+		case int:
+			n, _ := strconv.Atoi(value)
+			f.Settings[i].Value = n
+		case []string:
+			f.Settings[i].Value = splitList(value)
+		default:
+			f.Settings[i].Value = value
+		}
+		return nil
+	}
+	f.Settings = append(f.Settings, app.Setting{Key: key, Value: value, Source: config.SourceFile})
+	return nil
+}
+
+// ConfigReset records the call and puts the key back to the default layer (its value is kept: tests that care set it).
+func (f *Fake) ConfigReset(key string) error {
+	f.record("config_reset:%s", key)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.ConfigResetErr[key]; err != nil {
+		return err
+	}
+	for i, st := range f.Settings {
+		if st.Key == key {
+			f.Settings[i].Source = config.SourceDefault
+		}
+	}
+	return nil
+}
+
+func splitList(v string) []string {
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// CacheStats reports the configured cache.
+func (f *Fake) CacheStats() (app.CacheStats, error) {
+	f.record("cache_stats")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.Cache, f.CacheErr
+}
+
+// CacheClear records the call and empties the cache.
+func (f *Fake) CacheClear(ns ...string) error {
+	f.record("cache_clear:%d", len(ns))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.CacheErr != nil {
+		return f.CacheErr
+	}
+	f.Cache = app.CacheStats{MaxBytes: f.Cache.MaxBytes}
+	return nil
+}
 
 // ActiveProfile returns the profile.
 func (f *Fake) ActiveProfile() app.ProfileInfo { return f.Profile }

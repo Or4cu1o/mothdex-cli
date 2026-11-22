@@ -64,6 +64,10 @@ func (m Model) onHistory(msg historyMsg) Model {
 		}
 	}
 	m.downloaded = marks
+	m.records = msg.records
+	if m.screen == screenHistory {
+		m = m.syncHistoryFocus()
+	}
 	return m
 }
 

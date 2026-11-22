@@ -43,6 +43,7 @@ const (
 	screenResults
 	screenEntry
 	screenQueue
+	screenHistory
 )
 
 type overlayKind int
@@ -129,6 +130,8 @@ type Model struct {
 	results    resultsState
 	entry      entryState
 	queue      queueState
+	records    []app.HistoryRecord // the history, newest first, as the service last gave it
+	history    historyState
 	book       jobBook
 	batchBase  [4]int // done, skipped, failed and waiting for the OK when the queue last went busy, for the summary toast
 	covers     coverCache
@@ -321,6 +324,8 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 		return m.onEntryAction(a, now)
 	case screenQueue:
 		return m.onQueueAction(a, now)
+	case screenHistory:
+		return m.onHistoryAction(a, now)
 	}
 	return m.onHomeAction(a, now)
 }
@@ -407,6 +412,9 @@ func (m Model) onJob(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
 			m.batchBase[0], m.batchBase[1] = m.batchBase[0]-btoi(prev.State == app.StateDone), m.batchBase[1]-btoi(prev.State == app.StateSkipped)
 			m.batchBase[2], m.batchBase[3] = m.batchBase[2]-btoi(prev.State == app.StateFailed && !waited), m.batchBase[3]-btoi(waited)
 		}
+	}
+	if j.Terminal() && (!known || prev.State != j.State) { // the History is read again after each terminal event (docs/ux/gui.md section 5.9)
+		cmds = append(cmds, historyCmd(m.o.Service))
 	}
 	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) && m.screen != screenQueue {
 		if consent.Needed(j) { // nothing failed: the job waits for a person; the title comes last, so a cut falls on it

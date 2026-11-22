@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/history"
 )
 
 func stopped(state app.State, code string, args map[string]any, catalog int64) app.JobSnapshot {
@@ -52,5 +53,34 @@ func TestNeededSizeAndConsent(t *testing.T) {
 				t.Errorf("SizeConsent %d, want %d", req.SizeConsent, tc.size)
 			}
 		})
+	}
+}
+
+func TestRecordNeededAndRecordJob(t *testing.T) {
+	const real = int64(700 << 20)
+	rec := func(state, code string, cl int64) app.HistoryRecord {
+		r := app.HistoryRecord{ID: "j1", Slug: "zelda", Title: "Zelda", Platform: "gbc", LinkIndex: 2, State: state, ContentLength: cl, CatalogSize: 40 << 20}
+		if code != "" {
+			r.Error = &history.Failure{Code: code, Message: "m"}
+		}
+		return r
+	}
+	for _, tc := range []struct {
+		name string
+		r    app.HistoryRecord
+		want bool
+	}{
+		{"stopped on its size", rec("failed", "confirmation_required", real), true},
+		{"another failure", rec("failed", "network", real), false},
+		{"done", rec("done", "", real), false},
+		{"no Content-Length was reported", rec("failed", "confirmation_required", 0), false},
+	} {
+		if got := RecordNeeded(tc.r); got != tc.want {
+			t.Errorf("%s: RecordNeeded = %v", tc.name, got)
+		}
+	}
+	j := RecordJob(rec("failed", "confirmation_required", real), "/roms/gbc")
+	if !Needed(j) || Size(j) != real || Dir(j) != "/roms/gbc" || j.Slug != "zelda" || j.LinkIndex != 2 || j.CatalogSize != 40<<20 {
+		t.Errorf("the record as a job: %+v", j)
 	}
 }

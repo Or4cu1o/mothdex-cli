@@ -137,7 +137,7 @@ func (m Model) activateMenu(id string, now time.Time) (Model, []Cmd) {
 	case itemHideDone:
 		return m.hideFinished(), nil
 	case menuHistory:
-		return m.notYetNamed(m.tr("ui.gui.menu.history", nil), now), nil
+		return m.openHistory()
 	case menuSettings:
 		return m.notYetNamed(m.tr("ui.gui.menu.settings", nil), now), nil
 	case menuButtons:

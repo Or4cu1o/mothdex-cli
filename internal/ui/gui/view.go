@@ -132,6 +132,9 @@ func (m Model) Render(now time.Time, l *draw.List) {
 	case screenQueue:
 		m.drawFrame(p, m.queueFrame())
 		m.drawQueue(p, now)
+	case screenHistory:
+		m.drawFrame(p, m.historyFrame())
+		m.drawHistory(p)
 	}
 	switch m.overlay {
 	case overlayMenu:
