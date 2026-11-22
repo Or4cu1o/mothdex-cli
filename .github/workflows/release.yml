@@ -44,7 +44,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Install verification tools
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user file jq unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user file jq unzip libsdl2-2.0-0
       - name: Install pinned release tools (goreleaser, cosign, syft)
         run: |
           for tool in goreleaser cosign syft; do
@@ -67,6 +67,8 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: scripts/verify-dist.sh dist "${TAG#v}"
+      - name: The GUI archives are what install.sh and install.ps1 extract
+        run: scripts/check-gui-archives.sh dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-dist

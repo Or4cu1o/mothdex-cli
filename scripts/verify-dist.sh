@@ -147,6 +147,12 @@ for entry in "${gui_targets[@]}"; do
   esac
   [ "$members" = "$want_members" ] || fail "$name: members differ from what the installers extract:
 $(diff <(echo "$want_members") <(echo "$members") || true)"
+  # by type, like the installers: only regular files and directories (a link, device or pipe fails at build time)
+  case "$suffix" in
+    *.zip) odd="$(unzip -Z "$archive" | grep -E '^[lbcp]' || true)" ;;
+    *) odd="$(tar -tvzf "$archive" | cut -c1 | grep -v '^[-d]' || true)" ;;
+  esac
+  [ -z "$odd" ] || fail "$name: has a member that is not a regular file"
   case "$suffix" in
     *.tar.gz) [ "$(stat -c %a "$dir/$bin")" = 755 ] || fail "$name: $bin is not mode 0755" ;;
   esac
