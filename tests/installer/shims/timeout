@@ -1,0 +1,7 @@
+#!/bin/sh
+# timeout stand-in (the form install.sh uses: timeout <seconds> <command> ...): records the arguments in
+# $FAKE_LOG.timeout, answers TIMEOUT_RC when set (124 simulates a probe that did not finish), else runs the command.
+printf '%s\n' "$*" >>"$FAKE_LOG.timeout"
+if [ -n "${TIMEOUT_RC:-}" ]; then exit "$TIMEOUT_RC"; fi
+shift
+exec "$@"

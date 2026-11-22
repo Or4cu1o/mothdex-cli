@@ -313,7 +313,7 @@ confirms each one on a named system and device:
 
 The beta report template (one issue per system and device, D4) asks for: system and version, device and CPU arch,
 the installer output, the GUI diagnostics line (§4), and each B-item as pass, fail or not tried. Guindaste writes the
-template; the compatibility matrix lists the B-items per system.
+template ([`ports-beta.yml`](../../../.github/ISSUE_TEMPLATE/ports-beta.yml)); the compatibility matrix lists the B-items per system ([`ports-beta-matrix.md`](../../qa/ports-beta-matrix.md)).
 
 ## 9. Open questions (research for Sonda, via Regente)
 
