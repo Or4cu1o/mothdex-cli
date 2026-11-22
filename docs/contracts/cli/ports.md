@@ -312,7 +312,7 @@ template; the compatibility matrix lists the B-items per system.
 | PRT-G3 | Vitral | `mothdex-gui --probe` (§5.2) and the start-up diagnostics line (§4) |
 | PRT-G4 | Guindaste | installers: GUI archive, eligibility, `v2` launcher, `--no-gui`/`--no-launcher` and `-NoGui`/`-NoLauncher`, the default flip, `mothdex-licenses/`, uninstall and upgrade rules; installer tests for each case (`tests/installer/`); the beta report template (§8) |
 | PRT-G5 | Alicerce, with Guindaste's PR | gui.md §6: replace the `ldconfig -p` check with `--probe`, and `THIRD_PARTY.md` with `THIRD_PARTY/`; release-artifacts.md: the static-binary sentence (already listed in gui.md §6) |
-| PRT-G6 | Bússola | the launcher name shown in the frontend list (`Mothdex`), and whether a Port needs an image or `gamelist.xml` entry. Writing frontend-owned files such as `gamelist.xml` is out of scope until decided |
+| PRT-G6 | Bússola | **closed (v1: no metadata).** The name `Mothdex` comes from the file name. No `gamelist.xml` entry: the file belongs to the frontend and the person, and EmulationStation rewrites it on exit and on scrape. No image in v1: art is deferred to the brand session (D28 8b). If that session approves art, this contract adds how each frontend shows it without writing `gamelist.xml` (for example a media file next to the script), Unverified per frontend and checked under B1 |
 | PRT-G7 | Sentinela | threat model of §5 before coding: the default-on launcher, running `--probe` as root from the temp dir, the inherited environment (§2.3), and Windows `SDL2.dll` placement |
 
 ## 11. Test plan (risk paths)
