@@ -330,8 +330,8 @@ func TestTheKeyboardScreenTurnsTextInputOnAndTypedTextReachesTheField(t *testing
 	var typed, emptied, left bool
 	for _, fr := range f.backend.frames {
 		typed = typed || (slices.Contains(fr.texts, "ab") && slices.Contains(fr.texts, "2/80"))
-		emptied = emptied || (!slices.Contains(fr.texts, "ab") && slices.Contains(fr.texts, "0/80") && slices.Contains(fr.texts, "mothdex › Search"))
-		left = left || slices.Contains(fr.texts, "Search") && !slices.Contains(fr.texts, "mothdex › Search") && slices.Contains(fr.texts, "Platforms")
+		emptied = emptied || (!slices.Contains(fr.texts, "ab") && slices.Contains(fr.texts, "0/80") && slices.Contains(fr.texts, " › Search"))
+		left = left || slices.Contains(fr.texts, "Search") && !slices.Contains(fr.texts, " › Search") && slices.Contains(fr.texts, "Platforms")
 	}
 	if !typed || !emptied || !left {
 		t.Fatalf("typed %v emptied %v left %v", typed, emptied, left)

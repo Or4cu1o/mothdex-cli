@@ -230,9 +230,9 @@ func (m Model) dialogGeometry() dialogGeom {
 
 func (m Model) drawDialog(p painter) {
 	met := m.metrics
-	p.l.Fill(rect{W: met.W, H: met.H}, 0, colScrim)
+	p.l.Fill(rect{W: met.W, H: met.H}, colScrim)
 	g := m.dialogGeometry()
-	p.l.Fill(g.panel, met.Radius, colSurface)
+	p.window(g.panel)
 	for i, line := range g.titleLines {
 		p.text(g.panel.X+2*met.Unit, g.titleTop+i*LineHeight(met.Body), met.Body, colText, line)
 	}
@@ -243,7 +243,7 @@ func (m Model) drawDialog(p painter) {
 		if m.dlgFocus == b.button.id {
 			p.box(b.rect, true)
 		} else {
-			p.l.Fill(b.rect, met.Radius, colBG)
+			p.shape(b.rect, colSurface)
 		}
 		p.centered(b.rect, met.Body, colText, p.fit(met.Body, b.button.label, b.rect.W-met.Unit))
 	}

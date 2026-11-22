@@ -39,9 +39,9 @@ type Kind int
 
 // Op kinds.
 const (
-	KindRect    Kind = iota // a filled rectangle, with rounded corners when Radius > 0
+	KindRect    Kind = iota // a filled rectangle, with stepped corners when Steps > 0
 	KindText                // one line of text
-	KindSpinner             // a ring, one turn per second
+	KindSpinner             // eight blocks around a square, one step per 100 ms
 	KindImage               // a picture (a cover) scaled to fill Rect
 )
 
@@ -50,18 +50,22 @@ type Op struct {
 	Kind  Kind
 	Color Color
 
-	// KindRect
-	Rect   Rect
-	Radius int
+	// KindRect: Steps is how many steps each corner is cut by (0 for a plain rectangle), each Cell pixels wide
+	// and tall: a 2-step corner removes 2 cells from the first row and 1 from the second.
+	Rect  Rect
+	Steps int
+	Cell  int
 
 	// KindText: X is the left edge of the first character and Base the baseline row; Size is in pixels.
+	// Display draws the run in the display face (DESIGN.md Type) instead of the body face.
 	X, Base, Size int
 	Text          string
+	Display       bool
 
-	// KindSpinner: the center, the outer radius and the thickness of the ring, and the turn so far in
-	// 0..1 (the backend draws the bright arc from there).
-	CX, CY, R, Thick int
-	Turn             float64
+	// KindSpinner: the center of the square, Cell (the pixel cell P, the gap between blocks), Side (the side of a block,
+	// a multiple of P) and Step, the block at full color now (0..7); the others fade behind it to 25 %. The square is
+	// three blocks and two gaps wide, with an empty centre.
+	CX, CY, Side, Step int
 
 	// KindImage: Rect is where the picture goes. ImageID names the picture for the backend's texture cache
 	// (the same id is the same pixels); Pixels is the picture, not modified after it was made.
@@ -87,11 +91,19 @@ type List struct {
 func (l *List) Reset(w, h int) { l.W, l.H, l.Ops = w, h, l.Ops[:0] }
 
 // Fill appends a filled rectangle.
-func (l *List) Fill(r Rect, radius int, c Color) {
+func (l *List) Fill(r Rect, c Color) {
 	if r.Empty() || c.A == 0 {
 		return
 	}
-	l.Ops = append(l.Ops, Op{Kind: KindRect, Rect: r, Radius: radius, Color: c})
+	l.Ops = append(l.Ops, Op{Kind: KindRect, Rect: r, Color: c})
+}
+
+// Notch appends a filled rectangle with stepped corners: steps steps of cell pixels (docs/ux DESIGN.md, Shape).
+func (l *List) Notch(r Rect, steps, cell int, c Color) {
+	if r.Empty() || c.A == 0 {
+		return
+	}
+	l.Ops = append(l.Ops, Op{Kind: KindRect, Rect: r, Steps: steps, Cell: cell, Color: c})
 }
 
 // Text appends one line of text.
@@ -102,9 +114,17 @@ func (l *List) Text(x, base, size int, c Color, s string) {
 	l.Ops = append(l.Ops, Op{Kind: KindText, X: x, Base: base, Size: size, Color: c, Text: s})
 }
 
-// Spinner appends a spinner.
-func (l *List) Spinner(cx, cy, r, thick int, turn float64, c Color) {
-	l.Ops = append(l.Ops, Op{Kind: KindSpinner, CX: cx, CY: cy, R: r, Thick: thick, Turn: turn, Color: c})
+// DisplayText appends one line of text in the display face.
+func (l *List) DisplayText(x, base, size int, c Color, s string) {
+	if s == "" || c.A == 0 {
+		return
+	}
+	l.Ops = append(l.Ops, Op{Kind: KindText, X: x, Base: base, Size: size, Color: c, Text: s, Display: true})
+}
+
+// Spinner appends a spinner: eight blocks of side around a square, a cell apart, the one at step at full color.
+func (l *List) Spinner(cx, cy, cell, side, step int, c Color) {
+	l.Ops = append(l.Ops, Op{Kind: KindSpinner, CX: cx, CY: cy, Cell: cell, Side: side, Step: step, Color: c})
 }
 
 // Image appends a picture to be scaled into r.

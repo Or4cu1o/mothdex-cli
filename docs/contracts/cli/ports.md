@@ -279,6 +279,7 @@ folder (gui.md §6). For Ports:
 | Component | Licence | Where the notice lives |
 |---|---|---|
 | Noto Sans (embedded) | OFL-1.1 | `THIRD_PARTY/NotoSans-OFL-1.1.txt` in the archive, installed to `bin_dir/mothdex-licenses/` |
+| Handjet (embedded) | OFL-1.1 | `THIRD_PARTY/Handjet-OFL-1.1.txt` in the archive, installed to `bin_dir/mothdex-licenses/` |
 | GameControllerDB (embedded) | zlib | `THIRD_PARTY/SDL_GameControllerDB-zlib.txt`, same |
 | SDL2.dll 2.32.10 (Windows, shipped) | zlib | `THIRD_PARTY/SDL2-zlib.txt`, in every GUI archive (PRT-G2, done in T-71) |
 | purego (in the binary) | Apache-2.0 | `THIRD_PARTY/purego-Apache-2.0.txt` (Apache-2.0 §4(a); PRT-G2, done) |

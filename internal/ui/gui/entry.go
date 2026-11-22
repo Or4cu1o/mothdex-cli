@@ -290,7 +290,7 @@ func (m Model) drawLinkRow(p painter, r draw.Rect, i int, l app.LinkChoice) {
 	cols := nonEmpty(app.SanitizeText(l.Link.Type), app.SanitizeText(l.Link.Format), app.SanitizeText(l.Link.SizeStr), app.SanitizeText(extras), app.SanitizeText(l.Link.SourceName))
 	text := strings.Join(cols, "   ")
 	if m.isDownloaded(m.entry.slug, l.Index) {
-		drawCheck(p.l, r.Right()-met.Unit-LineHeight(met.Body)+4, top, LineHeight(met.Body)-6, colOK)
+		drawCheck(p.l, p.m.Pixel, r.Right()-met.Unit-LineHeight(met.Body)+4, top, LineHeight(met.Body)-6, colOK)
 	}
 	if !l.Available {
 		text += "   " + m.tr("ui.gui.entry.unavailable", nil)

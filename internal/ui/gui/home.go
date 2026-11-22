@@ -201,6 +201,7 @@ func (m Model) footer(p painter) (string, bool) {
 func (m Model) drawHome(p painter) {
 	met := m.metrics
 	g := m.homeGeometry()
+	p.drawSky(m.homeSkyAvoid(g))
 	for _, t := range g.tiles {
 		p.box(t.rect, m.focus == t.id)
 		label := m.tileName(t.id)
@@ -209,10 +210,10 @@ func (m Model) drawHome(p painter) {
 				label += "  " + strconv.Itoa(n)
 			}
 		}
-		size, lines := tileLabel(p, label, t.rect.W-2*met.Unit)
+		lp, size, lines := tileLabel(p, label, t.rect.W-2*met.Unit)
 		top := t.rect.Y + (t.rect.H-len(lines)*LineHeight(size))/2
 		for i, line := range lines {
-			p.text(t.rect.X+(t.rect.W-p.width(size, line))/2, top+i*LineHeight(size), size, colText, line)
+			lp.text(t.rect.X+(t.rect.W-lp.width(size, line))/2, top+i*LineHeight(size), size, colText, line)
 		}
 	}
 	if g.showRecent {
@@ -234,18 +235,43 @@ func (m Model) drawHome(p painter) {
 	}
 }
 
-// tileLabel chooses how a tile label is drawn: at the body size, wrapped to at most two lines at its spaces. A
-// single word wider than the tile is never split in the middle: the label drops to the secondary size, then to
-// the minimum one (docs/ux/gui.md section 1.3), and only if even that does not fit is it cut.
-func tileLabel(p painter, label string, maxW int) (size int, lines []string) {
+// homeSkyAvoid is what the sky of Home keeps clear: the bars, the tiles with their focus ring, the recent searches and
+// the footer.
+func (m Model) homeSkyAvoid(g homeGeom) []rect {
+	met := m.metrics
+	avoid := []rect{met.TopBarRect(), met.HintBarRect()}
+	for _, t := range g.tiles {
+		avoid = append(avoid, t.rect.Inset(-met.Ring))
+	}
+	for _, c := range g.chips {
+		avoid = append(avoid, c.rect.Inset(-met.Ring))
+	}
+	if g.showRecent {
+		avoid = append(avoid, rect{X: g.recentX, Y: g.recentTop, W: met.ContentRect().W, H: LineHeight(met.Body) + 2*met.Unit})
+	}
+	c := met.ContentRect()
+	return append(avoid, rect{X: c.X, Y: g.footerTop, W: c.W, H: c.Bottom() - g.footerTop})
+}
+
+// tileLabel chooses how a tile label is drawn: in the display face (DESIGN.md Type), wrapped to at most two lines at its
+// spaces. A single word wider than the tile is never split in the middle: the label drops to the body face at the body size,
+// then the secondary and the minimum ones (docs/ux/gui.md section 1.3), and only if even that does not fit is it cut. It
+// returns the painter to draw with (the display one or the plain one) and the size.
+func tileLabel(p painter, label string, maxW int) (lp painter, size int, lines []string) {
 	met := p.m
+	if d := p.display(label); d.disp {
+		lines = d.wrap(met.Display, label, maxW, 2)
+		if wrappedWhole(lines, label) {
+			return d, met.Display, lines
+		}
+	}
 	for _, size := range []int{met.Body, met.Secondary, met.Minimum} {
 		lines = p.wrap(size, label, maxW, 2)
 		if wrappedWhole(lines, label) {
-			return size, lines
+			return p, size, lines
 		}
 	}
-	return met.Minimum, lines
+	return p, met.Minimum, lines
 }
 
 // wrappedWhole reports whether wrapping only broke the text at its spaces: no word was cut or split.

@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
@@ -18,18 +19,54 @@ const (
 // painter draws into a list with the font and the metrics of the model. With a nil list it only measures,
 // which is how layout shares its code with drawing.
 type painter struct {
-	l    *draw.List
-	m    Metrics
-	font *text.Font
+	l     *draw.List
+	m     Metrics
+	font  *text.Font
+	dfont *text.Font // the display face, nil when there is none
+	disp  bool       // text is measured and drawn in the display face
 }
 
-func (m Model) painter(l *draw.List) painter { return painter{l: l, m: m.metrics, font: m.o.Font} }
+func (m Model) painter(l *draw.List) painter {
+	return painter{l: l, m: m.metrics, font: m.o.Font, dfont: m.o.Display}
+}
+
+// display returns a painter that measures and draws in the display face (Handjet), for the short labels of DESIGN.md. It
+// is the same painter when there is no display font or when the face lacks a glyph of one of the labels: those are drawn in
+// the body font at the title size, so the label is never half in one face (DESIGN.md Type, fallback).
+func (p painter) display(labels ...string) painter {
+	if p.dfont == nil {
+		return p
+	}
+	f, err := p.dfont.Face(p.m.Display)
+	if err != nil {
+		return p
+	}
+	for _, s := range labels {
+		if !f.Covers(s) {
+			return p
+		}
+	}
+	p.disp = true
+	return p
+}
+
+// dsize is the size of a display label: the display size in the display face, the title size in the fallback.
+func (p painter) dsize() int {
+	if p.disp {
+		return p.m.Display
+	}
+	return p.m.Title
+}
 
 func (p painter) face(size int) *text.Face {
-	if p.font == nil {
+	font := p.font
+	if p.disp {
+		font = p.dfont
+	}
+	if font == nil {
 		return nil
 	}
-	f, err := p.font.Face(size)
+	f, err := font.Face(size)
 	if err != nil {
 		return nil
 	}
@@ -71,6 +108,10 @@ func (p painter) base(top, size int) int {
 
 // text draws a line with its box starting at (x, top).
 func (p painter) text(x, top, size int, c draw.Color, s string) {
+	if p.disp {
+		p.l.DisplayText(x, p.base(top, size), size, c, s)
+		return
+	}
 	p.l.Text(x, p.base(top, size), size, c, s)
 }
 
@@ -87,27 +128,63 @@ func (p painter) rightAligned(right, top, bandH, size int, c draw.Color, s strin
 	return x
 }
 
-// box draws a focusable surface: the surface color, or the focus fill with the ring outside it.
+// Shapes snap to the pixel cell P (DESIGN.md Shape): tiles, rows, keys, bars, windows and buttons have a 2-step
+// notch at each corner; discs and pills a 3-step one.
+const (
+	notchSteps   = 2
+	capsuleSteps = 3
+)
+
+// shape fills a rectangle with the 2-step notch.
+func (p painter) shape(r rect, c draw.Color) { p.l.Notch(r, notchSteps, p.m.Pixel, c) }
+
+// capsule fills a rectangle with the 3-step notch: a pixel disc or pill.
+func (p painter) capsule(r rect, c draw.Color) { p.l.Notch(r, capsuleSteps, p.m.Pixel, c) }
+
+// box draws a focusable surface: the surface color, or the focus fill with the stepped ring outside it.
 func (p painter) box(r rect, focused bool) {
 	if focused {
-		p.l.Fill(r.Inset(-p.m.Ring), p.m.Radius+p.m.Ring, colFocusRing)
-		p.l.Fill(r, p.m.Radius, colFocusBG)
+		p.shape(r.Inset(-p.m.Ring), colFocusRing)
+		p.shape(r, colFocusBG)
 		return
 	}
-	p.l.Fill(r, p.m.Radius, colSurface)
+	p.shape(r, colSurface)
 }
 
-// spinner draws the ring of docs/ux/gui.md section 4 at its place in the turn.
-func (p painter) spinner(cx, cy, r int, now time.Time) {
-	turn := float64(now.UnixNano()%int64(spinnerPeriod)) / float64(spinnerPeriod)
-	p.l.Spinner(cx, cy, r, max(2, r/4), turn, colAccent)
+// cursor draws the menu cursor of DESIGN.md in a vertical menu: a right-pointing pixel arrow in focus.ring, 0.8 x the body
+// size tall rounded to 2P, 1u inside the left edge of the focused item. The item's text starts at 3u. It does not blink.
+func (p painter) cursor(item rect) {
+	h := max(snapDown(p.m.Body*4/5, 2*p.m.Pixel), 2*p.m.Pixel)
+	drawTriangle(p.l, p.m.Pixel, item.X+p.m.Unit, item.Y+(item.H-h)/2, h, 'r', colFocusRing)
 }
+
+// window draws a window over the scrim: surface.raised with a P frame in color.frame outside it.
+func (p painter) window(r rect) {
+	p.shape(r.Inset(-p.m.Pixel), colFrame)
+	p.shape(r, colRaised)
+}
+
+// spinner draws the spinner of DESIGN.md Components, centered at (cx, cy) and as tall as a line of text of height lineH: eight
+// blocks around an empty centre, one step per 100 ms.
+func (p painter) spinner(cx, cy, lineH int, now time.Time) {
+	p.l.Spinner(cx, cy, p.m.Pixel, p.spinnerSide(lineH), int(now.UnixNano()/int64(spinnerFrame))%spinnerBlocks, colAccent)
+}
+
+// spinnerSide is the side of a block that makes the whole spinner (three blocks and two gaps of P) as tall as a line of
+// text of height lineH, so the ring and its steps read beside the text it waits for. A block is at least two cells.
+func (p painter) spinnerSide(lineH int) int {
+	cell := p.m.Pixel
+	return max((2*lineH-cell)/(6*cell), 2) * cell
+}
+
+// spinnerSize is the width and height of the spinner beside a line of text of height lineH.
+func (p painter) spinnerSize(lineH int) int { return 3*p.spinnerSide(lineH) + 2*p.m.Pixel }
 
 // Render draws the whole frame for time now into l.
 func (m Model) Render(now time.Time, l *draw.List) {
 	met := m.metrics
 	l.Reset(met.W, met.H)
-	l.Fill(rect{W: met.W, H: met.H}, 0, colBG)
+	l.Fill(rect{W: met.W, H: met.H}, colBG)
 	p := m.painter(l)
 	switch m.screen {
 	case screenSplash:
@@ -306,7 +383,7 @@ func minTitleWidth(p painter, size int, crumbs []string) int {
 func (m Model) drawTopBar(p painter, spec frameSpec) {
 	met := m.metrics
 	bar := met.TopBarRect()
-	p.l.Fill(bar, 0, colSurface)
+	p.shape(bar, colSurface)
 	pad := 2 * met.Unit
 
 	full := brand
@@ -314,7 +391,14 @@ func (m Model) drawTopBar(p painter, spec frameSpec) {
 		full += crumb + c
 	}
 	// The title always keeps its minimum, and the right side takes the rest.
-	minTitle := min(p.width(met.Title, full), minTitleWidth(p, met.Title, spec.crumbs))
+	lead := 0 // Home: the moth sprite sits 1u before the wordmark (DESIGN.md Components)
+	if m.screen == screenHome {
+		mw, _ := p.mothSize()
+		lead = mw + met.Unit
+	}
+	dp := p.display(append([]string{full, "…", crumb}, spec.crumbs...)...) // the title is a short label: the display face
+	tsize := dp.dsize()
+	minTitle := lead + min(dp.width(tsize, full), minTitleWidth(dp, tsize, spec.crumbs))
 	avail := max(bar.W-2*pad-minTitle-pad, 0)
 	right, _ := m.topBarItems(p, avail, spec.extra)
 
@@ -326,8 +410,25 @@ func (m Model) drawTopBar(p painter, spec frameSpec) {
 		}
 		x = p.rightAligned(x, bar.Y, bar.H, met.Secondary, right[i].c, right[i].s) - pad
 	}
-	title := fitCrumbs(p, met.Title, spec.crumbs, max(x-(bar.X+pad), 0))
-	p.text(bar.X+pad, bar.Y+(bar.H-LineHeight(met.Title))/2, met.Title, colText, title)
+	titleX := bar.X + pad
+	if lead > 0 {
+		p.drawMoth(titleX, bar.Y, bar.H, 0)
+		titleX += lead
+	}
+	title := fitCrumbs(dp, tsize, spec.crumbs, max(x-titleX, 0))
+	dp.title(titleX, bar.Y+(bar.H-LineHeight(tsize))/2, tsize, title)
+}
+
+// title draws the title of the top bar: the wordmark in the moth color, the crumbs after it in the text color
+// (DESIGN.md Components). A title that starts with an ellipsis has no wordmark, so it is all text color.
+func (p painter) title(x, top, size int, s string) {
+	rest, ok := strings.CutPrefix(s, brand)
+	if !ok {
+		p.text(x, top, size, colText, s)
+		return
+	}
+	p.text(x, top, size, colAccent, brand)
+	p.text(x+p.width(size, brand), top, size, colText, rest)
 }
 
 // pillWidth is how wide a pill for label is: a disc for a one-letter label, and a pill with 1u of air at each
@@ -348,10 +449,14 @@ func (p painter) pill(x, y, h int, label string) int { return p.pillOn(x, y, h, 
 // pillOn draws a pill with the given fill: bg on a surface bar, surface on the bg screen.
 func (p painter) pillOn(x, y, h int, label string, fill draw.Color) int {
 	w := p.pillWidth(h, label)
-	p.l.Fill(rect{X: x, Y: y, W: w, H: h}, h/2, fill)
+	p.capsule(rect{X: x, Y: y, W: w, H: h}, fill)
 	if dir, ok := arrowLabels[label]; ok {
-		s := h * 2 / 5
-		drawTriangle(p.l, x+(w-s)/2, y+(h-s)/2, s, dir, colText)
+		s := h * 3 / 5 // a pixel triangle is half as deep as its base is long
+		tw, th := s/2, s
+		if dir == 'u' || dir == 'd' {
+			tw, th = s, s/2
+		}
+		drawTriangle(p.l, p.m.Pixel, x+(w-tw)/2, y+(h-th)/2, s, dir, colText)
 		return w
 	}
 	p.centered(rect{X: x, Y: y, W: w, H: h}, p.m.Secondary, colText, label)
@@ -361,7 +466,7 @@ func (p painter) pillOn(x, y, h int, label string, fill draw.Color) int {
 func (m Model) drawHintBar(p painter, hints []hint, start string, withStart bool) {
 	met := m.metrics
 	bar := met.HintBarRect()
-	p.l.Fill(bar, 0, colSurface)
+	p.shape(bar, colSurface)
 	pad := 2 * met.Unit
 	h := max(bar.H-met.Unit, 20)
 	y := bar.Y + (bar.H-h)/2
@@ -551,8 +656,8 @@ func (m Model) drawToast(p painter, now time.Time) {
 	size := met.Secondary
 	lines := m.toastLines(p)
 	r := m.toastRect(p, lines)
-	p.l.Fill(r, 0, colSurface)
-	p.l.Fill(rect{X: r.X, Y: r.Y, W: toastStripe, H: r.H}, 0, m.toast.kind.color())
+	p.l.Fill(r, colSurface)
+	p.l.Fill(rect{X: r.X, Y: r.Y, W: toastStripe, H: r.H}, m.toast.kind.color())
 	for i, line := range lines {
 		p.text(r.X+toastStripe+met.Unit, r.Y+met.Unit/2+i*LineHeight(size), size, colText, line)
 	}

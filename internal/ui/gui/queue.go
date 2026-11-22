@@ -473,6 +473,26 @@ func (m Model) drawJobRow(p painter, r draw.Rect, j app.JobSnapshot, now time.Ti
 	}
 }
 
+// drawSegments draws the segmented progress bar of DESIGN.md Components: blocks 3P wide with a P gap, filled in the
+// moth color over a bg track drawn in the same blocks. The last block that pct reaches is filled, so any progress
+// shows at least one block.
+func drawSegments(p painter, r draw.Rect, pct int) {
+	cell := p.m.Pixel
+	step := 4 * cell
+	n := max((r.W+cell)/step, 1)
+	filled := 0
+	if pct > 0 {
+		filled = min(max((pct*n+99)/100, 1), n)
+	}
+	for i := 0; i < n; i++ {
+		c := colBG
+		if i < filled {
+			c = colAccent
+		}
+		p.l.Fill(draw.Rect{X: r.X + i*step, Y: r.Y, W: 3 * cell, H: r.H}, c)
+	}
+}
+
 // drawProgress draws the bar and the numbers of a transferring job.
 func (m Model) drawProgress(p painter, r draw.Rect, j app.JobSnapshot, now time.Time) {
 	met := m.metrics
@@ -482,10 +502,7 @@ func (m Model) drawProgress(p painter, r draw.Rect, j app.JobSnapshot, now time.
 	}
 	barW := r.W * 35 / 100
 	by := r.Y + (r.H-met.Progress)/2
-	p.l.Fill(draw.Rect{X: r.X, Y: by, W: barW, H: met.Progress}, met.Progress/2, colBG)
-	if pct > 0 {
-		p.l.Fill(draw.Rect{X: r.X, Y: by, W: max(barW*pct/100, met.Progress), H: met.Progress}, met.Progress/2, colAccent)
-	}
+	drawSegments(p, draw.Rect{X: r.X, Y: by, W: barW, H: met.Progress}, pct)
 	stats := strconv.Itoa(pct) + "%  " + humanSize(j.Bytes) + " / " + humanSize(j.Expected)
 	if j.RateBps > 0 {
 		stats += "  " + humanSize(j.RateBps) + "/s"
@@ -503,7 +520,7 @@ func (m Model) drawFinishedRow(p painter, r draw.Rect, j app.JobSnapshot) {
 	mark := LineHeight(met.Body) - 6
 	switch j.State {
 	case app.StateDone:
-		drawCheck(p.l, x, y+2, mark, colOK)
+		drawCheck(p.l, p.m.Pixel, x, y+2, mark, colOK)
 		p.text(x+mark+met.Unit, y, met.Body, colText, p.fit(met.Body, label, w-mark-met.Unit))
 		saved := m.tr("ui.cli.download.saved", i18n.Args{"path": app.SanitizeText(j.Path), "size": humanSize(j.Bytes), "time": clock(j.Finished.Sub(j.Started))})
 		p.text(x, y+LineHeight(met.Body), met.Secondary, colDim, p.fit(met.Secondary, saved, w))
@@ -512,14 +529,14 @@ func (m Model) drawFinishedRow(p painter, r draw.Rect, j app.JobSnapshot) {
 		p.text(x, y+LineHeight(met.Body), met.Secondary, colDim, p.fit(met.Secondary, m.tr("ui.cli.download.skipped", i18n.Args{"path": app.SanitizeText(j.Path)}), w))
 	default:
 		if consent.Needed(j) { // nothing failed: the job waits for a person (warn color and !, not error and the cross)
-			drawBang(p.l, x, y+2, mark, colWarn)
+			drawBang(p.l, p.m.Pixel, x, y+2, mark, colWarn)
 			p.text(x+mark+met.Unit, y, met.Body, colText, p.fit(met.Body, label, w-mark-met.Unit))
 			for i, line := range p.wrap(met.Secondary, m.consentRow(j), w, 2) { // nothing is cut: the catalog size is in the words
 				p.text(x, y+LineHeight(met.Body)+i*LineHeight(met.Secondary), met.Secondary, colWarn, line)
 			}
 			return
 		}
-		drawCross(p.l, x, y+2, mark, colError)
+		drawCross(p.l, p.m.Pixel, x, y+2, mark, colError)
 		p.text(x+mark+met.Unit, y, met.Body, colText, p.fit(met.Body, label, w-mark-met.Unit))
 		msg := m.tr("errors.canceled.message", nil)
 		if j.Err != nil {
@@ -552,8 +569,8 @@ func (m Model) panelListTitled(p painter, title string, labels []string, focus i
 	rowH := min(met.Row1, (met.Safe.H-4*u-titleH)/max(len(labels), 1))
 	panel := draw.Rect{W: panelW, H: titleH + len(labels)*rowH + 2*u}
 	panel.X, panel.Y = met.Safe.X+(met.Safe.W-panelW)/2, met.Safe.Y+(met.Safe.H-panel.H)/2
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
-	p.l.Fill(panel, met.Radius, colSurface)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colScrim)
+	p.window(panel)
 	if title != "" {
 		p.text(panel.X+3*u, panel.Y+u, met.Secondary, colDim, p.fit(met.Secondary, title, panelW-6*u))
 	}
@@ -561,8 +578,9 @@ func (m Model) panelListTitled(p painter, title string, labels []string, focus i
 		r := draw.Rect{X: panel.X + u, Y: panel.Y + u + titleH + i*rowH, W: panelW - 2*u, H: rowH}
 		if i == focus {
 			p.box(r, true)
+			p.cursor(r)
 		}
-		p.text(r.X+2*u, r.Y+(r.H-LineHeight(met.Body))/2, met.Body, colText, l)
+		p.text(r.X+3*u, r.Y+(r.H-LineHeight(met.Body))/2, met.Body, colText, l)
 	}
 }
 
@@ -620,8 +638,8 @@ func (m Model) drawDetails(p painter) {
 	}
 	h := len(wrapped)*LineHeight(met.Secondary) + LineHeight(met.Body) + 5*u
 	panel := draw.Rect{X: met.Safe.X + (met.Safe.W-maxW)/2, Y: met.Safe.Y + max((met.Safe.H-h)/2, 0), W: maxW, H: min(h, met.Safe.H)}
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
-	p.l.Fill(panel, met.Radius, colSurface)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colScrim)
+	p.window(panel)
 	y := panel.Y + 2*u
 	p.text(panel.X+2*u, y, met.Body, colText, p.fit(met.Body, m.jobLabel(j), maxW-4*u))
 	y += LineHeight(met.Body) + u

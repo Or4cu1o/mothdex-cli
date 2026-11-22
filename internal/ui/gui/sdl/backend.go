@@ -3,6 +3,7 @@
 package sdl
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,8 +29,9 @@ type BackendOptions struct {
 	Width    int
 	Height   int
 	Hidden   bool
-	Software bool     // use the software renderer
-	Mappings []string // game controller database lines to add, in order, later ones winning
+	Software bool       // use the software renderer
+	Mappings []string   // game controller database lines to add, in order, later ones winning
+	Display  *text.Font // the display face for short labels; nil draws them in the body font
 	Log      *slog.Logger
 }
 
@@ -39,6 +41,7 @@ type Backend struct {
 	lib  *Library
 	log  *slog.Logger
 	font *text.Font
+	disp *text.Font // the display face, or nil
 
 	inited   bool
 	win      Window
@@ -70,7 +73,7 @@ func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, e
 		o.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	b = &Backend{
-		lib: lib, log: o.Log, font: font, ev: NewEvent(),
+		lib: lib, log: o.Log, font: font, disp: o.Display, ev: NewEvent(),
 		atlas: text.NewAtlas(atlasSide, atlasSide),
 		pads:  map[int32]Controller{}, padType: map[int32]input.ControllerType{}, joys: map[int32]padRecord{},
 	}
@@ -369,7 +372,7 @@ func (b *Backend) Draw(layout gdraw.Layout, l *gdraw.List) error {
 		var err error
 		switch op.Kind {
 		case gdraw.KindRect:
-			err = b.fill(op.Rect, op.Radius, op.Color)
+			err = b.fill(op.Rect, op.Steps, op.Cell, op.Color)
 		case gdraw.KindText:
 			err = b.drawText(op)
 		case gdraw.KindSpinner:
@@ -435,12 +438,12 @@ func toRect(r gdraw.Rect) Rect {
 	return Rect{X: int32(r.X), Y: int32(r.Y), W: int32(r.W), H: int32(r.H)} //nolint:gosec // logical pixel coordinates, small
 }
 
-// fill draws a rectangle, with rounded corners when radius is above zero.
-func (b *Backend) fill(r gdraw.Rect, radius int, c gdraw.Color) error {
+// fill draws a rectangle, with stepped corners when steps is above zero.
+func (b *Backend) fill(r gdraw.Rect, steps, cell int, c gdraw.Color) error {
 	if err := b.setColor(c); err != nil {
 		return err
 	}
-	for _, part := range roundedRects(r, radius) {
+	for _, part := range notchedRects(r, steps, cell) {
 		if err := b.lib.FillRect(b.ren, toRect(part)); err != nil {
 			return err
 		}
@@ -449,21 +452,32 @@ func (b *Backend) fill(r gdraw.Rect, radius int, c gdraw.Color) error {
 }
 
 func (b *Backend) drawSpinner(op gdraw.Op) error {
-	for k := 0; k < spinnerDots; k++ {
-		x, y, side, alpha := spinnerDot(op, k)
+	for k := 0; k < spinnerBlocks; k++ {
+		x, y, side, alpha := spinnerBlock(op, k)
 		c := op.Color
 		c.A = uint8(min(uint16(c.A)*uint16(alpha)/255, 255)) //nolint:gosec // clamped to a byte on this line
-		if err := b.fill(gdraw.Rect{X: x, Y: y, W: side, H: side}, 0, c); err != nil {
+		if err := b.fill(gdraw.Rect{X: x, Y: y, W: side, H: side}, 0, 0, c); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// errNoDisplayFont is a wiring mistake, not a runtime condition: the model was given a display face and the backend was not
+// (the two are set from one font in cmd/mothdex-gui), so a run in the display face has nothing to draw with.
+var errNoDisplayFont = errors.New("sdl: the draw list has display text but the backend has no display font")
+
 // drawText draws one line: each glyph is looked up in the atlas (rasterized the first time), the changed
 // part of the atlas is uploaded, and the glyphs are copied tinted with the color of the run.
 func (b *Backend) drawText(op gdraw.Op) error {
-	face, err := b.font.Face(op.Size)
+	f := b.font
+	if op.Display {
+		if b.disp == nil {
+			return errNoDisplayFont
+		}
+		f = b.disp
+	}
+	face, err := f.Face(op.Size)
 	if err != nil {
 		return err
 	}

@@ -508,7 +508,7 @@ func (m Model) drawResultRow(p painter, r draw.Rect, row resultRow, focused bool
 		end := box.Right() - met.Unit
 		wordX := end - p.width(met.Secondary, word)
 		p.text(wordX, top, met.Secondary, colOK, word)
-		drawCheck(p.l, wordX-cs-met.Unit/2, top+3, cs, colOK) // one space between the mark and its word
+		drawCheck(p.l, p.m.Pixel, wordX-cs-met.Unit/2, top+3, cs, colOK) // one space between the mark and its word
 	}
 	p.text(x, top, met.Secondary, colDim, p.fit(met.Secondary, meta, inner-markW))
 }
@@ -531,8 +531,8 @@ func (m Model) drawLoading(p painter, r draw.Rect, text string, since, now time.
 	x := r.X + met.Unit
 	p.text(x, top, met.Body, colDim, text)
 	if spinnerShown(since, now) {
-		rad := LineHeight(met.Body) / 3
-		p.spinner(x+p.width(met.Body, text)+met.Unit+rad, top+LineHeight(met.Body)/2, rad, now)
+		lh := LineHeight(met.Body)
+		p.spinner(x+p.width(met.Body, text)+met.Unit+p.spinnerSize(lh)/2, top+lh/2, lh, now)
 	}
 }
 

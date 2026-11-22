@@ -22,8 +22,8 @@ import (
 const (
 	splashMax     = 3 * time.Second        // Home opens after this long even if DBInfo has not answered
 	spinnerAfter  = 200 * time.Millisecond // a spinner appears only after this long, so cached answers never flash
-	spinnerFrame  = 60 * time.Millisecond  // how often a visible spinner is redrawn
-	spinnerPeriod = time.Second            // one turn per second
+	spinnerFrame  = 100 * time.Millisecond // one spinner step, DESIGN.md Components
+	spinnerBlocks = 8                      // blocks around the spinner square
 	toastFor      = 3 * time.Second
 	noticeFor     = 6 * time.Second        // the language notice has a whole sentence to read
 	dialogIgnore  = 150 * time.Millisecond // input right after a dialog opens is ignored (a held button)

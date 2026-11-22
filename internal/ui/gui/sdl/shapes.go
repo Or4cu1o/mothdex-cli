@@ -12,55 +12,50 @@ import (
 
 // Pure helpers of the backend: nothing here calls SDL, so they are tested without it.
 
-// cornerInset is how far in from the side the first pixel of a rounded corner's row starts: row 0 is the top
-// row of the corner and row radius-1 the last, where the edge is straight again.
-func cornerInset(radius, row int) int {
-	dy := float64(radius-row) - 0.5
-	dx := math.Sqrt(float64(radius*radius) - dy*dy)
-	return max(radius-int(math.Round(dx)), 0)
-}
-
-// roundedRects splits a rounded rectangle into the plain rectangles that SDL_RenderFillRect can fill:
-// bands of rows with the same inset at the top and bottom, and one block in the middle. The radius is
-// clamped so it never exceeds half the shorter side.
-func roundedRects(r gdraw.Rect, radius int) []gdraw.Rect {
-	radius = min(radius, min(r.W, r.H)/2)
-	if radius <= 0 {
+// notchedRects splits a rectangle with stepped corners into the plain rectangles that SDL_RenderFillRect can
+// fill: the first row of a corner starts steps cells in, the next one fewer, and so on until the edge is
+// straight. The steps are clamped so the corners never meet. The parts do not overlap, so a color with
+// alpha is blended once.
+func notchedRects(r gdraw.Rect, steps, cell int) []gdraw.Rect {
+	if cell > 0 {
+		steps = min(steps, min(r.W, r.H)/(2*cell))
+	}
+	if steps <= 0 || cell <= 0 {
 		return []gdraw.Rect{r}
 	}
-	out := make([]gdraw.Rect, 0, 2*radius+1)
-	for row := 0; row < radius; {
-		inset := cornerInset(radius, row)
-		end := row + 1
-		for end < radius && cornerInset(radius, end) == inset {
-			end++
-		}
+	out := make([]gdraw.Rect, 0, 2*steps+1)
+	for i := 0; i < steps; i++ {
+		inset := (steps - i) * cell
 		w := r.W - 2*inset
 		out = append(out,
-			gdraw.Rect{X: r.X + inset, Y: r.Y + row, W: w, H: end - row},
-			gdraw.Rect{X: r.X + inset, Y: r.Bottom() - end, W: w, H: end - row},
+			gdraw.Rect{X: r.X + inset, Y: r.Y + i*cell, W: w, H: cell},
+			gdraw.Rect{X: r.X + inset, Y: r.Bottom() - (i+1)*cell, W: w, H: cell},
 		)
-		row = end
 	}
-	if mid := r.H - 2*radius; mid > 0 {
-		out = append(out, gdraw.Rect{X: r.X, Y: r.Y + radius, W: r.W, H: mid})
+	if mid := r.H - 2*steps*cell; mid > 0 {
+		out = append(out, gdraw.Rect{X: r.X, Y: r.Y + steps*cell, W: r.W, H: mid})
 	}
 	return out
 }
 
-// spinnerDots is how many dots make the ring of a spinner.
-const spinnerDots = 12
+// spinnerBlocks is how many blocks make the spinner.
+const spinnerBlocks = 8
 
-// spinnerDot is dot k of a spinner: its top left corner, the side of its square and its opacity. The
-// brightest dot is the one the turn has reached and the others fade behind it.
-func spinnerDot(op gdraw.Op, k int) (x, y, side int, alpha uint8) {
-	angle := 2 * math.Pi * float64(k) / spinnerDots
-	rad := float64(op.R) - float64(op.Thick)/2
-	side = max(op.Thick, 2)
-	x = op.CX + int(math.Round(rad*math.Cos(angle))) - side/2
-	y = op.CY + int(math.Round(rad*math.Sin(angle))) - side/2
-	behind := math.Mod(op.Turn*spinnerDots-float64(k)+spinnerDots, spinnerDots) / spinnerDots // 0 at the head
-	alpha = uint8(255 * (1 - 0.8*behind))
+// spinnerFadeFloor is the opacity of the oldest block, 25 %.
+const spinnerFadeFloor = 64
+
+// spinnerRing is the cells of the 3 x 3 grid that the blocks take, clockwise from the top left.
+var spinnerRing = [spinnerBlocks][2]int{{0, 0}, {1, 0}, {2, 0}, {2, 1}, {2, 2}, {1, 2}, {0, 2}, {0, 1}}
+
+// spinnerBlock is block k of a spinner: its top left corner, its side and its opacity. The block at the step is
+// opaque and the ones behind it fade to a quarter.
+func spinnerBlock(op gdraw.Op, k int) (x, y, side int, alpha uint8) {
+	side = op.Side
+	half := (3*side + 2*op.Cell) / 2
+	x = op.CX - half + spinnerRing[k][0]*(side+op.Cell)
+	y = op.CY - half + spinnerRing[k][1]*(side+op.Cell)
+	age := ((op.Step-k)%spinnerBlocks + spinnerBlocks) % spinnerBlocks
+	alpha = uint8(255 - age*(255-spinnerFadeFloor)/(spinnerBlocks-1))
 	return x, y, side, alpha
 }
 

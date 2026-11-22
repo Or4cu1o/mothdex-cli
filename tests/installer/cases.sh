@@ -127,6 +127,7 @@ make_gui_tag() {
     chmod 0755 /tmp/build/mothdex-gui
     echo license >/tmp/build/LICENSE
     echo noto >/tmp/build/THIRD_PARTY/NotoSans-OFL-1.1.txt
+    echo handjet >/tmp/build/THIRD_PARTY/Handjet-OFL-1.1.txt
     echo zlib >/tmp/build/THIRD_PARTY/SDL_GameControllerDB-zlib.txt
     echo readme >/tmp/build/THIRD_PARTY/README.md
     members="mothdex-gui LICENSE THIRD_PARTY"

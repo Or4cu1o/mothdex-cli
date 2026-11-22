@@ -16,7 +16,10 @@ import (
 func (m Model) settingItemHeight(it settingItem) int {
 	met := m.metrics
 	switch {
-	case it.header != "" || it.more:
+	case it.header != "":
+		h, _, _, _ := m.headerLayout(m.painter(nil), it.header)
+		return h
+	case it.more:
 		return LineHeight(met.Secondary) + met.Unit
 	}
 	h := m.settingRowBase(it.row)
@@ -43,6 +46,30 @@ func (m Model) settingsLabelWidth(p painter, contentW int) int {
 // settingLabelLines is the label of a row, wrapped to two lines when even the widest column is too narrow for it.
 func (m Model) settingLabelLines(p painter, r *settingRow, labelW int) []string {
 	return p.wrap(m.metrics.Body, m.tr("ui.gui.settings.row."+r.label, nil), labelW-3*m.metrics.Unit, 2)
+}
+
+// headerLayout lays out a section header: its band has 1u above the text and half a unit below it, so a header never
+// touches the row above or the focus frame of the row under it (Bússola, T-83). It returns the band height, the painter and
+// size to draw the text with (the display face at body x 1.35, or the body face at the secondary size when the face lacks a
+// glyph of the label) and the top of the text box from the top of the band.
+func (m Model) headerLayout(p painter, label string) (h int, hp painter, size, textTop int) {
+	met := m.metrics
+	hp = p.display(label)
+	size = met.Secondary
+	if hp.disp {
+		size = met.Header
+	}
+	ascent, descent := size*4/5, size/5
+	if f := hp.face(size); f != nil {
+		ascent, descent = f.Ascent(), f.Descent()
+	}
+	inkAscent, inkDescent := ascent, descent
+	if hp.disp { // a header has no accented capital, so its ink is the ascenders (0.71 em) and descenders (0.24 em) of the face
+		inkAscent, inkDescent = size*71/100, size*24/100+1
+	}
+	baseline := met.Unit + inkAscent // from the top of the band: the ink starts 1u below it
+	textTop = baseline - ascent - (LineHeight(size)-(ascent+descent))/2
+	return met.Unit + inkAscent + inkDescent + met.Unit/2, hp, size, textTop
 }
 
 // settingRowBase is the height of a row without the lines under it: one button-sized line, or two lines of text when
@@ -227,7 +254,8 @@ func (m Model) drawSettings(p painter) {
 		h := m.settingItemHeight(it)
 		switch {
 		case it.header != "":
-			p.text(c.X+met.Unit, y+(h-LineHeight(met.Secondary))/2, met.Secondary, colDim, it.header)
+			_, hp, size, top := m.headerLayout(p, it.header)
+			hp.text(c.X+met.Unit, y+top, size, colDim, it.header) // a short label: the display face, in the dim text color
 		case it.more:
 			p.text(c.X+met.Unit, y+(h-LineHeight(met.Secondary))/2, met.Secondary, colDim, p.fit(met.Secondary, m.tr("ui.gui.settings.more", nil), c.W-2*met.Unit))
 		default:
@@ -316,19 +344,19 @@ func (m Model) editorTitle(e *settingsEditor) string {
 func (m Model) drawMargin(p painter, e *settingsEditor) {
 	met := m.metrics
 	tried := NewMetrics(met.DisplayW, met.DisplayH, SafeArea{Percent: e.pct}, m.cfg.largeText)
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colBG)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colBG)
 	mm := m
 	mm.metrics = tried
 	mm.drawHintBar(mm.painter(p.l), m.settingsFrame().hints, "", false) // first, so the brackets stay on top of it
 	s := tried.Safe
 	ring := max(met.Ring, 2)
-	arm := 4 * met.Unit * 2
+	arm := snapDown(4*met.Unit*2, met.Pixel)
 	// the frame, thin and dim
 	for _, r := range []draw.Rect{
 		{X: s.X, Y: s.Y, W: s.W, H: 1}, {X: s.X, Y: s.Bottom() - 1, W: s.W, H: 1},
 		{X: s.X, Y: s.Y, W: 1, H: s.H}, {X: s.Right() - 1, Y: s.Y, W: 1, H: s.H},
 	} {
-		p.l.Fill(r, 0, colDim)
+		p.l.Fill(r, colDim)
 	}
 	// the corner brackets, in the color and stroke of the focus ring
 	for _, r := range []draw.Rect{
@@ -337,13 +365,15 @@ func (m Model) drawMargin(p painter, e *settingsEditor) {
 		{X: s.X, Y: s.Bottom() - ring, W: arm, H: ring}, {X: s.X, Y: s.Bottom() - arm, W: ring, H: arm},
 		{X: s.Right() - arm, Y: s.Bottom() - ring, W: arm, H: ring}, {X: s.Right() - ring, Y: s.Bottom() - arm, W: ring, H: arm},
 	} {
-		p.l.Fill(r, 0, colAccent)
+		p.l.Fill(r, colFocusRing)
 	}
 	pct := m.tr("ui.gui.settings.val.pct", map[string]any{"pct": strconv.Itoa(e.pct)})
-	cy := s.Y + s.H/2 - LineHeight(met.Title)
-	p.text(s.X+(s.W-p.width(met.Title, pct))/2, cy, met.Title, colText, pct)
+	dp := p.display(pct) // the percent is a number: the display face
+	psize := dp.dsize()
+	cy := s.Y + s.H/2 - LineHeight(psize)
+	dp.text(s.X+(s.W-dp.width(psize, pct))/2, cy, psize, colText, pct)
 	for i, line := range p.wrap(met.Secondary, m.tr("ui.gui.settings.calib_help", nil), s.W-2*arm, 2) {
-		p.text(s.X+(s.W-p.width(met.Secondary, line))/2, cy+LineHeight(met.Title)+met.Unit+i*LineHeight(met.Secondary), met.Secondary, colDim, line)
+		p.text(s.X+(s.W-p.width(met.Secondary, line))/2, cy+LineHeight(psize)+met.Unit+i*LineHeight(met.Secondary), met.Secondary, colDim, line)
 	}
 }
 
@@ -444,8 +474,8 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 	u := met.Unit
 	title := m.tr("ui.gui.settings.row."+e.row, nil)
 	panel, shown, maxOff := m.infoGeometry(p, e.row, e.focus)
-	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
-	p.l.Fill(panel, met.Radius, colSurface)
+	p.l.Fill(draw.Rect{W: met.W, H: met.H}, colScrim)
+	p.window(panel)
 	y := panel.Y + 2*u
 	p.text(panel.X+2*u, y, met.Body, colText, p.fit(met.Body, title, panel.W-4*u))
 	y += LineHeight(met.Body) + u
@@ -457,10 +487,10 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 	off := min(max(e.focus, 0), maxOff)
 	tri := LineHeight(met.Secondary) / 2
 	if off > 0 {
-		drawTriangle(p.l, panel.Right()-2*u-tri, panel.Y+u, tri, 'u', colDim)
+		drawTriangle(p.l, p.m.Pixel, panel.Right()-2*u-tri, panel.Y+u, tri, 'u', colDim)
 	}
 	if off < maxOff {
-		drawTriangle(p.l, panel.Right()-2*u-tri, panel.Bottom()-u-tri, tri, 'd', colDim)
+		drawTriangle(p.l, p.m.Pixel, panel.Right()-2*u-tri, panel.Bottom()-u-tri, tri, 'd', colDim)
 	}
 }
 

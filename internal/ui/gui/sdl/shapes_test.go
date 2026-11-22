@@ -30,68 +30,73 @@ func pixelsOf(t *testing.T, r gdraw.Rect, parts []gdraw.Rect) map[[2]int]bool {
 	return covered
 }
 
-func TestRoundedRectsCoverTheShapeWithoutOverlap(t *testing.T) {
-	for _, radius := range []int{0, 1, 3, 6, 8, 12, 18} {
-		r := gdraw.Rect{X: 10, Y: 20, W: 100, H: 60}
-		parts := roundedRects(r, radius)
-		covered := pixelsOf(t, r, parts)
-		area := r.W * r.H
-		if radius >= 3 && len(covered) >= area { // a radius of 1 or 2 is too small to cut a whole pixel
-			t.Errorf("radius %d: the corners must be cut, but all %d pixels are covered", radius, area)
-		}
-		if radius >= 3 && covered[[2]int{r.X, r.Y}] {
-			t.Errorf("radius %d: the top left pixel must be cut", radius)
-		}
-		for _, c := range [][2]int{{r.X + r.W/2, r.Y}, {r.X, r.Y + r.H/2}, {r.Right() - 1, r.Y + r.H/2}, {r.X + r.W/2, r.Bottom() - 1}} {
-			if !covered[c] {
-				t.Errorf("radius %d: the edge pixel %v must be filled", radius, c)
-			}
-		}
-		// The four corners are alike.
-		for y := 0; y < radius; y++ {
-			for x := 0; x < radius; x++ {
-				tl := covered[[2]int{r.X + x, r.Y + y}]
-				if tl != covered[[2]int{r.Right() - 1 - x, r.Y + y}] || tl != covered[[2]int{r.X + x, r.Bottom() - 1 - y}] || tl != covered[[2]int{r.Right() - 1 - x, r.Bottom() - 1 - y}] {
-					t.Fatalf("radius %d: the corners are not symmetric at %d,%d", radius, x, y)
+func TestNotchedRectsCutEachCornerInStepsWithoutOverlap(t *testing.T) {
+	r := gdraw.Rect{X: 10, Y: 20, W: 100, H: 60}
+	for _, c := range []struct{ steps, cell int }{{2, 2}, {2, 3}, {2, 4}, {3, 2}, {3, 4}} {
+		covered := pixelsOf(t, r, notchedRects(r, c.steps, c.cell))
+		for row := 0; row < c.steps; row++ {
+			inset := (c.steps - row) * c.cell
+			for x := 0; x < inset; x++ { // cut: the first inset pixels of the row, at every corner
+				for _, pt := range [][2]int{{r.X + x, r.Y + row*c.cell}, {r.Right() - 1 - x, r.Y + row*c.cell}, {r.X + x, r.Bottom() - 1 - row*c.cell}, {r.Right() - 1 - x, r.Bottom() - 1 - row*c.cell}} {
+					if covered[pt] {
+						t.Fatalf("steps %d cell %d: pixel %v is in the corner and must be cut", c.steps, c.cell, pt)
+					}
 				}
 			}
+			if !covered[[2]int{r.X + inset, r.Y + row*c.cell}] {
+				t.Errorf("steps %d cell %d: row %d must start at inset %d", c.steps, c.cell, row, inset)
+			}
 		}
-		if len(parts) > 2*radius+1 {
-			t.Errorf("radius %d needs %d fills, at most %d expected", radius, len(parts), 2*radius+1)
+		for _, pt := range [][2]int{{r.X + r.W/2, r.Y}, {r.X, r.Y + r.H/2}, {r.Right() - 1, r.Y + r.H/2}, {r.X + r.W/2, r.Bottom() - 1}} {
+			if !covered[pt] {
+				t.Errorf("steps %d cell %d: the edge pixel %v must be filled", c.steps, c.cell, pt)
+			}
 		}
 	}
 }
 
-func TestRoundedRectsClampTheRadiusToHalfTheShorterSide(t *testing.T) {
+func TestNotchedRectsClampTheStepsAndKeepPlainRectangles(t *testing.T) {
 	r := gdraw.Rect{W: 20, H: 8}
-	parts := roundedRects(r, 50)
-	pixelsOf(t, r, parts)
-	if got := roundedRects(gdraw.Rect{W: 5, H: 5}, 0); len(got) != 1 {
-		t.Errorf("no radius is one fill: %v", got)
+	pixelsOf(t, r, notchedRects(r, 3, 4)) // too small for 3 steps of 4: clamped, still no overlap
+	if got := notchedRects(gdraw.Rect{W: 5, H: 5}, 0, 0); len(got) != 1 {
+		t.Errorf("no steps is one fill: %v", got)
 	}
 }
 
-func TestSpinnerHasADotsRingWithABrightHeadAndAFadingTail(t *testing.T) {
-	op := gdraw.Op{CX: 100, CY: 100, R: 12, Thick: 3, Turn: 0.25}
-	var alphas [spinnerDots]uint8
+func TestSpinnerHasEightBlocksAroundAnEmptyCentreWithAFullHeadAndAFadeToAQuarter(t *testing.T) {
+	op := gdraw.Op{CX: 100, CY: 100, Cell: 3, Side: 9, Step: 3} // three blocks of 9 and two gaps of 3: 33 px
+	seen := map[[2]int]bool{}
+	var alphas [spinnerBlocks]uint8
 	for k := range alphas {
-		x, y, side, alpha := spinnerDot(op, k)
-		if side < 2 || x < 100-12-side || x > 100+12 || y < 100-12-side || y > 100+12 {
-			t.Fatalf("dot %d at %d,%d side %d is off the ring", k, x, y, side)
+		x, y, side, alpha := spinnerBlock(op, k)
+		if side != 9 || x < 100-16 || x+side > 100+17 || y < 100-16 || y+side > 100+17 {
+			t.Fatalf("block %d at %d,%d side %d is outside the 33 px square", k, x, y, side)
 		}
+		if x == 100-16+12 && y == 100-16+12 {
+			t.Fatalf("block %d is in the middle of the ring", k)
+		}
+		if seen[[2]int{x, y}] {
+			t.Fatalf("block %d shares its place", k)
+		}
+		seen[[2]int{x, y}] = true
 		alphas[k] = alpha
 	}
-	head := int(op.Turn * spinnerDots) // dot 3 is the head at a quarter turn
-	if alphas[head] != 255 {
-		t.Errorf("the head dot is opaque, got %d", alphas[head])
+	// a gap of one cell separates every pair of neighbours on a side
+	x0, _, _, _ := spinnerBlock(op, 0)
+	x1, _, _, _ := spinnerBlock(op, 1)
+	if x1-x0 != 9+3 {
+		t.Errorf("neighbouring blocks are %d px apart, want the side plus a gap (12)", x1-x0)
 	}
-	for k, a := range alphas {
-		if a < 40 || a > alphas[head] {
-			t.Errorf("dot %d has alpha %d, outside the fade", k, a)
+	if alphas[3] != 255 {
+		t.Errorf("the block at the step is opaque, got %d", alphas[3])
+	}
+	if alphas[4] != spinnerFadeFloor {
+		t.Errorf("the block just ahead of the head is the oldest, at 25 %%: got %d", alphas[4])
+	}
+	for k := 1; k < spinnerBlocks; k++ {
+		if a, b := alphas[(3-k+spinnerBlocks)%spinnerBlocks], alphas[(3-k+1+spinnerBlocks)%spinnerBlocks]; a >= b {
+			t.Errorf("the fade must fall behind the head: %d then %d", b, a)
 		}
-	}
-	if alphas[(head+1)%spinnerDots] >= alphas[head] {
-		t.Error("the dot just ahead of the head must be the faintest, behind it the tail fades")
 	}
 }
 
