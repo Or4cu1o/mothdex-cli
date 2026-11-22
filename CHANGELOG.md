@@ -221,6 +221,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/ux/gui.md` v1.1 (PR-71-ux, from the UX review of cli#71): top bar fit rule (the title keeps the screen name,
+  `ui.gui.bar.will_quit_short`, `Offline` and the badge are never cut), toast width and 2-line wrap with a 6 s locale
+  notice, `bg` discs and dialog buttons on `surface`, symbols drawn as shapes, no cut text except titles (wrap, then a
+  middle-shortened path), Home tile and footer wrapping, stacked dialog buttons, spinner on the right, and an
+  `(A) Continue` hint on the exit notice. After the cli#71 recheck (PR-71-ux-2): a toast that would cover the focus
+  moves above the hint bar, a single long word in a tile label shrinks before it is cut, and a disc on `bg` uses `surface`. From the cli#76 review (PR-76-ux): the hint bar fit rule, and the Start word kept
+  where Start is the screen's main action.
 - Downloader size authority (T-28, implements T-27 / downloader.md 3.2, T-16 cases 31, 32b-32d, 35, 36): the proxy's `Content-Length` decides a transfer. It must be present, ASCII digits and at least 1 (missing, chunked, `0` or malformed is `size_mismatch`, not retried, no body byte read), is pinned across retries (a change is `size_mismatch`), is held to `download.max_file_size`, and replaces the `link.size` space claim in one atomic ledger swap (`disk_full` before the body, a smaller length shrinks the claim). When only the real size crosses 500 MiB (`interface.confirm_downloads` on, `link.size` below it) the job ends `confirmation_required` before the first body byte, carrying the size and a hint; `DownloadRequest.SizeConsent` is `0` (default rule), `app.ConsentAny` (the `-f` of that command, never a session's start-up flag) or the exact Content-Length accepted through Download anyway. `link.size` stays a preflight estimate and a drift warning beyond 1.5x or 0.5x (`JobSnapshot.SizeDrift`, worded by the UI in its language with sizes, also in `warnings[]`); a Content-Length with a leading zero is refused like mothdex-mcp does. By design (downloader.md 3.2 step 6) a catalog size already above 500 MiB skips the real-size confirmation, so the cap and the free space are its only bounds. History records `catalog_size` and `content_length`; the download JSON jobs carry `catalog_size`. The CLI does not offer Download anyway interactively: it fails with the hint to add `-f` (the TUI, Shell and GUI wire the re-queue).
 - Downloader contract (T-27, downloader.md §3.2, T-16): the proxy's `Content-Length` is now the size authority for a
   transfer, because the maintainer states `link.size` is scraped and only a rough indicator (cavv-dev/mothdex-api#1).
