@@ -1,6 +1,6 @@
 # UX: gamepad GUI (`mothdex-gui`, emulator mode)
 
-Status: v1.2 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
+Status: v1.3 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56; GUI PR 3 rules, T-78) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
 Contract: [`gui.md`](../contracts/cli/gui.md) (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Flows mirror [`tui.md`](tui.md); wording, units and the
 Warming rules come from [`cli-conventions.md`](cli-conventions.md); link ranking from [`prefer-syntax.md`](prefer-syntax.md).
@@ -54,7 +54,11 @@ All content, bars and dialogs live inside the **safe rectangle**; only the backg
 - Config `gui.safe_area`: `auto` (default) or an integer percent `0`–`10`, applied to every edge.
 - `auto` = 5 % when the display is at least 1280x720 (usually HDMI to a TV), else 0 % (built-in handheld panels).
 - Settings › Screen margin opens a **calibration view**: four corner brackets and a frame at the current margin.
-  D-pad Left/Right changes it live in 1 % steps, A saves, B leaves without saving.
+  D-pad Left/Right changes it live in 1 % steps, A saves, B leaves without saving (the old value comes back).
+  - Brackets: an L at each corner of the margin being tried, arms 4u long, with the focus ring's stroke and color.
+  - The live percent is centered in the largest step of the type scale, in `text`; under it, in `secondary` and
+    `text.dim`: `Adjust until you can see all four corners.`
+  - The hint bar (`Change`, `Save`, `Cancel`) is drawn inside the margin being tried, so it moves with it.
 
 ### 1.3 Type scale (pixels at the logical height; one embedded font, Latin + Cyrillic)
 
@@ -569,11 +573,19 @@ first body byte when the proxy's real size crosses 500 MiB and the catalog size 
 
 - `History{Limit: 0}` loaded on open and after each terminal event, newest first. Rows are drawn lazily, with no
   spinner for local data unless it takes over 200 ms.
-- Y toggles `All` and `Failed only` (client side, over the loaded list).
-- A opens Details (the same panel as the Queue) with `Download again` (re-queues with the original slug and link
-  index) and `Close`.
+- Y toggles `All` and `Failed only` (client side, over the loaded list); its hint reads `Failed only` or `Show all`.
+  The top bar shows the filter and the count: `All · 128 records`.
+- The second line of a row is `{date} · {reason}`, the reason being the localized `errors.<code>.message`. It wraps
+  to 2 lines (the row is then 3 lines tall); only past 2 lines does it end in `…` at a word boundary, and Details
+  always has the full text. A record stopped with `confirmation_required` shows the Queue's consent row in warn with
+  `!` (§5.8), with the sizes from the record's `content_length` and `catalog_size`.
+- A opens Details (the same panel as the Queue) with `[Download again]` (initial focus; re-queues with the original
+  slug and link index) and `[Close]`; B closes. For a `confirmation_required` record the first button is
+  `Download anyway`, which opens the dialog of §5.8 with the record's sizes. If that slug and link is already in the
+  Queue, a toast says `Already queued again.` and nothing is queued.
 - No export and no text filter in the GUI (the CLI and TUI have them).
-- Empty: `No downloads yet. Search for a game to start.`
+- Empty: `No downloads yet. Search for a game to start.` With `Failed only` and no failed record:
+  `No failed downloads.`, and Y still works.
 
 ### 5.10 Settings (Home › Settings or Start menu)
 
@@ -587,9 +599,9 @@ first body byte when the proxy's real size crosses 500 MiB and the catalog size 
 │   Preferred languages                           En, Pt        file     │
 │   Preferred size                                Any           default  │
 │ Screen                                                                 │
-│   Confirm button                                South (A)     default  │
+│   Confirm button                                Bottom (A)    default  │
 │   Text size                                     Normal        default  │
-│   Screen margin                                 Auto (5 %)    default  │
+│   Screen margin                                 Auto (5%)     default  │
 │   Language                                      Auto          default  │
 │   Confirm large downloads                       On            default  │
 │ Storage and system                                                     │
@@ -606,20 +618,27 @@ Rows come from `ConfigList` (value and source). Keys:
 | Row | Key | Editor |
 |---|---|---|
 | Concurrent downloads | `download.concurrency` | stepper, Left/Right `1`–`6`; applies on next start (F3) |
-| When a file exists | `download.on_exists` | list `Skip`, `Rename`. `overwrite` is not offered (it needs `--force`); a file value of `overwrite` shows read-only with `Change it from the command line.` |
+| When a file exists | `download.on_exists` | list `Skip`, `Rename`. `overwrite` is not offered (it needs `--force`); a file value of `overwrite` shows `Overwrite` read-only with `Change it from the command line.` |
 | Save cover art | `download.boxart` | toggle (A), applies now |
-| Preferred languages | `download.prefer.languages` | ordered list editor (below), applies now |
+| Preferred languages | `download.prefer.languages` | ordered list editor (below), applies now; an empty list shows `Any` |
 | Preferred size | `download.prefer.size` | list `Any`, `Smallest`, `Largest`, applies now |
-| Confirm button | `gui.confirm_button` | list `South`, `East` (shown with the pad's labels), applies now |
+| Confirm button | `gui.confirm_button` | list `Bottom (A)`, `Right (B)` with the pad's own labels (config values stay `south` and `east`), applies now |
 | Text size | `gui.text_size` | list `Normal`, `Large`, applies now |
 | Screen margin | `gui.safe_area` | calibration view (§1.2), applies now |
-| Language | `interface.language` | list `Auto` plus the four rendered locales; applies on next start |
+| Language | `interface.language` | list `Auto` plus the four rendered locales by their own names (`English`, `Português (Brasil)`, `Español (España)`, `Русский`); applies on next start |
 | Confirm large downloads | `interface.confirm_downloads` | toggle, applies now |
 | Cache | — | `CacheStats` total; A opens `Clear cache (84 MB)?` with `[Keep]` as default and `[Clear]`, then `CacheClear()` |
 | System | — | read-only: `ActiveProfile()` name, ROM root, `Verified` and each warning |
 | About | — | read-only: version, catalog entries, controller name and GUID, log file path |
 
-- Left/Right change steppers and lists in place, without opening them; A opens a list editor or flips a toggle.
+- The list scrolls like the other lists. Section headers (`Downloads`, `Screen`, `Storage and system`) are not
+  focusable, stay with their first row and never sit alone at the bottom of the screen.
+- The right column shows the source: `default`, `file`, `env` or `flag` (localized). At compact it is dropped with no
+  other text, since the hint bar already tells: `Reset` for `file`, `Set by …` for `env` and `flag`, nothing for
+  `default`.
+- Percentages follow the locale: `5%` in en and pt_br, `5 %` in es_es and ru_ru.
+- Left/Right change steppers and lists in place, without opening them (hint `Change`); A opens a list editor (hint
+  `Edit`) or flips a toggle (hint `Switch`).
 - X resets the focused row (`ConfigReset(key)`) when its source is `file`; the hint is hidden otherwise.
 - Rows set by `env` or `flag` are read-only, with the reason in the hint bar: `Set by MOTHDEX_DOWNLOAD_CONCURRENCY`.
 - `ConfigSet` errors show under the row in `error` color, and the old value stays.
@@ -647,7 +666,10 @@ Rows come from `ConfigList` (value and source). Keys:
 - A centered panel over the `scrim`. Focus starts on the first item. Start or B closes it.
 - **Screen actions** appear between Buttons and Quit when the current screen has them (Queue: `Cancel all
   downloads`, `Hide finished`; while quitting is pending: `Don't quit`).
-- **Buttons** shows the button map of the screen underneath, with the pad's own labels (§2.1).
+- **Buttons** shows the button map of the screen underneath, with the pad's own labels (§2.1): one line per button
+  the screen uses, the pad label and then the same words as that screen's hint bar, including the actions the hint
+  bar fit rule drops (§4). Order: A, B, the rest in hint bar order, then L/R (`Page`), Select (`Queue`) and the
+  D-pad (`Move`). No generic table.
 
 ### 5.12 Dialogs
 
