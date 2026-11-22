@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `64:ff9b::/32`; the well-known NAT64 `/96` is still judged by its embedded IPv4 address, so DNS64 networks keep
   working (cache.md). The GIF first-frame and WebP frame-against-canvas checks were already in place and tested.
   A small test pins the VP8 14-bit mask.
+- `docs/ux/gui.md` §5.8, `tui.md` §5 and `shell.md` §4 v1.2 (T-56, Bússola): the Download anyway rules shipped in
+  cli#80. A job stopped with `confirmation_required` waits for a person: warn row with `!`, facts-only copy (real
+  size, catalog size, folder), one OK per job and never a bulk one, the GUI sheet and dialog, the TUI `[y/N]` on `r`
+  or `d`, the Shell question after the batch on a terminal only, and counts that keep these jobs apart from failures.
 - PR-88 contract decisions in `ports.md` §5: a dry run probes only in an existing trusted `bin_dir` and leaves nothing
   changed; a probe error exits 1 after the CLI install completes, while not eligible exits 0; an install that does not
   install the release's GUI removes an older `mothdex-gui`, `SDL2.dll` and `mothdex-licenses/`, so versions never mix;

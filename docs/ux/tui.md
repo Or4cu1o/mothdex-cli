@@ -1,6 +1,6 @@
 # UX: TUI (full screen)
 
-Status: v1.1 (T-6; E-M2 deviations recorded in UX-sync, Decisions D24) · Owner: Bússola · Implementer: Vitral · Risk: Medium
+Status: v1.2 (T-6; E-M2 deviations recorded in UX-sync, Decisions D24; Download anyway, T-56) · Owner: Bússola · Implementer: Vitral · Risk: Medium
 Services: [`app-service.md`](../contracts/cli/app-service.md) only (Catalog, Downloads, History, Config, Cache). Stack: Bubble Tea v2 + Bubbles +
 Lip Gloss (PLAN §9). Wording, color roles, units and progress/Warming rules come from [`cli-conventions.md`](cli-conventions.md); link
 ranking from [`prefer-syntax.md`](prefer-syntax.md). Gamepad GUI is out of scope here: see [`gui.md`](gui.md) (E-M3).
@@ -149,6 +149,17 @@ Search ─Enter─▶ Results ─Enter─▶ Entry detail ─d / Enter on link�
 - Enter on a finished job shows its details (path, SHA-256, attempts, duration) in a panel; `y` copies the path
   (OSC 52 when available, else shows it in a toast).
 - When the last job finishes, a toast shows the summary `3 downloaded, 1 skipped, 0 failed`.
+- **Download anyway** (`confirmation_required`, T-56; the rules and the facts-only copy are in gui.md §5.8):
+  - The row is warn with `!`, never `✘`: `! Contra (USA).nes: Needs your OK: the file is 712.0 MB, listed as 43.0 MB.`
+  - On that row, `r` or `d` asks on the status line: `Download {name} anyway? It is {size}, not {estimate}, saved to
+    {dir}. [y/N]`. When it does not fit, the longer of the name and the folder is shortened in the middle first, so
+    `[y/N]` always shows. `y` (or the localized yes) queues the original request again with `SizeConsent` equal to the
+    size shown; any other key is No and leaves the row.
+  - The footer reads `r download anyway` while such a row is highlighted.
+  - `r` on other rows re-queues failed jobs and skips these: each needs its own OK.
+  - The summary toast counts them apart: `2 downloaded, 0 skipped, 0 failed, 1 waiting for your OK`, only when there
+    is one.
+  - Details shows `Status: <row text>` without the code, so the frame cannot cut the catalog size at 80 columns.
 - Non-empty queue and quit: the quit confirmation of §1.
 
 ## 6. History (`H`)
