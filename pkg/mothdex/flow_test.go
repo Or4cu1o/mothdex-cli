@@ -408,3 +408,19 @@ func TestUpstreamCodeAt200IsRetriedAndANotFoundIsNot(t *testing.T) {
 		t.Fatalf("not found: %v, hits %d", err, h.hits.Load())
 	}
 }
+
+func TestRateLimitCodeAt200CountsTowardTheBreachCircuit(t *testing.T) {
+	var hookUntil []time.Time
+	h := newHarness(t, staticHandler(200, nil, `{"info":{"error":"RATE_LIMIT_ERROR","message":"slow"},"data":{}}`),
+		WithBreachHook(func(u time.Time) { hookUntil = append(hookUntil, u) }))
+	ctx := context.Background()
+	// Call 1: hit 1, one automatic retry, hit 2: reported, circuit still closed.
+	if _, err := h.client.Info(ctx); !IsRateLimited(err) || len(hookUntil) != 0 {
+		t.Fatalf("call 1: %v, hooks %d", err, len(hookUntil))
+	}
+	// Call 2: hit 3 opens the circuit and is not retried.
+	var e *Error
+	if _, err := h.client.Info(ctx); !asError(err, &e) || e.Kind != KindRateLimited || len(hookUntil) != 1 || e.RetryAfter <= 0 {
+		t.Fatalf("call 2: %v, hooks %d", err, len(hookUntil))
+	}
+}

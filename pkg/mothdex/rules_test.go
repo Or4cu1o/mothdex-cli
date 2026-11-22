@@ -305,8 +305,9 @@ func TestInfoErrorThatIsNotAString(t *testing.T) {
 			t.Errorf("%s: got %#v, want decode", in, e)
 		}
 	}
-	// A null or absent info.error is a success, and a non-string info.message never breaks a code.
-	if _, e := parseResponse("op", 200, http.Header{}, []byte(`{"info":{"error":null},"data":{}}`), time.Time{}); e != nil {
+	// An explicit null is present but not a string, so it is a decode failure too (api-client 3.1);
+	// only an absent key is a success. A non-string info.message never breaks a code.
+	if _, e := parseResponse("op", 200, http.Header{}, []byte(`{"info":{"error":null},"data":{}}`), time.Time{}); e == nil || e.Kind != KindDecode {
 		t.Errorf("null error: %#v", e)
 	}
 	_, e := parseResponse("op", 200, http.Header{}, []byte(`{"info":{"error":"DB_ERROR","message":{"x":1}},"data":{}}`), time.Time{})
@@ -326,8 +327,10 @@ func TestNonOKStatusWithACode(t *testing.T) {
 		{400, `{"info":{"error":"INVALID_API_VERSION","message":"bad version"},"data":{}}`, KindIncompatible, "INVALID_API_VERSION"},
 		{400, `{"info":{"error":"MALFORMED_JSON","message":"bad json"},"data":{}}`, KindInvalidRequest, "MALFORMED_JSON"},
 		{400, `{"info":{"error":"ENTRY_NOT_FOUND"},"data":{}}`, KindInvalidRequest, "ENTRY_NOT_FOUND"}, // status decides, the code is only recorded
-		{500, `{"info":{"error":"UNEXPECTED_ERROR","message":"boom"},"data":{}}`, KindUpstream, ""},
-		{429, `{"info":{"error":"RATE_LIMIT_ERROR"},"data":{}}`, KindRateLimited, ""},
+		{500, `{"info":{"error":"UNEXPECTED_ERROR","message":"boom"},"data":{}}`, KindUpstream, "UNEXPECTED_ERROR"},
+		{429, `{"info":{"error":"RATE_LIMIT_ERROR"},"data":{}}`, KindRateLimited, "RATE_LIMIT_ERROR"},
+		{502, `<html>bad gateway</html>`, KindUpstream, ""},
+		{500, `{"info":{"error":"Database operation failed"},"data":{}}`, KindUpstream, ""}, // old form: no code
 	}
 	for _, c := range cases {
 		_, e := parseResponse("op", c.status, http.Header{}, []byte(c.body), now)

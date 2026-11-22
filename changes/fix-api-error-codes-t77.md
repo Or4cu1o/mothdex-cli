@@ -8,4 +8,5 @@
   unknown code are a generic API error. The old message-text form still works. The new `Error.Code` holds the raw code;
   the message is cleaned, capped at 512 bytes, kept out of the localized text, never used for logic, and capped at
   200 bytes in the verbose cause. The unused `info.code` forward-compat field is no longer read. No new i18n key: the
-  user-facing text is still per error kind.
+  user-facing text is still per error kind. A code in the body of any non-200 answer is recorded too (the status still
+  decides the kind), and an explicit `info.error: null` is a decode failure, as in api-client 3.1.

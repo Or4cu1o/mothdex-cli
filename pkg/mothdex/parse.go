@@ -31,10 +31,9 @@ func text(raw json.RawMessage) (s string, ok bool) {
 	return s, true
 }
 
-// present reports whether a raw JSON value was sent and is not null.
-func present(raw json.RawMessage) bool {
-	return len(raw) > 0 && string(raw) != "null"
-}
+// present reports whether a raw JSON value was sent. An explicit null counts as sent (api-client
+// 3.1 step 3 makes it a decode failure); an absent key leaves the raw value empty.
+func present(raw json.RawMessage) bool { return len(raw) > 0 }
 
 type envelope struct {
 	Info apiInfo         `json:"info"`
@@ -90,9 +89,11 @@ func infoMessage(info apiInfo, fallback string) string {
 
 func statusError(op string, status int, header http.Header, body []byte, now time.Time) *Error {
 	e := &Error{Kind: classifyStatus(status), Op: op, HTTPStatus: status, Message: http.StatusText(status)}
+	// The body is read best effort for every status: a code is recorded, and the kind stays the
+	// status's except for 400 with INVALID_API_VERSION. Only a 400 body supplies the message.
+	code, msg := bestEffortInfo(body)
+	e.Code = code
 	if status == http.StatusBadRequest {
-		code, msg := bestEffortInfo(body)
-		e.Code = code
 		if code == codeInvalidAPIVersion {
 			e.Kind = KindIncompatible
 		}
