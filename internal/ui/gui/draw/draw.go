@@ -57,8 +57,10 @@ type Op struct {
 	Cell  int
 
 	// KindText: X is the left edge of the first character and Base the baseline row; Size is in pixels.
+	// Display draws the run in the display face (DESIGN.md Type) instead of the body face.
 	X, Base, Size int
 	Text          string
+	Display       bool
 
 	// KindSpinner: the center of the square, Cell (the pixel cell P; the blocks are 2 cells and the square 6) and
 	// Step, the block that is at full color now (0..7); the others fade behind it to 25 %.
@@ -109,6 +111,14 @@ func (l *List) Text(x, base, size int, c Color, s string) {
 		return
 	}
 	l.Ops = append(l.Ops, Op{Kind: KindText, X: x, Base: base, Size: size, Color: c, Text: s})
+}
+
+// DisplayText appends one line of text in the display face.
+func (l *List) DisplayText(x, base, size int, c Color, s string) {
+	if s == "" || c.A == 0 {
+		return
+	}
+	l.Ops = append(l.Ops, Op{Kind: KindText, X: x, Base: base, Size: size, Color: c, Text: s, Display: true})
 }
 
 // Spinner appends a spinner: eight blocks of two cells around a square of six, the one at step at full color.

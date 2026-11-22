@@ -139,8 +139,8 @@ func assertInsideSafe(t *testing.T, h *harness, what string) {
 				t.Errorf("%s %dx%d: rect %+v outside %+v", what, met.DisplayW, met.DisplayH, op.Rect, met.Safe)
 			}
 		case draw.KindText:
-			face, _ := shared.font.Face(op.Size)
-			if w := face.Width(op.Text); op.X < met.Safe.X || op.X+w > met.Safe.Right() || op.Base-face.Ascent() < met.Safe.Y || op.Base+face.Descent() > met.Safe.Bottom() {
+			w, ascent, descent := inkOf(op)
+			if op.X < met.Safe.X || op.X+w > met.Safe.Right() || op.Base-ascent < met.Safe.Y || op.Base+descent > met.Safe.Bottom() {
 				t.Errorf("%s %dx%d: text %q at %d,%d (%d px) outside %+v", what, met.DisplayW, met.DisplayH, op.Text, op.X, op.Base, w, met.Safe)
 			}
 		}
@@ -281,9 +281,15 @@ func TestTileLabelsWrapBeforeTheyAreCutAndWordsAreNeverSplit(t *testing.T) {
 	}
 	assertInsideSafe(t, h, "tiles")
 
-	size, lines := tileLabel(h.m.painter(nil), "Game Boy", 95)
-	if len(lines) != 2 || size != h.m.Metrics().Body {
-		t.Errorf("a label with spaces wraps to two lines at the body size: %d %q", size, lines)
+	// A label with spaces wraps to two lines at its spaces, in the display face, and never in the middle of a word.
+	_, size, lines := tileLabel(h.m.painter(nil), "Game Boy", 90)
+	if len(lines) != 2 || size != h.m.Metrics().Display || !wrappedWhole(lines, "Game Boy") {
+		t.Errorf("a label with spaces wraps to two whole lines at the display size: %d %q", size, lines)
+	}
+	// A word wider than the tile drops to the body face, whole, and is cut only when even the minimum does not fit.
+	lp, size, lines := tileLabel(h.m.painter(nil), "Configurações", 80)
+	if lp.disp || size >= h.m.Metrics().Display || strings.Contains(strings.Join(lines, ""), "…") && size > h.m.Metrics().Minimum {
+		t.Errorf("a long word falls back to the body face before it is cut: disp=%v size=%d %q", lp.disp, size, lines)
 	}
 }
 

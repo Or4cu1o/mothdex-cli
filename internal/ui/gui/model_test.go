@@ -25,6 +25,7 @@ var shared struct {
 	once   sync.Once
 	bundle *i18n.Bundle
 	font   *text.Font
+	disp   *text.Font // Handjet, the display face
 	err    error
 }
 
@@ -50,12 +51,15 @@ func newHarness(t *testing.T, svc *guitest.Fake, w, h int, opts ...harnessOpt) *
 		if shared.err == nil {
 			shared.font, shared.err = text.Parse(assets.NotoSans)
 		}
+		if shared.err == nil {
+			shared.disp, shared.err = text.Parse(assets.Handjet)
+		}
 	})
 	if shared.err != nil {
 		t.Fatal(shared.err)
 	}
 	o := Options{
-		Service: svc, T: shared.bundle.New("en_us"), Font: shared.font, Clock: &fakeClock{now: epoch},
+		Service: svc, T: shared.bundle.New("en_us"), Font: shared.font, Display: shared.disp, Clock: &fakeClock{now: epoch},
 		DataDir: t.TempDir(), Version: "0.3.0", Width: w, Height: h, Safe: AutoSafeArea,
 	}
 	for _, opt := range opts {
@@ -112,6 +116,18 @@ func (h *harness) render() *draw.List {
 	var l draw.List
 	h.m.Render(h.now, &l)
 	return &l
+}
+
+// inkOf measures a text op the way the backend draws it: its width, and the ascent and descent that bound its ink. The
+// display face (Handjet) is only used for short labels without accents, so its ink is bounded by its ascenders (0.71 em)
+// and its descenders (0.24 em), not by the em box (0.88 em above the baseline, for the accented capitals it never draws).
+func inkOf(op draw.Op) (width, ascent, descent int) {
+	if op.Display {
+		face, _ := shared.disp.Face(op.Size)
+		return face.Width(op.Text), op.Size * 71 / 100, op.Size*24/100 + 1
+	}
+	face, _ := shared.font.Face(op.Size)
+	return face.Width(op.Text), face.Ascent(), face.Descent()
 }
 
 // texts are the text runs of the frame. The top bar draws the wordmark in the moth color and the crumbs after it in the
@@ -679,10 +695,6 @@ func TestNextWakeIsTheNearestTimer(t *testing.T) {
 // Nothing is drawn outside the safe rectangle, at three resolutions and three margins, on every screen and
 // overlay of this pull request, and the focused element is always drawn with its ring (section 11).
 func TestEverythingIsDrawnInsideTheSafeRectangle(t *testing.T) {
-	font, err := text.Parse(assets.NotoSans)
-	if err != nil {
-		t.Fatal(err)
-	}
 	screens := map[string]func(h *harness){
 		"home":   func(*harness) {},
 		"menu":   func(h *harness) { h.press(input.Menu) },
@@ -726,9 +738,8 @@ func TestEverythingIsDrawnInsideTheSafeRectangle(t *testing.T) {
 								t.Errorf("%dx%d safe=%d large=%v %s: rect %+v outside %+v", size[0], size[1], safe.Percent, large, where(), op.Rect, met.Safe)
 							}
 						case draw.KindText:
-							face, _ := font.Face(op.Size)
-							width := face.Width(op.Text)
-							if op.X < met.Safe.X || op.X+width > met.Safe.Right() || op.Base-face.Ascent() < met.Safe.Y || op.Base+face.Descent() > met.Safe.Bottom() {
+							width, ascent, descent := inkOf(op)
+							if op.X < met.Safe.X || op.X+width > met.Safe.Right() || op.Base-ascent < met.Safe.Y || op.Base+descent > met.Safe.Bottom() {
 								t.Errorf("%dx%d safe=%d large=%v %s: text %q at (%d,%d) width %d outside %+v", size[0], size[1], safe.Percent, large, where(), op.Text, op.X, op.Base, width, met.Safe)
 							}
 						case draw.KindSpinner:

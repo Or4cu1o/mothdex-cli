@@ -301,6 +301,7 @@ function New-GuiTag([string]$Tag, [string]$Variant) {
     'SDL2.dll' = 'not a real dll'
     'LICENSE' = 'license'
     'THIRD_PARTY/NotoSans-OFL-1.1.txt' = 'noto'
+    'THIRD_PARTY/Handjet-OFL-1.1.txt' = 'handjet'
     'THIRD_PARTY/SDL2-zlib.txt' = 'zlib'
     'THIRD_PARTY/README.md' = 'readme'
   }

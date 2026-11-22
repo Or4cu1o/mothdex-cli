@@ -28,8 +28,9 @@ type BackendOptions struct {
 	Width    int
 	Height   int
 	Hidden   bool
-	Software bool     // use the software renderer
-	Mappings []string // game controller database lines to add, in order, later ones winning
+	Software bool       // use the software renderer
+	Mappings []string   // game controller database lines to add, in order, later ones winning
+	Display  *text.Font // the display face for short labels; nil draws them in the body font
 	Log      *slog.Logger
 }
 
@@ -39,6 +40,7 @@ type Backend struct {
 	lib  *Library
 	log  *slog.Logger
 	font *text.Font
+	disp *text.Font // the display face, or nil
 
 	inited   bool
 	win      Window
@@ -70,7 +72,7 @@ func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, e
 		o.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	b = &Backend{
-		lib: lib, log: o.Log, font: font, ev: NewEvent(),
+		lib: lib, log: o.Log, font: font, disp: o.Display, ev: NewEvent(),
 		atlas: text.NewAtlas(atlasSide, atlasSide),
 		pads:  map[int32]Controller{}, padType: map[int32]input.ControllerType{}, joys: map[int32]padRecord{},
 	}
@@ -463,7 +465,11 @@ func (b *Backend) drawSpinner(op gdraw.Op) error {
 // drawText draws one line: each glyph is looked up in the atlas (rasterized the first time), the changed
 // part of the atlas is uploaded, and the glyphs are copied tinted with the color of the run.
 func (b *Backend) drawText(op gdraw.Op) error {
-	face, err := b.font.Face(op.Size)
+	f := b.font
+	if op.Display && b.disp != nil {
+		f = b.disp
+	}
+	face, err := f.Face(op.Size)
 	if err != nil {
 		return err
 	}

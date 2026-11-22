@@ -72,6 +72,10 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	if err != nil {
 		return fail(exitInternal, err)
 	}
+	display, err := text.Parse(assets.Handjet)
+	if err != nil {
+		return fail(exitInternal, err)
+	}
 	tr, fallback, err := translator(sess.T)
 	if err != nil {
 		return fail(exitInternal, err)
@@ -80,7 +84,7 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	warn := func(msg string) { log.Warn(msg) }
 	mappings, mappingCounts := input.LoadMappingsCounted(assets.ControllerDB, filepath.Join(sess.DataDir, userMappingsFile), input.SDLPlatform(runtime.GOOS), os.Getenv, warn)
 	be, err := sdl.OpenBackend(lib, font, sdl.BackendOptions{
-		Title: "mothdex", Driver: o.driver, Windowed: o.height > 0, Width: o.width, Height: o.height, Mappings: mappings, Log: log,
+		Display: display, Title: "mothdex", Driver: o.driver, Windowed: o.height > 0, Width: o.width, Height: o.height, Mappings: mappings, Log: log,
 	})
 	if err != nil {
 		return fail(exitSDL, err)
@@ -93,7 +97,7 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	log.Info("gui: started", "driver", be.Driver(), "width", w, "height", h, "version", buildinfo.Get().Version)
 
 	model, cmds := gui.New(gui.Options{
-		Service: sess.Svc, T: tr, Font: font, Clock: gui.SystemClock(), Log: log, DataDir: sess.DataDir,
+		Service: sess.Svc, T: tr, Font: font, Display: display, Clock: gui.SystemClock(), Log: log, DataDir: sess.DataDir,
 		MappingsPath: filepath.Join(sess.DataDir, userMappingsFile),
 		Version:      buildinfo.Get().Version, LocaleFallback: fallback, Width: w, Height: h, Safe: gui.AutoSafeArea,
 		LogPath: sess.LogPath, Prefer: sess.Prefer, Boxart: sess.Boxart, Confirm: sess.Confirm,

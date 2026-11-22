@@ -101,9 +101,10 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 - `gui.safe_area` insets the layout (G2).
 
 **Text.**
-- **Font:** Noto Sans Regular (one weight: Bússola uses size and colour, not bold), subset to Latin and Cyrillic.
-  - Release `NotoSans-v2.015` from `notofonts/latin-greek-cyrillic`, licence OFL-1.1, embedded with `OFL.txt` in the archive.
-  - OFL fonts may be bundled with GPL-3.0 software; the font stays under OFL.
+- **Fonts:** Noto Sans Regular for body text and as the fallback (one weight: Bússola uses size and colour, not bold), and Handjet for the `display` role (D30), both subset to Latin and Cyrillic.
+  - Noto Sans: release `NotoSans-v2.015` from `notofonts/latin-greek-cyrillic`, licence OFL-1.1, embedded with `NotoSans-OFL-1.1.txt` in the archive.
+  - Handjet: the default instance of `ofl/handjet` of `google/fonts` at commit `c1eda9233c33`, licence OFL-1.1 (no Reserved Font Name), embedded with `Handjet-OFL-1.1.txt` in the archive. It draws the top bar title and wordmark, the Home tile labels, the Settings section headers and the calibration percent; a label with a glyph it lacks is drawn in Noto Sans at the `title` size.
+  - OFL fonts may be bundled with GPL-3.0 software; the fonts stay under OFL.
 - **Raster:** `golang.org/x/image` v0.48.0 (BSD-3), `font/opentype` plus `vector`, into an RGBA atlas texture.
   - Cached by (rune, size) in fixed-size pages.
   - A page is rebuilt when it is full, which bounds memory.
@@ -189,7 +190,7 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 - targets: linux amd64, arm64, armv7, armv6, and windows amd64 (386 only if the spike passes it); no darwin and no windows arm64 in v0.3.0.
 
 **Archives.** `mothdex-gui_<version>_<os>_<arch>`, never inside `mothdex_` archives (release-artifacts §1).
-- Each holds the binary, `LICENSE`, `README.md`, `CHANGELOG.md` and the `THIRD_PARTY/` folder (the repository layout; ports.md PRT-G5): purego Apache-2.0, x/image BSD-3, Noto OFL-1.1, GameControllerDB zlib, SDL2 zlib (which covers the SDL2.dll in the Windows archive). The installer copies it to `bin_dir/mothdex-licenses/`.
+- Each holds the binary, `LICENSE`, `README.md`, `CHANGELOG.md` and the `THIRD_PARTY/` folder (the repository layout; ports.md PRT-G5): purego Apache-2.0, x/image BSD-3, Noto OFL-1.1, Handjet OFL-1.1, GameControllerDB zlib, SDL2 zlib (which covers the SDL2.dll in the Windows archive). The installer copies it to `bin_dir/mothdex-licenses/`.
 - Each has an SBOM and is listed in the same `checksums.txt` and cosign bundle.
 - `release-artifacts.md` must change "All binaries are static" to "`mothdex` is static; `mothdex-gui` is dynamic on Linux (glibc `ld.so`, `libdl`) and needs system SDL2". Guindaste's PR.
 

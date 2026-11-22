@@ -273,6 +273,7 @@ folder (gui.md §6). For Ports:
 | Component | Licence | Where the notice lives |
 |---|---|---|
 | Noto Sans (embedded) | OFL-1.1 | `THIRD_PARTY/NotoSans-OFL-1.1.txt` in the archive, installed to `bin_dir/mothdex-licenses/` |
+| Handjet (embedded) | OFL-1.1 | `THIRD_PARTY/Handjet-OFL-1.1.txt` in the archive, installed to `bin_dir/mothdex-licenses/` |
 | GameControllerDB (embedded) | zlib | `THIRD_PARTY/SDL_GameControllerDB-zlib.txt`, same |
 | SDL2.dll 2.32.10 (Windows, shipped) | zlib | **missing**: add `THIRD_PARTY/SDL2-zlib.txt` from the SDL2 release (gap PRT-G2) |
 | purego (in the binary) | Apache-2.0 | **missing**: Apache-2.0 §4(a) asks for a copy of the licence in binary distributions (gap PRT-G2) |

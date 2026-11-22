@@ -82,6 +82,7 @@ type Options struct {
 	Service        Service
 	T              *i18n.Translator
 	Font           *text.Font
+	Display        *text.Font // the display face (Handjet) for short labels; nil draws them in Font at the title size
 	Clock          Clock
 	Log            *slog.Logger
 	DataDir        string // paths.data, where tui_state lives

@@ -107,6 +107,20 @@ func (f *Face) advanceOf(r rune) fixed.Int26_6 {
 	return a
 }
 
+// Covers reports whether the font has a glyph for every drawable character of s, so a label can fall back to another font
+// when it does not (the display face is only used for labels it can draw whole).
+func (f *Face) Covers(s string) bool {
+	for _, r := range s {
+		if isControl(r) {
+			continue
+		}
+		if _, ok := f.face.GlyphAdvance(r); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func isControl(r rune) bool { return r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) }
 
 // Width is the width of a single line in pixels. Control characters count as nothing.

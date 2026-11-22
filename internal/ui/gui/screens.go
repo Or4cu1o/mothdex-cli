@@ -22,13 +22,15 @@ func (m Model) drawSplash(p painter, now time.Time) {
 	titleTop := s.Y + s.H*36/100
 	// The moth sits 1u before the wordmark and the pair is centered; its wings flap, 250 ms a frame, while the app starts.
 	mw, _ := p.mothSize()
-	markW := p.width(met.Title, brand)
+	dp := p.display(brand)
+	tsize := dp.dsize()
+	markW := dp.width(tsize, brand)
 	markX := s.X + (s.W-(mw+u+markW))/2
-	p.drawMoth(markX, titleTop, LineHeight(met.Title), wingFrameAt(now))
-	p.text(markX+mw+u, titleTop, met.Title, colAccent, brand)
+	p.drawMoth(markX, titleTop, LineHeight(tsize), wingFrameAt(now))
+	dp.text(markX+mw+u, titleTop, tsize, colAccent, brand)
 
 	line := m.tr("ui.gui.splash.starting", nil)
-	top := titleTop + LineHeight(met.Title) + u
+	top := titleTop + LineHeight(tsize) + u
 	w := p.width(met.Body, line)
 	x := s.X + (s.W-w)/2
 	p.text(x, top, met.Body, colDim, line)
@@ -39,7 +41,7 @@ func (m Model) drawSplash(p painter, now time.Time) {
 
 	infoTop := s.Bottom() - LineHeight(met.Secondary) - 2*u
 	p.drawSky([]rect{
-		{X: markX, Y: titleTop, W: mw + u + markW, H: LineHeight(met.Title)},
+		{X: markX, Y: titleTop, W: mw + u + markW, H: LineHeight(tsize)},
 		{X: s.X, Y: top, W: s.W, H: LineHeight(met.Body)},
 		{X: s.X, Y: infoTop, W: s.W, H: LineHeight(met.Secondary)},
 	})

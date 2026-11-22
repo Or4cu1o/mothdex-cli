@@ -55,7 +55,11 @@ func headless(t *testing.T, w, h int) (*Backend, *text.Font) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	be, err := OpenBackend(lib, font, BackendOptions{Driver: "dummy", Windowed: true, Width: w, Height: h, Hidden: true, Software: true})
+	display, err := text.Parse(assets.Handjet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	be, err := OpenBackend(lib, font, BackendOptions{Driver: "dummy", Windowed: true, Width: w, Height: h, Hidden: true, Software: true, Display: display})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +73,11 @@ func guiOptions(t *testing.T, font *text.Font, svc gui.Service, w, h int) gui.Op
 	if err != nil {
 		t.Fatal(err)
 	}
-	return gui.Options{Service: svc, T: bundle.New("en_us"), Font: font, Clock: gui.SystemClock(), DataDir: t.TempDir(), Version: "0.3.0", Width: w, Height: h, Safe: gui.AutoSafeArea}
+	display, err := text.Parse(assets.Handjet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gui.Options{Service: svc, T: bundle.New("en_us"), Font: font, Display: display, Clock: gui.SystemClock(), DataDir: t.TempDir(), Version: "0.3.0", Width: w, Height: h, Safe: gui.AutoSafeArea}
 }
 
 // homeModel returns the model on Home for a display of w x h, with the service answers applied.

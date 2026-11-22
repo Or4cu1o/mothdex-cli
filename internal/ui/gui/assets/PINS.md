@@ -1,6 +1,6 @@
 # Pins of the embedded GUI assets
 
-The files are data, never executed. A change to any of them is a reviewed PR that changes the pin here and
+Fonts and images are data, never executed. A change to any of them is a reviewed PR that changes the pin here and
 the file together; `assets_test.go` fails if they disagree.
 
 ## `NotoSans-Regular-subset.ttf`
@@ -31,6 +31,29 @@ the file together; `assets_test.go` fails if they disagree.
   `97f35b302b361680ec1e891e95d2d52097bb95abff361434916d99dc1305f127`).
 - SHA-256 `a9994e85b0d608cfcb4df0e1424523e488829acb1017b6a2a2adf8df6478cb26`, 614,810 bytes.
 - Lines whose `platform:` is not the running one are skipped before SDL sees them.
+
+## `Handjet-Regular-subset.ttf`
+
+- Source: `google/fonts`, commit `c1eda9233c33ad7775b27efd794f931095cf6133` (the last one that touched `ofl/handjet`,
+  2026-03-03), file `ofl/handjet/Handjet[ELGR,ELSH,wght].ttf` (SHA-256
+  `9262749e8bb0b73ebcae0e20428689c3c59576eebeb6c4e1020300d2d41bdf4d`, 283,912 bytes), a variable font.
+- Licence: SIL OFL 1.1, `THIRD_PARTY/Handjet-OFL-1.1.txt` (the `OFL.txt` of the same directory and commit, byte for byte,
+  SHA-256 `934a45d3b43276e1f857301e9cb07e00b829cca3d0c13e8e6f8c6790dd6c8a2c`). The notice declares no Reserved Font Name
+  (its copyright line is "The Handjet Project Authors"), so a subset may keep the name. The font stays under OFL.
+- The default instance (all three axes at their default), then the same subset as Noto:
+
+  ```sh
+  uv run --with fonttools fonttools varLib.instancer "Handjet[ELGR,ELSH,wght].ttf" ELGR=drop ELSH=drop wght=drop \
+    -o Handjet-static.ttf
+  uv run --with fonttools pyftsubset Handjet-static.ttf \
+    --unicodes="U+0020-007E,U+00A0-024F,U+0400-04FF,U+2010-2027,U+2030-203A,U+2190-2193,U+20AC,U+2212,U+00B7" \
+    --layout-features="" --no-hinting --drop-tables+=DSIG,GPOS,GSUB,GDEF \
+    --output-file=Handjet-Regular-subset.ttf
+  ```
+
+- Result: 54,900 bytes, SHA-256 `2ba7ebeb0d6cd9a7e962b6cbf608e04a28c799564422144099bec4c306fd057c`.
+- Checked glyphs: `ç ã õ ñ ¿ ё й ъ О П › … ·` (pt_br, es_es, en, ru_ru). The em is 8160 units: ascenders reach 0.71 em, accented
+  capitals 0.82 em, descenders 0.24 em. The face is used only for short labels (`display`).
 
 ## `moth-wings-down.png` and `moth-wings-up.png`
 

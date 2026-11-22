@@ -72,6 +72,7 @@ func (v tierValues) at(t Tier) int { return v[t] }
 // The tables of docs/ux/gui.md sections 1.3 and 1.4.
 var (
 	fontTitle     = tierValues{26, 34, 50}
+	fontDisplay   = tierValues{35, 46, 68} // Handjet, title x 1.35 (DESIGN.md Type)
 	fontBody      = tierValues{20, 26, 38}
 	fontSecondary = tierValues{17, 21, 31}
 	fontMinimum   = tierValues{16, 18, 27}
@@ -104,6 +105,7 @@ type Metrics struct {
 	TileW, TileH, Key, Ring, Progress int
 	Pixel                             int // P, the pixel cell every shape snaps to: 2, 3 or 4
 	Title, Body, Secondary, Minimum   int // type sizes in pixels
+	Display                           int // the size of the display face
 }
 
 // NewMetrics computes the layout metrics for a display of w x h pixels.
@@ -138,7 +140,7 @@ func NewMetrics(w, h int, safe SafeArea, largeText bool) Metrics {
 	if largeText {
 		grow = largerText
 	}
-	m.Title, m.Body = grow(fontTitle.at(t)), grow(fontBody.at(t))
+	m.Title, m.Body, m.Display = grow(fontTitle.at(t)), grow(fontBody.at(t)), grow(fontDisplay.at(t))
 	m.Secondary, m.Minimum = grow(fontSecondary.at(t)), grow(fontMinimum.at(t))
 	m.TopBar, m.HintBar = grow(topBarHeight.at(t)), grow(hintBarHeight.at(t))
 	m.Row1, m.Row2, m.Key = grow(rowOneLine.at(t)), grow(rowTwoLines.at(t)), grow(keyMin.at(t))

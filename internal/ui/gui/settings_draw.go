@@ -227,7 +227,8 @@ func (m Model) drawSettings(p painter) {
 		h := m.settingItemHeight(it)
 		switch {
 		case it.header != "":
-			p.text(c.X+met.Unit, y+(h-LineHeight(met.Secondary))/2, met.Secondary, colDim, it.header)
+			hp := p.display(it.header) // a section header is a short label: the display face, in the dim text color
+			hp.text(c.X+met.Unit, y+(h-LineHeight(hp.dsize()))/2, hp.dsize(), colDim, it.header)
 		case it.more:
 			p.text(c.X+met.Unit, y+(h-LineHeight(met.Secondary))/2, met.Secondary, colDim, p.fit(met.Secondary, m.tr("ui.gui.settings.more", nil), c.W-2*met.Unit))
 		default:
@@ -340,10 +341,12 @@ func (m Model) drawMargin(p painter, e *settingsEditor) {
 		p.l.Fill(r, colFocusRing)
 	}
 	pct := m.tr("ui.gui.settings.val.pct", map[string]any{"pct": strconv.Itoa(e.pct)})
-	cy := s.Y + s.H/2 - LineHeight(met.Title)
-	p.text(s.X+(s.W-p.width(met.Title, pct))/2, cy, met.Title, colText, pct)
+	dp := p.display(pct) // the percent is a number: the display face
+	psize := dp.dsize()
+	cy := s.Y + s.H/2 - LineHeight(psize)
+	dp.text(s.X+(s.W-dp.width(psize, pct))/2, cy, psize, colText, pct)
 	for i, line := range p.wrap(met.Secondary, m.tr("ui.gui.settings.calib_help", nil), s.W-2*arm, 2) {
-		p.text(s.X+(s.W-p.width(met.Secondary, line))/2, cy+LineHeight(met.Title)+met.Unit+i*LineHeight(met.Secondary), met.Secondary, colDim, line)
+		p.text(s.X+(s.W-p.width(met.Secondary, line))/2, cy+LineHeight(psize)+met.Unit+i*LineHeight(met.Secondary), met.Secondary, colDim, line)
 	}
 }
 

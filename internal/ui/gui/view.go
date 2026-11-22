@@ -19,18 +19,54 @@ const (
 // painter draws into a list with the font and the metrics of the model. With a nil list it only measures,
 // which is how layout shares its code with drawing.
 type painter struct {
-	l    *draw.List
-	m    Metrics
-	font *text.Font
+	l     *draw.List
+	m     Metrics
+	font  *text.Font
+	dfont *text.Font // the display face, nil when there is none
+	disp  bool       // text is measured and drawn in the display face
 }
 
-func (m Model) painter(l *draw.List) painter { return painter{l: l, m: m.metrics, font: m.o.Font} }
+func (m Model) painter(l *draw.List) painter {
+	return painter{l: l, m: m.metrics, font: m.o.Font, dfont: m.o.Display}
+}
+
+// display returns a painter that measures and draws in the display face (Handjet), for the short labels of DESIGN.md. It
+// is the same painter when there is no display font or when the face lacks a glyph of one of the labels: those are drawn in
+// the body font at the title size, so the label is never half in one face (DESIGN.md Type, fallback).
+func (p painter) display(labels ...string) painter {
+	if p.dfont == nil {
+		return p
+	}
+	f, err := p.dfont.Face(p.m.Display)
+	if err != nil {
+		return p
+	}
+	for _, s := range labels {
+		if !f.Covers(s) {
+			return p
+		}
+	}
+	p.disp = true
+	return p
+}
+
+// dsize is the size of a display label: the display size in the display face, the title size in the fallback.
+func (p painter) dsize() int {
+	if p.disp {
+		return p.m.Display
+	}
+	return p.m.Title
+}
 
 func (p painter) face(size int) *text.Face {
-	if p.font == nil {
+	font := p.font
+	if p.disp {
+		font = p.dfont
+	}
+	if font == nil {
 		return nil
 	}
-	f, err := p.font.Face(size)
+	f, err := font.Face(size)
 	if err != nil {
 		return nil
 	}
@@ -72,6 +108,10 @@ func (p painter) base(top, size int) int {
 
 // text draws a line with its box starting at (x, top).
 func (p painter) text(x, top, size int, c draw.Color, s string) {
+	if p.disp {
+		p.l.DisplayText(x, p.base(top, size), size, c, s)
+		return
+	}
 	p.l.Text(x, p.base(top, size), size, c, s)
 }
 
@@ -346,7 +386,9 @@ func (m Model) drawTopBar(p painter, spec frameSpec) {
 		mw, _ := p.mothSize()
 		lead = mw + met.Unit
 	}
-	minTitle := lead + min(p.width(met.Title, full), minTitleWidth(p, met.Title, spec.crumbs))
+	dp := p.display(append([]string{full, "…", crumb}, spec.crumbs...)...) // the title is a short label: the display face
+	tsize := dp.dsize()
+	minTitle := lead + min(dp.width(tsize, full), minTitleWidth(dp, tsize, spec.crumbs))
 	avail := max(bar.W-2*pad-minTitle-pad, 0)
 	right, _ := m.topBarItems(p, avail, spec.extra)
 
@@ -363,8 +405,8 @@ func (m Model) drawTopBar(p painter, spec frameSpec) {
 		p.drawMoth(titleX, bar.Y, bar.H, 0)
 		titleX += lead
 	}
-	title := fitCrumbs(p, met.Title, spec.crumbs, max(x-titleX, 0))
-	p.title(titleX, bar.Y+(bar.H-LineHeight(met.Title))/2, met.Title, title)
+	title := fitCrumbs(dp, tsize, spec.crumbs, max(x-titleX, 0))
+	dp.title(titleX, bar.Y+(bar.H-LineHeight(tsize))/2, tsize, title)
 }
 
 // title draws the title of the top bar: the wordmark in the moth color, the crumbs after it in the text color
