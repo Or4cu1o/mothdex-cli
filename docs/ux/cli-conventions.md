@@ -131,7 +131,8 @@ Final summary on stderr: `3 downloaded, 1 skipped, 0 failed in 01:42` (i18n plur
 
 ## 6. Prompts
 
-`interface.confirm_downloads=true` asks only when a command queues more than 1 file or more than 500 MB:
+`interface.confirm_downloads=true` asks only when a command queues more than 1 file or more than 500 MB (`524 288 000` bytes; the downloader's header-time
+re-confirmation uses the same constant, downloader.md §3.2):
 
 ```
 Download 5 files (1.2 GB) to /userdata/roms/nes ?  [y/N]

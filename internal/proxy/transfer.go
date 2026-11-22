@@ -181,10 +181,82 @@ func (d *Downloader) checkResponse(j *jobState, req *http.Request, resp *http.Re
 	if ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding"))); resp.Uncompressed || (ce != "" && ce != "identity") {
 		return fatal(CodeIntegrity, "the response has a content encoding", nil)
 	}
-	if resp.ContentLength >= 0 && resp.ContentLength != j.job.Link.Size {
-		return fatal(CodeSizeMismatch, "Content-Length differs from the size of the link", nil)
+	return d.checkLength(j, resp)
+}
+
+// checkLength is downloader.md 3.2 steps 2 to 7: Content-Length is the size authority. It runs on
+// every attempt before the first body byte; pinning, the space swap, the consent and the drift
+// record happen once, on the first attempt that passes the strict check.
+func (d *Downloader) checkLength(j *jobState, resp *http.Response) *attemptErr {
+	cl := resp.ContentLength
+	if cl < 1 || !strictLength(resp.Header, cl) {
+		return fatal(CodeSizeMismatch, "the response has no usable Content-Length", nil)
 	}
+	first := j.cl == 0
+	if !first && j.cl != cl {
+		return fatal(CodeSizeMismatch, "Content-Length changed between attempts", nil)
+	}
+	j.cl = cl
+	if cl > d.cfg.MaxFileSize {
+		return fatal(CodeSizeMismatch, "Content-Length is above the file size cap", nil)
+	}
+	if !first {
+		return nil // already checked, consented and claimed on the first attempt
+	}
+	if ae := d.swapClaims(j, cl); ae != nil {
+		return ae
+	}
+	if !d.consented(j, cl) {
+		return fatal(CodeConfirmationRequired, "the real size needs confirmation", nil)
+	}
+	link := j.job.Link.Size
+	j.drift = cl > link+link/2 || cl < link/2+link%2 // beyond 1.5x or below 0.5x (cl*2 < link) of the catalog estimate, integer math
 	return nil
+}
+
+// strictLength accepts only a single Content-Length header made of ASCII digits that parses to the
+// value Go read (no sign, no blanks, no list).
+func strictLength(h http.Header, cl int64) bool {
+	vals := h.Values("Content-Length")
+	if len(vals) != 1 || vals[0] == "" {
+		return false
+	}
+	for _, c := range []byte(vals[0]) {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	if vals[0][0] == '0' { // no leading zero (one grammar with mothdex-mcp: ^[1-9][0-9]*$)
+		return false
+	}
+	n, err := strconv.ParseInt(vals[0], 10, 64)
+	return err == nil && n == cl
+}
+
+// swapClaims replaces the space claim made for link.size by one for Content-Length (3.2 step 5).
+func (d *Downloader) swapClaims(j *jobState, cl int64) *attemptErr {
+	next, _, perr := d.spaceClaims(j, cl)
+	if perr != nil {
+		return &attemptErr{kind: kindFatal, err: perr}
+	}
+	if !d.ledger.swap(j.claims, next) {
+		return fatal(CodeDiskFull, "not enough free space for the real size of this download", nil)
+	}
+	j.claims = next
+	return nil
+}
+
+// consented is step 6: with the default rule and confirm_downloads on, a real size above the
+// threshold needs consent when the catalog estimate did not already; an exact consent must equal
+// the real size; ConsentAny skips the check.
+func (d *Downloader) consented(j *jobState, cl int64) bool {
+	switch c := j.job.SizeConsent; {
+	case c == ConsentAny:
+		return true
+	case c > 0:
+		return c == cl
+	}
+	return !d.cfg.ConfirmDownloads || j.job.Link.Size > d.cfg.ConfirmBytes || cl <= d.cfg.ConfirmBytes
 }
 
 // retryAfter reads a delay in seconds or an HTTP date; anything else is no delay.
@@ -206,6 +278,11 @@ func (d *Downloader) netFailure(ctx, actx context.Context, err error) *attemptEr
 	if ctx.Err() != nil {
 		return &attemptErr{kind: kindFatal, err: canceled(ctx)}
 	}
+	// The transport itself refused a malformed length (3.2 step 2). Go words these as `bad Content-Length` and
+	// `multiple Content-Length headers`; TestGoTransportWordingForAMalformedContentLength pins the wording.
+	if strings.Contains(err.Error(), "Content-Length") {
+		return fatal(CodeSizeMismatch, "the response has no usable Content-Length", err)
+	}
 	msg := "network error"
 	if cause := context.Cause(actx); errors.Is(cause, errHeaderTimeout) || errors.Is(cause, errFirstByte) || errors.Is(cause, errIdle) {
 		msg, err = cause.Error(), cause
@@ -216,7 +293,7 @@ func (d *Downloader) netFailure(ctx, actx context.Context, err error) *attemptEr
 // copyBody streams the body into the staging file through the size+1 limit reader, hashing on
 // the fly. It returns nil when exactly size bytes arrived.
 func (d *Downloader) copyBody(ctx, actx context.Context, j *jobState, body io.Reader, wd *watchdog) *attemptErr {
-	size := j.job.Link.Size
+	size := j.cl // the pinned Content-Length, never link.size (3.2)
 	r := io.LimitReader(body, size+1)
 	h := sha256.New()
 	buf := make([]byte, copyBuffer)

@@ -121,8 +121,12 @@ type Record struct {
 	CRC      string // "ok", "skipped" or "failed"
 	Hash     string // upstream hash check: "ok", "skipped" or "failed"
 	Attempts int
-	Started  time.Time
-	Finished time.Time
+	// CatalogSize is link.size (an estimate); ContentLength is the pinned Content-Length, 0 if no
+	// attempt passed the header checks (downloader.md 3.2).
+	CatalogSize   int64
+	ContentLength int64
+	Started       time.Time
+	Finished      time.Time
 }
 
 // JournalEntry names the files an unfinished job may leave behind, so that startup cleanup finds

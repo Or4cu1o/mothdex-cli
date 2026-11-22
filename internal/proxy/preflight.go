@@ -150,36 +150,49 @@ func numbered(name string, n int, opts []NameOption) (string, error) {
 // reserveSpace is step 7: one claim per file system, all or nothing. When the staging
 // directory and the destination are on the same device the file is staged inside the
 // destination (written once, plain rename) and only one claim is made; otherwise it is staged
-// in paths.temp, copied later, and both file systems are claimed (T-17-arch M2).
+// in paths.temp, copied later, and both file systems are claimed (T-17-arch M2). The estimate
+// is link.size here; the claim is swapped for Content-Length after the headers (3.2 step 5).
 func (d *Downloader) reserveSpace(j *jobState) *Error {
-	need, ok := spaceNeed(j.job.Link.Size)
-	if !ok {
-		return &Error{Code: CodeSizeMismatch, Message: "the size of the link is not acceptable"}
+	claims, sameDev, perr := d.spaceClaims(j, j.job.Link.Size)
+	if perr != nil {
+		return perr
 	}
-	if err := d.o.Staging.MkdirAll(stagingDir, 0o700); err != nil {
-		return &Error{Code: CodeInternal, Message: "cannot create the staging directory", Err: err}
-	}
-	free, dev, err := d.o.Staging.Free(stagingDir)
-	if err != nil {
-		return &Error{Code: CodeInternal, Message: "cannot read the free space of the staging directory", Err: err}
-	}
-	dfree, ddev, err := d.o.Dest.Free(d.existingDir(j.destRel))
-	if err != nil {
-		return &Error{Code: CodeInternal, Message: "cannot read the free space of the destination", Err: err}
-	}
-	claims := []claim{{dev: ddev, free: dfree, need: need}}
-	j.stageInDest = dev == ddev
+	j.stageInDest = sameDev
 	if j.stageInDest {
 		j.staging = joinName(j.destRel, "."+j.id+".part")
 	} else {
 		j.staging = stagingDir + "/" + j.id + ".part"
-		claims = append(claims, claim{dev: dev, free: free, need: need})
 	}
 	if !d.ledger.reserve(claims) {
 		return &Error{Code: CodeDiskFull, Message: "not enough free space for this download"}
 	}
 	j.claims = claims
 	return nil
+}
+
+// spaceClaims measures the free space and builds the claims for a file of size bytes. sameDev
+// reports that the staging directory and the destination share a device (one claim).
+func (d *Downloader) spaceClaims(j *jobState, size int64) (claims []claim, sameDev bool, perr *Error) {
+	need, ok := spaceNeed(size)
+	if !ok {
+		return nil, false, &Error{Code: CodeSizeMismatch, Message: "the size of the link is not acceptable"}
+	}
+	if err := d.o.Staging.MkdirAll(stagingDir, 0o700); err != nil {
+		return nil, false, &Error{Code: CodeInternal, Message: "cannot create the staging directory", Err: err}
+	}
+	free, dev, err := d.o.Staging.Free(stagingDir)
+	if err != nil {
+		return nil, false, &Error{Code: CodeInternal, Message: "cannot read the free space of the staging directory", Err: err}
+	}
+	dfree, ddev, err := d.o.Dest.Free(d.existingDir(j.destRel))
+	if err != nil {
+		return nil, false, &Error{Code: CodeInternal, Message: "cannot read the free space of the destination", Err: err}
+	}
+	claims = []claim{{dev: ddev, free: dfree, need: need}}
+	if dev != ddev {
+		claims = append(claims, claim{dev: dev, free: free, need: need})
+	}
+	return claims, dev == ddev, nil
 }
 
 // existingDir is the nearest existing ancestor of a destination directory that may not exist

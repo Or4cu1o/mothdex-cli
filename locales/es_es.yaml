@@ -15,6 +15,8 @@ errors:
   confirmation_required:
     message: 'Este comando necesita confirmación.'
     hint: 'Añade --force para omitir la pregunta.'
+    size_hint: 'El archivo ocupa {size}; el catálogo indicaba {estimate}. Necesita tu confirmación para descargarse.'
+    size_hint_cli: 'El archivo ocupa {size}; el catálogo indicaba {estimate}. Añade -f para descargarlo de todos modos.'
   unmapped_platform:
     message: 'No hay carpeta definida para la plataforma {platform}.'
     hint: 'Pasa -o <carpeta>, o define profile.folders.{platform} en la configuración.'
@@ -63,6 +65,7 @@ errors:
   path_rejected:
     message: 'Se rechaza escribir en {path}.'
     hint: 'No se escribió nada. Elige otra carpeta con -o, o revisa profile.folders.'
+    missing_hint: '{path} no existe. Crea la carpeta, usa -o <carpeta> o ejecuta: mothdex config set download.dir <carpeta>'
   unsafe_name:
     message: 'Se rechaza guardar {name}: su tipo de archivo puede ejecutar código.'
     hint: 'No se escribió nada. Elige otro enlace con --link, o pasa --allow-executable si confías en él.'
@@ -135,6 +138,8 @@ ui:
       none: 'Sin resultados para "{text}". Prueba con menos palabras o quita -p/-r.'
       past_last: 'La página {asked} no existe; se muestra la página {shown}.'
       dropped: '{n} resultados se ocultaron porque su slug tiene un formato inesperado.'
+      session_stale: 'No se pudo guardar la búsqueda, así que los números de resultado pueden referirse a una búsqueda anterior. Usa slugs.'
+      all_dropped: 'Los {n} resultados de esta página se ocultaron. Prueba la página siguiente.'
     info:
       slug: 'Slug'
       platform: 'Plataforma'
@@ -151,6 +156,7 @@ ui:
         one: 'Descargando {count} archivo'
         other: 'Descargando {count} archivos'
       link_chosen: 'Enlace {index} elegido ({why}, 1 de {count}).'
+      size_drift: '{title}: el proxy informa {real}, pero el catálogo decía {catalog}; el tamaño del catálogo es solo una estimativa.'
       confirm: '¿Descargar {count} archivos ({size}) en {dest}?  [s/N]'
       dest_default: 'la carpeta de la biblioteca'
       connecting: 'Conectando...'
