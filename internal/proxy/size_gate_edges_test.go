@@ -42,8 +42,9 @@ func TestSizeGate2xBoundaries(t *testing.T) {
 	}
 }
 
-// T-69: a retry after a 503 keeps the pinned Content-Length and the first consent; the 2x rule is not asked again.
-func TestSizeGate2xIsNotReaskedOnRetry(t *testing.T) {
+// T-69: truncated, 503 and OK under the 2x rule end Done with the pinned Content-Length. The result is the same
+// for the same cl, so this does not distinguish a re-ask; it pins that the retry path works under the rule.
+func TestSizeGate2xRetryKeepsThePinnedLength(t *testing.T) {
 	r := newRig(t, proxy.Config{ConfirmDownloads: true, ConfirmBytes: 10_000})
 	r.srv.Script("/f/b",
 		fakeproxy.Truncate(fakeproxy.Pattern(30_000), 400), // 2x of the estimate: passes and pins cl
