@@ -16,5 +16,6 @@
     for an unknown one in the warn color, and `GUID: <guid>`), or `None connected`; with more joysticks than fit, Up and Down scroll it.
   - 8 render scenes (the toast and badge, in ru_ru, a long device name, About with one, four and eight controllers, and without).
   - The Home title no longer panics when the right side of the top bar leaves it too little room (the new badge exposed it).
-  - Top bar fit (decided by Bússola): when the bar does not fit even with the short forms, the pending-quit notice is hidden instead of cut (the Start menu keeps
-    Don't quit), then, on Home only, the queue badge (the Queue tile shows the count); Offline, No controller and the screen name are never cut or hidden.
+  - Top bar fit (decided by Bússola): when the bar does not fit even with the short forms, items are hidden in this order until it fits: the pending-quit
+    notice (the Start menu keeps Don't quit), the screen's dim extra (History count, Results page), then the queue badge, on every screen. Offline, No
+    controller and the screen name in the title are never cut or hidden; the test covers Home, History, Settings and Results in four languages.
