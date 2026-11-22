@@ -15,6 +15,8 @@ type Env struct {
 	Home     string
 	ExeDir   string
 	Writable func(dir string) bool // dir exists and accepts files
+	// MemoryBacked reports whether dir is on a RAM file system (tmpfs, ramfs); nil means never.
+	MemoryBacked func(dir string) bool
 }
 
 // OSEnv describes the running machine.

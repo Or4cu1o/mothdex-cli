@@ -30,6 +30,7 @@ type fake struct {
 	reqs     []app.DownloadRequest
 	selector app.LinkSelector
 	boxart   func(app.Ref, string) (string, error)
+	profile  app.ProfileInfo
 }
 
 func (f *fake) Search(_ context.Context, q app.SearchQuery) (app.SearchPage, error) {
@@ -114,7 +115,7 @@ func (f *fake) ConfigList() ([]app.Setting, error)    { return nil, nil }
 func (f *fake) ConfigSchema() []app.SettingSpec       { return nil }
 func (f *fake) ConfigSet(string, string) error        { return nil }
 func (f *fake) ConfigReset(string) error              { return nil }
-func (f *fake) ActiveProfile() app.ProfileInfo        { return app.ProfileInfo{} }
+func (f *fake) ActiveProfile() app.ProfileInfo        { return f.profile }
 func (f *fake) DetectProfile(context.Context) (app.ProfileInfo, error) {
 	return app.ProfileInfo{}, nil
 }
@@ -538,5 +539,26 @@ func TestFailureLineNeverShowsRawPlaceholders(t *testing.T) {
 	r := exec(t, f, nil, "download", "1", "2")
 	if strings.ContainsAny(r.err.String(), "{}") || !strings.Contains(r.err.String(), "[permission_denied]") {
 		t.Fatalf("%q", r.err.String())
+	}
+}
+
+// PRT-G11: a RAM disk is reported by profile show next to the other warnings, in both outputs.
+func TestProfileShowReportsRAMStorage(t *testing.T) {
+	f := &fake{profile: app.ProfileInfo{ID: "batocera", Name: "Batocera", Verified: true,
+		StorageWarnings: []string{"Games folder is on a RAM disk: downloaded games are lost at reboot."}}}
+	j := exec(t, f, nil, "profile", "show", "--json")
+	var env struct {
+		Data struct {
+			Profile struct {
+				Warnings []string `json:"warnings"`
+			} `json:"profile"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(j.out.Bytes(), &env); err != nil || len(env.Data.Profile.Warnings) != 1 || !strings.Contains(env.Data.Profile.Warnings[0], "RAM disk") {
+		t.Fatalf("json: %v %s", err, j.out.String())
+	}
+	h := exec(t, f, nil, "profile", "show")
+	if !strings.Contains(h.out.String()+h.err.String(), "Games folder is on a RAM disk") {
+		t.Fatalf("human output lacks the warning: %q %q", h.out.String(), h.err.String())
 	}
 }
