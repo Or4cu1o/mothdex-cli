@@ -57,13 +57,20 @@ func (m Model) onHistory(msg historyMsg) Model {
 		m.o.Log.Warn("gui: History", "err", msg.err)
 		return m
 	}
-	marks := map[string]bool{}
+	marks := make(map[string]bool, len(m.downloaded)+len(msg.records))
+	for k, v := range m.downloaded { // a file downloaded in this run is marked even if the history is read before its record
+		marks[k] = v
+	}
 	for _, r := range msg.records {
 		if r.State == string(app.StateDone) {
 			marks[doneKey(r.Slug, r.LinkIndex)] = true
 		}
 	}
 	m.downloaded = marks
+	m.records = msg.records
+	if m.screen == screenHistory {
+		m = m.syncHistoryFocus()
+	}
 	return m
 }
 

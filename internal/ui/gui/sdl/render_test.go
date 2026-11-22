@@ -14,11 +14,15 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/cache"
+	"github.com/Or4cu1o/mothdex-cli/internal/history"
+	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui"
 	gdraw "github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/guitest"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
+	"github.com/Or4cu1o/mothdex-cli/locales"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
@@ -45,10 +49,18 @@ type player struct {
 	now time.Time
 }
 
-func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confirm bool) *player {
+func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confirm bool, lang string) *player {
 	t.Helper()
 	o := guiOptions(t, font, svc, w, h)
 	o.Confirm = confirm
+	o.LogPath = "/userdata/system/logs/mothdex.log"
+	if lang != "" { // the screen in another language: the longest labels and reasons show what fits
+		bundle, err := i18n.Load(locales.FS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		o.T = bundle.New(lang)
+	}
 	m, cmds := gui.New(o, testEpoch)
 	p := &player{t: t, m: m, now: testEpoch}
 	p.run(cmds)
@@ -121,7 +133,68 @@ func renderCatalog() *guitest.Fake {
 		{ID: "md", Name: "Mega Drive / Genesis", Brand: "Sega"},
 	}
 	svc.Regions_ = []mothdex.Region{{ID: "us", Name: "USA"}, {ID: "eu", Name: "Europe"}, {ID: "jp", Name: "Japan"}}
+	svc.Records = renderRecords()
+	svc.Settings = renderSettings()
+	svc.Cache = cache.Stats{TotalBytes: 84 << 20}
 	return svc
+}
+
+// renderRecords is a history with one record of each look: done, failed, stopped on its size, canceled and skipped.
+func renderRecords() []app.HistoryRecord {
+	at := func(min int) time.Time { return time.Date(2026, 11, 20, 14, 3-min, 0, 0, time.Local) }
+	rec := func(id, slug, title, platform, state string, bytes int64, min int, code, msg string) app.HistoryRecord {
+		r := app.HistoryRecord{ID: id, Slug: slug, Title: title, Platform: platform, State: state, LinkIndex: 1, Bytes: bytes, Filename: slug + ".zip",
+			Path: "/userdata/roms/" + platform + "/" + slug + ".zip", FinishedAt: at(min), StartedAt: at(min + 1), Attempts: 1, DurationMS: 42000,
+			SHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+		if code != "" {
+			r.Error, r.Bytes, r.Path = &history.Failure{Code: code, Message: msg}, 0, ""
+		}
+		return r
+	}
+	stopped := rec("h3", "zelda-oot", "The Legend of Zelda: Ocarina of Time (USA)", "n64", "failed", 0, 9, "confirmation_required", "needs confirmation")
+	stopped.ContentLength, stopped.CatalogSize = 1234<<20, 40<<20
+	return []app.HistoryRecord{
+		rec("h1", "kirby", "Kirby's Dream Land (USA, Europe)", "gb", "done", 512<<10, 0, "", ""),
+		rec("h2", "contra", "Contra (USA)", "nes", "failed", 0, 5, "size_mismatch", "the downloaded file has the wrong size"),
+		stopped,
+		rec("h4", "mario-world", "Super Mario World (USA)", "snes", "skipped", 0, 14, "", ""),
+		rec("h5", "metroid", "Super Metroid (Japan, USA)", "snes", "canceled", 0, 20, "", ""),
+	}
+}
+
+// renderSettings is a configuration as the service gives it: defaults, values from the file and one value for each
+// editor.
+func renderSettings() []app.Setting {
+	return []app.Setting{
+		{Key: "download.concurrency", Value: 2, Source: "default"},
+		{Key: "download.on_exists", Value: "skip", Source: "file"},
+		{Key: "download.boxart", Value: true, Source: "default"},
+		{Key: "download.prefer.languages", Value: []string{"en", "pt"}, Source: "file"},
+		{Key: "download.prefer.size", Value: "none", Source: "default"},
+		{Key: "gui.confirm_button", Value: "south", Source: "default"},
+		{Key: "gui.text_size", Value: "normal", Source: "default"},
+		{Key: "gui.safe_area", Value: "auto", Source: "default"},
+		{Key: "interface.language", Value: "auto", Source: "default"},
+		{Key: "interface.confirm_downloads", Value: true, Source: "default"},
+	}
+}
+
+// openFromMenu opens a screen from the Start menu, which reads the same at every size (the grid of tiles does not):
+// the items are Home, Queue, History, Settings, Buttons and Quit, with focus on Home.
+func (p *player) openFromMenu(downs int) {
+	p.t.Helper()
+	p.press(input.Menu)
+	for i := 0; i < downs; i++ {
+		p.press(input.Down)
+	}
+	p.press(input.Confirm)
+}
+
+func (p *player) repeat(a input.Action, n int) {
+	p.t.Helper()
+	for i := 0; i < n; i++ {
+		p.press(a)
+	}
 }
 
 // stopped is a download that needs the person's OK at its real size (T-56): the catalog says est, the proxy says real.
@@ -159,7 +232,9 @@ func stoppedQueue(p *player, est int64) {
 type scene struct {
 	name, what string
 	expect     []string
-	confirm    bool // interface.confirm_downloads on
+	confirm    bool                 // interface.confirm_downloads on
+	svc        func() *guitest.Fake // the service of the scene; the shared catalog when nil
+	lang       string               // the interface language; English when empty
 	steps      func(p *player)
 }
 
@@ -202,6 +277,65 @@ var renderScenes = []scene{
 	{name: "anyway-toast", what: "T-56: the toast on Home when the job stops", expect: []string{"Needs your OK: The Legend of Zelda: Ocarina of Time (USA)"}, steps: func(p *player) {
 		p.job(stopped("1", "zelda-oot", "The Legend of Zelda: Ocarina of Time (USA)", 1234<<20, 40<<20))
 	}},
+	{name: "history", what: "T-78: History, newest first: done, failed, stopped on its size, skipped, canceled", expect: []string{"mothdex › History", "All · 5 records", "Contra (USA)", "Needs your OK: the file is 1.2 GB, listed as 40.0 MB."}, steps: func(p *player) { p.openFromMenu(2) }},
+	{name: "history-failed", what: "T-78: History with Failed only", expect: []string{"Failed only · 2 records", "Show all", "Contra (USA)"}, steps: func(p *player) { p.openFromMenu(2); p.press(input.Info) }},
+	{name: "history-details", what: "T-78: History details of a done record, with Download again", expect: []string{"Kirby's Dream Land (USA, Europe)", "Download again", "Close", "Attempts: 1"}, steps: func(p *player) { p.openFromMenu(2); p.press(input.Confirm) }},
+	{name: "history-stopped-details", what: "T-78: History details of a record stopped on its size: Download anyway", expect: []string{"Download anyway", "Status:", "Size: 1.2 GB"}, steps: func(p *player) {
+		p.openFromMenu(2)
+		p.repeat(input.Down, 2)
+		p.press(input.Confirm)
+	}},
+	{name: "history-stopped-dialog", what: "T-78: the T-56 dialog opened from the history", expect: []string{"This file is 1.2 GB, not 40.0 MB.", "Don't download", "Download 1.2 GB"}, steps: func(p *player) {
+		p.openFromMenu(2)
+		p.repeat(input.Down, 2)
+		p.press(input.Confirm)
+		p.press(input.Confirm)
+	}},
+	{name: "history-empty", what: "T-78: History with nothing in it", expect: []string{"No downloads yet. Search for a game to start."}, svc: func() *guitest.Fake { s := renderCatalog(); s.Records = nil; return s }, steps: func(p *player) { p.openFromMenu(2) }},
+	{name: "settings", what: "T-78: Settings, first page", expect: []string{"mothdex › Settings", "Concurrent downloads", "Preferred languages", "En, Pt"}, steps: func(p *player) { p.openFromMenu(3) }},
+	{name: "settings-scrolled", what: "T-78: Settings, last page (Storage and system, About)", expect: []string{"Confirm large downloads", "Cache", "84.0 MB", "About", "More settings: run \"mothdex config list\" over SSH."}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 12) }},
+	{name: "settings-choice", what: "T-78: the list of a choice row", expect: []string{"Skip", "Rename"}, steps: func(p *player) { p.openFromMenu(3); p.press(input.Down); p.press(input.Confirm) }},
+	{name: "settings-languages", what: "T-78: the ordered list of preferred languages", expect: []string{"En", "Pt", "+ Add"}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 3); p.press(input.Confirm) }},
+	{name: "settings-language-item", what: "T-78: Move up, Move down, Remove for one language", expect: []string{"Move down", "Remove"}, steps: func(p *player) {
+		p.openFromMenu(3)
+		p.repeat(input.Down, 3)
+		p.press(input.Confirm)
+		p.press(input.Confirm)
+	}},
+	{name: "settings-margin", what: "T-78: the calibration view of the screen margin", expect: []string{"Adjust until you can see all four corners."}, steps: func(p *player) {
+		p.openFromMenu(3)
+		p.repeat(input.Down, 7)
+		p.press(input.Confirm)
+		p.press(input.Right)
+		p.press(input.Left)
+	}},
+	{name: "settings-cache-dialog", what: "T-78: Clear cache (84.0 MB)? with Keep as the default", expect: []string{"Clear cache (84.0 MB)?", "Keep", "Clear"}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 10); p.press(input.Confirm) }},
+	{name: "settings-about", what: "T-78: About, read-only", expect: []string{"Version: 0.3.0", "Catalog entries:"}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 12); p.press(input.Confirm) }},
+	{name: "settings-readonly", what: "T-78: a value set by the environment says so in the hint bar", expect: []string{"Set by MOTHDEX_DOWNLOAD_CONCURRENCY"},
+		svc: func() *guitest.Fake {
+			s := renderCatalog()
+			s.Settings[0] = app.Setting{Key: "download.concurrency", Value: 4, Source: "env"}
+			return s
+		}, steps: func(p *player) { p.openFromMenu(3) }},
+	{name: "settings-error", what: "T-78: a service error under the row, old value kept", expect: []string{"Not saved: Invalid setting download.concurrency=3 (from file)."},
+		svc: func() *guitest.Fake {
+			s := renderCatalog()
+			s.ConfigSetErr = map[string]error{"download.concurrency": &app.Error{Code: app.CodeInvalidConfig, Message: "out of range", Args: map[string]any{"key": "download.concurrency", "value": "3", "source": "file"}}}
+			return s
+		}, steps: func(p *player) { p.openFromMenu(3); p.press(input.Right) }},
+	{name: "buttons", what: "T-78: Start menu > Buttons on Home", expect: []string{"Buttons", "Open", "Quit", "Move"}, steps: func(p *player) { p.press(input.Menu); p.repeat(input.Down, 4); p.press(input.Confirm) }},
+	{name: "buttons-queue", what: "T-78: Buttons on the Queue (pad: Nintendo labels)", expect: []string{"Actions", "Details", "Move"}, steps: func(p *player) {
+		p.send(gui.ControllerMsg{Type: 5})
+		p.press(input.Queue)
+		p.press(input.Menu)
+		p.repeat(input.Down, 4)
+		p.press(input.Confirm)
+	}},
+	{name: "history-pt", lang: "pt_br", what: "T-78: History in pt_br: the reasons are in the interface language", expect: []string{"Histórico", "Tamanho de arquivo errado"}, steps: func(p *player) { p.openFromMenu(2) }},
+	{name: "history-ru", lang: "ru_ru", what: "T-78: History in ru_ru", expect: []string{"История", "Неверный размер файла"}, steps: func(p *player) { p.openFromMenu(2) }},
+	{name: "settings-es", lang: "es_es", what: "T-78: Settings in es_es: long labels wrap, none is cut", expect: []string{"Ajustes", "Descargas simultáneas"}, steps: func(p *player) { p.openFromMenu(3) }},
+	{name: "settings-ru", lang: "ru_ru", what: "T-78: Settings in ru_ru, the longest labels", expect: []string{"Настройки", "Одновременных загрузок"}, steps: func(p *player) { p.openFromMenu(3) }},
+	{name: "settings-ru-scrolled", lang: "ru_ru", what: "T-78: Settings in ru_ru, last page", expect: []string{"Подтверждать большие загрузки"}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 12) }},
 	{name: "quit-busy", what: "Quit with downloads running", expect: []string{"Keep downloading"}, steps: func(p *player) {
 		p.job(app.JobSnapshot{ID: "1", Slug: "mario-world", Title: "Super Mario World (USA)", State: app.StateTransferring, Bytes: 1 << 19, Expected: 1 << 20})
 		p.send(gui.QuitRequestMsg{})
@@ -222,7 +356,11 @@ func TestRenderScenes(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", w, h), func(t *testing.T) {
 			be, font := headless(t, w, h) // one window per size: SDL stays on this goroutine's thread
 			for _, sc := range renderScenes {
-				p := newPlayer(t, font, w, h, renderCatalog(), sc.confirm)
+				svc := renderCatalog()
+				if sc.svc != nil {
+					svc = sc.svc()
+				}
+				p := newPlayer(t, font, w, h, svc, sc.confirm, sc.lang)
 				sc.steps(p)
 				p.advance(400 * time.Millisecond) // past the dialog's input pause; covers and toasts settle
 				img, shown := drawAndRead(t, be, p.m, p.now, w, h)

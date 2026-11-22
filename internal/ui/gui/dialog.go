@@ -19,6 +19,7 @@ const (
 	btnDownload     = "download"
 	btnAgain        = "again"
 	btnCancelAll    = "cancel_all"
+	btnClear        = "clear"
 )
 
 // dialogKind says what a dialog is about, so its buttons know what to do.
@@ -30,6 +31,7 @@ const (
 	dialogDownloadAgain                     // the link was downloaded before
 	dialogCancelAll                         // the Queue's Cancel all downloads
 	dialogAnyway                            // "Download anyway": the real size of a stopped download needs a person's OK
+	dialogClearCache                        // Settings › Cache: Clear cache (84 MB)?
 )
 
 type dialogButton struct {
@@ -83,10 +85,6 @@ func (m Model) openDialog(d dialogState, now time.Time) Model {
 	return m
 }
 
-func (m Model) notYetNamed(name string, now time.Time) Model {
-	return m.withToast(m.tr("ui.gui.not_yet", map[string]any{"name": name}), toastInfo, now)
-}
-
 func (m Model) onDialogAction(a input.Action, now time.Time) (Model, []Cmd) {
 	if d, ok := dirOf(a); ok {
 		m.dlgFocus = Navigate(m.dialogGeometry().elems, m.dlgFocus, d)
@@ -112,7 +110,15 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 		return m, nil
 	case dialogAnyway:
 		if id == btnDownload {
+			if m.inQueue(d.pending.slug, d.pending.link) { // queued while the dialog was open
+				return m.withToast(m.tr("ui.tui.history.already_queued", nil), toastWarn, now), nil
+			}
 			return m.enqueue(d.pending)
+		}
+		return m, nil
+	case dialogClearCache:
+		if id == btnClear {
+			return m, []Cmd{clearCacheCmd(m.o.Service)}
 		}
 		return m, nil
 	case dialogCancelAll:

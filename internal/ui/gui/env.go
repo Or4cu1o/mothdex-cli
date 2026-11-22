@@ -27,6 +27,11 @@ type Service interface {
 	SaveJobBoxart(ctx context.Context, job app.JobSnapshot, destDir string) (string, error)
 	History(ctx context.Context, f app.HistoryFilter) ([]app.HistoryRecord, error)
 	ConfigList() ([]app.Setting, error)
+	ConfigSchema() []app.SettingSpec
+	ConfigSet(key, value string) error
+	ConfigReset(key string) error
+	CacheStats() (app.CacheStats, error)
+	CacheClear(ns ...string) error
 	Jobs() []app.JobSnapshot
 	Cancel(id app.JobID) error
 	Wait(ctx context.Context) (app.BatchResult, error)

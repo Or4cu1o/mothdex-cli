@@ -164,6 +164,10 @@ func (m Model) activateHome(now time.Time) (Model, []Cmd) {
 		return m.startResults(app.SearchQuery{}, true, now)
 	case tileQueue:
 		return m.openQueue(), nil
+	case tileHistory:
+		return m.openHistory()
+	case tileSettings:
+		return m.openSettings()
 	}
 	return m.notYet(m.focus, now), nil
 }

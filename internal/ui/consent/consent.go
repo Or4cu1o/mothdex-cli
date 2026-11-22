@@ -55,3 +55,23 @@ func Args(j app.JobSnapshot, human func(int64) string) (suffix string, args map[
 	}
 	return "_unknown", args
 }
+
+// RecordNeeded reports whether a history record is a download that stopped on its real size and still waits for a
+// person's OK: the history keeps the Content-Length the proxy reported, so the question can be asked again later.
+func RecordNeeded(r app.HistoryRecord) bool {
+	return r.State == string(app.StateFailed) && r.Error != nil && r.Error.Code == string(proxy.CodeConfirmationRequired) && r.ContentLength > 0
+}
+
+// RecordJob is such a record as the snapshot of the stopped job it came from, so the screens that ask for the
+// consent take a record and a live job the same way. dir is the folder the file would be saved to ("" if unknown).
+func RecordJob(r app.HistoryRecord, dir string) app.JobSnapshot {
+	args := map[string]any{"size": r.ContentLength}
+	if dir != "" {
+		args["path"] = dir
+	}
+	return app.JobSnapshot{
+		ID: app.JobID(r.ID), Slug: r.Slug, Title: r.Title, Platform: r.Platform, LinkIndex: r.LinkIndex, State: app.StateFailed,
+		Expected: r.ContentLength, CatalogSize: r.CatalogSize, Name: r.Filename,
+		Err: &app.Error{Code: r.Error.Code, Message: r.Error.Message, Args: args},
+	}
+}

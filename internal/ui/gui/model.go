@@ -43,6 +43,8 @@ const (
 	screenResults
 	screenEntry
 	screenQueue
+	screenHistory
+	screenSettings
 )
 
 type overlayKind int
@@ -51,6 +53,7 @@ const (
 	overlayNone overlayKind = iota
 	overlayMenu
 	overlayDialog
+	overlayButtons
 )
 
 type toastKind int
@@ -129,6 +132,12 @@ type Model struct {
 	results    resultsState
 	entry      entryState
 	queue      queueState
+	records    []app.HistoryRecord // the history, newest first, as the service last gave it
+	history    historyState
+	config     []app.Setting     // every setting as ConfigList last gave it
+	specs      []app.SettingSpec // the schema: the environment variable of each key
+	settings   settingsState
+	cacheTotal int64 // the cache size Settings shows; -1 when CacheStats failed
 	book       jobBook
 	batchBase  [4]int // done, skipped, failed and waiting for the OK when the queue last went busy, for the summary toast
 	covers     coverCache
@@ -172,6 +181,7 @@ func New(o Options, now time.Time) (Model, []Cmd) {
 		recent:  readRecent(o.DataDir),
 	}
 	m.metrics = NewMetrics(o.Width, o.Height, m.cfg.safe, m.cfg.largeText)
+	m.specs = o.Service.ConfigSchema()
 	for _, j := range o.Service.Jobs() {
 		m.jobs, _, _ = m.jobs.apply(j)
 		m.book = m.book.apply(j, now)
@@ -184,10 +194,7 @@ func New(o Options, now time.Time) (Model, []Cmd) {
 			res, err := svc.DBInfo(ctx)
 			return dbInfoMsg{entries: res.Value.TotalEntries, err: err}
 		},
-		func() Msg {
-			list, err := svc.ConfigList()
-			return configMsg{list: list, err: err}
-		},
+		configCmd(svc),
 		historyCmd(svc),
 	}
 }
@@ -267,6 +274,12 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 		return m.onDBInfo(msg, now)
 	case configMsg:
 		return m.onConfig(msg), nil
+	case configSetMsg:
+		return m.onConfigSet(msg)
+	case cacheStatsMsg:
+		return m.onCacheStats(msg), nil
+	case cacheClearMsg:
+		return m.onCacheClear(msg, now)
 	case exitDoneMsg:
 		return m.onExitDone(msg, now)
 	}
@@ -303,6 +316,11 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 		return m.onDialogAction(a, now)
 	case m.overlay == overlayMenu:
 		return m.onMenuAction(a, now)
+	case m.overlay == overlayButtons:
+		if a == input.Back || a == input.Confirm || a == input.Menu {
+			return m.closeOverlay(), nil
+		}
+		return m, nil
 	}
 	if a == input.Menu && m.startOpensMenu() {
 		return m.openMenu(), nil
@@ -321,6 +339,10 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 		return m.onEntryAction(a, now)
 	case screenQueue:
 		return m.onQueueAction(a, now)
+	case screenHistory:
+		return m.onHistoryAction(a, now)
+	case screenSettings:
+		return m.onSettingsAction(a, now)
 	}
 	return m.onHomeAction(a, now)
 }
@@ -375,6 +397,8 @@ func (m Model) onConfig(msg configMsg) Model {
 		m.o.Log.Warn("gui: ConfigList", "err", msg.err)
 		return m
 	}
+	m.config = msg.list
+	m = m.applySettings(msg.list)
 	for _, s := range msg.list {
 		value := strings.TrimSpace(fmt.Sprint(s.Value))
 		switch s.Key {
@@ -407,6 +431,9 @@ func (m Model) onJob(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
 			m.batchBase[0], m.batchBase[1] = m.batchBase[0]-btoi(prev.State == app.StateDone), m.batchBase[1]-btoi(prev.State == app.StateSkipped)
 			m.batchBase[2], m.batchBase[3] = m.batchBase[2]-btoi(prev.State == app.StateFailed && !waited), m.batchBase[3]-btoi(waited)
 		}
+	}
+	if j.Terminal() && (!known || prev.State != j.State) { // the History is read again after each terminal event (docs/ux/gui.md section 5.9)
+		cmds = append(cmds, historyCmd(m.o.Service))
 	}
 	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) && m.screen != screenQueue {
 		if consent.Needed(j) { // nothing failed: the job waits for a person; the title comes last, so a cut falls on it
