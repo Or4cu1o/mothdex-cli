@@ -152,51 +152,57 @@ func stoppedQueue(p *player, est int64) {
 	p.openQueue()
 }
 
+// scene is one screen to render. expect lists texts the screen must show: a scene whose steps drift (a focus that
+// lands on another row, a screen that did not open, a build without the feature) fails instead of writing a PNG of
+// the wrong screen, which would mislead whoever reviews the renders. Each is looked for in the text runs of the
+// draw list, joined, so a line that wrapped still matches.
 type scene struct {
 	name, what string
+	expect     []string
 	confirm    bool // interface.confirm_downloads on
 	steps      func(p *player)
 }
 
 var renderScenes = []scene{
-	{name: "home", what: "Home, first focus", steps: func(*player) {}},
-	{name: "home-menu", what: "Home with the Start menu open", steps: func(p *player) { p.press(input.Menu) }},
-	{name: "search-keyboard", what: "Search, empty field and on-screen keyboard", steps: func(p *player) { p.press(input.Confirm) }},
-	{name: "search-typed", what: "Search with a typed query", steps: func(p *player) {
+	{name: "home", what: "Home, first focus", expect: []string{"Search", "Platforms", "Queue", "Settings"}, steps: func(*player) {}},
+	{name: "home-menu", what: "Home with the Start menu open", expect: []string{"Quit"}, steps: func(p *player) { p.press(input.Menu) }},
+	{name: "search-keyboard", what: "Search, empty field and on-screen keyboard", expect: []string{"0/80", "space", "Del"}, steps: func(p *player) { p.press(input.Confirm) }},
+	{name: "search-typed", what: "Search with a typed query", expect: []string{"5/80"}, steps: func(p *player) {
 		p.press(input.Confirm)
 		p.send(gui.TextMsg{Text: "zelda"})
 	}},
-	{name: "results", what: "Results of a search, with covers", steps: func(p *player) {
+	{name: "results", what: "Results of a search, with covers", expect: []string{"3 results", "The Legend of Zelda: Ocarina of Time (USA)"}, steps: func(p *player) {
 		p.press(input.Confirm)
 		p.send(gui.TextMsg{Text: "zelda"})
 		p.press(input.Menu)
 	}},
-	{name: "entry", what: "Entry with two links", steps: func(p *player) {
+	{name: "entry", what: "Entry with two links", expect: []string{"Links", "Myrient", "Archive"}, steps: func(p *player) {
 		p.press(input.Confirm)
 		p.send(gui.TextMsg{Text: "link to the past"})
 		p.press(input.Menu, input.Confirm)
 	}},
-	{name: "queue", what: "Queue: transferring, warming, queued, done, failed and a job that needs the OK", steps: queueJobs},
-	{name: "queue-sheet-active", what: "Queue action sheet of a running job", steps: func(p *player) { queueJobs(p); p.press(input.Confirm) }},
-	{name: "queue-details-failed", what: "Queue details of a failed job", steps: func(p *player) {
+	{name: "queue", what: "Queue: transferring, warming, queued, done, failed and a job that needs the OK", expect: []string{"Super Mario World (USA)", "Queued", "Finished (3)", "Needs your OK: the file is 1.2 GB, listed as 40.0 MB.", "Cannot reach the Mothdex server."}, steps: queueJobs},
+	{name: "queue-sheet-active", what: "Queue action sheet of a running job", expect: []string{"Cancel download", "Details", "Close"}, steps: func(p *player) { queueJobs(p); p.press(input.Confirm) }},
+	{name: "queue-details-failed", what: "Queue details of a failed job (network)", expect: []string{"Error:", "Cannot reach the Mothdex server."}, steps: func(p *player) {
 		queueJobs(p)
-		p.press(input.Down, input.Down, input.Down, input.Down, input.Down, input.Info)
+		// The rows: Mario, Metroid, Sonic, then the Finished group, newest first: the job that needs the OK, the failed one.
+		p.press(input.Down, input.Down, input.Down, input.Down, input.Info)
 	}},
-	{name: "anyway-row", what: "T-56: the row of a download that needs the OK (warn color and !)", steps: func(p *player) { stoppedQueue(p, 40<<20) }},
-	{name: "anyway-sheet", what: "T-56: its action sheet: Download anyway, Details, Close", steps: func(p *player) { stoppedQueue(p, 40<<20); p.press(input.Confirm) }},
-	{name: "anyway-dialog", what: "T-56: the dialog with the real and the catalog size", steps: func(p *player) {
+	{name: "anyway-row", what: "T-56: the row of a download that needs the OK (warn color and !)", expect: []string{"Needs your OK: the file is 1.2 GB, listed as 40.0 MB."}, steps: func(p *player) { stoppedQueue(p, 40<<20) }},
+	{name: "anyway-sheet", what: "T-56: its action sheet: Download anyway, Details, Close", expect: []string{"Download anyway", "Details", "Close"}, steps: func(p *player) { stoppedQueue(p, 40<<20); p.press(input.Confirm) }},
+	{name: "anyway-dialog", what: "T-56: the dialog with the real and the catalog size", expect: []string{"This file is 1.2 GB, not 40.0 MB.", "Don't download", "Download 1.2 GB"}, steps: func(p *player) {
 		stoppedQueue(p, 40<<20)
 		p.press(input.Confirm, input.Confirm)
 	}},
-	{name: "anyway-dialog-unknown", what: "T-56: the dialog when the catalog had no size", steps: func(p *player) {
+	{name: "anyway-dialog-unknown", what: "T-56: the dialog when the catalog had no size", expect: []string{"This file is 1.2 GB.", "The catalog had no size for it.", "Don't download"}, steps: func(p *player) {
 		stoppedQueue(p, 0)
 		p.press(input.Confirm, input.Confirm)
 	}},
-	{name: "anyway-details", what: "T-56: Details of the stopped job", steps: func(p *player) { stoppedQueue(p, 40<<20); p.press(input.Info) }},
-	{name: "anyway-toast", what: "T-56: the toast on Home when the job stops", steps: func(p *player) {
+	{name: "anyway-details", what: "T-56: Details of the stopped job", expect: []string{"Status:", "Size: 1.2 GB"}, steps: func(p *player) { stoppedQueue(p, 40<<20); p.press(input.Info) }},
+	{name: "anyway-toast", what: "T-56: the toast on Home when the job stops", expect: []string{"Needs your OK: The Legend of Zelda: Ocarina of Time (USA)"}, steps: func(p *player) {
 		p.job(stopped("1", "zelda-oot", "The Legend of Zelda: Ocarina of Time (USA)", 1234<<20, 40<<20))
 	}},
-	{name: "quit-busy", what: "Quit with downloads running", steps: func(p *player) {
+	{name: "quit-busy", what: "Quit with downloads running", expect: []string{"Keep downloading"}, steps: func(p *player) {
 		p.job(app.JobSnapshot{ID: "1", Slug: "mario-world", Title: "Super Mario World (USA)", State: app.StateTransferring, Bytes: 1 << 19, Expected: 1 << 20})
 		p.send(gui.QuitRequestMsg{})
 	}},
@@ -219,8 +225,14 @@ func TestRenderScenes(t *testing.T) {
 				p := newPlayer(t, font, w, h, renderCatalog(), sc.confirm)
 				sc.steps(p)
 				p.advance(400 * time.Millisecond) // past the dialog's input pause; covers and toasts settle
-				img := drawAndRead(t, be, p.m, p.now, w, h)
+				img, shown := drawAndRead(t, be, p.m, p.now, w, h)
 				name := fmt.Sprintf("%s_%dx%d.png", sc.name, w, h)
+				flat := strings.ReplaceAll(shown, "\n", " ") // a line that wrapped is one sentence again
+				for _, want := range sc.expect {
+					if !strings.Contains(flat, want) {
+						t.Errorf("%s: the screen does not show %q, so this is not the screen the scene means; it shows: %s", name, want, strings.ReplaceAll(shown, "\n", " | "))
+					}
+				}
 				if colors := distinctColors(img); colors < 6 {
 					t.Errorf("%s: the frame has only %d colors, SDL drew nothing useful", name, colors)
 				}
@@ -238,7 +250,8 @@ func TestRenderScenes(t *testing.T) {
 }
 
 // drawAndRead draws the model with the real backend and reads the whole frame back.
-func drawAndRead(t *testing.T, be *Backend, m gui.Model, now time.Time, w, h int) *image.RGBA {
+// It also returns the text runs of the draw list, joined by newlines, for the checks of a scene.
+func drawAndRead(t *testing.T, be *Backend, m gui.Model, now time.Time, w, h int) (*image.RGBA, string) {
 	t.Helper()
 	var list gdraw.List
 	m.Render(now, &list)
@@ -253,7 +266,7 @@ func drawAndRead(t *testing.T, be *Backend, m gui.Model, now time.Time, w, h int
 	for i := 0; i < len(buf); i += 4 { // ARGB8888 in memory is B, G, R, A on a little-endian machine
 		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = buf[i+2], buf[i+1], buf[i], 0xff
 	}
-	return img
+	return img, strings.Join(list.Texts(), "\n")
 }
 
 func distinctColors(img *image.RGBA) int {
