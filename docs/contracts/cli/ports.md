@@ -10,7 +10,7 @@ Sources:
 - spike: [T-52 report](../../qa/T-52-gui-spike-report.md);
 - contracts: [`gui.md`](gui.md) §2, §4 and §6, [`profiles.md`](profiles.md) §2-§4, [`release-artifacts.md`](release-artifacts.md),
   [`config.md`](config.md) §3;
-- PLAN-v0 §2.6 and §2.7; ROADMAP E-M3; owner decisions D22 (launcher opt-in), D28 9a (community beta).
+- PLAN-v0 §2.6 and §2.7; ROADMAP E-M3; owner decisions D22 (launcher opt-in), D28 9a (community beta), D32 (launcher only with the GUI, T-88).
 
 A **Port** is the launcher file that a frontend lists and runs like a game, so a gamepad user can open `mothdex-gui`
 without a terminal. This document fixes what the installers write, where, with which content, and what stays to be
@@ -48,46 +48,43 @@ The installer takes the folder from the active profile's `launcher.dir` (profile
 The profile loader already refuses a ROM folder equal to a launcher folder (profiles.md §2, T-16 CR-2 and CR-3), so a
 download never lands where the frontend runs scripts. This contract does not change that rule.
 
-### 2.2 Content (marker `v2`)
+### 2.2 Content (marker `v3`, D32)
 
 The launcher is a **fixed template**. The only variable part is the absolute install directory, which must pass the
-existing path checks (`valid_path` in `install.sh`, `Test-LauncherPath` in `install.ps1`, TH-30). The template chooses
-at run time, so a later GUI uninstall or a failed GUI install still leaves a working launcher.
+existing path checks (`valid_path` in `install.sh`, `Test-LauncherPath` in `install.ps1`, TH-30). It runs `mothdex-gui`
+and nothing else, and it is written **only when the GUI is installed** (D32, §5). There is no `mothdex tui` fallback,
+because a Port has no terminal (OQ-PRT-1).
 
 POSIX (`Mothdex.sh`, mode `0755`):
 
 ```sh
 #!/bin/sh
-# mothdex-launcher v2
-if [ -x "<bin_dir>/mothdex-gui" ]; then exec "<bin_dir>/mothdex-gui"; fi
-exec "<bin_dir>/mothdex" tui
+# mothdex-launcher v3
+exec "<bin_dir>/mothdex-gui"
 ```
 
 Windows (`Mothdex.bat`, CRLF, UTF-8 without BOM):
 
 ```bat
 @echo off
-rem mothdex-launcher v2
+rem mothdex-launcher v3
 setlocal DisableDelayedExpansion
-if not exist "<bin_dir>\mothdex-gui.exe" goto tui
 "<bin_dir>\mothdex-gui.exe"
 exit /b %errorlevel%
-:tui
-"<bin_dir>\mothdex.exe" tui
 ```
 
 **No argument forwarding** (T-70 IC-6): `cmd` re-parses `%*`, so an `&` in an argument would run a command, and a
 Port needs no arguments. EmuELEC passes Port arguments to the script, but nothing shows Mothdex needs them (T-84
 OQ-PRT-1). If a frontend turns out to pass arguments the GUI needs, they come back in the `.sh`
-template only, with the GUI and TUI rejecting unknown positional arguments.
+template only, with the GUI rejecting unknown positional arguments.
 
 `<bin_dir>` is the directory where the binaries actually landed: after the `install.sh` noexec fallback to
 `$HOME/.local/bin`, it is the fallback directory.
 
 **A Port has no usable terminal** (OQ-PRT-1, Verified from source): Batocera and EmuELEC redirect the child's stdout and
 stderr to logs and create no PTY, and RetroBat runs a `.bat` with a hidden window. The `mothdex tui` fallback line
-therefore cannot work from a frontend. It stays in the `v2` template until PRT-G8 (§10) is decided; until then the
-release notes say that a Port without an eligible GUI shows nothing and returns to the frontend.
+therefore cannot work from a frontend. D32 (PRT-G8) removed it: a system where the GUI is not installed gets no
+launcher at all, and the CLI and TUI stay available from a terminal or SSH.
 
 ### 2.3 Environment: the launcher sets nothing
 
@@ -106,6 +103,13 @@ release notes say that a Port without an eligible GUI shows nothing and returns 
   choice for after the beta. Consequence: `--probe` runs with a scrubbed environment (§5.2, IC-1) while the Port run
   inherits EmuELEC's library path, so the SDL2 the probe found may not be the one the Port loads (lib32 entries are
   skipped by the loader as the wrong ELF class). PRT-G9 (§10) and B12 cover it.
+- **EmuELEC override directories (T-91, Sonda):** `/emuelec` links to `/storage/.config/emuelec`, so `/emuelec/lib`
+  and `/emuelec/lib32` are **writable** user override directories that take precedence over the system. A fresh 4.8
+  build ships only placeholder files there (Inferred from the recipes), while the stock SDL2 2.32.10 and the Mali, EGL,
+  GLES and libdrm libraries are in `/usr/lib` and `/usr/lib32`. A library a user, or anything that can write
+  `/storage`, puts there is loaded by the GUI, which runs as root. That is residual R2 of T-70, now with a concrete
+  path (Sentinela). The launcher still does not clear it (§2.3 rule), and PRT-G9's diagnostics name the source of
+  SDL2 only: later EGL or Mali loads are not covered. B12 holds the device check.
 - A fix that needs a per-system setting goes into the profile data and the GUI, never into the launcher template.
 
 ## 3. SDL2 per system
@@ -125,7 +129,7 @@ The rules are those of gui.md §2 and stay unchanged:
 | RetroBat | the pinned `SDL2.dll` from the archive | RetroBat's own SDL is unknown (T1b #22) and not used | windows amd64 | n/a |
 
 Batocera `x86_wow64` (i686 userland) gets no GUI in v0.3.0: linux 386 is optional in gui.md §6, and the eligibility
-probe (§5.2) fails there, so the launcher runs `mothdex tui`.
+probe (§5.2) fails there, so no launcher is written (D32).
 
 ## 4. Gamepad mapping, display and locale
 
@@ -168,21 +172,22 @@ executable; cosign when available; TH-30 paths; TH-31 directory ownership; the e
 
 ### 5.1 Flags and the D22 flip
 
-| Flag (`install.sh` / `install.ps1`) | Before the GUI release | From the release that first ships `mothdex-gui_` archives (v0.3.0) |
-|---|---|---|
-| `--launcher` / `-Launcher` | opt-in, off by default (D22 as today) | **on by default** |
-| `--no-launcher` / `-NoLauncher` | n/a | turns the launcher off |
-| `--gui` / `-Gui` | n/a (no archive; the flag is accepted and does nothing) | **on by default** |
-| `--no-gui` / `-NoGui` | n/a | installs the CLI only |
+| Flag (`install.sh` / `install.ps1`) | Effect |
+|---|---|
+| `--launcher` / `-Launcher` | the default; kept for compatibility. The launcher is written only when the GUI is installed |
+| `--no-launcher` / `-NoLauncher` | the installer does not write or rewrite the launcher. When the GUI is not installed, an existing marked launcher is still removed (it would start nothing; Regente, T-88) |
+| `--gui` / `-Gui` | the default: install `mothdex-gui` when the release has an archive for the machine |
+| `--no-gui` / `-NoGui` | installs the CLI only; removes an installed GUI, its notices and a marked launcher |
 
-- **When the default flips:** in the same installer change that adds GUI install support, merged with the release PR
-  of the first version that publishes `mothdex-gui_` archives. The installer decides by the release it installs, not by
-  its own version, and only from that release's verified `checksums.txt` (T-70 IC-3): a `mothdex-gui_` archive for the
-  arch that is not listed means the GUI part is skipped with a note and the launcher stays opt-in (D22 rule) for that
-  release; one that is listed but cannot be downloaded or verified aborts the whole install.
-- The flip is an owner decision already taken (D22: on by default once E-M3 ships, gui.md §6). T-70 §6 keeps it, on
-  condition of IC-7 (`install.ps1` writes `Mothdex.bat` only into a trusted `roms\windows`, as `install.sh` already does)
-  and IC-12 (every run that writes the launcher prints its path and how to opt out).
+- **D22 as amended by D32:** "the launcher is on when the GUI is installed". Whether a GUI archive exists comes only from
+  the release's verified `checksums.txt` (T-70 IC-3). A `mothdex-gui_` archive that is not listed for the arch means
+  the GUI part is skipped with a note, and so is the launcher. One that is listed but cannot be downloaded or verified
+  aborts the whole install.
+- **Without the GUI** (not eligible, a probe error, `--no-gui`, no GUI archive): nothing is written. An existing launcher
+  that carries a `v1`, `v2` or `v3` marker is removed with a note, and the frontend is asked to reload (§5.5). A file
+  without a marker, or a link, is never touched.
+- T-70 §6 keeps the default on condition of IC-7 (`install.ps1` writes `Mothdex.bat` only into a trusted `roms\windows`, as
+  `install.sh` already does) and IC-12 (every run that writes the launcher prints its path and how to opt out).
 - `--dry-run` prints the GUI archive, the eligibility result (§5.2) and the launcher path, and leaves nothing changed
   (PR-88 decision a). It probes only when `bin_dir` already exists and passed the trust check: it stages the binary
   there, runs `--probe` as in §5.2 step 3 and always removes the staged file. When `bin_dir` does not exist yet, it
@@ -202,7 +207,7 @@ The GUI is dynamic on Linux, so the installer must prove it can start before it 
    dir. Exit 0 means eligible: rename it into place. Exit 1 means not eligible: delete the staging file. An exec failure
    (126, 127, `ENOEXEC`) is an installer error that is reported, never a silent "not eligible".
 4. Not eligible (missing interpreter, missing or too old SDL2, wrong userland arch): warn with the probe's one-line
-   reason, do not install the GUI, and keep the CLI install. The launcher, when on, then runs `mothdex tui`.
+   reason, do not install the GUI, and keep the CLI install. No launcher is written, and a marked one is removed (D32).
 5. Exit status (PR-88 decision b): not eligible, or no GUI archive in the release, is a normal outcome, exit 0. A
    probe that cannot run, or any exit code other than 0 and 1, is an installer error: the CLI install and the launcher
    still complete, and the installer exits 1. On Windows every non-zero probe result is that error (IC-9).
@@ -220,7 +225,7 @@ soname together, and does not depend on `ldconfig` being present on these images
 
 Windows: the archive carries `SDL2.dll`. `install.ps1` runs `mothdex-gui.exe --probe` the same way. A failure there is
 a packaging bug, so it is reported as an error. As on Linux, neither `mothdex-gui.exe` nor `SDL2.dll` is installed
-(T-70 IC-9); the CLI install still completes and the launcher runs `tui`.
+(T-70 IC-9); the CLI install still completes, no launcher is written, and a marked one is removed (D32).
 
 ### 5.3 Files written
 
@@ -240,7 +245,7 @@ a packaging bug, so it is reported as an error. As on Linux, neither `mothdex-gu
 
 ### 5.4 Per system
 
-| System | Binaries | GUI | Launcher by default (from v0.3.0) |
+| System | Binaries | GUI | Launcher (only when the GUI is installed, D32) |
 |---|---|---|---|
 | Batocera | `/userdata/system/bin` ⚠ (convention) | if eligible | `Mothdex.sh` in `/userdata/roms/ports` |
 | EmuELEC | `/storage/.local/bin` ⚠ | if eligible | `Mothdex.sh` in `/storage/roms/ports_scripts` |
@@ -255,23 +260,23 @@ so the **script** needs no exec bit; the binaries in `bin_dir` still do, which t
 
 Re-running the installer is the upgrade path:
 - It replaces `mothdex`, `mothdex-gui` and `SDL2.dll` atomically (§5.3) with the files of the release it installs.
-- It rewrites the launcher **only** if the existing file carries a marker it knows (`v1` or `v2`). A `v1` launcher
-  (always `mothdex tui`) becomes `v2`.
+- With the GUI installed, it rewrites the launcher **only** if the existing file carries a marker it knows (`v1`, `v2`
+  or `v3`); a `v1` or `v2` launcher becomes `v3`.
+- Without the GUI, it removes a marked launcher of any version (§5.1); `--no-launcher` does not stop that removal.
 - A file without a marker is kept, with the existing warning.
-- An upgrade with `--no-gui` removes an installed `mothdex-gui` (and `SDL2.dll` on Windows), so the `v2` launcher
-  falls back to `tui`.
+- An upgrade with `--no-gui` removes an installed `mothdex-gui` (and `SDL2.dll` on Windows) and the marked launcher.
 - **Versions are never mixed (§5.2 step 1).** Any install that does not install this release's GUI (no archive
   listed, not eligible, probe error, or `--no-gui`) also removes a `mothdex-gui`, its `SDL2.dll` and `mothdex-licenses/`
   left by an earlier install, and says so. Otherwise the launcher would keep starting an older GUI next to the new CLI,
   or a GUI the probe has just shown cannot start.
-- After writing a new launcher, the installer runs the profile's refresh once (profiles.md §4: `http_get` only where
+- After writing or removing a launcher, the installer runs the profile's refresh once (profiles.md §4: `http_get` only where
   verified, never fatal), so the Port shows in the list. On Recalbox and other `manual` profiles it prints the hint.
 
 ### 5.6 Uninstall
 
 `--uninstall` / `-Uninstall` removes:
 - `mothdex`, `mothdex-gui`, `SDL2.dll` (Windows) and `mothdex-licenses/` from `bin_dir`;
-- the launcher, only when it carries a `v1` or `v2` marker.
+- the launcher, only when it carries a `v1`, `v2` or `v3` marker.
 
 It keeps the config, data, history, cache and every downloaded ROM. It never removes a file without a marker, and it
 lists what it removed. `--dry-run` lists without removing.
@@ -342,7 +347,7 @@ confirms each one on a named system and device:
 | B7 | `--probe` result on each image; EmuELEC 4.8 userland is aarch64 | Batocera, EmuELEC, Recalbox | `getconf LONG_BIT`, ELF class of `/bin/bash` and `/usr/bin/emulationstation`, then `--probe` (`uname -m` alone is the kernel) |
 | B8 | A `.sh` Port on an exFAT share runs (Batocera reads it with `bash`) | Batocera | a mode-0644 script on a filesystem with modes, then the same Port on exFAT; record mount options; test `bin_dir` exec separately |
 | B9 | The refresh after install shows the Port | Batocera, EmuELEC, RetroBat | |
-| B10 | Upgrade from a `v1` launcher, and uninstall leaves ROMs and config intact | all | |
+| B10 | Upgrade from a `v1` or `v2` launcher to `v3`; a marked launcher goes when the GUI does; uninstall leaves ROMs and config intact | all | |
 | B11 | On RetroBat the GUI window is visible although the `.bat` runs hidden | RetroBat | launch from ES; record whether the window shows, gets focus and is fullscreen |
 | B12 | Which SDL2 the Port actually loads on EmuELEC, with `/emuelec/lib` first in `LD_LIBRARY_PATH` (§2.3) | EmuELEC | the SDL version in the diagnostics line against `--probe` run over SSH; privately, whether `/emuelec/lib` holds a `libSDL2-2.0.so.0` and who can write it |
 | B13 | The GUI language follows the ES language | Batocera, EmuELEC | a non-English ES language, restart ES; record `LANG`, `LC_ALL`, `LANGUAGE` and the language the GUI chose |
@@ -379,24 +384,24 @@ a device. Batocera results are for master (toward 45) and are not backported to 
 | PRT-G1 | Guindaste | `profiles/retrobat.yaml` `bin_dir` says `${MATCH}\mothdex`, while `install.ps1` and profiles.md §3 use `%LocalAppData%\Programs\mothdex`. Align the YAML with the installer |
 | PRT-G2 | Guindaste | add `SDL2-zlib.txt`, the Apache-2.0 text for purego and the BSD-3 text for `x/image` to `THIRD_PARTY/` and to its README table. CLI archives with BSD-licensed Go modules: backlog check |
 | PRT-G3 | Vitral | `mothdex-gui --probe` (§5.2) and the start-up diagnostics line (§4) |
-| PRT-G4 | Guindaste | installers: GUI archive, eligibility, `v2` launcher, `--no-gui`/`--no-launcher` and `-NoGui`/`-NoLauncher`, the default flip, `mothdex-licenses/`, uninstall and upgrade rules; installer tests for each case (`tests/installer/`); the beta report template (§8) |
+| PRT-G4 | Guindaste | installers: GUI archive, eligibility, launcher (now `v3`, D32), `--no-gui`/`--no-launcher` and `-NoGui`/`-NoLauncher`, the default flip, `mothdex-licenses/`, uninstall and upgrade rules; installer tests for each case (`tests/installer/`); the beta report template (§8) |
 | PRT-G5 | Alicerce, with Guindaste's PR | gui.md §6: replace the `ldconfig -p` check with `--probe`, and `THIRD_PARTY.md` with `THIRD_PARTY/`; release-artifacts.md: the static-binary sentence (already listed in gui.md §6) |
 | PRT-G6 | Bússola | **closed (v1: no metadata).** The name `Mothdex` comes from the file name. No `gamelist.xml` entry: the file belongs to the frontend and the person, and EmulationStation rewrites it on exit and on scrape. No image in v1: art is deferred to the brand session (D28 8b). If that session approves art, this contract adds how each frontend shows it without writing `gamelist.xml` (for example a media file next to the script), Unverified per frontend and checked under B1 |
 | PRT-G7 | Sentinela | **closed by T-70** ([threat model](../../security/T-70-threat-model-ports-installer.md)): constraints IC-1 to IC-13 bind PRT-G3 and PRT-G4, IC-8 (`SetDefaultDllDirectories` in `mothdex-gui.exe`) goes to Vitral; residuals R1-R5 recorded there |
-| PRT-G8 | Guindaste (installer, High), Sentinela delta, Alicerce text | **Proposed (T-84 OQ-PRT-1), needs a decision:** a Port has no terminal, so drop the `tui` fallback. The launcher is written only when the GUI is installed; a `v3` template runs `mothdex-gui` only. Not eligible, `--no-gui` or no GUI archive means no launcher, and an existing marked launcher is removed with a note. D22 then reads "launcher on when the GUI is installed". |
-| PRT-G9 | Vitral (GUI, Medium) and Sonda; Sentinela for R2 | **Proposed (T-84 OQ-PRT-1):** the probe runs scrubbed while the EmuELEC Port inherits `/emuelec/lib` first. The diagnostics line reports whether the loaded SDL2 came from a system directory or from an `LD_LIBRARY_PATH` entry, as a word, never a path, next to its version. Sonda checks whether `/emuelec/lib` is read-only and holds a `libSDL2-2.0.so.0`. The launcher still sets nothing. |
-| PRT-G10 | Forja (i18n, Medium); Sentinela for the IC-13 change | **Proposed (T-84 OQ-PRT-4):** when `LC_ALL`, `LC_MESSAGES` and `LANG` are unset, `C` or `C.UTF-8`, the locale comes from the first entry of `LANGUAGE`; the diagnostics line adds `LANGUAGE` as a plain word, like `LANG`. |
-| PRT-G11 | Forja (profiles, Medium), Bússola for the text | **Proposed (T-84 OQ-PRT-9):** when the ROM root or the data directory is on tmpfs, profile detection adds a warning, and the GUI and CLI show it: downloads and history are in RAM and lost at reboot. |
-| PRT-G12 | Vitral (GUI, Medium) | **Proposed (T-84 OQ-PRT-1):** RetroBat starts the `.bat` hidden. Check that the GUI window does not inherit a hidden show state on Windows and shows itself explicitly; verified by B11. |
+| PRT-G8 | Guindaste (installer, High), Sentinela delta, Alicerce text | **Done (D32, T-88, cli#109): §2.2 and §5 describe it.** Was: **Proposed (T-84 OQ-PRT-1), needs a decision:** a Port has no terminal, so drop the `tui` fallback. The launcher is written only when the GUI is installed; a `v3` template runs `mothdex-gui` only. Not eligible, `--no-gui` or no GUI archive means no launcher, and an existing marked launcher is removed with a note. D22 then reads "launcher on when the GUI is installed". |
+| PRT-G9 | Vitral (GUI, Medium) and Sonda; Sentinela for R2 | **In progress (T-89, cli#110); see the T-91 bullet of §2.3.** Was: **Proposed (T-84 OQ-PRT-1):** the probe runs scrubbed while the EmuELEC Port inherits `/emuelec/lib` first. The diagnostics line reports whether the loaded SDL2 came from a system directory or from an `LD_LIBRARY_PATH` entry, as a word, never a path, next to its version. Sonda checks whether `/emuelec/lib` is read-only and holds a `libSDL2-2.0.so.0`. The launcher still sets nothing. |
+| PRT-G10 | Forja (i18n, Medium); Sentinela for the IC-13 change | **Done (T-90, cli#108).** Was: **Proposed (T-84 OQ-PRT-4):** when `LC_ALL`, `LC_MESSAGES` and `LANG` are unset, `C` or `C.UTF-8`, the locale comes from the first entry of `LANGUAGE`; the diagnostics line adds `LANGUAGE` as a plain word, like `LANG`. |
+| PRT-G11 | Forja (profiles, Medium), Bússola for the text | **Done (T-90, cli#108).** Was: **Proposed (T-84 OQ-PRT-9):** when the ROM root or the data directory is on tmpfs, profile detection adds a warning, and the GUI and CLI show it: downloads and history are in RAM and lost at reboot. |
+| PRT-G12 | Vitral (GUI, Medium) | **In progress (T-89, cli#110).** Was: **Proposed (T-84 OQ-PRT-1):** RetroBat starts the `.bat` hidden. Check that the GUI window does not inherit a hidden show state on Windows and shows itself explicitly; verified by B11. |
 
 ## 11. Test plan (risk paths)
 
 - **Installer cases** (`tests/installer/`, containers with a fake file tree, no hardware):
   - eligibility pass and fail, including a missing interpreter and a missing soname;
   - a checksum mismatch on the GUI archive aborts the whole install;
-  - `v1` to `v2` upgrade;
+  - `v1` and `v2` to `v3` upgrade;
   - a file without a marker is kept;
-  - `--no-gui` removes the GUI and the launcher falls back;
+  - `--no-gui` removes the GUI and the marked launcher; without the GUI no launcher is written (D32);
   - uninstall removes only marked files and `mothdex-licenses/`;
   - the launcher content equals the template for a given `bin_dir`;
   - a path with unsafe characters skips the launcher;
