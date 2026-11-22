@@ -7,8 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- T-71: Ports in `install.sh` and `install.ps1` (ports.md, threat model T-70, IC-1 to IC-13). When the release's verified `checksums.txt`
+  lists a `mothdex-gui_<version>_<os>_<arch>` archive for the machine, the installer downloads and verifies it like the CLI archive, extracts by
+  exact member name only, proves that the GUI starts by running `mothdex-gui --probe` from `bin_dir` with a scrubbed environment and a 20 second
+  bound, installs `mothdex-gui` (and `SDL2.dll` on Windows) and the notices in `mothdex-licenses/`, and writes the `v2` launcher (the GUI when it
+  is installed, else `mothdex tui`; no argument forwarding, no environment). The launcher is on by default for such a release (D22) and
+  opt-in otherwise; new flags `--gui`, `--no-gui`, `--no-launcher` (`-Gui`, `-NoGui`, `-NoLauncher`). A `v1` launcher is upgraded, a file without a marker is kept,
+  `--no-gui` removes the GUI, uninstall removes only what was installed, and a frontend refresh follows a written launcher (curl or `Invoke-WebRequest`, loopback,
+  no proxy, no redirect, never fatal). `install.ps1` writes `Mothdex.bat` only into a `roms\windows` that other users cannot write to (IC-7). Tests:
+  GUI cases in `tests/installer/cases.sh` (both images, plus noexec temp and noexec `bin_dir` in the non-root pass) and Pester cases with compiled fake GUI executables.
+- T-71 (gaps of ports.md section 10): `profiles/retrobat.yaml` `bin_dir` now says the installer's folder (PRT-G1); `THIRD_PARTY/` gains the SDL2 zlib, purego
+  Apache-2.0 and `x/image` BSD-3 texts (PRT-G2); the beta report form `.github/ISSUE_TEMPLATE/ports-beta.yml` and `docs/qa/ports-beta-matrix.md` (every item Unverified);
+  gui.md and release-artifacts.md follow (PRT-G5).
+- T-71 (review hardening): whenever a release's GUI is not installed (not listed, not eligible, probe error, `--no-gui`) the GUI files of an earlier install are removed too, so the launcher
+  never starts an older GUI; a probe killed by the bound (124, 137, 143) is not eligible; curl runs with `-q`; GUI archive members are checked by type before extraction and hard links
+  are refused after it by link count (busybox tar lists them as files); a member name outside `A-Za-z0-9._-` is refused as unsafe and a safe name that is not a shipped notice as unexpected.
+  The notices folder is cleaned by a fixed list of the notice names the installers ship (a file of yours with another name is never deleted); the list includes `THIRD_PARTY/README.md`,
+  and a test fails when either installer's list and the files of `THIRD_PARTY/` differ. A Pester case kills a hanging probe after 20 seconds.
+
 ### Changed
 
+- T-75: the cover fetcher's address filter blocks all of `::/8` (it only had `::/96`) and the unassigned rest of
+  `64:ff9b::/32`; the well-known NAT64 `/96` is still judged by its embedded IPv4 address, so DNS64 networks keep
+  working (cache.md). The GIF first-frame and WebP frame-against-canvas checks were already in place and tested.
+  A small test pins the VP8 14-bit mask.
+- `ports.md` §5.6: `mothdex-licenses/` is handled by a fixed list of shipped notice names equal to `THIRD_PARTY/`
+  (`README.md` included), kept in step with it by a test; uninstall removes only those names (PR-88 re-check).
+- `docs/ux/gui.md` §5.8, `tui.md` §5 and `shell.md` §4 v1.2 (T-56, Bússola): the Download anyway rules shipped in
+  cli#80. A job stopped with `confirmation_required` waits for a person: warn row with `!`, facts-only copy (real
+  size, catalog size, folder), one OK per job and never a bulk one, the GUI sheet and dialog, the TUI `[y/N]` on `r`
+  or `d`, the Shell question after the batch on a terminal only, and counts that keep these jobs apart from failures.
+- PR-88 contract decisions in `ports.md` §5: a dry run probes only in an existing trusted `bin_dir` and leaves nothing
+  changed; a probe error exits 1 after the CLI install completes, while not eligible exits 0; an install that does not
+  install the release's GUI removes an older `mothdex-gui`, `SDL2.dll` and `mothdex-licenses/`, so versions never mix;
+  `mothdex-licenses/` is removed by safe file name, with no manifest.
+- T-74 (PR-37 backlog): `stripArgument` maps U+2028 and U+2029 to a space; the locale loader's warnings (which can echo a
+  path or YAML text from the locale folder) are cleaned of control characters; `readCatalog` opens the file once, checks
+  type and size on the open handle and caps the read, so a file that grew after the stat cannot pass the 1 MiB limit.
+  Production loads the user's locale folder only through `LoadDir` (os.Root); `Load(locales.FS)` is used with the embedded
+  files alone.
+- T-72 contract text: `gui.md` §2 and `ports.md` §3 say that on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories`
+  with the application folder and System32 before it loads `SDL2.dll`, and does not load it if the call fails (T-70 IC-8).
 - T-69: backlog cleanup. The stale-session search warning already existed (T-25) and now has a CLI test; the
   `config.Set` overwrite refusal already had tests; a retry after a 503 under the 2x size rule keeps the pinned
   `Content-Length` across the 503 (test); the duplicated edge case of T-64 was removed from `TestCase32e`.
@@ -28,16 +69,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- T-73 (High, PRT-G3 of `ports.md`; Sentinela T-70 IC-10 and IC-13): `mothdex-gui --probe` is the eligibility check the installer runs. It
-  loads SDL2 as a normal start does and checks the version; it opens no window, starts no video or input subsystem, reads no
-  configuration and writes no file or log (nothing runs before it but flag parsing). It prints `sdl X.Y.Z` and exits 0, or one line of
-  reason on stderr (control characters removed, at most 200 bytes) and exits 1; it also gives up by itself after 15 s, so a library that
-  blocks does not hang the installer. The old full check of the binding is now `-spike` (an executable named `mothdex-gui-probe` still
-  does it with no flag, so the CI legs are unchanged). The start-up log has one `gui: diagnostics` line: the SDL version and the video
-  driver, `LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`, the two `SDL_GAMECONTROLLERCONFIG*` variables, `LD_PRELOAD` and `SDL_DYNAMIC_API` as `set` or
-  `unset` on every system, the values of `SDL_VIDEODRIVER`, `LANG` and `LC_ALL` only when they are plain words, the mapping lines added from
-  each source and the type of each controller; no path and no other value. The spike jobs check `--probe` with and without SDL2 on Linux
-  (scrubbed environment, `timeout 20`) and on Windows (the environment `install.ps1` gives it).
+- T-56 (Medium), "Download anyway" in the TUI, the Shell and the GUI: a download that stopped with
+  `confirmation_required` is a warning that waits for a person, not a failure. The queue row is `! Title: Needs your OK: the file is
+  {size}, listed as {estimate}.` (`ui.consent.*`, copy by Bússola, 4 languages); on that row `r` or `d` asks `[y/N]` with both sizes and
+  the folder and queues the request again with `SizeConsent` equal to the real size shown, and the footer says `r download anyway`.
+  `r` on all failed jobs skips these rows: each needs its own OK. In the Shell the question comes after the batch, one per stopped job,
+  only with a terminal on both ends; without one the row and the `-f` hint are printed. The sizes come from the error and the
+  snapshot, so a catalog size above 500 MiB (T-64, cli#77) needs no other path. The TUI uses `app.ConfirmBytes` instead of its own
+  500 MiB constant. New helper package `internal/ui/consent`. In the GUI the action sheet of such a row is Download anyway, Details,
+  Close (Retry would only stop again); Download anyway opens the dialog of gui.md 5.12 (`This file is {size}, not {estimate}.`, buttons
+  Don't download, the default and B, and Download {size}), and Download queues the request again with the consent and takes the stopped
+  row's place. The row is the warn color with `!` and wraps to two lines (nothing is cut); the toast is `Needs your OK: {title}`
+  instead of `Download failed`. UX review (Bússola): a stopped job is counted apart from the failures, so the summaries (GUI and TUI
+  toasts, the Shell line, the GUI exit screen) say `N waiting for your OK` instead of `failed`; Details shows the real size and a
+  Status line instead of `0 B` and `Error`.
+  Review (Crivo): the Shell keeps the stopped result when one job is refused and the other downloads, and Ctrl+C at a question aborts
+  all of them (nothing already answered yes is queued); the size to accept comes only from the error (`Size` is 0 without it, and then
+  the job is an ordinary failure, never offered the catalog's size); the texts share `consent.Args`; tests for the proxy answering
+  another size after the consent in the three UIs.
 - T-68: contract `docs/contracts/cli/ports.md` for the frontend Ports of `mothdex-gui` on Batocera, EmuELEC and RetroBat
   (Recalbox has no Port in 10.1.2): launcher location and fixed `v2` template that sets no environment (never
   `LD_LIBRARY_PATH`), SDL2 per system, gamepad mapping sources, ROM destination through the profiles, install, upgrade
@@ -47,14 +96,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installer constraints IC-1 to IC-13; `ports.md` follows it: launchers forward no arguments, the probe runs from
   `bin_dir` with a scrubbed environment, the GUI archive is decided from `checksums.txt`, and a failed Windows probe
   installs neither `mothdex-gui.exe` nor `SDL2.dll`.
-- T-72 (High, DLL planting; Sentinela T-70, IC-8): on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories` with the application folder
-  and System32 before it loads `SDL2.dll`, and does not load it if the call fails. `LoadLibraryEx` with those flags already protected
-  `SDL2.dll`, but SDL loads `vulkan-1`, `opengl32`, `XInput` and `hid` later with a plain `LoadLibrary`, which searches the working
-  directory and `PATH`. `TestPlainLoadLibraryIgnoresThePathAndTheWorkingFolderOnceSDLIsOpen` plants a DLL in both and checks that a plain
-  load does not find it while a DLL beside the executable and a System32 DLL the process does not already hold (`winhttp.dll`) still load;
-  the Windows job of `gui-spike.yml` runs it as its own named step. A failure to restrict the search path has its own error, `ErrSearchPath`,
-  not `SDL2 was not found`. Not done here: IC-13 (the diagnostics line reports `LD_PRELOAD` and `SDL_DYNAMIC_API`), because that line is the PRT-G3
-  item of cli#82 and does not exist yet.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a

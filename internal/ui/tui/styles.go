@@ -8,14 +8,14 @@ import (
 type glyphs struct {
 	tl, tr, bl, br, h, v, lt, rt string
 	ok, fail, down, up, dots     string
-	bar, barEmpty                string
+	bar, barEmpty, warn          string
 }
 
 func newGlyphs(utf8 bool) glyphs {
 	if utf8 {
-		return glyphs{"┌", "┐", "└", "┘", "─", "│", "├", "┤", "✔", "✘", "↓", "↑", "…", "█", "░"}
+		return glyphs{"┌", "┐", "└", "┘", "─", "│", "├", "┤", "✔", "✘", "↓", "↑", "…", "█", "░", "!"}
 	}
-	return glyphs{"+", "+", "+", "+", "-", "|", "+", "+", "[ok]", "[x]", "v", "^", "...", "#", "-"}
+	return glyphs{"+", "+", "+", "+", "-", "|", "+", "+", "[ok]", "[x]", "v", "^", "...", "#", "-", "!"}
 }
 
 // styles is the one style table of the TUI, with the roles of cli-conventions section 4. Without

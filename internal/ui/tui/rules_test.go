@@ -199,7 +199,7 @@ func snap(id, state string) app.JobSnapshot {
 func TestJobBook(t *testing.T) {
 	now := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
 	b := newJobBook()
-	if _, _, _, ok := b.settled(); ok {
+	if _, _, _, _, ok := b.settled(); ok {
 		t.Fatal("an empty book has nothing to summarize")
 	}
 	b = b.apply(snap("1", "queued"), now).apply(snap("2", "queued"), now).apply(snap("3", "queued"), now)
@@ -219,23 +219,23 @@ func TestJobBook(t *testing.T) {
 		t.Fatalf("warm since moved to %v", got)
 	}
 	b = b.apply(snap("1", "done"), now).apply(snap("2", "failed"), now)
-	if _, _, _, ok := b.settled(); ok {
+	if _, _, _, _, ok := b.settled(); ok {
 		t.Fatal("job 3 is still queued")
 	}
 	if b.anyWarming() {
 		t.Fatal("a failed job is not warming")
 	}
 	b = b.apply(snap("3", "skipped"), now)
-	done, skipped, failed, ok := b.settled()
+	done, skipped, failed, _, ok := b.settled()
 	if !ok || done != 1 || skipped != 1 || failed != 1 {
 		t.Fatalf("settled %d %d %d %v", done, skipped, failed, ok)
 	}
 	// seeing a terminal state again does not count it twice
 	b = b.apply(snap("1", "done"), now)
-	if d, _, _, _ := b.settled(); d != 1 {
+	if d, _, _, _, _ := b.settled(); d != 1 {
 		t.Fatalf("done counted twice: %d", d)
 	}
-	if _, _, _, ok := b.resetBatch().settled(); ok {
+	if _, _, _, _, ok := b.resetBatch().settled(); ok {
 		t.Fatal("a summary was shown: the count starts again")
 	}
 }

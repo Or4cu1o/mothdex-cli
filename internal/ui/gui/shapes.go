@@ -33,3 +33,12 @@ func drawCross(l *draw.List, x, y, size int, c draw.Color) {
 	strokeSquares(l, x+size/6, y+size/6, x+size*5/6, y+size*5/6, thick, c)
 	strokeSquares(l, x+size*5/6, y+size/6, x+size/6, y+size*5/6, thick, c)
 }
+
+// drawBang draws an exclamation mark in a size x size box with its top left at (x, y): a job that waits for a
+// person is a warning, not a failure, so it does not get the cross.
+func drawBang(l *draw.List, x, y, size int, c draw.Color) {
+	thick := max(2, size/6)
+	cx := x + (size-thick)/2
+	l.Fill(draw.Rect{X: cx, Y: y + size/10, W: thick, H: size * 11 / 20}, 0, c)
+	l.Fill(draw.Rect{X: cx, Y: y + size*3/4, W: thick, H: thick}, 0, c)
+}

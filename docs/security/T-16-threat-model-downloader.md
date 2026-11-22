@@ -4,6 +4,8 @@ Status: v1 · Author: Sentinela · Date: 2026-11-20 · Risk: **High** · Consume
 Ensaio (T-18), Guindaste (T-21 installer)
 Changed by T-27 (Alicerce, agreed with Sentinela): `Content-Length` is the size authority, `link.size` an estimate;
 TH-19, the §9 residual and cases 31, 32b–32d, 35 and 36 below.
+Changed by T-75: the cover IP filter also blocks `::/8` and the rest of `64:ff9b::/32`, and the well-known NAT64 /96
+is judged by its embedded IPv4; `cache.md` is normative.
 Gate: T-17 starts only after the contract changes in §7 are accepted (or explicitly rejected by Regente).
 
 ## 0. Scope, method, limits

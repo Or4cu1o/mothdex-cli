@@ -30,3 +30,22 @@ check "own but world-writable bin_dir refused" rc_not0
 
 FAKE_FSTYPE=exfat inst --version v1.2.3 --profile batocera --bin-dir "$HOME/w"
 check "FAT exception is for root only" rc_not0
+
+# Ports (T-70 IC-2): the probe runs from bin_dir, so a temp dir that cannot run programs does not hide the GUI.
+rm -rf "$HOME/.local"
+TMPDIR=/noexec inst --version v1.3.0
+check "noexec TMPDIR: install exit 0" rc_is 0
+check "noexec TMPDIR: the GUI is installed" test -x "$HOME/.local/bin/mothdex-gui"
+check "noexec TMPDIR: the probe ran from bin_dir" test "$(dirname "$(cat /tmp/probe.where)")" = "$HOME/.local/bin"
+check "noexec TMPDIR: not silently dropped" out_lacks "not installed"
+
+# A bin_dir on a mount that cannot run programs falls back to $HOME/.local/bin, and the launcher uses the fallback
+# (ports.md section 11).
+rm -rf "$HOME/.local"
+: >"$FAKE_LOG"
+inst --profile batocera --version v1.3.0
+check "noexec bin_dir: install exit 0" rc_is 0
+check "noexec bin_dir: says it fell back" out_has "cannot run programs"
+check "noexec bin_dir: binaries in the fallback" test -x "$HOME/.local/bin/mothdex-gui"
+check "noexec bin_dir: launcher written" test -f /userdata/roms/ports/Mothdex.sh
+check "noexec bin_dir: launcher points at the fallback dir" file_has /userdata/roms/ports/Mothdex.sh "\"$HOME/.local/bin/mothdex-gui\""

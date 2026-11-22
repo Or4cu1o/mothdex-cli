@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 )
@@ -37,21 +38,26 @@ func (m Model) drawSplash(p painter, now time.Time) {
 
 // exitCounts are the counts the exit screen shows: what Wait reported when it answered, and otherwise what
 // the GUI saw of the downloads of this run.
-func (m Model) exitCounts() (done, skipped, failed, canceled int) {
+func (m Model) exitCounts() (done, skipped, failed, canceled, waiting int) {
 	if e := m.exit; e != nil && e.finished && e.res.WaitErr == nil && !e.res.TimedOut {
 		b := e.res.Batch
-		return b.Done, b.Skipped, b.Failed, b.Cancel
+		for _, j := range b.Jobs {
+			if consent.Needed(j) {
+				waiting++
+			}
+		}
+		return b.Done, b.Skipped, max(b.Failed-waiting, 0), b.Cancel, waiting
 	}
 	return m.jobs.summary()
 }
 
 func (m Model) exitSummary() string {
-	done, skipped, failed, canceled := m.exitCounts()
+	done, skipped, failed, canceled, waiting := m.exitCounts()
 	var parts []string
 	for _, c := range []struct {
 		n   int
 		key string
-	}{{done, "downloaded"}, {skipped, "skipped"}, {failed, "failed"}, {canceled, "canceled"}} {
+	}{{done, "downloaded"}, {skipped, "skipped"}, {failed, "failed"}, {waiting, "waiting"}, {canceled, "canceled"}} {
 		if c.n > 0 {
 			parts = append(parts, m.tr("ui.gui.exit."+c.key, map[string]any{"count": c.n}))
 		}
@@ -75,7 +81,7 @@ func (m Model) drawExit(p painter, now time.Time) {
 	if summary := m.exitSummary(); summary != "" {
 		row(met.Body, colText, summary)
 	}
-	done, _, _, _ := m.exitCounts()
+	done, _, _, _, _ := m.exitCounts()
 	e := m.exit
 	switch {
 	case e != nil && !e.finished && done > 0:

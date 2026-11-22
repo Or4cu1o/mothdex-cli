@@ -1,0 +1,126 @@
+name: Ports beta report
+description: One report per system and device, for the Mothdex GUI and its Port on a frontend (community beta)
+labels: [ports-beta]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing. Open **one issue per system and device**. The items below are the ones the project could
+        not check without hardware (see `docs/contracts/cli/ports.md` section 8). Mark an item "Not tried" when you did
+        not test it: that is a useful answer.
+
+        **Before you paste anything, replace your user name** in every path (for example `C:\Users\<name>\...` becomes
+        `C:\Users\USER\...`, and `/home/<name>` becomes `/home/USER`).
+  - type: input
+    id: system
+    attributes:
+      label: System and version
+      description: For example Batocera 41, EmuELEC 4.7, Recalbox 10.1, RetroBat 7.x on Windows 11.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and CPU architecture
+      description: For example Raspberry Pi 4 (arm64), Steam Deck (amd64), Odroid N2+ (arm64), a PC (amd64).
+    validations:
+      required: true
+  - type: textarea
+    id: installer
+    attributes:
+      label: Installer output
+      description: The command you ran and its full output (with `--dry-run` first if you like). User names replaced, please.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: GUI diagnostics line
+      description: The one log line `mothdex-gui` writes at start (SDL version, video driver, which variables are set, locale, pads). It contains no paths. Paste it as it is.
+      render: shell
+  - type: dropdown
+    id: b1
+    attributes:
+      label: B1 - The Port appears in the list, starts the GUI, and the frontend comes back on exit
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b2
+    attributes:
+      label: B2 - The GUI takes the display and the pad while the frontend waits; the text fallback (`mothdex tui`) has a terminal
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b3
+    attributes:
+      label: B3 - The video driver is sensible and the text is legible at 640x480 and 480x320
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b4
+    attributes:
+      label: B4 - Pads map correctly (the built-in database, and any mapping the frontend passes)
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b5
+    attributes:
+      label: B5 - 32-bit ARM only - the loader path `/lib/ld-linux-armhf.so.3` exists and the GUI starts (ARMv6 devices too)
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b6
+    attributes:
+      label: B6 - The install folder survives a reboot and an upgrade, and `HOME` is persistent
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b7
+    attributes:
+      label: B7 - The installer's GUI check (`--probe`) gave the right answer on this image
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b8
+    attributes:
+      label: B8 - A `.sh` Port runs when the ROM share is exFAT (no execute bit)
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b9
+    attributes:
+      label: B9 - After installing, the frontend shows the Port (with or without a restart)
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: b10
+    attributes:
+      label: B10 - Upgrading from the old launcher works, and uninstalling leaves your ROMs and config intact
+      options: [Not tried, Pass, Fail]
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: What failed and how, in your words. User names replaced, please.

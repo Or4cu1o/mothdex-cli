@@ -68,6 +68,6 @@ roms:
     wiiu: wiiu
     x360: xbox360
     xbox: xbox
-bin_dir: { path: '${MATCH}\mothdex', verified: false }   # own choice
+bin_dir: { path: '${HOME}\AppData\Local\Programs\mothdex', verified: false }   # install.ps1 default, %LocalAppData%\Programs\mothdex (ports.md PRT-G1)
 launcher: { kind: bat, dir: '${MATCH}\roms\windows', verified: true }
 refresh: { kind: http_get, url: "http://127.0.0.1:1234/reloadgames", timeout: 3s, verified: true }

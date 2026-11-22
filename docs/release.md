@@ -32,20 +32,25 @@ downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https.
 curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
 less install.sh
 sh install.sh --dry-run          # downloads and verifies in a temp dir, installs nothing
-sh install.sh                    # or: --version v0.1.0, --profile, --bin-dir, --launcher, --uninstall
+sh install.sh                    # or: --version, --profile, --bin-dir, --launcher, --no-launcher, --gui, --no-gui, --uninstall
 ```
 
 To install a specific version, fetch the installer from that tag (`.../mothdex-cli/vX.Y.Z/install.sh`) so installer and release match.
 
 On Windows, download `install.ps1`, read it, then run `.\install.ps1` (options
-`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-DryRun`, `-Uninstall`).
+`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-NoLauncher`, `-Gui`, `-NoGui`, `-DryRun`, `-Uninstall`).
 Both installers always check the SHA-256 of the archive against `checksums.txt`
 and, when `cosign` (or an authenticated `gh`) is on the machine, the signature
 and provenance with the identity below; a failing check aborts before anything
 is installed. The binary goes to the profile `bin_dir` (mode 0755; on Windows
-`%LocalAppData%\Programs\mothdex` by default), and the launcher (Port), only with `--launcher` (`-Launcher` on Windows; off by default in v0.1 because `mothdex tui` does not exist yet), only to
-the profile launcher folder, from a fixed template with a marker line, so an
-existing file of yours is never overwritten. `install.sh` needs curl (it forces https, redirects included), or GNU wget together with cosign or a logged-in `gh`:
+`%LocalAppData%\Programs\mothdex` by default), and the launcher (Port) only to the profile launcher folder, from a fixed template with a marker line (`v2`; a `v1`
+launcher of an earlier install is upgraded), so an existing file of yours is never overwritten. When the release ships a `mothdex-gui_`
+archive for your machine (decided from the verified `checksums.txt` only), the installer also fetches and verifies it, proves that the GUI starts
+(`mothdex-gui --probe`, run from `bin_dir` with a scrubbed environment), installs `mothdex-gui` and the licence notices in
+`mothdex-licenses/`, and the launcher is **on by default** (`--no-launcher` / `-NoLauncher` turns it off, `--no-gui` / `-NoGui`
+installs the CLI only). For a release without a GUI archive the launcher stays opt-in (`--launcher` / `-Launcher`). On Windows the launcher
+is written only when `<RetroBat>\roms\windows` cannot be written by other users. After writing a launcher on Batocera, EmuELEC or RetroBat the installer asks the
+frontend to reload its game list once (loopback, no proxy, never fatal). A dry run executes the verified probe from a staging name in an existing `bin_dir` and removes it again. On a default `C:\RetroBat` the launcher check will usually skip the launcher, because the root of `C:\` lets Authenticated Users modify new subfolders (not verified on a real machine); restrict the permissions of `roms\windows` to enable it. Release checklist: when a file is added to `THIRD_PARTY/`, add its name to `NOTICE_NAMES` in `install.sh` and `$NoticeNames` in `install.ps1` (a test fails otherwise); an installer downloaded before that release aborts on an unknown notice, by design. Details: [ports.md](contracts/cli/ports.md). `install.sh` needs curl (it forces https, redirects included), or GNU wget together with cosign or a logged-in `gh`:
 wget can follow an https to http redirect, so the signature check is what protects that path (busybox wget does not
 verify TLS certificates and is refused). On Windows, an existing `-BinDir` outside `%LocalAppData%` is accepted only when its
 owner is you or an administrator and no other user can write to it; on a Batocera or Recalbox share partition without file permissions (exFAT, FAT, NTFS) the installer, as

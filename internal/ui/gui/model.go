@@ -13,6 +13,7 @@ import (
 	"golang.org/x/text/message"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -129,7 +130,7 @@ type Model struct {
 	entry      entryState
 	queue      queueState
 	book       jobBook
-	batchBase  [3]int // done, skipped and failed when the queue last went busy, for the summary toast
+	batchBase  [4]int // done, skipped, failed and waiting for the OK when the queue last went busy, for the summary toast
 	covers     coverCache
 	coverBusy  string    // the slug whose cover is being decoded
 	coverSlug  string    // the slug the settle timer is for
@@ -319,7 +320,7 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 	case screenEntry:
 		return m.onEntryAction(a, now)
 	case screenQueue:
-		return m.onQueueAction(a)
+		return m.onQueueAction(a, now)
 	}
 	return m.onHomeAction(a, now)
 }
@@ -399,14 +400,20 @@ func (m Model) onJob(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
 	m = m.noteJob(j, now)
 	var cmds []Cmd
 	if before == 0 && m.jobs.unfinished() > 0 { // the queue went busy: a new batch starts counting
-		done, skipped, failed, _ := m.jobs.summary()
-		m.batchBase = [3]int{done, skipped, failed}
+		done, skipped, failed, _, waiting := m.jobs.summary()
+		m.batchBase = [4]int{done, skipped, failed, waiting}
 		if known && prev.Terminal() { // a retried job: its earlier end belongs to the batch before
-			m.batchBase[0], m.batchBase[1], m.batchBase[2] = m.batchBase[0]-btoi(prev.State == app.StateDone), m.batchBase[1]-btoi(prev.State == app.StateSkipped), m.batchBase[2]-btoi(prev.State == app.StateFailed)
+			waited := consent.Needed(prev)
+			m.batchBase[0], m.batchBase[1] = m.batchBase[0]-btoi(prev.State == app.StateDone), m.batchBase[1]-btoi(prev.State == app.StateSkipped)
+			m.batchBase[2], m.batchBase[3] = m.batchBase[2]-btoi(prev.State == app.StateFailed && !waited), m.batchBase[3]-btoi(waited)
 		}
 	}
 	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) && m.screen != screenQueue {
-		m = m.withToast(m.tr("ui.gui.toast.download_failed", map[string]any{"title": app.SanitizeText(j.Title)}), toastError, now)
+		if consent.Needed(j) { // nothing failed: the job waits for a person; the title comes last, so a cut falls on it
+			m = m.withToast(m.tr("ui.gui.toast.needs_ok", map[string]any{"title": app.SanitizeText(j.Title)}), toastWarn, now)
+		} else {
+			m = m.withToast(m.tr("ui.gui.toast.download_failed", map[string]any{"title": app.SanitizeText(j.Title)}), toastError, now)
+		}
 	}
 	if j.State == app.StateDone && (!known || prev.State != app.StateDone) && m.o.Boxart {
 		svc := m.o.Service

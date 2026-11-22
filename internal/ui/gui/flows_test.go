@@ -926,3 +926,102 @@ func TestEditSearchFromARecentChipReturnsToHome(t *testing.T) {
 		t.Fatalf("screen %d: B returns to Home", h.m.screen)
 	}
 }
+
+// A download that stopped on its real size waits for a person (T-56): its action sheet offers Download anyway
+// instead of Retry, the dialog names both sizes and the folder with Don't download as the default and as B,
+// and Download queues the request again with the consent for exactly that size, taking the stopped row's place.
+func TestDownloadAnywayAsksAndConsentsToExactlyTheSizeShown(t *testing.T) {
+	const real, catalog = int64(700 << 20), int64(40 << 20)
+	h, svc := queueHarness(t)
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Slug: "zelda-001", Title: "Zelda 001", LinkIndex: 2, State: app.StateFailed, Expected: real, CatalogSize: catalog,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}})
+	h.mustHave("Needs your OK: Zelda 001") // the toast, from the Home screen: the title comes last, so a cut falls on it
+	h.mustNotHave("Download failed")
+	h.press(input.Queue)
+	h.mustHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.")
+
+	h.press(input.Confirm)
+	h.mustHave("Download anyway", "Details", "Close")
+	h.mustNotHave("Retry")
+	h.press(input.Confirm) // Download anyway only opens the dialog
+	if svc.Count("enqueue:") != 0 {
+		t.Fatal("the sheet item never queues by itself")
+	}
+	h.mustHave("This file is 700.0 MB, not 40.0 MB.", "The catalog listed a smaller size. It will be saved to /roms/gbc.", "Don't download", "Download 700.0 MB")
+	if h.m.dlgFocus != btnCancel {
+		t.Fatalf("default %q: Don't download", h.m.dlgFocus)
+	}
+	h.advance(200 * time.Millisecond)
+	h.press(input.Back) // B is Don't download
+	if svc.Count("enqueue:") != 0 {
+		t.Fatal("B must not queue")
+	}
+	h.mustHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.") // the row is as it was
+
+	h.press(input.Confirm)
+	h.press(input.Confirm)
+	h.advance(200 * time.Millisecond)
+	h.press(input.Right)
+	h.press(input.Confirm)
+	reqs := svc.Requests()
+	if len(reqs) != 1 || reqs[0].Ref.Slug != "zelda-001" || reqs[0].Link.Index != 2 || reqs[0].SizeConsent != real {
+		t.Fatalf("requests %+v: the same link with the consent for %d", reqs, real)
+	}
+	h.mustNotHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.")
+
+	// The proxy now answers another length for the new job: the row and the dialog show the new size, and the
+	// next consent is for it, not for the one accepted before.
+	const again = int64(900 << 20)
+	newID := svc.JobList[len(svc.JobList)-1].ID
+	h.send(JobMsg{Job: app.JobSnapshot{ID: newID, Slug: "zelda-001", Title: "Zelda 001", LinkIndex: 2, State: app.StateFailed, Expected: again, CatalogSize: catalog,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": again, "path": "/roms/gbc"}}}})
+	h.press(input.Queue)
+	h.mustHave("Needs your OK: the file is 900.0 MB, listed as 40.0 MB.")
+	focusJob(t, h, newID)
+	h.press(input.Confirm)
+	h.press(input.Confirm)
+	h.mustHave("This file is 900.0 MB, not 40.0 MB.", "Download 900.0 MB")
+	h.advance(200 * time.Millisecond)
+	h.press(input.Right)
+	h.press(input.Confirm)
+	if reqs := svc.Requests(); len(reqs) != 2 || reqs[1].SizeConsent != again {
+		t.Fatalf("the second consent is for %d: %+v", again, reqs)
+	}
+
+	// A catalog with no size for the file: the dialog drops the catalog part.
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "9", Slug: "zelda-002", Title: "Zelda 002", State: app.StateFailed, Expected: real,
+		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}})
+	focusJob(t, h, "9")
+	h.mustHave("Needs your OK: the file is 700.0 MB.")
+	h.press(input.Confirm)
+	h.press(input.Confirm)
+	h.mustHave("This file is 700.0 MB.", "The catalog had no size for it. It will be saved to /roms/gbc.")
+}
+
+// What the review of the T-56 screens asked for: the row keeps the catalog size when it is long (it wraps to two
+// lines instead of being cut), the summary does not call a stopped job a failure, and Details shows the real size
+// and a Status line, not "0 B" and "Error".
+func TestDownloadAnywayRowSummaryAndDetails(t *testing.T) {
+	const real, catalog = int64(712 << 20), int64(40 << 20)
+	waiting := func(id app.JobID) app.JobSnapshot {
+		return app.JobSnapshot{ID: id, Slug: "zelda-001", Title: "Zelda 001", State: app.StateFailed, Expected: real, CatalogSize: catalog,
+			Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}
+	}
+
+	// The row at the smallest tier, in the longest language: nothing is cut.
+	pt := started(t, zeldaService(3), 640, 480, func(o *Options) { o.T = shared.bundle.New("pt_br") })
+	pt.send(JobMsg{Job: waiting("1")})
+	pt.press(input.Queue)
+	if got := strings.Join(pt.texts(), " "); !strings.Contains(got, "o catálogo indicava 40.0 MB.") || strings.Contains(got, "…") {
+		t.Fatalf("the row must wrap, not be cut:\n%s", got)
+	}
+
+	h, _ := queueHarness(t)
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Slug: "zelda-002", Title: "Zelda 002", State: app.StateTransferring, Bytes: 1, Expected: 10}})
+	h.send(JobMsg{Job: waiting("1")}) // the queue is idle again: the summary says it
+	h.mustHave("0 downloaded, 0 skipped, 0 failed, 1 waiting for your OK")
+	h.press(input.Queue)
+	h.press(input.Info)
+	h.mustHave("Status: Needs your OK: the file is 712.0 MB, listed as 40.0 MB.", "[confirmation_required]", "Size: 712.0 MB")
+	h.mustNotHave("Error: Needs your OK: the file is 712.0 MB, listed as 40.0 MB.")
+}

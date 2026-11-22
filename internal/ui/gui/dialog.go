@@ -29,6 +29,7 @@ const (
 	dialogConfirmDownload                   // a download above 500 MB with interface.confirm_downloads on
 	dialogDownloadAgain                     // the link was downloaded before
 	dialogCancelAll                         // the Queue's Cancel all downloads
+	dialogAnyway                            // "Download anyway": the real size of a stopped download needs a person's OK
 )
 
 type dialogButton struct {
@@ -106,6 +107,11 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 	switch d.kind {
 	case dialogConfirmDownload, dialogDownloadAgain:
 		if id == btnDownload || id == btnAgain {
+			return m.enqueue(d.pending)
+		}
+		return m, nil
+	case dialogAnyway:
+		if id == btnDownload {
 			return m.enqueue(d.pending)
 		}
 		return m, nil
