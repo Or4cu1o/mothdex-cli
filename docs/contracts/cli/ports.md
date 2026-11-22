@@ -185,7 +185,9 @@ executable; cosign when available; TH-30 paths; TH-31 directory ownership; the e
   aborts the whole install.
 - **Without the GUI** (not eligible, a probe error, `--no-gui`, no GUI archive): nothing is written. An existing launcher
   that carries a `v1`, `v2` or `v3` marker is removed with a note, and the frontend is asked to reload (§5.5). A file
-  without a marker, or a link, is never touched.
+  without a marker, or a link, is never touched. The removal does not run the folder-trust check: IC-7 guards writes, because a written launcher is
+  later run by the frontend. Deleting a marked regular file creates nothing that could run, `rm -f` on a path swapped
+  for a link removes the link and not its target, and the worst an untrusted folder can do is make a Port disappear (Crivo S2).
 - T-70 §6 keeps the default on condition of IC-7 (`install.ps1` writes `Mothdex.bat` only into a trusted `roms\windows`, as
   `install.sh` already does) and IC-12 (every run that writes the launcher prints its path and how to opt out).
 - `--dry-run` prints the GUI archive, the eligibility result (§5.2) and the launcher path, and leaves nothing changed
