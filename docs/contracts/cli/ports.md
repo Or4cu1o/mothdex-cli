@@ -262,7 +262,13 @@ equal to the files of `THIRD_PARTY/` in the repository, `README.md` included. Ex
 `THIRD_PARTY/` member, and uninstall, upgrade and `--no-gui` remove only regular files with those names. They never
 follow a link or reparse point, and remove the folder only if it is then empty. Anything else is kept, with a warning,
 so a file of the user's in that folder is never deleted. A change to `THIRD_PARTY/` changes both lists in the same PR,
-and a test fails when they differ. `SDL2.dll` is removed only
+and a test fails when they differ.
+
+**Installer and release go together (fail closed).** An installer accepts a GUI archive whose `THIRD_PARTY/` is a subset
+of its list, so a newer installer still installs an older release. An installer older than a release that adds a
+notice refuses that release's GUI archive as an unexpected member, and installs nothing. That is intended: it never
+installs a notice it cannot later remove. The release notes of every release that adds a notice say so, and repeat
+the rule of docs/release.md: fetch `install.sh` and `install.ps1` from the release tag. `SDL2.dll` is removed only
 when `mothdex-gui.exe` is next to it.
 
 ## 6. Third-party notices
@@ -274,9 +280,9 @@ folder (gui.md §6). For Ports:
 |---|---|---|
 | Noto Sans (embedded) | OFL-1.1 | `THIRD_PARTY/NotoSans-OFL-1.1.txt` in the archive, installed to `bin_dir/mothdex-licenses/` |
 | GameControllerDB (embedded) | zlib | `THIRD_PARTY/SDL_GameControllerDB-zlib.txt`, same |
-| SDL2.dll 2.32.10 (Windows, shipped) | zlib | **missing**: add `THIRD_PARTY/SDL2-zlib.txt` from the SDL2 release (gap PRT-G2) |
-| purego (in the binary) | Apache-2.0 | **missing**: Apache-2.0 §4(a) asks for a copy of the licence in binary distributions (gap PRT-G2) |
-| golang.org/x/image (in the binary) | BSD-3-Clause | **missing**: BSD-3 asks to reproduce the notice in documentation of binary distributions (gap PRT-G2) |
+| SDL2.dll 2.32.10 (Windows, shipped) | zlib | `THIRD_PARTY/SDL2-zlib.txt`, in every GUI archive (PRT-G2, done in T-71) |
+| purego (in the binary) | Apache-2.0 | `THIRD_PARTY/purego-Apache-2.0.txt` (Apache-2.0 §4(a); PRT-G2, done) |
+| golang.org/x/image (in the binary) | BSD-3-Clause | `THIRD_PARTY/x-image-BSD-3-Clause.txt` (PRT-G2, done) |
 
 - The installer copies the archive's `THIRD_PARTY/` as `bin_dir/mothdex-licenses/`, so an installed Port carries the
   notices next to the binaries. Uninstall removes it (§5.6).
