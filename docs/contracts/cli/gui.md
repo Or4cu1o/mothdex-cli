@@ -189,7 +189,7 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 - targets: linux amd64, arm64, armv7, armv6, and windows amd64 (386 only if the spike passes it); no darwin and no windows arm64 in v0.3.0.
 
 **Archives.** `mothdex-gui_<version>_<os>_<arch>`, never inside `mothdex_` archives (release-artifacts §1).
-- Each holds the binary, `LICENSE`, `README.md`, `CHANGELOG.md` and the `THIRD_PARTY/` folder (the repository layout; ports.md PRT-G5): purego Apache-2.0, x/image BSD-3, Noto OFL-1.1, GameControllerDB zlib, SDL2 zlib on Windows. The installer copies it to `bin_dir/mothdex-licenses/`.
+- Each holds the binary, `LICENSE`, `README.md`, `CHANGELOG.md` and the `THIRD_PARTY/` folder (the repository layout; ports.md PRT-G5): purego Apache-2.0, x/image BSD-3, Noto OFL-1.1, GameControllerDB zlib, SDL2 zlib (which covers the SDL2.dll in the Windows archive). The installer copies it to `bin_dir/mothdex-licenses/`.
 - Each has an SBOM and is listed in the same `checksums.txt` and cosign bundle.
 - `release-artifacts.md` must change "All binaries are static" to "`mothdex` is static; `mothdex-gui` is dynamic on Linux (glibc `ld.so`, `libdl`) and needs system SDL2". Guindaste's PR.
 
