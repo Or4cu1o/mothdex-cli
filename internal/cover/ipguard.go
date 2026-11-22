@@ -7,11 +7,14 @@ import (
 )
 
 // blockedPrefixes are special-use ranges that netip's own predicates do not cover: CGNAT,
-// IETF protocol assignments, benchmarking, reserved/broadcast, and the IPv6 forms that embed an
-// IPv4 address (NAT64, 6to4, Teredo).
+// IETF protocol assignments, benchmarking, reserved/broadcast, the whole ::/8 block (unspecified,
+// loopback, IPv4-compatible and the other reserved addresses; an IPv4-mapped address was unmapped
+// before the check), and the IPv6 forms that embed an IPv4 address (NAT64, 6to4, Teredo). Of
+// 64:ff9b::/32 only the well-known /96 is allowed through (judged by its embedded IPv4 address, see
+// blockedIP); the rest of the block is unassigned.
 var blockedPrefixes = mustPrefixes(
 	"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4",
-	"64:ff9b:1::/48", "2002::/16", "2001::/32", "100::/64", "fec0::/10", "::/96",
+	"::/8", "64:ff9b::/32", "64:ff9b:1::/48", "2002::/16", "2001::/32", "100::/64", "fec0::/10",
 )
 
 var nat64 = netip.MustParsePrefix("64:ff9b::/96")
