@@ -260,6 +260,7 @@ Parametrize the name cases in one table test (testing rule: lean parametrization
 32b. (T-27) `Content-Length > download.max_file_size` with a small `link.size` → `size_mismatch` before the first body byte.
 32c. (T-27) Attempt 1 truncated with `Content-Length` N, attempt 2 answers N+1 → `size_mismatch`, no third attempt.
 32d. (T-27) `confirm_downloads` on, `link.size` 5 MB, `Content-Length` 2 GB → `confirmation_required` before the first body byte; re-queued with `SizeConsent` = 2 GB → `Done`; with `SizeConsent` = 2 GB but `Content-Length` 3 GB → `confirmation_required` again; `-f` (`ConsentAny`) → `Done`.
+32e. (T-64) `confirm_downloads` on, `link.size` already above 500 MB, `Content-Length` = 2 × `link.size` → `Done`; 2 × `link.size` + 1 → `confirmation_required` before the first body byte; `-f` (`ConsentAny`) or `SizeConsent` = `Content-Length` → `Done`.
 33. TLS with a self-signed cert → fails; no code path disables verification (grep test is **not** allowed; assert via behavior).
 
 **Disk, partials, cleanup**

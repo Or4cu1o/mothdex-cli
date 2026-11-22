@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-64: when the catalog size is already above 500 MiB and was confirmed, a `Content-Length` over 2x that size asks for
+  confirmation again (`confirmation_required`); `-f` still skips it and the exact-length pin across retries stays
+  (downloader.md 3.2 step 6).
 - T-24: `release.yml` `publish` checks that the tag still resolves to the commit that was built (annotated tags followed)
   and verifies attestations with `--source-digest` and `--deny-self-hosted-runners`, as mothdex-mcp does; the tag check is the
   last step before the release is created, and `publish` refuses to upload files that `checksums.txt` does not list.
