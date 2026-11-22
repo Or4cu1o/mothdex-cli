@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"regexp"
 	"testing"
 )
@@ -287,5 +288,18 @@ func TestForwardCompatibleDecode(t *testing.T) {
 	l := got.Links[0]
 	if got.Regions == nil || l.Extras == nil || l.Hashes == nil || l.Hashes.CRC32 != "abcd" {
 		t.Fatalf("unexpected normalization: %+v", got)
+	}
+}
+
+func TestDocumentedErrorCodeFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/api-v1-codes/entry-not-found.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, staticHandler(200, nil, string(raw)))
+	_, err = h.client.Entry(context.Background(), "a-slug")
+	var e *Error
+	if !asError(err, &e) || e.Kind != KindNotFound || e.Code != "ENTRY_NOT_FOUND" || e.Message != "Entry not found" {
+		t.Fatalf("got %#v", err)
 	}
 }

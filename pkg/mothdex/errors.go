@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"time"
 )
 
@@ -50,7 +51,8 @@ type Error struct {
 	Kind       Kind
 	Op         string        // "search", "entry", ...
 	HTTPStatus int           // 0 for transport errors
-	Message    string        // info.error or transport text; untrusted, for logs/UI only
+	Code       string        // upstream info.error code (ENTRY_NOT_FOUND, ...); empty for the old message form
+	Message    string        // info.message, old info.error text or transport text; untrusted, capped, for logs/UI only
 	RetryAfter time.Duration // KindRateLimited only; 0 if unknown
 	Err        error         // wrapped cause
 }
@@ -60,6 +62,9 @@ func (e *Error) Error() string {
 	msg := fmt.Sprintf("mothdex %s: %s", e.Op, e.Kind)
 	if e.HTTPStatus != 0 {
 		msg += fmt.Sprintf(" (HTTP %d)", e.HTTPStatus)
+	}
+	if e.Code != "" {
+		msg += " [" + e.Code + "]"
 	}
 	if e.Message != "" {
 		msg += ": " + e.Message
@@ -110,25 +115,36 @@ var messageKinds = map[string]Kind{
 	"An unexpected error occurred": KindUpstream,
 }
 
-// Known info.code values, as named in docs/upstream/U2-hashes-issue.md. rate_limited is left out on
-// purpose: a 429 is classified by HTTP status. Unknown codes map to KindAPI.
+// Upstream error codes (https://mothdex.net/api-docs/#error-codes). A string of this shape in
+// info.error is a code, matched exactly; anything else is the old message form.
+var codePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+
+const codeInvalidAPIVersion = "INVALID_API_VERSION"
+
 var codeKinds = map[string]Kind{
-	"entry_not_found": KindNotFound,
-	"invalid_request": KindInvalidRequest,
-	"database_error":  KindUpstream,
-	"internal_error":  KindUpstream,
+	"ENTRY_NOT_FOUND":         KindNotFound,
+	codeInvalidAPIVersion:     KindIncompatible,
+	"MALFORMED_JSON":          KindInvalidRequest,
+	"INVALID_JSON_OBJECT":     KindInvalidRequest,
+	"MISSING_REQUIRED_FIELDS": KindInvalidRequest,
+	"INVALID_FIELD_TYPE":      KindInvalidRequest,
+	"INVALID_INPUT":           KindInvalidRequest,
+	"DB_OPERATION_ERROR":      KindUpstream,
+	"DB_ERROR":                KindUpstream,
+	"UNEXPECTED_ERROR":        KindUpstream,
+	"RATE_LIMIT_ERROR":        KindRateLimited,
+	// HTTP_ERROR at 200, and any code not listed, are KindAPI.
 }
 
-// classifyInfoError maps an HTTP 200 info.error to a Kind. A code, when
-// present, takes precedence over the message.
-func classifyInfoError(info apiInfo) Kind {
-	if info.Code != "" {
-		if k, ok := codeKinds[info.Code]; ok {
-			return k
-		}
-		return KindAPI
+func kindOfCode(code string) Kind {
+	if k, ok := codeKinds[code]; ok {
+		return k
 	}
-	if k, ok := messageKinds[info.Error]; ok {
+	return KindAPI
+}
+
+func kindOfMessage(msg string) Kind {
+	if k, ok := messageKinds[msg]; ok {
 		return k
 	}
 	return KindAPI

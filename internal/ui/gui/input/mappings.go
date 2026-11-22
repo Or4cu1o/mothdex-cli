@@ -84,16 +84,31 @@ const (
 // replace them: they are read here and added last. Lines for another platform are dropped; a malformed line,
 // and an unreadable file other than a missing one, are reported to warn and skipped.
 func LoadMappings(embedded, userFile, platform string, getenv func(string) string, warn func(msg string)) []string {
+	lines, _ := LoadMappingsCounted(embedded, userFile, platform, getenv, warn)
+	return lines
+}
+
+// MappingCounts is how many mapping lines each source added, for the start-up diagnostics line.
+type MappingCounts struct {
+	Embedded, User, File, Env int
+}
+
+// LoadMappingsCounted is LoadMappings that also says how many lines each source contributed (after the lines for
+// other platforms and the malformed ones were dropped).
+func LoadMappingsCounted(embedded, userFile, platform string, getenv func(string) string, warn func(msg string)) ([]string, MappingCounts) {
+	var counts MappingCounts
 	lines, bad := MappingLines(embedded, platform)
+	counts.Embedded = len(lines)
 	for _, l := range bad {
 		warn("controller database: skipped a malformed line: " + truncateForLog(l))
 	}
-	add := func(source, text string) {
+	add := func(source, text string) int {
 		more, bad := MappingLines(text, platform)
 		for _, l := range bad {
 			warn(source + ": skipped a malformed line: " + truncateForLog(l))
 		}
 		lines = append(lines, more...)
+		return len(more)
 	}
 	for _, f := range []struct{ source, path string }{
 		{"gamecontrollerdb.txt", userFile},
@@ -108,13 +123,18 @@ func LoadMappings(embedded, userFile, platform string, getenv func(string) strin
 		case err != nil:
 			warn("controller database: cannot read " + f.path + ": " + err.Error())
 		default:
-			add(f.source, string(data))
+			n := add(f.source, string(data))
+			if f.source == envMappingFile {
+				counts.File = n
+			} else {
+				counts.User = n
+			}
 		}
 	}
 	if env := getenv(envMappings); env != "" {
-		add(envMappings, env)
+		counts.Env = add(envMappings, env)
 	}
-	return lines
+	return lines, counts
 }
 
 func truncateForLog(s string) string {

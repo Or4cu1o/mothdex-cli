@@ -549,3 +549,21 @@ func TestSearchReportsAStaleSession(t *testing.T) {
 		t.Fatal("a cleared session is not stale")
 	}
 }
+
+// T-77: the upstream message stays out of the localized text and is capped in the cause.
+func TestWrapCapsTheUpstreamMessage(t *testing.T) {
+	up := &mothdex.Error{Kind: mothdex.KindUpstream, Op: "entry", HTTPStatus: 200, Code: "DB_ERROR",
+		Message: "\x1b[31m" + strings.Repeat("x", 600)}
+	err := wrap(up)
+	var ae *Error
+	if !errors.As(err, &ae) || ae.Code != CodeUpstream || ae.Message != "upstream" || !ae.Retryable {
+		t.Fatalf("got %#v", err)
+	}
+	var me *mothdex.Error
+	if !errors.As(err, &me) || me.Code != "DB_ERROR" || len(me.Message) > 200 || strings.ContainsRune(me.Message, 0x1b) {
+		t.Fatalf("cause %#v", me)
+	}
+	if up.Message[0] != 0x1b {
+		t.Fatal("the original error was modified")
+	}
+}

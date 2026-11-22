@@ -13,13 +13,27 @@ import (
 const (
 	maxBodyBytes   = 16 << 20 // 16 MiB
 	maxRetryAfter  = 24 * time.Hour
-	maxMessageSize = 200
+	maxMessageSize = 512
 )
 
+// apiInfo keeps info.error and info.message raw so that a value that is not a string can be told
+// apart from an absent one. info.code of the old forward-compat plan is no longer read.
 type apiInfo struct {
-	Error string `json:"error"`
-	Code  string `json:"code"`
+	Error   json.RawMessage `json:"error"`
+	Message json.RawMessage `json:"message"`
 }
+
+// text returns the string held by a raw JSON value; ok is false for anything that is not a string.
+func text(raw json.RawMessage) (s string, ok bool) {
+	if json.Unmarshal(raw, &s) != nil {
+		return "", false
+	}
+	return s, true
+}
+
+// present reports whether a raw JSON value was sent. An explicit null counts as sent (api-client
+// 3.1 step 3 makes it a decode failure); an absent key leaves the raw value empty.
+func present(raw json.RawMessage) bool { return len(raw) > 0 }
 
 type envelope struct {
 	Info apiInfo         `json:"info"`
@@ -36,21 +50,54 @@ func parseResponse(op string, status int, header http.Header, body []byte, now t
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, &Error{Kind: KindDecode, Op: op, HTTPStatus: status, Message: "invalid JSON response", Err: err}
 	}
-	if env.Info.Error != "" || env.Info.Code != "" {
-		return nil, &Error{
-			Kind:       classifyInfoError(env.Info),
-			Op:         op,
-			HTTPStatus: status,
-			Message:    cleanMessage(env.Info.Error),
-		}
+	if present(env.Info.Error) {
+		return nil, infoError(op, status, header, env.Info, now)
 	}
 	return env.Data, nil
 }
 
+// infoError builds the error for an HTTP 200 whose info.error is present (api-client 3). A code
+// is matched exactly; any other string is the old message form; a value that is not a non-empty
+// string is a decode failure. The message is for logs and the UI only, never for logic.
+func infoError(op string, status int, header http.Header, info apiInfo, now time.Time) *Error {
+	raw, ok := text(info.Error)
+	if !ok || raw == "" {
+		return &Error{Kind: KindDecode, Op: op, HTTPStatus: status, Message: "info.error is not a non-empty string"}
+	}
+	e := &Error{Op: op, HTTPStatus: status}
+	if codePattern.MatchString(raw) {
+		e.Code = raw
+		e.Kind = kindOfCode(raw)
+		e.Message = infoMessage(info, "")
+	} else {
+		e.Kind = kindOfMessage(raw)
+		e.Message = infoMessage(info, raw)
+	}
+	if e.Kind == KindRateLimited {
+		e.RetryAfter = parseRetryAfter(header.Get("Retry-After"), now)
+	}
+	return e
+}
+
+// infoMessage is info.message when it is a string, else the fallback (the old form's info.error).
+func infoMessage(info apiInfo, fallback string) string {
+	if m, ok := text(info.Message); ok {
+		return cleanMessage(m)
+	}
+	return cleanMessage(fallback)
+}
+
 func statusError(op string, status int, header http.Header, body []byte, now time.Time) *Error {
 	e := &Error{Kind: classifyStatus(status), Op: op, HTTPStatus: status, Message: http.StatusText(status)}
+	// The body is read best effort for every status: a code is recorded, and the kind stays the
+	// status's except for 400 with INVALID_API_VERSION. Only a 400 body supplies the message.
+	code, msg := bestEffortInfo(body)
+	e.Code = code
 	if status == http.StatusBadRequest {
-		if msg := bestEffortMessage(body); msg != "" {
+		if code == codeInvalidAPIVersion {
+			e.Kind = KindIncompatible
+		}
+		if msg != "" {
 			e.Message = msg
 		}
 	}
@@ -60,13 +107,21 @@ func statusError(op string, status int, header http.Header, body []byte, now tim
 	return e
 }
 
-// bestEffortMessage extracts info.error from an error body; failures are ignored.
-func bestEffortMessage(body []byte) string {
+// bestEffortInfo extracts the code and the message from an error body; failures are ignored. The
+// message is info.message, or info.error when that is the old text form.
+func bestEffortInfo(body []byte) (code, msg string) {
 	var env envelope
 	if json.Unmarshal(body, &env) != nil {
-		return ""
+		return "", ""
 	}
-	return cleanMessage(env.Info.Error)
+	raw, ok := text(env.Info.Error)
+	if ok && codePattern.MatchString(raw) {
+		return raw, infoMessage(env.Info, "")
+	}
+	if !ok {
+		return "", ""
+	}
+	return "", infoMessage(env.Info, raw)
 }
 
 // parseRetryAfter reads delta-seconds or an HTTP date; unusable values give 0.

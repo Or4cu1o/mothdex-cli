@@ -371,3 +371,56 @@ func TestRefusedRedirectMessageDropsFormatCharacters(t *testing.T) {
 		t.Fatalf("err %q must be untrusted_redirect without U+202E", err)
 	}
 }
+
+// T-77: an upstream code at HTTP 200 takes the same retry paths as the equivalent status.
+func TestRateLimitCodeAt200UsesTheExistingRetry(t *testing.T) {
+	var n atomic.Int32
+	h := newHarness(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if n.Add(1) == 1 {
+			w.Header().Set("Retry-After", "3")
+			_, _ = w.Write([]byte(`{"info":{"error":"RATE_LIMIT_ERROR","message":"slow down"},"data":{}}`))
+			return
+		}
+		serveFixture(t, "info", nil).ServeHTTP(w, r)
+	}))
+	if got, err := h.client.Info(context.Background()); err != nil || got.TotalEntries <= 0 {
+		t.Fatalf("Info = %+v, %v", got, err)
+	}
+	if w := h.sleeper.Waits(); !slices.Equal(w, []time.Duration{3 * time.Second}) {
+		t.Fatalf("waits %v", w)
+	}
+}
+
+func TestUpstreamCodeAt200IsRetriedAndANotFoundIsNot(t *testing.T) {
+	body := func(code string) http.Handler {
+		return staticHandler(200, nil, `{"info":{"error":"`+code+`","message":"m"},"data":{}}`)
+	}
+	h := newHarness(t, body("DB_ERROR"))
+	var e *Error
+	if _, err := h.client.Info(context.Background()); !asError(err, &e) || e.Kind != KindUpstream || e.Code != "DB_ERROR" {
+		t.Fatalf("got %v", err)
+	}
+	if h.hits.Load() < 2 {
+		t.Fatalf("DB_ERROR was not retried: %d hits", h.hits.Load())
+	}
+	h = newHarness(t, body("ENTRY_NOT_FOUND"))
+	if _, err := h.client.Info(context.Background()); !IsNotFound(err) || h.hits.Load() != 1 {
+		t.Fatalf("not found: %v, hits %d", err, h.hits.Load())
+	}
+}
+
+func TestRateLimitCodeAt200CountsTowardTheBreachCircuit(t *testing.T) {
+	var hookUntil []time.Time
+	h := newHarness(t, staticHandler(200, nil, `{"info":{"error":"RATE_LIMIT_ERROR","message":"slow"},"data":{}}`),
+		WithBreachHook(func(u time.Time) { hookUntil = append(hookUntil, u) }))
+	ctx := context.Background()
+	// Call 1: hit 1, one automatic retry, hit 2: reported, circuit still closed.
+	if _, err := h.client.Info(ctx); !IsRateLimited(err) || len(hookUntil) != 0 {
+		t.Fatalf("call 1: %v, hooks %d", err, len(hookUntil))
+	}
+	// Call 2: hit 3 opens the circuit and is not retried.
+	var e *Error
+	if _, err := h.client.Info(ctx); !asError(err, &e) || e.Kind != KindRateLimited || len(hookUntil) != 1 || e.RetryAfter <= 0 {
+		t.Fatalf("call 2: %v, hooks %d", err, len(hookUntil))
+	}
+}
