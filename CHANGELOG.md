@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ports.md` §5.6: `mothdex-licenses/` is handled by a fixed list of shipped notice names equal to `THIRD_PARTY/`
+  (`README.md` included), kept in step with it by a test; uninstall removes only those names (PR-88 re-check).
 - `docs/ux/gui.md` §5.8, `tui.md` §5 and `shell.md` §4 v1.2 (T-56, Bússola): the Download anyway rules shipped in
   cli#80. A job stopped with `confirmation_required` waits for a person: warn row with `!`, facts-only copy (real
   size, catalog size, folder), one OK per job and never a bulk one, the GUI sheet and dialog, the TUI `[y/N]` on `r`
