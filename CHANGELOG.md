@@ -34,8 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   driver, `LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`, the two `SDL_GAMECONTROLLERCONFIG*` variables, `LD_PRELOAD` and `SDL_DYNAMIC_API` as `set` or
   `unset` on every system, the values of `SDL_VIDEODRIVER`, `LANG` and `LC_ALL` only when they are plain words, the mapping lines added from
   each source and the type of each controller; no path and no other value. The spike jobs check `--probe` with and without SDL2 on Linux
-  (scrubbed environment, `timeout 20`) and on Windows (the environment `install.ps1` gives it). A failure to restrict the Windows DLL search
-  path now has its own message, `ErrSearchPath`, instead of `SDL2 was not found` (Alicerce, T-72 review).
+  (scrubbed environment, `timeout 20`) and on Windows (the environment `install.ps1` gives it).
 - T-68: contract `docs/contracts/cli/ports.md` for the frontend Ports of `mothdex-gui` on Batocera, EmuELEC and RetroBat
   (Recalbox has no Port in 10.1.2): launcher location and fixed `v2` template that sets no environment (never
   `LD_LIBRARY_PATH`), SDL2 per system, gamepad mapping sources, ROM destination through the profiles, install, upgrade
