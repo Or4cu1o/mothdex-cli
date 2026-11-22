@@ -1,10 +1,10 @@
 # Release checklist: mothdex-cli v0.1.0
 
-Owner: Guindaste (T-23). Status: prepared at main `b45d433`; nothing here has been run against a real tag.
+Owner: Guindaste (T-23). Status: rehearsed on `v0.1.0-rc.1` at `d9b1c99` (run 45064517334), verified by Ensaio (T-95).
 Companion to [release.md](release.md) (how the pipeline works) and
 [contracts/cli/release-artifacts.md](contracts/cli/release-artifacts.md) (artifact names, stable from this release on).
 Steps marked **OWNER OK** change repository settings, create the tag or publish, and need the owner's explicit approval.
-What was and was not checked while preparing this page is at the end.
+What was and was not checked while preparing this page is at the end. While only a pre-release exists, `install.sh` (which defaults to the latest non-pre-release) needs `--version vX.Y.Z-rc.N`.
 
 ## 1. Before the tag
 
@@ -47,14 +47,14 @@ What was and was not checked while preparing this page is at the end.
      from `tools/*/go.mod`; `goreleaser release --clean` (9 targets, SBOMs, `checksums.txt`, keyless cosign bundle);
      verifies the bundle against the exact identity of this workflow and tag; runs `scripts/verify-dist.sh dist 0.1.0`
      (formats, static linking, `CGO_ENABLED=0`, `-trimpath`, the version line of every binary that can run there, exactly
-     18 files in `checksums.txt`).
+     28 files in `checksums.txt`: 9 CLI archives, 5 GUI archives and 14 SBOMs).
    - `attest`: GitHub build provenance for every file in `checksums.txt` and for `checksums.txt` itself.
    - `publish` (**waits for the `release` environment: the owner approves it in the Actions run**): re-checks the
      checksums, runs `gh attestation verify` on every file (signer workflow, `refs/tags/v0.1.0`, `--source-digest` of the commit, no
      self-hosted runner), checks that the files to upload are exactly those in `checksums.txt` plus itself and its bundle,
      checks as its last step that `v0.1.0` still resolves to the built commit, then
-     `gh release create v0.1.0 --verify-tag --generate-notes` with the 18 archives and SBOMs, `checksums.txt` and
-     `checksums.txt.sigstore.json`. A tag with `-` becomes a pre-release.
+     `gh release create v0.1.0 --verify-tag --generate-notes` with the 14 archives (9 CLI, 5 GUI) and 14 SBOMs, `checksums.txt` and
+     `checksums.txt.sigstore.json` (30 assets). A tag with `-` becomes a pre-release.
 8. **Approve** the `release` environment only after `build` and `attest` are green and you have read the `build` log
    (the `checksums.txt` that goreleaser prints, and `verify-dist: ok (version 0.1.0 ..., 9 targets)`).
 
@@ -75,10 +75,10 @@ Run in an empty directory, with `gh`, `cosign` and `sha256sum` installed. `TAG=v
 
 ```sh
 gh release download "$TAG" --repo Or4cu1o/mothdex-cli      # everything, including the sigstore bundle
-gh release view "$TAG" --repo Or4cu1o/mothdex-cli --json assets --jq '.assets | length'   # expect 20
+gh release view "$TAG" --repo Or4cu1o/mothdex-cli --json assets --jq '.assets | length'   # expect 30
 ```
 
-1. **Checksums:** `sha256sum --check --strict checksums.txt` (all 18 lines OK).
+1. **Checksums:** `sha256sum --check --strict checksums.txt` (all 28 lines OK).
 2. **Signature and signer:**
 
    ```sh
@@ -90,11 +90,13 @@ gh release view "$TAG" --repo Or4cu1o/mothdex-cli --json assets --jq '.assets | 
 
 3. **Provenance** of `checksums.txt` and of two archives (for example `linux_amd64` and `windows_amd64`), also pinning the
    commit: `gh attestation verify <file> --repo Or4cu1o/mothdex-cli --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml --source-ref "refs/tags/$TAG" --source-digest <full sha of the tag commit> --deny-self-hosted-runners`.
-4. **SBOM:** each `<archive>.sbom.json` is valid JSON (`jq -e .`) and lists `golang.org/x/crypto`; it is covered by
+4. **SBOM:** each `<archive>.sbom.json` is valid JSON (`jq -e .`) and lists `golang.org/x/crypto` (the 9 CLI SBOMs only; the GUI SBOMs do not); it is covered by
    `checksums.txt`, so steps 1 to 3 already bind it to the signed release.
 5. **Binary:** extract the `linux_amd64` archive; `./mothdex --version` prints
    `mothdex 0.1.0 (commit <7 chars of the tag commit>, <commit date>)`; the archive holds only the binary, `LICENSE`,
-   `README.md` and `CHANGELOG.md` at its root, the binary with mode 0755.
+   `README.md` and `CHANGELOG.md` at its root, the binary with mode 0755. The GUI archives (`mothdex-gui_<version>_<os>_<arch>`,
+   4 linux and `windows_amd64`) hold `mothdex-gui` and `THIRD_PARTY/` on linux, and `mothdex-gui.exe`, `SDL2.dll` and
+   `THIRD_PARTY/` on windows. The GUI has `--probe` but no `--version`, so check it with `./mothdex-gui --probe`.
 6. **Installer against the published release** (the installer of the tag, never piped to a shell):
 
    ```sh
@@ -105,7 +107,8 @@ gh release view "$TAG" --repo Or4cu1o/mothdex-cli --json assets --jq '.assets | 
 
    With `cosign` on the machine this also runs the signature check. On Windows: `install.ps1 -Version $TAG -DryRun`, then a
    real install into a scratch `-BinDir`. Real Batocera, Recalbox and RetroBat hardware is not covered by any automated check.
-7. **A2 closes** when 1 to 5 pass on the real assets. **D1 to D3** close with the owner's recorded OK, the review list and
+7. **Release notes:** say that the installers are fetched from the tag (`raw.githubusercontent.com/.../$TAG/install.sh`), not from `main`.
+8. **A2 closes** when 1 to 5 pass on the real assets. **D1 to D3** close with the owner's recorded OK, the review list and
    the bot identity. Tick them in `qa/T-22-m1-acceptance.md` with the run id and the commit.
 
 ## 4. Rollback
@@ -123,11 +126,11 @@ gh release view "$TAG" --repo Or4cu1o/mothdex-cli --json assets --jq '.assets | 
 ## 5. What was checked while preparing this page, and what was not
 
 Verified: `actionlint` (the pinned image from mothdex-mcp CI) on all cli workflows, clean; `release.yml` read against the
-artifact contract (names, 9 targets, `checksums.txt` with 18 files, bundle name, exact signer identity, release assets,
-pre-release flag); `.goreleaser.yaml` read against the same contract and `scripts/verify-dist.sh`.
+artifact contract (names, 9 targets, `checksums.txt` with 28 files, bundle name, exact signer identity, release assets,
+pre-release flag; counts as of the rehearsal: 28 files in `checksums.txt`); `.goreleaser.yaml` read against the same contract and `scripts/verify-dist.sh`.
 
 **Not verified:** `goreleaser check` and a snapshot build (goreleaser is not installed on this machine and is not built
-here; the CI jobs `release-check` and `goreleaser snapshot` are the evidence); `release.yml` has never run on a tag; cosign
+here; the CI jobs `release-check` and `goreleaser snapshot` are the evidence); `release.yml` ran on `v0.1.0-rc.1` (Ensaio T-95, all PASS), not yet on `v0.1.0`; cosign
 `verify-blob`, `gh attestation verify`, the `environment` approval flow and `--verify-tag` against a real release; the
 installer against a real release, macOS, and real Batocera, Recalbox and RetroBat hardware.
 
