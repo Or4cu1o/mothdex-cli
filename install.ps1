@@ -600,4 +600,6 @@ try {
   if ($new) { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue }
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
+# the exit status is ours: the last native command above (the installed binary's --version) must not leak into it
 if ($script:Failed) { exit 1 }
+$global:LASTEXITCODE = 0
