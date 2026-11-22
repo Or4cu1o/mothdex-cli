@@ -381,7 +381,7 @@ func (m Model) queueFrame() frameSpec {
 	case m.queue.details != "":
 		spec.hints = []hint{{role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
 	case len(m.queue.sheet) > 0:
-		spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.select", nil)}, {role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
+		spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.choose", nil)}, {role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
 	default:
 		spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.actions", nil)}, {role: input.Info, label: m.tr("ui.gui.queue.details", nil)}, {role: input.Back, label: back}}
 	}
@@ -531,20 +531,34 @@ func (m Model) drawFinishedRow(p painter, r draw.Rect, j app.JobSnapshot) {
 
 // panelList draws a centered panel of one-line rows with the focused one boxed, for the action sheet.
 func (m Model) panelList(p painter, labels []string, focus int) {
+	m.panelListTitled(p, "", labels, focus)
+}
+
+// panelListTitled is panelList with a title line above the rows: what the person is choosing, since the scrim hides
+// the screen that asked.
+func (m Model) panelListTitled(p painter, title string, labels []string, focus int) {
 	met := m.metrics
 	u := met.Unit
 	widest := 0
 	for _, l := range labels {
 		widest = max(widest, p.width(met.Body, l))
 	}
+	titleH := 0
+	if title != "" {
+		widest = max(widest, p.width(met.Secondary, title))
+		titleH = LineHeight(met.Secondary) + u
+	}
 	panelW := min(max(widest+6*u, 12*met.Body), met.Safe.W-4*u)
-	rowH := min(met.Row1, (met.Safe.H-4*u)/max(len(labels), 1))
-	panel := draw.Rect{W: panelW, H: len(labels)*rowH + 2*u}
+	rowH := min(met.Row1, (met.Safe.H-4*u-titleH)/max(len(labels), 1))
+	panel := draw.Rect{W: panelW, H: titleH + len(labels)*rowH + 2*u}
 	panel.X, panel.Y = met.Safe.X+(met.Safe.W-panelW)/2, met.Safe.Y+(met.Safe.H-panel.H)/2
 	p.l.Fill(draw.Rect{W: met.W, H: met.H}, 0, colScrim)
 	p.l.Fill(panel, met.Radius, colSurface)
+	if title != "" {
+		p.text(panel.X+3*u, panel.Y+u, met.Secondary, colDim, p.fit(met.Secondary, title, panelW-6*u))
+	}
 	for i, l := range labels {
-		r := draw.Rect{X: panel.X + u, Y: panel.Y + u + i*rowH, W: panelW - 2*u, H: rowH}
+		r := draw.Rect{X: panel.X + u, Y: panel.Y + u + titleH + i*rowH, W: panelW - 2*u, H: rowH}
 		if i == focus {
 			p.box(r, true)
 		}

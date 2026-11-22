@@ -19,7 +19,7 @@ func (m Model) settingItemHeight(it settingItem) int {
 	case it.header != "" || it.more:
 		return LineHeight(met.Secondary) + met.Unit
 	}
-	h := met.Row1
+	h := m.settingRowBase(it.row)
 	if m.settings.errs[it.row.id] != "" {
 		h += LineHeight(met.Secondary)
 	}
@@ -27,6 +27,31 @@ func (m Model) settingItemHeight(it settingItem) int {
 		h += LineHeight(met.Secondary)
 	}
 	return h
+}
+
+// settingsLabelWidth is the width of the label column: the widest label of the language, between 44 and 55 percent of
+// the width, so a long label (es_es, ru_ru) neither is cut nor touches its value.
+func (m Model) settingsLabelWidth(p painter, contentW int) int {
+	met := m.metrics
+	widest := 0
+	for _, r := range settingRows {
+		widest = max(widest, p.width(met.Body, m.tr("ui.gui.settings.row."+r.label, nil)))
+	}
+	return min(max(widest+4*met.Unit, contentW*44/100), contentW*55/100)
+}
+
+// settingLabelLines is the label of a row, wrapped to two lines when even the widest column is too narrow for it.
+func (m Model) settingLabelLines(p painter, r *settingRow, labelW int) []string {
+	return p.wrap(m.metrics.Body, m.tr("ui.gui.settings.row."+r.label, nil), labelW-3*m.metrics.Unit, 2)
+}
+
+// settingRowBase is the height of a row without the lines under it: one button-sized line, or two lines of text when
+// the label wraps (docs/ux/gui.md section 1.3: nothing is cut but titles).
+func (m Model) settingRowBase(r *settingRow) int {
+	met := m.metrics
+	p := m.painter(nil)
+	lines := m.settingLabelLines(p, r, m.settingsLabelWidth(p, met.ContentRect().W))
+	return max(met.Row1, len(lines)*LineHeight(met.Body)+met.Unit)
 }
 
 // settingsVisibleRows is about how many rows a page holds, for L and R.
@@ -87,7 +112,7 @@ func (m Model) settingsFrame() frameSpec {
 		case edInfo:
 			spec.hints = []hint{{role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
 		default:
-			spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.select", nil)}, {role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
+			spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.choose", nil)}, {role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
 		}
 		return spec
 	}
@@ -188,7 +213,7 @@ func (m Model) drawSettings(p painter) {
 	from, to := m.settingsWindow(items)
 	y := c.Y
 	compact := met.Tier == Compact
-	labelW := c.W * 44 / 100
+	labelW := m.settingsLabelWidth(p, c.W)
 	valueX := c.X + labelW + 2*met.Unit
 	srcW := 0
 	if !compact {
@@ -214,14 +239,18 @@ func (m Model) drawSettings(p painter) {
 
 func (m Model) drawSettingRow(p painter, r draw.Rect, row *settingRow, labelW, valueX, srcW int) {
 	met := m.metrics
-	line := draw.Rect{X: r.X, Y: r.Y, W: r.W, H: met.Row1}.Inset(1)
+	base := m.settingRowBase(row)
+	line := draw.Rect{X: r.X, Y: r.Y, W: r.W, H: base}.Inset(1)
 	focused := m.settings.focus == row.id && m.settings.ed == nil
 	if focused {
 		p.box(line, true)
 	}
 	top := line.Y + (line.H-LineHeight(met.Body))/2
-	label := m.tr("ui.gui.settings.row."+row.label, nil)
-	p.text(r.X+met.Unit*2, top, met.Body, colText, p.fit(met.Body, label, labelW-met.Unit))
+	labelLines := m.settingLabelLines(p, row, labelW)
+	labelTop := line.Y + (line.H-len(labelLines)*LineHeight(met.Body))/2
+	for i, l := range labelLines {
+		p.text(r.X+met.Unit*2, labelTop+i*LineHeight(met.Body), met.Body, colText, l)
+	}
 	right := r.Right() - met.Unit*2
 	if srcW > 0 {
 		if src := m.rowSource(row); src != "" {
@@ -241,14 +270,11 @@ func (m Model) drawSettingRow(p painter, r draw.Rect, row *settingRow, labelW, v
 			value = "‹ " + value + " ›"
 		}
 	case kindCache:
-		btn := m.tr("ui.gui.settings.cache_clear", nil)
-		bw := p.width(met.Secondary, btn) + 3*met.Unit
-		br := draw.Rect{X: valueX + p.width(met.Body, value) + 2*met.Unit, Y: line.Y + met.Unit/2, W: bw, H: line.H - met.Unit}
-		p.l.Fill(br, met.Radius, colBG)
-		p.centered(br, met.Secondary, colText, btn)
+		pillH := line.H - met.Unit
+		p.pillOn(valueX+p.width(met.Body, value)+2*met.Unit, line.Y+met.Unit/2, pillH, m.tr("ui.gui.settings.cache_clear", nil), colBG)
 	}
 	p.text(valueX, top, met.Body, color, p.fit(met.Body, value, valueW))
-	y := r.Y + met.Row1
+	y := r.Y + base
 	if msg := m.settings.errs[row.id]; msg != "" {
 		p.text(r.X+met.Unit*2, y, met.Secondary, colError, p.fit(met.Secondary, msg, r.W-4*met.Unit))
 		y += LineHeight(met.Secondary)
@@ -266,8 +292,19 @@ func (m Model) drawEditor(p painter, e *settingsEditor) {
 	case edInfo:
 		m.drawInfoPanel(p, e)
 	default:
-		m.panelList(p, m.editorOptions(e), e.focus)
+		m.panelListTitled(p, m.editorTitle(e), m.editorOptions(e), e.focus)
 	}
+}
+
+// editorTitle names what a list editor is about: the setting for its lists, the language for its item sheet.
+func (m Model) editorTitle(e *settingsEditor) string {
+	if e.kind == edLangItem && e.idx < len(e.langs) {
+		return titleToken(e.langs[e.idx])
+	}
+	if r := m.settingRowByID(e.row); r != nil {
+		return m.tr("ui.gui.settings.row."+r.label, nil)
+	}
+	return ""
 }
 
 // drawMargin is the calibration view of docs/ux/gui.md section 1.2: four corner brackets and a frame at the margin

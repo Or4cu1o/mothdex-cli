@@ -17,6 +17,13 @@
     text size, margin, cover art, confirm large downloads, preferred languages and size) apply at once. A test keeps the table in step with
     the schema (keys, ranges, values).
   - **Buttons** overlay: the buttons of the screen underneath with the labels of the pad in hand and the words of that screen's hint bar.
+  - Review (Bússola, Crivo): a history reason is in the interface language for every code (a short `ui.gui.history.why.<code>` for the eleven
+    whose message needs values a record does not keep, `Failed` for an unknown code); Details of a record that wrote nothing has no size line and
+    shows the reason first, then what the service stored with its code; the hint bar of an empty History offers only the filter and Back; the lists
+    of Settings are titled with the setting (the language for its item sheet); long Settings labels get a wider column or wrap instead of being
+    cut; `A` in a sheet or list reads `Select` as `Escolher`/`Elegir`/`Выбрать` (`ui.gui.hint.choose`); a service error under a row reads
+    `Not saved: ...`; the inline Clear is a pill; Buttons lists Start after A and B; Download anyway from the history asks nothing and queues
+    nothing for a file that is already queued.
   - The D-pad hints (`Left`/`Right`, the Move row) are drawn as triangles: the font has no arrows.
-  - 18 render scenes of these screens in the T-67 harness, each listing the texts it must show.
+  - 23 render scenes of these screens in the T-67 harness (five of them in pt_br, es_es and ru_ru), each listing the texts it must show.
   - Not in this change: the controller notices of 2.3 and the controller name and GUID in About (they need two more SDL calls).

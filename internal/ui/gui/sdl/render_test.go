@@ -16,11 +16,13 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/cache"
 	"github.com/Or4cu1o/mothdex-cli/internal/history"
+	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui"
 	gdraw "github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/guitest"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/text"
+	"github.com/Or4cu1o/mothdex-cli/locales"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
@@ -47,10 +49,18 @@ type player struct {
 	now time.Time
 }
 
-func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confirm bool) *player {
+func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confirm bool, lang string) *player {
 	t.Helper()
 	o := guiOptions(t, font, svc, w, h)
 	o.Confirm = confirm
+	o.LogPath = "/userdata/system/logs/mothdex.log"
+	if lang != "" { // the screen in another language: the longest labels and reasons show what fits
+		bundle, err := i18n.Load(locales.FS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		o.T = bundle.New(lang)
+	}
 	m, cmds := gui.New(o, testEpoch)
 	p := &player{t: t, m: m, now: testEpoch}
 	p.run(cmds)
@@ -224,6 +234,7 @@ type scene struct {
 	expect     []string
 	confirm    bool                 // interface.confirm_downloads on
 	svc        func() *guitest.Fake // the service of the scene; the shared catalog when nil
+	lang       string               // the interface language; English when empty
 	steps      func(p *player)
 }
 
@@ -306,7 +317,7 @@ var renderScenes = []scene{
 			s.Settings[0] = app.Setting{Key: "download.concurrency", Value: 4, Source: "env"}
 			return s
 		}, steps: func(p *player) { p.openFromMenu(3) }},
-	{name: "settings-error", what: "T-78: a service error under the row, old value kept", expect: []string{"Invalid setting download.concurrency=3 (from file)."},
+	{name: "settings-error", what: "T-78: a service error under the row, old value kept", expect: []string{"Not saved: Invalid setting download.concurrency=3 (from file)."},
 		svc: func() *guitest.Fake {
 			s := renderCatalog()
 			s.ConfigSetErr = map[string]error{"download.concurrency": &app.Error{Code: app.CodeInvalidConfig, Message: "out of range", Args: map[string]any{"key": "download.concurrency", "value": "3", "source": "file"}}}
@@ -320,6 +331,11 @@ var renderScenes = []scene{
 		p.repeat(input.Down, 4)
 		p.press(input.Confirm)
 	}},
+	{name: "history-pt", lang: "pt_br", what: "T-78: History in pt_br: the reasons are in the interface language", expect: []string{"Histórico", "Tamanho de arquivo errado"}, steps: func(p *player) { p.openFromMenu(2) }},
+	{name: "history-ru", lang: "ru_ru", what: "T-78: History in ru_ru", expect: []string{"История", "Неверный размер файла"}, steps: func(p *player) { p.openFromMenu(2) }},
+	{name: "settings-es", lang: "es_es", what: "T-78: Settings in es_es: long labels wrap, none is cut", expect: []string{"Ajustes", "Descargas simultáneas"}, steps: func(p *player) { p.openFromMenu(3) }},
+	{name: "settings-ru", lang: "ru_ru", what: "T-78: Settings in ru_ru, the longest labels", expect: []string{"Настройки", "Одновременных загрузок"}, steps: func(p *player) { p.openFromMenu(3) }},
+	{name: "settings-ru-scrolled", lang: "ru_ru", what: "T-78: Settings in ru_ru, last page", expect: []string{"Подтверждать большие загрузки"}, steps: func(p *player) { p.openFromMenu(3); p.repeat(input.Down, 12) }},
 	{name: "quit-busy", what: "Quit with downloads running", expect: []string{"Keep downloading"}, steps: func(p *player) {
 		p.job(app.JobSnapshot{ID: "1", Slug: "mario-world", Title: "Super Mario World (USA)", State: app.StateTransferring, Bytes: 1 << 19, Expected: 1 << 20})
 		p.send(gui.QuitRequestMsg{})
@@ -344,7 +360,7 @@ func TestRenderScenes(t *testing.T) {
 				if sc.svc != nil {
 					svc = sc.svc()
 				}
-				p := newPlayer(t, font, w, h, svc, sc.confirm)
+				p := newPlayer(t, font, w, h, svc, sc.confirm, sc.lang)
 				sc.steps(p)
 				p.advance(400 * time.Millisecond) // past the dialog's input pause; covers and toasts settle
 				img, shown := drawAndRead(t, be, p.m, p.now, w, h)

@@ -2,6 +2,7 @@ package gui
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,7 +181,7 @@ func TestSettingsShowAServiceErrorUnderTheRowAndKeepTheValue(t *testing.T) {
 	svc.ConfigSetErr = map[string]error{"download.concurrency": &app.Error{Code: app.CodeInvalidConfig, Message: "out of range", Args: map[string]any{"key": "download.concurrency", "value": "3", "source": "file"}}}
 	h := openSettingsFromHome(t, svc, 1280, 720)
 	h.press(input.Right)
-	h.mustHave("Invalid setting download.concurrency=3 (from file).")
+	h.mustHave("Not saved: Invalid setting download.concurrency=3 (from file).")
 	if h.m.settingString("download.concurrency") != "2" {
 		t.Fatal("the old value stays")
 	}
@@ -319,4 +320,43 @@ func TestSettingsSecondPageHasLanguageConfirmAndTheCommandLineNote(t *testing.T)
 	}
 	h.press(input.Left) // the language row is not first any more: Right on it picks the first locale in place
 	h.press(input.Right)
+}
+
+// The lists that Settings opens name what they are about, since the scrim hides the screen that asked (Bússola, m3).
+func TestSettingsEditorsHaveATitle(t *testing.T) {
+	svc := settingsFixture()
+	h := openSettingsFromHome(t, svc, 1280, 720)
+	h.press(input.Down)
+	h.press(input.Confirm) // When a file exists
+	h.mustHave("When a file exists", "Skip", "Rename")
+	h.press(input.Back)
+	for i := 0; i < 2; i++ {
+		h.press(input.Down)
+	}
+	h.press(input.Confirm) // Preferred languages
+	h.mustHave("Preferred languages", "En", "+ Add")
+	h.press(input.Confirm) // En: its sheet is titled by the language
+	h.mustHave("En", "Move down", "Remove")
+}
+
+// A label that is wider than the column wraps to a second line instead of being cut, in the longest languages at
+// the smallest size (Bússola, m1).
+func TestSettingsLabelsAreNeverCut(t *testing.T) {
+	for _, lang := range []string{"es_es", "ru_ru", "pt_br"} {
+		svc := settingsFixture()
+		h := started(t, svc, 640, 480, func(o *Options) { o.T = shared.bundle.New(lang) })
+		h.press(input.Menu)
+		for i := 0; i < 3; i++ {
+			h.press(input.Down)
+		}
+		h.press(input.Confirm)
+		for i := 0; i < 12; i++ {
+			h.press(input.Down)
+		}
+		for _, line := range h.texts() {
+			if strings.Contains(line, "…") && !strings.Contains(line, "/") {
+				t.Errorf("%s: %q is cut", lang, line)
+			}
+		}
+	}
 }

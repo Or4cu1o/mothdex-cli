@@ -6,9 +6,8 @@ import (
 )
 
 // The Buttons overlay (docs/ux/gui.md section 5.11): the button map of the screen underneath, with the labels printed
-// on the pad in hand. It lists only the buttons that screen uses: A, then B, then the rest in the order of the hint bar
-// (with the words the hint bar uses, including the ones its fit rule drops), then L and R, Select and the D-pad, and
-// Start last.
+// on the pad in hand. It lists only the buttons that screen uses: A, then B, then Start, then the rest in the order of the
+// hint bar (with the words the hint bar uses, including the ones its fit rule drops), then L and R, Select and the D-pad.
 
 // screenHints are the hints of the screen under the overlay, before the hint bar drops any.
 func (m Model) screenHints() []hint {
@@ -60,12 +59,13 @@ func (m Model) buttonRows() []buttonRow {
 			rest = append(rest, row)
 		}
 	}
-	rows := append(append(first, rest...), shoulders...)
+	startRow := buttonRow{labels: []string{input.PositionLabel(input.Start, m.pad)}, word: m.tr("ui.gui.hint.menu", nil)}
+	rows := append(first, startRow) // A, B, then Start, then the rest in the order of the hint bar
+	rows = append(append(rows, rest...), shoulders...)
 	if m.screen != screenQueue { // Select opens the Queue from any screen but the Queue itself
 		rows = append(rows, buttonRow{labels: []string{input.PositionLabel(input.Select, m.pad)}, word: m.tr("ui.gui.menu.queue", nil)})
 	}
-	rows = append(rows, buttonRow{labels: []string{"↑", "↓", "←", "→"}, word: m.tr("ui.gui.buttons.move", nil)})
-	return append(rows, buttonRow{labels: []string{input.PositionLabel(input.Start, m.pad)}, word: m.tr("ui.gui.hint.menu", nil)})
+	return append(rows, buttonRow{labels: []string{"↑", "↓", "←", "→"}, word: m.tr("ui.gui.buttons.move", nil)})
 }
 
 func (m Model) openButtons() Model {

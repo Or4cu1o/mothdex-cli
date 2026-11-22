@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,3 +157,49 @@ func TestHistoryDownloadAnywayDoesNotQueueTheSameFileTwice(t *testing.T) {
 		t.Fatalf("the file went into the queue twice: %+v", svc.Requests())
 	}
 }
+
+// A failed record's reason is in the interface language for every code, with no placeholder and no English text left
+// (Bússola, M1): the codes that need values a record does not keep get a short reason of their own.
+func TestHistoryReasonsAreLocalizedForEveryCode(t *testing.T) {
+	codes := []string{"size_mismatch", "disk_full", "permission_denied", "exists", "path_rejected", "unsafe_name", "untrusted_url",
+		"untrusted_redirect", "upstream", "not_found", "unmapped_platform", "network", "integrity", "internal", "a_code_from_the_future"}
+	svc := zeldaService(1)
+	for i, c := range codes {
+		svc.Records = append(svc.Records, rec("r"+itoaT(i), "slug", "Title "+c, "failed", c))
+	}
+	h := started(t, svc, 1280, 720, func(o *Options) { o.T = shared.bundle.New("pt_br") })
+	openHistoryFromHome(t, h)
+	for i, c := range codes {
+		reason := h.m.recordReason(svc.Records[i])
+		if reason == "" || reason == "the file has the wrong size" || strings.Contains(reason, "{") {
+			t.Errorf("%s: %q", c, reason)
+		}
+		if c == "size_mismatch" && reason != "Tamanho de arquivo errado" {
+			t.Errorf("size_mismatch reads %q", reason)
+		}
+		if c == "a_code_from_the_future" && reason != "Falhou" {
+			t.Errorf("an unknown code reads %q, want the word for Failed", reason)
+		}
+	}
+}
+
+// Details of a record that wrote nothing say no size; the reason comes first, then what the service stored with its code.
+func TestHistoryDetailsOfAFailedRecordHaveNoSizeAndTheReasonFirst(t *testing.T) {
+	svc := historyService()
+	h := started(t, svc, 1280, 720, func(o *Options) { o.T = shared.bundle.New("pt_br") })
+	openHistoryFromHome(t, h)
+	h.press(input.Down) // Contra, size_mismatch
+	h.press(input.Confirm)
+	h.mustHave("Erro: Tamanho de arquivo errado", "the file has the wrong size [size_mismatch]")
+	h.mustNotHave("Tamanho: 0 B")
+}
+
+// With no records the hint bar offers only the filter and Back.
+func TestHistoryEmptyHintsAreOnlyTheFilterAndBack(t *testing.T) {
+	h := started(t, zeldaService(1), 1280, 720)
+	openHistoryFromHome(t, h)
+	h.mustHave("Failed only", "Back")
+	h.mustNotHave("Details", "Page")
+}
+
+func itoaT(n int) string { return strconv.Itoa(n) }

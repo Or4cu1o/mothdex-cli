@@ -211,7 +211,13 @@ func (m Model) historyFrame() frameSpec {
 	back := m.tr("ui.gui.hint.back", nil)
 	switch {
 	case m.history.details != "":
-		spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.select", nil)}, {role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
+		spec.hints = []hint{{role: input.Confirm, label: m.tr("ui.gui.hint.choose", nil)}, {role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
+	case len(m.historyRows()) == 0: // nothing to open or page: only the filter and Back
+		toggle := m.tr("ui.gui.hint.failed_only", nil)
+		if m.history.failedOnly {
+			toggle = m.tr("ui.gui.hint.show_all", nil)
+		}
+		spec.hints = []hint{{role: input.Info, label: toggle}, {role: input.Back, label: back}}
 	default:
 		toggle := m.tr("ui.gui.hint.failed_only", nil)
 		if m.history.failedOnly {
@@ -288,13 +294,34 @@ func recordDate(r app.HistoryRecord) string {
 	return t.Local().Format("2006-01-02 15:04")
 }
 
+// shortReasons are the codes whose localized message needs values a history record does not keep (the sizes, the
+// path, the host): they get a short reason of their own, ui.gui.history.why.<code>, in every language.
+var shortReasons = map[string]bool{
+	"size_mismatch": true, "disk_full": true, "permission_denied": true, "exists": true, "path_rejected": true, "unsafe_name": true,
+	"untrusted_url": true, "untrusted_redirect": true, "upstream": true, "not_found": true, "unmapped_platform": true,
+}
+
+// failureReason is why a record failed, in the interface language and with no placeholder left over: a short reason
+// for the codes above, errors.<code>.message for the others, and "Failed" for a code this version does not know.
+func (m Model) failureReason(code string) string {
+	if shortReasons[code] {
+		return m.tr("ui.gui.history.why."+code, nil)
+	}
+	if key := "errors." + code + ".message"; m.o.T.Has(key) {
+		if text := m.o.T.T(key, nil); !unfilled.MatchString(text) {
+			return app.SanitizeText(text)
+		}
+	}
+	return m.tr("ui.status.failed", nil)
+}
+
 // recordReason is the short reason under a record that did not finish normally, in the interface language.
 func (m Model) recordReason(r app.HistoryRecord) string {
 	switch {
 	case consent.RecordNeeded(r):
 		return m.consentRow(consent.RecordJob(r, ""))
 	case r.State == string(app.StateFailed) && r.Error != nil:
-		return m.failureOf(&app.Error{Code: r.Error.Code, Message: r.Error.Message}).msg
+		return m.failureReason(r.Error.Code)
 	case r.State == string(app.StateSkipped):
 		return m.tr("ui.status.skipped", nil)
 	case r.State == string(app.StateCanceled):
@@ -348,11 +375,12 @@ func (m Model) drawHistoryDetails(p painter) {
 	}
 	add("file", app.SanitizeText(rec.Filename))
 	add("path", app.SanitizeText(rec.Path))
-	size := humanSize(rec.Bytes)
-	if consent.RecordNeeded(rec) {
-		size = humanSize(rec.ContentLength) // nothing was transferred: the size is the real one the person is asked about
+	switch { // nothing written, nothing to say: only a record that stopped on its size has a size to show
+	case consent.RecordNeeded(rec):
+		add("size", humanSize(rec.ContentLength)) // the real size the person is asked about
+	case rec.Bytes > 0:
+		add("size", humanSize(rec.Bytes))
 	}
-	add("size", size)
 	if rec.SHA256 != "" {
 		add("sha", app.SanitizeText(rec.SHA256[:min(detailHashLen, len(rec.SHA256))])+"…")
 	}
@@ -362,7 +390,10 @@ func (m Model) drawHistoryDetails(p painter) {
 	case consent.RecordNeeded(rec):
 		add("status", m.consentRow(consent.RecordJob(rec, ""))+" ["+app.SanitizeText(rec.Error.Code)+"]")
 	case rec.Error != nil:
-		add("error", m.recordReason(rec)+" ["+app.SanitizeText(rec.Error.Code)+"]")
+		add("error", m.recordReason(rec))
+		if msg := app.SanitizeText(rec.Error.Message); msg != "" { // what the service stored, with the code, for support
+			lines = append(lines, msg+" ["+app.SanitizeText(rec.Error.Code)+"]")
+		}
 	}
 	maxW := min(met.Safe.W-4*u, 28*met.Body)
 	var wrapped []string

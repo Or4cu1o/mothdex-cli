@@ -251,7 +251,7 @@ func (m Model) onConfigSet(msg configSetMsg) (Model, []Cmd) {
 		changed[k] = v
 	}
 	if msg.err != nil {
-		errs[msg.row] = m.failureOf(msg.err).msg
+		errs[msg.row] = m.tr("ui.gui.settings.not_saved", map[string]any{"message": m.failureOf(msg.err).msg})
 		s.errs, s.changed = errs, changed
 		if s.ed != nil && s.ed.kind != edMargin { // the working copy may be wrong now: close the editor, the list shows the truth
 			s.ed = nil
