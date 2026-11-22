@@ -258,17 +258,15 @@ func TestNarrowHomeIsTwoByThree(t *testing.T) {
 	}
 }
 
-// The screens behind the tiles are in the next pull request: a tile says so, and the toast ends after 3 s.
-func TestATileThatIsNotBuiltYetSaysSoInAToast(t *testing.T) {
+// A toast ends after 3 s (a failed download raises one while the person is on Home).
+func TestAToastEndsAfterThreeSeconds(t *testing.T) {
 	h := started(t, guitest.New(), 1280, 720)
-	h.press(input.Down)
-	h.press(input.Right) // History
-	h.press(input.Confirm)
-	h.mustHave("History is not available yet.")
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Title: "Contra (USA)", State: app.StateFailed, Err: &app.Error{Code: app.CodeNetwork, Message: "down"}}})
+	h.mustHave("Download failed: Contra (USA)")
 	h.advance(2900 * time.Millisecond)
-	h.mustHave("History is not available yet.")
+	h.mustHave("Download failed: Contra (USA)")
 	h.advance(200 * time.Millisecond)
-	h.mustNotHave("History is not available yet.")
+	h.mustNotHave("Download failed: Contra (USA)")
 }
 
 func TestRecentSearchesComeFromTheSharedStateFile(t *testing.T) {
@@ -366,15 +364,18 @@ func TestStartMenuQuitWithNothingRunningQuitsWithoutADialog(t *testing.T) {
 	}
 }
 
-func TestStartMenuItemsThatAreNotBuiltYetSayso(t *testing.T) {
+func TestStartMenuOpensHistoryAndClosesItself(t *testing.T) {
 	h := started(t, guitest.New(), 1280, 720)
 	h.press(input.Menu)
 	h.press(input.Down)
 	h.press(input.Down) // History
 	h.press(input.Confirm)
-	h.mustHave("History is not available yet.")
-	if h.m.overlay != overlayNone {
-		t.Fatal("the menu must close")
+	if h.m.screen != screenHistory || h.m.overlay != overlayNone {
+		t.Fatalf("screen %d overlay %d: the menu closes and History opens", h.m.screen, h.m.overlay)
+	}
+	h.press(input.Back)
+	if h.m.screen != screenHome {
+		t.Fatalf("B returns to Home, got screen %d", h.m.screen)
 	}
 	h.press(input.Menu)
 	h.press(input.Back)
@@ -655,9 +656,7 @@ func TestNextWakeIsTheNearestTimer(t *testing.T) {
 	if _, ok := h.m.NextWake(h.now); ok {
 		t.Fatal("a calm Home needs no frames")
 	}
-	h.press(input.Down)
-	h.press(input.Right) // History: not built yet, so it answers with a toast
-	h.press(input.Confirm)
+	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Title: "Contra (USA)", State: app.StateFailed, Err: &app.Error{Code: app.CodeNetwork, Message: "down"}}}) // raises a toast
 	if wake, ok := h.m.NextWake(h.now); !ok || wake.Sub(h.now) != toastFor {
 		t.Fatalf("a toast ends in 3 s: %v %v", wake.Sub(h.now), ok)
 	}
