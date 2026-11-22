@@ -7,7 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-22
+
 ### Added
+
+- T-67 (Medium, test and CI only), GUI render harness: `TestRenderScenes` (`internal/ui/gui/sdl`, tag `gui`, skipped unless `GUI_RENDER_DIR`
+  is set) draws 16 screens (Home and its menu, Search, Results, Entry, the Queue with its sheet and details, the "Download anyway"
+  row, sheet, dialogs and toast of T-56, the busy quit dialog) at 640x480, 1280x720 and 1920x1080 with the real SDL2 software renderer
+  and the pinned Noto Sans, and writes them as PNG files with an `index.txt`. It compares nothing with a stored image. Each scene lists
+  texts its screen must show (`expect`), so a focus or an order that drifts, or a build without the feature, fails the test instead of
+  writing a PNG of the wrong screen; it also fails when SDL cannot draw or a frame is blank. The new workflow `gui-render.yml` runs it on every pull request (no `paths:` filter, job
+  `render (linux/amd64, SDL2 software renderer, Noto Sans)`, so it can be a required check) and uploads the folder as the artifact
+  `gui-renders`. Run it by hand: `GUI_RENDER_DIR=/dir SDL_VIDEODRIVER=dummy go test -tags gui -run TestRenderScenes ./internal/ui/gui/sdl`.
+- T-81 (Bússola): `DESIGN.md` sets the GUI visual identity "Night moth arcade" (D28 8b, D29). It takes the
+  mothdex.net night palette with a retro-game layer: a pixel grid, stepped corners, the Handjet display face (OFL,
+  Latin and Cyrillic) for short labels, a menu cursor, framed windows, a segmented progress bar, a pixel spinner, a
+  still night sky on Home, and an original moth sprite. Contrast is measured, and four mocks are in
+  `docs/ux/mocks/`. `PRODUCT.md` holds the product record. The owner approved both (D30). gui.md §1.3 and §1.5 point to
+  `DESIGN.md`. Nothing is implemented yet.
+- T-79: the release (and the snapshot check) builds `mothdex-gui_<version>_<os>_<arch>` archives for linux amd64, arm64, armv7, armv6 and windows amd64 (gui tag,
+  `CGO_ENABLED=0`, the armhf loader on arm), with SBOMs, in `checksums.txt` and covered by the same cosign signature and attestation. Members are exactly what the installers
+  extract: the binary, `LICENSE`, `README.md`, `CHANGELOG.md`, the files of `THIRD_PARTY/` and, on Windows, the pinned `SDL2.dll` (`scripts/fetch-sdl2-windows.sh`: exact URL,
+  SHA-256 checked before extraction, never cached). `scripts/verify-dist.sh` checks members, loader and build flags; `scripts/check-gui-archives.sh` runs `install.sh`
+  (real install on amd64, dry runs on the arm archives) and the member rules of `install.ps1` against the snapshot archives and, in the release workflow, the real tag archives; `verify-dist.sh` also refuses non-regular members by type. Not built: GUI for 386, macOS and Windows on Arm.
+- T-80 (Medium, GUI): the controller notices of `docs/ux/gui.md` 2.3 and the controller name and GUID in Settings › About (copy by Bússola in four
+  languages; spec in cli#102).
+  - The SDL backend now tracks every joystick, mapped or not (`SDL_JOYDEVICEADDED` and `REMOVED`, `SDL_JoystickNameForIndex`,
+    `SDL_JoystickGetDeviceInstanceID`, `SDL_JoystickGetDeviceGUID`), and reports the whole list at start (also when it is empty) and on each plug or
+    unplug (`input.IncomingPadList`, `gui.PadsMsg`). The two new events are in the constants check. The GUID is a 16-byte struct that purego can
+    return only on amd64 and arm64, so on 32-bit ARM and x86 it stays unbound and About says `GUID: Unavailable on this system`. It is declared as two 64-bit words, not as the C
+    struct with an array (purego panics on that one), and a failure of the call never takes the GUI down; a test attaches a virtual joystick to the real
+    SDL and checks the GUID against `SDL_JoystickGetGUIDString`.
+  - With no controller SDL can use, a warn toast says `Connect a controller. On a keyboard: arrows, Enter, Esc.` once when that state appears
+    (after the first report, and when the last pad goes away), and the top bar keeps the badge `No controller` (never cut) for as long as it lasts.
+  - A joystick SDL has no mapping for gets a warn toast once per device per session that names it and points to Settings › About; a long name is the
+    only thing cut. Notices show one at a time; one that comes during the Splash or while another toast is on screen waits.
+  - About lists each joystick as a group (`Controller: <name>`, under it, indented, the whole path of the `gamecontrollerdb.txt` to add a mapping to
+    for an unknown one in the warn color, and `GUID: <guid>`), or `None connected`; with more joysticks than fit, Up and Down scroll it.
+  - 8 render scenes (the toast and badge, in ru_ru, a long device name, About with one, four and eight controllers, and without).
+  - The Home title no longer panics when the right side of the top bar leaves it too little room (the new badge exposed it).
+  - Top bar fit (decided by Bússola): when the bar does not fit even with the short forms, items are hidden in this order until it fits: the pending-quit
+    notice (the Start menu keeps Don't quit), the screen's dim extra (History count, Results page), then the queue badge, on every screen. Offline, No
+    controller and the screen name in the title are never cut or hidden; the test covers Home, History, Settings and Results in four languages.
+- T-78 (Medium, GUI PR 3): the History and Settings screens and the Buttons overlay of `docs/ux/gui.md` 5.9 to 5.11 (copy by Bússola in
+  four languages; the other locales fall back to English).
+  - **History** (Home tile or Start menu): every record newest first, from `History{}` read on open and after each terminal event; `Y` toggles
+    All and Failed only; `A` opens Details with Download again and Close. Download again queues the same entry and link, or says
+    `Already queued again.` when it is already in the Queue. A record that stopped on its real size (`confirmation_required`, with the
+    Content-Length the history keeps) offers Download anyway instead and opens the T-56 dialog with the size shown, so it asks again
+    rather than going out with no consent (backlog `history-retry-consent`); the TUI History does the same with a `[y/N]` question. A reason
+    that does not fit the row wraps to a second line, and Details has the full text.
+  - **Settings** through the config contract (`ConfigList`, `ConfigSchema`, `ConfigSet`, `ConfigReset`, `CacheStats`, `CacheClear`): every row
+    of the table, with Left/Right to change a stepper or a list in place, `A` to open a list or flip a toggle, `X` to reset a value that
+    comes from the file, the ordered editor of the preferred languages, the calibration view of the screen margin (corner brackets, live
+    percent, `A` saves, `B` cancels), Clear cache with Keep as the default, and read-only System and About. A value set by the environment or a
+    flag is read-only with `Set by <variable>` in the hint bar; `overwrite` is shown read-only and never offered or written; a service error
+    shows under its row and the old value stays; values that apply on the next start say so. The settings the GUI consumes (confirm button,
+    text size, margin, cover art, confirm large downloads, preferred languages and size) apply at once. A test keeps the table in step with
+    the schema (keys, ranges, values).
+  - **Buttons** overlay: the buttons of the screen underneath with the labels of the pad in hand and the words of that screen's hint bar.
+  - Review (Bússola, Crivo): a history reason is in the interface language for every code (a short `ui.gui.history.why.<code>` for the eleven
+    whose message needs values a record does not keep, `Failed` for an unknown code); Details of a record that wrote nothing has no size line and
+    shows the reason first, then what the service stored with its code; the hint bar of an empty History offers only the filter and Back; the lists
+    of Settings are titled with the setting (the language for its item sheet); long Settings labels get a wider column or wrap instead of being
+    cut; `A` in a sheet or list reads `Select` as `Escolher`/`Elegir`/`Выбрать` (`ui.gui.hint.choose`); a service error under a row reads
+    `Not saved: ...`; the inline Clear is a pill; Buttons lists Start after A and B; Download anyway from the history asks nothing and queues
+    nothing for a file that is already queued.
+  - The D-pad hints (`Left`/`Right`, the Move row) are drawn as triangles: the font has no arrows.
+  - 23 render scenes of these screens in the T-67 harness (five of them in pt_br, es_es and ru_ru), each listing the texts it must show.
+  - Not in this change: the controller notices of 2.3 and the controller name and GUID in About (they need two more SDL calls).
+- T-73 (High, PRT-G3 of `ports.md`; Sentinela T-70 IC-10 and IC-13): `mothdex-gui --probe` is the eligibility check the installer runs. It
+  loads SDL2 as a normal start does and checks the version; it opens no window, starts no video or input subsystem, reads no
+  configuration and writes no file or log (nothing runs before it but flag parsing). It prints `sdl X.Y.Z` and exits 0, or one line of
+  reason on stderr (control characters removed, at most 200 bytes) and exits 1; it also gives up by itself after 15 s, so a library that
+  blocks does not hang the installer. The old full check of the binding is now `-spike` (an executable named `mothdex-gui-probe` still
+  does it with no flag, so the CI legs are unchanged). The start-up log has one `gui: diagnostics` line: the SDL version and the video
+  driver, `LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`, the two `SDL_GAMECONTROLLERCONFIG*` variables, `LD_PRELOAD` and `SDL_DYNAMIC_API` as `set` or
+  `unset` on every system, the values of `SDL_VIDEODRIVER`, `LANG` and `LC_ALL` only when they are plain words, the mapping lines added from
+  each source and the type of each controller; no path and no other value. The spike jobs check `--probe` with and without SDL2 on Linux
+  (scrubbed environment, `timeout 20`) and on Windows (the environment `install.ps1` gives it).
+- `mothdex-gui --probe` and the start-up diagnostics line say where SDL2 was loaded from, as one word and never a path: `system`
+  (a standard library directory), `ld_library_path` (a directory named in `LD_LIBRARY_PATH`), `other` or `unknown`; on Windows the
+  word is absent (`n/a` in the diagnostics line). `--probe` prints `sdl 2.32.10 system` in one sanitized line of at most 200 bytes.
+  On EmuELEC the Port inherits `/emuelec/lib` first while the probe runs scrubbed, so the two can load different libraries; the word
+  makes that visible (PRT-G9, B12). The word comes from the process's own memory map, with no file written.
+- The diagnostics line logs `LANGUAGE` as its first colon-separated entry only, as a word (PRT-G10, for the locale resolver).
+- Settings > System shows the storage warnings of the profile (PRT-G11) as lines of their own in the warn color, with no
+  "Not verified" prefix: a RAM disk is not a verification problem, and the Verified line does not depend on it. They are the
+  plain texts that profile detection gives (`Games folder is on a RAM disk: ...`, `Data folder is on a RAM disk: ...`).
+  A render scene (`settings-system-ram`) shows it at the three sizes.
+- T-90 (ports.md PRT-G11): when the games folder or the data folder is on a RAM disk (Batocera falls back to a 256 MiB
+  tmpfs when its storage does not mount), the CLI says so at the start of every command and in `profile show` and
+  `profile detect` (text and the `warnings` list of `--json`). The profile result has a new `StorageWarnings` field, kept
+  apart from `Warnings` so a RAM disk does not make the profile "not verified"; the GUI reads the field in a separate change.
 
 - T-71: Ports in `install.sh` and `install.ps1` (ports.md, threat model T-70, IC-1 to IC-13). When the release's verified `checksums.txt`
   lists a `mothdex-gui_<version>_<os>_<arch>` archive for the machine, the installer downloads and verifies it like the CLI archive, extracts by
@@ -28,6 +120,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a test fails when either installer's list and the files of `THIRD_PARTY/` differ. A Pester case kills a hanging probe after 20 seconds.
 
 ### Changed
+
+- T-76: a pull request no longer edits `CHANGELOG.md`: it adds `changes/<branch>.md` (see `changes/README.md`), and the release step runs
+  `scripts/changelog-fold.sh` to fold the fragments into `CHANGELOG.md` and delete them, so open pull requests stop conflicting on the changelog. CI checks
+  the fragments with `scripts/changelog-fold.sh --check`. `AGENTS.md`, `CONTRIBUTING.md`, the pull request template and the release checklist say so.
+  The existing `CHANGELOG.md` content is untouched.
+- T-77: `api-client.md` §3 maps the upstream error codes (cavv-dev/mothdex-api `7a87af9`): the HTTP status decides
+  first, then `info.error` as an exact code, with the old message form kept for backward compatibility; unknown codes
+  are `KindAPI`; `RATE_LIMIT_ERROR` follows the 429 rules; `Error.Code` is new; `info.message` is untrusted, capped,
+  logged sanitized and never shown as the error text.
+- T-80 (Bússola): `docs/ux/gui.md` v1.5 §2.3 sets the controller notices:
+  - No controller: a once-only `warn` toast, plus a `No controller` top bar badge that is never cut while no pad is
+    connected.
+  - An unmapped pad: a toast pointing to Settings › About.
+  - About shows each pad's name and GUID, and the full `<data dir>/gamecontrollerdb.txt` path for an unmapped pad. The
+    path is in the data dir, not the config dir.
+  - On 32-bit platforms the GUID reads `Unavailable on this system`.
+- T-78 review (Bússola): `docs/ux/gui.md` v1.4 records what GUI PR 3 settled in review:
+  - D-pad arrows drawn as triangles in the button pill.
+  - History reasons as short texts without placeholders (`ui.gui.history.why.<code>`).
+  - Fixed 3-line History rows, and Details with the full message and no Size line when nothing was written.
+  - The Settings label column (44-55 % of the row, wraps to 2 lines), titled lists, read-only rows without the
+    stepper, and the `Not saved:` prefix for setting errors.
+- T-78 (Bússola): `docs/ux/gui.md` v1.3 records the GUI PR 3 decisions before the code lands. History gets the filter
+  hint and count, a reason wrapped to 2 lines, a stopped record shown like the Queue, Details buttons and an empty text
+  for `Failed only`. Settings gets the confirm button shown as `Bottom (A)` and `Right (B)` (config values unchanged),
+  `Any` for no language, locale names in their own language, locale percent format, scrolling with section headers
+  kept with their rows, and the source column dropped at compact. The calibration view is detailed (brackets, percent,
+  help line, a hint bar that moves with the margin), and the Buttons overlay reuses each screen's hint labels.
+- T-80 and T-83 review outcomes (Bússola):
+  - `docs/ux/gui.md` §4 Top bar fit sets the give-way order on every screen: first the pending-quit notice, then the
+    screen's dim extra, then the queue badge. `Offline`, `No controller` and the screen name are never hidden.
+  - `DESIGN.md` adds `display.small` (Handjet at `body` x 1.35) for the Settings section headers, with their spacing.
+  - The on-screen keyboard is no longer listed as a framed window.
+  - The spinner is described as a 3 x 3 ring as tall as the text line, as implemented in cli#104.
+- T-88 contract text: `ports.md` follows D32: the `v3` launcher runs `mothdex-gui` only and is written only when the GUI is
+  installed; without the GUI a marked launcher is removed; §5.1 flag table, §5.2, §5.4, §5.5, §5.6, B10 and §11 updated;
+  PRT-G8 to G12 marked done; §4 says what the `ld_library_path` origin word does and does not mean. `docs/research/T-84-ports-open-questions.md` gains Sonda's T-91
+  section (EmuELEC `/emuelec/lib*` are writable override directories), reflected in §2.3.
+- T-83: `ports.md` §5.6 states the installer and release rule for notices: a newer installer accepts an older release, an
+  older installer refuses a release that adds a notice (fail closed), and the release notes say to fetch the installers from
+  the tag. §6 no longer lists the SDL2, purego and `x/image` notices as missing.
+- T-87: `ports.md` §9 answers OQ-PRT-1 to OQ-PRT-9 from Sonda's T-84 research (now `docs/research/T-84-ports-open-questions.md`),
+  each with its confidence and source; §2 to §8 follow: a Port has no terminal, EmuELEC prepends `/emuelec/lib:/emuelec/lib32`
+  to `LD_LIBRARY_PATH` and exports `SDL_GAMECONTROLLERCONFIG_FILE`, Batocera passes `SDL_GAMECONTROLLERCONFIG` and its locale,
+  Batocera runs a Port with `bash`, EmuELEC 4.8 is aarch64-only, and `HOME` falls back to RAM when storage fails. The beta items
+  gain tester steps and B11 to B13; §10 proposes PRT-G8 to PRT-G12. Recalbox keeps `launcher: none`; OQ-PRT-10 stays deferred.
+- T-73: `ports.md` §5.2 records that `mothdex-gui --probe` gives up by itself after 15 s, inside the installer's 20 s bound.
+- The GUI has the "Night moth arcade" look of `DESIGN.md` (D30). Colors: the new `bg`, `surface`, `surface.raised`, `frame`, `focus.bg`, `focus.ring`, `text`, `text.dim`, `moth`, `ok`,
+  `warn` and `error` tokens. Shapes snap to a pixel cell P (2, 3 or 4 by size): tiles, rows, keys, bars, windows and buttons have a
+  2-step notch at each corner, discs and pills a 3-step one, the focus ring is stepped outside the element, windows are `surface.raised`
+  with a P frame over the scrim, and the ring width and progress height round to a multiple of P.
+  - A menu cursor (a pixel arrow in the focus color) shows on the focused item of the Start menu, the action sheets and the choice lists;
+    their text starts at 3u.
+  - The progress bar is segmented (blocks of 3P with a P gap); the spinner is eight blocks around an empty centre, a cell apart, as tall as the
+    line of text beside it, one step per 100 ms; the check, cross, exclamation, dash and the arrows of the hint bar are drawn on the pixel grid.
+  - The wordmark `mothdex` is in the moth color and the crumbs after it in the text color. The moth sprite (two frames by Aquarela, T-83a,
+    embedded and pinned in `internal/ui/gui/assets/PINS.md`; project-owned art, no notice) sits before the wordmark on Home and the
+    splash, where its wings flap every 250 ms.
+  - Home and the splash have a sky of still specks (one per about 5,200 px², seeded positions, never over a surface or text, inside the
+    safe rectangle).
+  - No tweening was ever there; nothing moves except the spinner and the splash moth.
+- The render harness has the Splash (both wing frames, and in ru_ru) and the exit screen as scenes, for all three sizes.
+- The display face is Handjet (SIL OFL 1.1, default instance, subset to Latin and Cyrillic, 54,900 bytes, pinned to a `google/fonts`
+  commit in `internal/ui/gui/assets/PINS.md`). It draws the short labels only: the top bar title and wordmark, the Home tile labels, the
+  Settings section headers (body x 1.35, with 1u above and half a unit below) and the calibration percent, at 35, 46 and 68 px (title x 1.35; the large text setting scales it like the
+  others). Sentences, rows and game titles stay in Noto Sans, and a label with a glyph Handjet lacks is drawn whole in Noto Sans at the
+  title size. The notice is `THIRD_PARTY/Handjet-OFL-1.1.txt`, the 7th file: `install.sh`, `install.ps1` and their tests list it, and the
+  contract lines (`ports.md` section 6, `gui.md` section 3) name it. Release note: an `install.sh` or `install.ps1` downloaded before
+  that release stops on the unknown notice file by design (fail closed), so fetch both installers from the release tag.
+- T-88 (PRT-G8, D32): the Port launcher is written only when the GUI is installed, as a `v3` template that runs `mothdex-gui` and nothing else (a Port has no terminal, so the `mothdex tui` fallback is gone). Without the GUI
+  (not eligible, a probe error, `--no-gui`, no GUI archive for the machine) no launcher is written, and an existing launcher that carries one of our markers (`v1`, `v2` or `v3`) is removed with a note and the frontend is asked
+  to reload; a file without our marker, or a link, is never touched. A `v2` launcher is upgraded to `v3` when the GUI is installed; `--no-launcher` still stops the installer from writing or rewriting it; uninstall removes a marked
+  launcher of any version. `--launcher` is kept and means the default. D22 now reads "launcher on when the GUI is installed". `install.sh` and `install.ps1` (RetroBat `Mothdex.bat`) with the tests for every path (fresh, upgrade from
+  `v2`, `--no-gui`, a failing probe, no GUI archive, `--no-launcher`, no marker, a link, dry run).
+- T-77: the API client reads the upstream error codes (cavv-dev/mothdex-api 7a87af9): `info.error` is a code and
+  `info.message` the human text. `ENTRY_NOT_FOUND` is not found; `INVALID_API_VERSION` is incompatible;
+  `MALFORMED_JSON`, `INVALID_JSON_OBJECT`, `MISSING_REQUIRED_FIELDS`, `INVALID_FIELD_TYPE` and `INVALID_INPUT` are
+  invalid requests; `DB_OPERATION_ERROR`, `DB_ERROR` and `UNEXPECTED_ERROR` are upstream errors and are retried;
+  `RATE_LIMIT_ERROR` takes the same wait and circuit as an HTTP 429 (it reads `Retry-After`); `HTTP_ERROR` and any
+  unknown code are a generic API error. The old message-text form still works. The new `Error.Code` holds the raw code;
+  the message is cleaned, capped at 512 bytes, kept out of the localized text, never used for logic, and capped at
+  200 bytes in the verbose cause. The unused `info.code` forward-compat field is no longer read. No new i18n key: the
+  user-facing text is still per error kind. A code in the body of any non-200 answer is recorded too (the status still
+  decides the kind), and an explicit `info.error: null` is a decode failure, as in api-client 3.1.
 
 - T-75: the cover fetcher's address filter blocks all of `::/8` (it only had `::/96`) and the unassigned rest of
   `64:ff9b::/32`; the well-known NAT64 `/96` is still judged by its embedded IPv4 address, so DNS64 networks keep
@@ -443,6 +619,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependabot for Go modules and GitHub Actions.
 
 ### Fixed
+
+- On Windows the GUI window is shown and raised explicitly after it is created: a process started hidden (RetroBat runs the Port's
+  `.bat` with a hidden window style) can have the first show call answered with the start-up show state, so the window never appeared.
+  It asks again once if the window is not shown, and logs how many calls it took (`sdl: window shown`, for B11) (PRT-G12).
+- `mothdex-gui --probe` and the diagnostics line read a relative `LD_LIBRARY_PATH` entry from the current directory, as the
+  loader does: `LD_LIBRARY_PATH=lib` with the library in `./lib` is `ld_library_path`, not `other`.
+- T-72 (High, DLL planting; Sentinela T-70, IC-8): on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories` with the application folder
+  and System32 before it loads `SDL2.dll`, and does not load it if the call fails. `LoadLibraryEx` with those flags already protected
+  `SDL2.dll`, but SDL loads `vulkan-1`, `opengl32`, `XInput` and `hid` later with a plain `LoadLibrary`, which searches the working
+  directory and `PATH`. `TestPlainLoadLibraryIgnoresThePathAndTheWorkingFolderOnceSDLIsOpen` plants a DLL in both and checks that a plain
+  load does not find it while a DLL beside the executable and a System32 DLL the process does not already hold (`winhttp.dll`) still load;
+  the Windows job of `gui-spike.yml` runs it as its own named step. A failure to restrict the search path has its own error, `ErrSearchPath`,
+  not `SDL2 was not found`. IC-13 (the diagnostics line) is in T-73.
+- T-90 (ports.md PRT-G10): the interface language also follows the first entry of `LANGUAGE` when `LC_ALL`, `LC_MESSAGES`
+  and `LANG` are all unset, or the one that decides is `C` or `C.UTF-8` (EmuELEC sets `LANG=C.UTF-8` and keeps the
+  language only in `LANGUAGE`). A `C` locale with no `LANGUAGE` is still English, and a real language in `LC_ALL`,
+  `LC_MESSAGES` or `LANG` still wins.
 
 - `download` with no `-o` and no `download.dir`, when the profile's default ROM folder does not exist, now fails with `path_rejected` (exit 6) and a hint that names the folder and the two ways out (`-o <folder>` or `mothdex config set download.dir <folder>`), instead of a generic `invalid_request` with an unrelated hint (T-26, from Ensaio's T-43 S5). The folder is not created for the user.
 - Shell (T-41-fix, from the T-43 acceptance, S1): `info` and `boxart` with a list or a range (`info 2-3`, `boxart 1-2`) now run once for each entry with the same flags,
