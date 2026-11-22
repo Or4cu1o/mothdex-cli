@@ -105,6 +105,11 @@ staging file.
    it, or the job ends the same way. Interactive UIs offer **Download anyway**, which re-queues that one job with
    `SizeConsent = cl`; non-interactive runs fail unless `-f/--force` (cli-output §1). No body byte is written
    without consent at the real size, and no worker waits on a prompt.
+   - **Estimate already above the threshold (T-64, D28 7a):** with `interface.confirm_downloads` on and
+     `link.size > 500 MB`, the user confirmed that estimate once, so the default rule replaces the `link.size ≤ 500 MB`
+     condition above: it asks again only when `cl > 2 × link.size` (`cl = 2 × link.size` passes). The job ends
+     `Failed(confirmation_required)` with `cl` in the event, as above. `ConsentAny` skips it; an exact `SizeConsent`
+     still must equal `cl`. Compare as `cl > size && cl - size > size` (no overflow).
    - **Threshold:** 500 MB is the same constant as the cli-conventions §6 prompt, `524 288 000` bytes (sizes are
      binary-based, §5 there), so the two gates cannot disagree.
    - **`ConsentAny` follows `compose.startupGrants`:** only a per-command `-f/--force` sets it. A `-f` given when the

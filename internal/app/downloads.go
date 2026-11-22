@@ -30,7 +30,8 @@ type DownloadRequest struct {
 	Link    LinkSelector
 	DestDir string // "" = download.dir if set, else the active profile's folder for the platform
 	// SizeConsent is the consent for the real size (downloader.md 3.2 step 6): 0 is the default rule
-	// (a download whose Content-Length alone crosses 500 MiB fails with confirmation_required), ConsentAny
+	// (a download whose Content-Length alone crosses 500 MiB, or is over 2x a link.size that was already above
+	// 500 MiB, fails with confirmation_required), ConsentAny
 	// is -f/--force of that command, a value above 0 is the exact Content-Length accepted through
 	// "Download anyway". A UI sets ConsentAny only from a flag of the command being run, never from a
 	// start-up flag of a session (the startupGrants rule of ui.md 2.1).

@@ -213,6 +213,39 @@ func TestCase32dConfirmationAtTheRealSize(t *testing.T) {
 	})
 }
 
+// T-64: a catalog size already above the threshold was confirmed once; a real size over 2x it asks again.
+func TestCase32eSecondConfirmationOverTwiceTheEstimate(t *testing.T) {
+	cfg := proxy.Config{ConfirmDownloads: true, ConfirmBytes: 10_000}
+	run := func(t *testing.T, consent int64, cl int) proxy.Result {
+		t.Helper()
+		r := newRig(t, cfg)
+		r.srv.Script("/f/b", fakeproxy.OK(fakeproxy.Pattern(cl)))
+		job := r.job("/f/b", "b.zip", 15_000) // above the threshold: the batch prompt covered it
+		job.SizeConsent = consent
+		return r.download(job)
+	}
+	if res := run(t, 0, 30_000); res.State != proxy.StateDone {
+		t.Fatalf("2x passes: %+v err %v", res, res.Err)
+	}
+	wantFailed(t, run(t, 0, 30_001), proxy.CodeConfirmationRequired)
+	if res := run(t, proxy.ConsentAny, 30_001); res.State != proxy.StateDone {
+		t.Fatalf("ConsentAny passes: %+v err %v", res, res.Err)
+	}
+	if res := run(t, 30_001, 30_001); res.State != proxy.StateDone {
+		t.Fatalf("the exact consent passes: %+v err %v", res, res.Err)
+	}
+	// the edge of the new branch: the smallest estimate above the threshold
+	edge := func(cl int) proxy.Result {
+		r := newRig(t, cfg)
+		r.srv.Script("/f/b", fakeproxy.OK(fakeproxy.Pattern(cl)))
+		return r.download(r.job("/f/b", "b.zip", 10_001))
+	}
+	if res := edge(20_002); res.State != proxy.StateDone {
+		t.Fatalf("edge 2x passes: %+v err %v", res, res.Err)
+	}
+	wantFailed(t, edge(20_003), proxy.CodeConfirmationRequired)
+}
+
 // Case 35 (T-27): the claim made for link.size is swapped for Content-Length before the body.
 func TestCase35ClaimFollowsContentLength(t *testing.T) {
 	t.Run("a larger Content-Length fails disk_full before the first body byte", func(t *testing.T) {
