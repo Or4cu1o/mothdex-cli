@@ -372,16 +372,16 @@ func TestCatalogReadIsCappedWhateverTheStatSaid(t *testing.T) {
 	}
 }
 
-// T-74 S2 through the loader: the warning of a skipped file carries no control character even though the
-// YAML error echoes the file text.
+// T-74 S2 through the loader: the YAML error of a duplicate key spans two lines and the parser echoes that
+// newline raw, so the warning of the skipped file must come out on one line.
 func TestLoaderWarningsAreSanitised(t *testing.T) {
-	bad := fstest.MapFS{"fr_fr.yaml": {Data: []byte("a: [\x1b]52;c;AAAA\x07" + bidi + " " + lineSep + "\n")}}
+	bad := fstest.MapFS{"fr_fr.yaml": {Data: []byte("k: 1\nk: 2\n")}}
 	b, err := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("a: 'A'\n")}}, bad)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ws := b.Warnings()
-	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b\x07"+bidi+lineSep) {
-		t.Fatalf("warnings: %q", ws)
+	if len(ws) != 1 || strings.ContainsAny(ws[0], "\n\r\x1b\x07"+bidi+lineSep) {
+		t.Fatalf("the warning must be a single clean line: %q", ws)
 	}
 }
