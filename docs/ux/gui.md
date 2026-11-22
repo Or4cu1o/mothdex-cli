@@ -1,6 +1,6 @@
 # UX: gamepad GUI (`mothdex-gui`, emulator mode)
 
-Status: v1.3 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56; GUI PR 3 rules, T-78) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
+Status: v1.4 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56; GUI PR 3 rules and review, T-78) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
 Contract: [`gui.md`](../contracts/cli/gui.md) (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Flows mirror [`tui.md`](tui.md); wording, units and the
 Warming rules come from [`cli-conventions.md`](cli-conventions.md); link ranking from [`prefer-syntax.md`](prefer-syntax.md).
@@ -80,7 +80,8 @@ All content, bars and dialogs live inside the **safe rectangle**; only the backg
   on Home `This language is not available in this screen mode yet. Showing English.` as a `warn` toast that stays
   6 s (§4; CJK and Devanagari: backlog).
 - **Symbols are shapes.** The embedded font has no arrows, check marks or crosses, so `↓`, `✔` and `✘` are drawn as
-  shapes in the text color, sized to the cap height of the text beside them, with a gap of one space.
+  shapes in the text color, sized to the cap height of the text beside them, with a gap of one space. The D-pad
+  arrows (`◀ ▶ ▲ ▼` in the hint bar and the Buttons overlay) are filled triangles drawn inside the button pill.
 - **No string is cut except titles** (entry titles, and the screen title in the top bar as §4 allows). Other text
   wraps (at most 2 lines unless a screen says otherwise); a path that still does not fit is shortened in the middle,
   keeping the first and the last folder (`/home/someone/…/collection`).
@@ -575,10 +576,18 @@ first body byte when the proxy's real size crosses 500 MiB and the catalog size 
   spinner for local data unless it takes over 200 ms.
 - Y toggles `All` and `Failed only` (client side, over the loaded list); its hint reads `Failed only` or `Show all`.
   The top bar shows the filter and the count: `All · 128 records`.
-- The second line of a row is `{date} · {reason}`, the reason being the localized `errors.<code>.message`. It wraps
-  to 2 lines (the row is then 3 lines tall); only past 2 lines does it end in `…` at a word boundary, and Details
-  always has the full text. A record stopped with `confirmation_required` shows the Queue's consent row in warn with
+- The second line of a row is `{date} · {reason}`. The reason is a short text without placeholders, in the
+  interface language:
+  - `ui.gui.history.why.<code>` for the codes whose message needs values a record does not keep: `size_mismatch`,
+    `disk_full`, `permission_denied`, `exists`, `path_rejected`, `unsafe_name`, `untrusted_url`,
+    `untrusted_redirect`, `upstream`, `not_found` and `unmapped_platform`;
+  - otherwise the localized `errors.<code>.message`;
+  - for an unknown code, `Failed`.
+- Every row is 3 lines tall: the fixed height keeps paging simple. The reason may wrap to 2 lines; only past that does
+  it end in `…` at a word boundary. A record stopped with `confirmation_required` shows the Queue's consent row in warn with
   `!` (§5.8), with the sizes from the record's `content_length` and `catalog_size`.
+- Details has the full text: the short reason, then the stored message and `[code]` on the next line. It has no
+  `Size` line when nothing was written.
 - A opens Details (the same panel as the Queue) with `[Download again]` (initial focus; re-queues with the original
   slug and link index) and `[Close]`; B closes. For a `confirmation_required` record the first button is
   `Download anyway`, which opens the dialog of §5.8 with the record's sizes. If that slug and link is already in the
@@ -633,6 +642,11 @@ Rows come from `ConfigList` (value and source). Keys:
 
 - The list scrolls like the other lists. Section headers (`Downloads`, `Screen`, `Storage and system`) are not
   focusable, stay with their first row and never sit alone at the bottom of the screen.
+- The label column is as wide as the longest label of the language, between 44 % and 55 % of the row. A label that
+  still does not fit wraps to 2 lines and its row grows; labels and values never touch.
+- Lists opened from a row are titled with the row's label, and the sheet of one language with its token (`En`).
+- A row set by `env` or `flag` shows its value without the stepper's `‹ ›`.
+- A `ConfigSet` error under the row reads `Not saved: {message}`.
 - The right column shows the source: `default`, `file`, `env` or `flag` (localized). At compact it is dropped with no
   other text, since the hint bar already tells: `Reset` for `file`, `Set by …` for `env` and `flag`, nothing for
   `default`.
