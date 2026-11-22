@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - T-72 contract text: `gui.md` §2 and `ports.md` §3 say that on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories`
   with the application folder and System32 before it loads `SDL2.dll`, and does not load it if the call fails (T-70 IC-8).
+- T-69: backlog cleanup. The stale-session search warning already existed (T-25) and now has a CLI test; the
+  `config.Set` overwrite refusal already had tests; a retry after a 503 under the 2x size rule keeps the pinned
+  `Content-Length` across the 503 (test); the duplicated edge case of T-64 was removed from `TestCase32e`.
 - T-65: `release-check.yml`, `gui-spike.yml` and `gui-spike-qemu.yml` no longer use a `paths:` filter, so their jobs can be
   required status checks (a workflow skipped by a path filter never reports a check). The first step of each job runs
   `scripts/ci-scope.sh`, which compares the pull request with its base using plain `git diff` (no new action, no token, fails

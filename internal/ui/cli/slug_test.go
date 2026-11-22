@@ -38,3 +38,16 @@ func TestAllDroppedPageDoesNotAdviseFewerWords(t *testing.T) {
 		t.Fatalf("stderr %q", r.err.String())
 	}
 }
+
+// T-69: when the session could be neither saved nor cleared, the search warns that <n> may refer to an earlier search.
+func TestSearchWarnsWhenTheSessionIsStale(t *testing.T) {
+	p := page("Alpha")
+	p.SessionStale = true
+	r := exec(t, searchWith(p), nil, "search", "x")
+	if !strings.Contains(r.err.String(), "result numbers may still refer to an earlier search") {
+		t.Fatalf("stderr %q", r.err.String())
+	}
+	if clean := exec(t, searchWith(page("Alpha")), nil, "search", "x"); strings.Contains(clean.err.String(), "earlier search") {
+		t.Fatalf("no warning expected: %q", clean.err.String())
+	}
+}
