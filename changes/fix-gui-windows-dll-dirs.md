@@ -6,5 +6,4 @@
   directory and `PATH`. `TestPlainLoadLibraryIgnoresThePathAndTheWorkingFolderOnceSDLIsOpen` plants a DLL in both and checks that a plain
   load does not find it while a DLL beside the executable and a System32 DLL the process does not already hold (`winhttp.dll`) still load;
   the Windows job of `gui-spike.yml` runs it as its own named step. A failure to restrict the search path has its own error, `ErrSearchPath`,
-  not `SDL2 was not found`. Not done here: IC-13 (the diagnostics line reports `LD_PRELOAD` and `SDL_DYNAMIC_API`), because that line is the PRT-G3
-  item of cli#82 and does not exist yet.
+  not `SDL2 was not found`. IC-13 (the diagnostics line) is in T-73.
