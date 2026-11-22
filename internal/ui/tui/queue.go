@@ -10,6 +10,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 )
 
 const (
@@ -24,6 +25,14 @@ type queueScreen struct {
 	hidden map[app.JobID]bool // finished jobs hidden from view with c; history keeps them
 	detail bool
 	askAll bool // the [y/N] question of X
+	ask    *consentAsk
+}
+
+// consentAsk is the [y/N] question of "Download anyway": one failed job whose real size needs the
+// person's OK, and the request that would go again with that consent (tui.md section 5).
+type consentAsk struct {
+	job app.JobSnapshot
+	req app.DownloadRequest
 }
 
 func newQueue() queueScreen { return queueScreen{hidden: map[app.JobID]bool{}} }
@@ -34,7 +43,7 @@ func (s queueScreen) init(*shared) (screen, tea.Cmd) { return s, nil }
 func (queueScreen) title(rt *shared) string          { return rt.T("ui.tui.screen.queue", nil) }
 
 func (s queueScreen) focus() focusKind {
-	if s.askAll {
+	if s.askAll || s.ask != nil {
 		return focusPrompt
 	}
 	return focusNone
@@ -96,6 +105,13 @@ func (s queueScreen) update(msg tea.Msg, rt *shared) (screen, tea.Cmd) {
 		}
 		return s, nil
 	}
+	if ask := s.ask; ask != nil {
+		s.ask = nil
+		if ev.a == actYes {
+			return s.requeue(rt, []app.DownloadRequest{consent.WithConsent(ask.req, ask.job)}, []app.JobID{ask.job.ID})
+		}
+		return s, nil
+	}
 	nav := s.nav(rt.book)
 	i := s.at(nav)
 	switch ev.a {
@@ -118,7 +134,16 @@ func (s queueScreen) update(msg tea.Msg, rt *shared) (screen, tea.Cmd) {
 		if rt.book.busy() > 0 {
 			s.askAll = true
 		}
-	case actRetry:
+	case actRetry, actDownload: // d is the same as r on a job that waits for the person's OK
+		if len(nav) > 0 && consent.Needed(nav[i]) {
+			if req, ok := rt.book.reqs[nav[i].ID]; ok {
+				s.ask = &consentAsk{job: nav[i], req: req}
+			}
+			return s, nil
+		}
+		if ev.a == actDownload {
+			return s, nil
+		}
 		var cmd tea.Cmd
 		s, cmd = s.retry(rt)
 		return s, cmd
@@ -181,26 +206,34 @@ func cancelCmd(e *env, jobs []app.JobSnapshot) tea.Cmd {
 }
 
 // retry queues the original request of every failed job again and hides those jobs at once, so a
-// second r cannot queue the same files twice. If Enqueue fails they come back (retriedMsg). There is
-// no new service method: it is Enqueue once more (tui.md section 5).
+// second r cannot queue the same files twice. A job that waits for the person's OK to its real size is
+// left alone: it needs its own answer (r on that row). If Enqueue fails they come back (retriedMsg).
+// There is no new service method: it is Enqueue once more (tui.md section 5).
 func (s queueScreen) retry(rt *shared) (queueScreen, tea.Cmd) {
 	var reqs []app.DownloadRequest
 	var ids []app.JobID
-	hidden := make(map[app.JobID]bool, len(s.hidden))
-	for id := range s.hidden {
-		hidden[id] = true
-	}
 	for _, j := range rt.book.list() {
-		if j.State != app.StateFailed || s.hidden[j.ID] {
+		if j.State != app.StateFailed || s.hidden[j.ID] || consent.Needed(j) {
 			continue
 		}
 		if r, ok := rt.book.reqs[j.ID]; ok {
 			reqs, ids = append(reqs, r), append(ids, j.ID)
-			hidden[j.ID] = true
 		}
 	}
+	return s.requeue(rt, reqs, ids)
+}
+
+// requeue queues the requests again and hides the jobs they came from; if Enqueue fails they come back.
+func (s queueScreen) requeue(rt *shared, reqs []app.DownloadRequest, ids []app.JobID) (queueScreen, tea.Cmd) {
 	if len(reqs) == 0 {
 		return s, nil
+	}
+	hidden := make(map[app.JobID]bool, len(s.hidden)+len(ids))
+	for id := range s.hidden {
+		hidden[id] = true
+	}
+	for _, id := range ids {
+		hidden[id] = true
 	}
 	s.hidden = hidden
 	enqueue := enqueueCmd(rt.env, reqs)
@@ -282,6 +315,9 @@ func (s queueScreen) finishedLine(rt *shared, j app.JobSnapshot) string {
 	if j.Err == nil {
 		return render(st.bad, st.g.fail+" "+label+": "+rt.T("errors.canceled.message", nil))
 	}
+	if consent.Needed(j) { // nothing failed: the job waits for a person (warn and !, not error and the cross)
+		return render(st.warn, st.g.warn+" "+label+": "+consentRow(rt, j))
+	}
 	f := rt.failureOf(j.Err)
 	return render(st.bad, st.g.fail+" "+label+": "+f.msg+" ["+f.code+"]")
 }
@@ -323,8 +359,11 @@ func (s queueScreen) view(rt *shared, w, h int) screenView {
 		top = 0
 	}
 	sv := screenView{body: lines[top:]}
-	if s.askAll {
+	switch {
+	case s.askAll:
 		sv.status, sv.prompt = render(rt.st.warn, rt.T("ui.tui.queue.cancel_all_ask", nil)), true
+	case s.ask != nil:
+		sv.status, sv.prompt = render(rt.st.warn, consentAskText(rt, s.ask.job)), true
 	}
 	return sv
 }
@@ -341,9 +380,78 @@ func (s queueScreen) detailView(rt *shared, j app.JobSnapshot) screenView {
 		row("attempts", strconv.Itoa(j.Attempt)),
 		row("duration", clock(j.Finished.Sub(j.Started))),
 	}
-	if j.Err != nil {
+	switch {
+	case consent.Needed(j):
+		lines = append(lines, row("status", consentRow(rt, j))) // the code stays out: the line is a sentence, and the frame would cut its end
+	case j.Err != nil:
 		f := rt.failureOf(j.Err)
 		lines = append(lines, row("error", f.msg+" ["+f.code+"]"))
 	}
 	return screenView{body: lines, status: rt.T("ui.tui.queue.detail_help", nil)}
+}
+
+// consentArgs are the values of the "Download anyway" texts and the suffix of their keys (see consent.Args).
+func consentArgs(j app.JobSnapshot) (suffix string, args i18n.Args) {
+	suffix, a := consent.Args(j, humanSize)
+	a["name"], a["dir"] = jobLabel(j), clean(consent.Dir(j))
+	return suffix, i18n.Args(a)
+}
+
+func consentRow(rt *shared, j app.JobSnapshot) string {
+	suffix, args := consentArgs(j)
+	return rt.T("ui.consent.row"+suffix, args)
+}
+
+// consentAskText is the question of r on such a row. It must end in [y/N] on the status line, so what
+// does not fit is shortened: the longer of the folder and the name first, in the middle (the frame
+// would cut the tail, and with it the [y/N]).
+func consentAskText(rt *shared, j app.JobSnapshot) string {
+	suffix, args := consentArgs(j)
+	room := rt.w - 4
+	text := rt.T("ui.consent.tui_ask"+suffix, args)
+	for cells(text) > room {
+		name, _ := args["name"].(string)
+		dir, _ := args["dir"].(string)
+		key, v := "name", name
+		if cells(dir) > cells(name) {
+			key, v = "dir", dir
+		}
+		if cells(v) <= minConsentPart {
+			break
+		}
+		args[key] = midCut(v, cells(v)-1) // one cell at a time keeps the two parts balanced
+		text = rt.T("ui.consent.tui_ask"+suffix, args)
+	}
+	return text
+}
+
+// minConsentPart is the least of a name or folder the question keeps when it has to shorten them.
+const minConsentPart = 5
+
+// midCut shortens s to w cells keeping its start and its end: "/home/me/…/roms/gbc".
+func midCut(s string, w int) string {
+	if cells(s) <= w {
+		return s
+	}
+	if w <= 3 {
+		return cutTo(s, w)
+	}
+	rs := []rune(s)
+	left, right := 0, len(rs)
+	lw, rw := 0, 0
+	for left < right && lw+cells(string(rs[left])) <= (w-3+1)/2 {
+		lw += cells(string(rs[left]))
+		left++
+	}
+	for right > left && rw+cells(string(rs[right-1])) <= (w-3)/2 {
+		rw += cells(string(rs[right-1]))
+		right--
+	}
+	return string(rs[:left]) + "..." + string(rs[right:])
+}
+
+// consentFocused tells the status bar that r means "download anyway" on the row under the cursor.
+func (s queueScreen) consentFocused(rt *shared) bool {
+	nav := s.nav(rt.book)
+	return len(nav) > 0 && consent.Needed(nav[s.at(nav)])
 }

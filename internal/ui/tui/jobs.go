@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 )
 
 // jobBook is the TUI's picture of the downloads of this run: every job it has seen, in the order it
@@ -22,6 +23,7 @@ type jobBook struct {
 	bDone      int
 	bSkipped   int
 	bFailed    int
+	bWaiting   int  // stopped on their real size, waiting for the person's OK: nothing failed
 	hasPending bool // something was queued since the last summary
 }
 
@@ -67,8 +69,12 @@ func (b jobBook) apply(j app.JobSnapshot, now time.Time) jobBook {
 			c.bDone++
 		case app.StateSkipped:
 			c.bSkipped++
-		default: // failed or canceled
-			c.bFailed++
+		default:
+			if consent.Needed(j) {
+				c.bWaiting++
+			} else { // failed or canceled
+				c.bFailed++
+			}
 		}
 	}
 	return c
@@ -108,17 +114,17 @@ func (b jobBook) busy() int {
 func (b jobBook) anyWarming() bool { return len(b.warmSince) > 0 }
 
 // settled reports, once the queue is idle again, how many finished since the last summary.
-func (b jobBook) settled() (done, skipped, failed int, ok bool) {
-	if !b.hasPending || b.busy() > 0 || b.bDone+b.bSkipped+b.bFailed == 0 {
-		return 0, 0, 0, false
+func (b jobBook) settled() (done, skipped, failed, waiting int, ok bool) {
+	if !b.hasPending || b.busy() > 0 || b.bDone+b.bSkipped+b.bFailed+b.bWaiting == 0 {
+		return 0, 0, 0, 0, false
 	}
-	return b.bDone, b.bSkipped, b.bFailed, true
+	return b.bDone, b.bSkipped, b.bFailed, b.bWaiting, true
 }
 
 // resetBatch starts a new count after a summary was shown.
 func (b jobBook) resetBatch() jobBook {
 	c := b.clone()
-	c.bDone, c.bSkipped, c.bFailed, c.hasPending = 0, 0, 0, false
+	c.bDone, c.bSkipped, c.bFailed, c.bWaiting, c.hasPending = 0, 0, 0, 0, false
 	return c
 }
 
