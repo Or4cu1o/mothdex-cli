@@ -79,6 +79,14 @@ for entry in "${targets[@]}"; do
   for f in "$bin" LICENSE README.md CHANGELOG.md; do
     [ -f "$dir/$f" ] || fail "$name lacks $f"
   done
+  # exactly these members: nothing of the GUI (mothdex-gui, THIRD_PARTY/, SDL2.dll) may land in a mothdex_ archive
+  case "$suffix" in
+    *.zip) cli_members="$(unzip -Z1 "$archive" | grep -v '/$' | sort)" ;;
+    *) cli_members="$(tar -tzf "$archive" | grep -v '/$' | sort)" ;;
+  esac
+  cli_want="$(printf '%s\n' "$bin" LICENSE README.md CHANGELOG.md | sort)"
+  [ "$cli_members" = "$cli_want" ] || fail "$name: members differ from bin, LICENSE, README.md, CHANGELOG.md:
+$(diff <(echo "$cli_want") <(echo "$cli_members") || true)"
   case "$suffix" in
     *.tar.gz) [ "$(stat -c %a "$dir/$bin")" = 755 ] || fail "$name: $bin is not mode 0755" ;;
   esac
@@ -166,6 +174,10 @@ $(diff <(echo "$want_members") <(echo "$members") || true)"
   info="$(go version -m "$dir/$bin")"
   echo "$info" | grep -q 'CGO_ENABLED=0' || fail "$name: not built with CGO_ENABLED=0"
   echo "$info" | grep -q -- '-trimpath=true' || fail "$name: not built with -trimpath"
+  case "$suffix" in
+    linux_armv6*) echo "$info" | grep -q 'GOARM=6' || fail "$name: not built with GOARM=6" ;;
+    linux_armv7*) echo "$info" | grep -q 'GOARM=7' || fail "$name: not built with GOARM=7" ;;
+  esac
   echo "$info" | grep -Eq -- '-tags=.*gui' || fail "$name: not built with the gui tag"
   # go version -m does not print the linker flags; the full commit stamped by -X is in the binary's strings
   grep -aqF -- "$want_commit" "$dir/$bin" || fail "$name: the commit is not stamped into the binary"

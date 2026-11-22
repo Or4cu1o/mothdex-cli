@@ -56,7 +56,9 @@ for pair in "aarch64 arm64" "armv7l armv7" "armv6l armv6"; do
 done
 
 # amd64: a real install; the probe runs the real mothdex-gui against the system libsdl2
-if ! { command -v ldconfig >/dev/null 2>&1 && ldconfig -p | grep -q 'libSDL2-2.0.so.0'; }; then fail "libsdl2 is not installed: the amd64 probe cannot run"; fi
+# the output goes into a variable: under pipefail, grep -q closing the pipe early could make ldconfig fail with SIGPIPE
+libs=$(ldconfig -p 2>/dev/null || true)
+case $libs in *libSDL2-2.0.so.0*) ;; *) fail "libsdl2 is not installed: the amd64 probe cannot run" ;; esac
 mkdir -p "$work/bin-amd64"
 chmod 0755 "$work/bin-amd64"
 out=$(run_installer x86_64 --profile generic --bin-dir "$work/bin-amd64" --version "$version" --no-launcher) || {
