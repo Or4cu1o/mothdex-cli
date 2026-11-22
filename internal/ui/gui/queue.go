@@ -8,6 +8,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 )
@@ -162,13 +163,13 @@ func (m Model) followFocus() Model {
 }
 
 // itemHeight is how tall a Queue row is: a header is one line, a job two lines (name and state), and a job that
-// is warming up or waiting to retry three, since a notice can add a line.
+// is warming up, waiting to retry or waiting for the person's OK three, since a notice can add a line.
 func (m Model) itemHeight(it queueItem) int {
 	met := m.metrics
 	switch {
 	case it.header != "":
 		return LineHeight(met.Secondary) + met.Unit
-	case it.job.State == app.StateWarming || it.job.State == app.StateRetryWait: // these can show a hint line
+	case it.job.State == app.StateWarming || it.job.State == app.StateRetryWait || consent.Needed(it.job): // these can show a second line of text
 		return LineHeight(met.Body) + 2*LineHeight(met.Secondary) + met.Unit
 	}
 	return LineHeight(met.Body) + LineHeight(met.Secondary) + met.Unit
@@ -211,7 +212,7 @@ func (m Model) focusedJob() (app.JobSnapshot, bool) {
 	return app.JobSnapshot{}, false
 }
 
-func (m Model) onQueueAction(a input.Action) (Model, []Cmd) {
+func (m Model) onQueueAction(a input.Action, now time.Time) (Model, []Cmd) {
 	q := m.queue
 	if q.details != "" {
 		if a == input.Back || a == input.Confirm {
@@ -220,7 +221,7 @@ func (m Model) onQueueAction(a input.Action) (Model, []Cmd) {
 		return m, nil
 	}
 	if len(q.sheet) > 0 {
-		return m.onSheetAction(a)
+		return m.onSheetAction(a, now)
 	}
 	items := m.queueItems()
 	switch a {
@@ -262,13 +263,15 @@ func (m Model) sheetFor(j app.JobSnapshot) []sheetItem {
 	switch {
 	case !j.Terminal():
 		return []sheetItem{{sheetCancel, m.tr("ui.gui.queue.cancel", nil)}, details, closeItem}
+	case consent.Needed(j): // Retry would only stop again: the first item asks for the OK instead
+		return []sheetItem{{sheetAnyway, m.tr("ui.consent.action", nil)}, details, closeItem}
 	case j.State == app.StateFailed || j.State == app.StateCanceled:
 		return []sheetItem{{sheetRetry, m.tr("ui.gui.queue.retry", nil)}, details, closeItem}
 	}
 	return []sheetItem{details, {sheetHide, m.tr("ui.gui.queue.hide", nil)}, closeItem}
 }
 
-func (m Model) onSheetAction(a input.Action) (Model, []Cmd) {
+func (m Model) onSheetAction(a input.Action, now time.Time) (Model, []Cmd) {
 	q := m.queue
 	idx := slices.IndexFunc(q.sheet, func(s sheetItem) bool { return s.id == q.sheetFocus })
 	switch a {
@@ -280,13 +283,13 @@ func (m Model) onSheetAction(a input.Action) (Model, []Cmd) {
 		m.queue.sheet = nil
 		return m, nil
 	case input.Confirm:
-		return m.runSheet(q.sheetFocus, q.sheetJob)
+		return m.runSheet(q.sheetFocus, q.sheetJob, now)
 	}
 	m.queue.sheetFocus = q.sheet[max(idx, 0)].id
 	return m, nil
 }
 
-func (m Model) runSheet(id string, job app.JobID) (Model, []Cmd) {
+func (m Model) runSheet(id string, job app.JobID, now time.Time) (Model, []Cmd) {
 	m.queue.sheet = nil
 	j := m.book.snaps[job]
 	switch id {
@@ -294,18 +297,25 @@ func (m Model) runSheet(id string, job app.JobID) (Model, []Cmd) {
 		return m, []Cmd{cancelCmd(m.o.Service, []app.JobSnapshot{j})}
 	case sheetRetry:
 		return m.enqueue(download{slug: j.Slug, title: j.Title, link: max(j.LinkIndex, 1)})
+	case sheetAnyway:
+		return m.askDownloadAnyway(j, now)
 	case sheetDetails:
 		m.queue.details = job
 	case sheetHide:
-		hidden := maps.Clone(m.queue.hidden)
-		if hidden == nil {
-			hidden = map[app.JobID]bool{}
-		}
-		hidden[job] = true
-		m.queue.hidden = hidden
-		return m.followFocus(), nil
+		return m.hideJob(job), nil
 	}
 	return m, nil
+}
+
+// hideJob takes a job out of the list (the History keeps it).
+func (m Model) hideJob(job app.JobID) Model {
+	hidden := maps.Clone(m.queue.hidden)
+	if hidden == nil {
+		hidden = map[app.JobID]bool{}
+	}
+	hidden[job] = true
+	m.queue.hidden = hidden
+	return m.followFocus()
 }
 
 func cancelCmd(svc Service, jobs []app.JobSnapshot) Cmd {
@@ -501,6 +511,14 @@ func (m Model) drawFinishedRow(p painter, r draw.Rect, j app.JobSnapshot) {
 		p.text(x, y, met.Body, colText, p.fit(met.Body, label, w))
 		p.text(x, y+LineHeight(met.Body), met.Secondary, colDim, p.fit(met.Secondary, m.tr("ui.cli.download.skipped", i18n.Args{"path": app.SanitizeText(j.Path)}), w))
 	default:
+		if consent.Needed(j) { // nothing failed: the job waits for a person (warn color and !, not error and the cross)
+			drawBang(p.l, x, y+2, mark, colWarn)
+			p.text(x+mark+met.Unit, y, met.Body, colText, p.fit(met.Body, label, w-mark-met.Unit))
+			for i, line := range p.wrap(met.Secondary, m.consentRow(j), w, 2) { // nothing is cut: the catalog size is in the words
+				p.text(x, y+LineHeight(met.Body)+i*LineHeight(met.Secondary), met.Secondary, colWarn, line)
+			}
+			return
+		}
 		drawCross(p.l, x, y+2, mark, colError)
 		p.text(x+mark+met.Unit, y, met.Body, colText, p.fit(met.Body, label, w-mark-met.Unit))
 		msg := m.tr("errors.canceled.message", nil)
@@ -560,7 +578,10 @@ func (m Model) drawDetails(p painter) {
 	add("file", app.SanitizeText(j.Name))
 	add("path", app.SanitizeText(j.Path))
 	size := humanSize(j.Bytes)
-	if !j.Terminal() && j.Expected > 0 && j.Expected != j.Bytes { // "X / Y" only while the job runs
+	switch {
+	case consent.Needed(j): // nothing was transferred: the size is the real one the person is asked about
+		size = humanSize(consent.Size(j))
+	case !j.Terminal() && j.Expected > 0 && j.Expected != j.Bytes: // "X / Y" only while the job runs
 		size += " / " + humanSize(j.Expected)
 	}
 	add("size", size)
@@ -571,7 +592,10 @@ func (m Model) drawDetails(p painter) {
 	if !j.Started.IsZero() && !j.Finished.IsZero() {
 		add("duration", clock(j.Finished.Sub(j.Started)))
 	}
-	if j.Err != nil {
+	switch {
+	case consent.Needed(j):
+		add("status", m.consentRow(j)+" ["+j.Err.Code+"]")
+	case j.Err != nil:
 		f := m.failureOf(j.Err)
 		add("error", f.msg+" ["+f.code+"]")
 	}
@@ -601,12 +625,50 @@ func (m Model) drawDetails(p painter) {
 // summaryToast is shown when the queue goes idle after downloads (docs/ux/gui.md section 5.8): "3 downloaded,
 // 1 skipped, 0 failed" for the batch that just ended.
 func (m Model) summaryToast(now time.Time) Model {
-	done, skipped, failed, _ := m.jobs.summary()
+	done, skipped, failed, _, waiting := m.jobs.summary()
 	b := m.batchBase
-	text := m.tr("ui.tui.summary", i18n.Args{"done": done - b[0], "skipped": skipped - b[1], "failed": failed - b[2]})
-	kind := toastOK
+	args := i18n.Args{"done": done - b[0], "skipped": skipped - b[1], "failed": failed - b[2], "waiting": max(waiting-b[3], 0)}
+	text, kind := m.tr("ui.tui.summary", args), toastOK
+	if waiting-b[3] > 0 { // a stopped job is not a failure: its own wording, and the warn color stays
+		text, kind = m.tr("ui.tui.summary_waiting", args), toastWarn
+	}
 	if failed-b[2] > 0 {
 		kind = toastWarn
 	}
 	return m.withToast(text, kind, now)
+}
+
+// consentArgs are the values of the "Download anyway" texts and the suffix of their keys (see consent.Args): the
+// real size and the catalog's, never "much larger", since 499 MiB to 501 MiB also trips the rule.
+func (m Model) consentArgs(j app.JobSnapshot) (suffix string, args map[string]any) {
+	return consent.Args(j, humanSize)
+}
+
+// consentRow is the text of a Queue row that waits for the person's OK.
+func (m Model) consentRow(j app.JobSnapshot) string {
+	suffix, args := m.consentArgs(j)
+	return m.tr("ui.consent.row"+suffix, args)
+}
+
+// askDownloadAnyway opens the dialog of gui.md 5.12 for a stopped job: Don't download is the default (and B),
+// Download {size} queues the request again with the consent for exactly that size.
+func (m Model) askDownloadAnyway(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
+	suffix, args := m.consentArgs(j)
+	dir := consent.Dir(j)
+	if dir == "" {
+		dir = m.destination(j.Platform)
+	}
+	maxText := min(m.metrics.Safe.W-8*m.metrics.Unit, 24*m.metrics.Body)
+	args["dir"] = shortenPath(m.painter(nil), m.metrics.Secondary, app.SanitizeText(dir), maxText)
+	d := dialogState{
+		kind:   dialogAnyway,
+		title:  m.tr("ui.consent.title"+suffix, args),
+		detail: m.tr("ui.consent.detail"+suffix, args),
+		buttons: []dialogButton{
+			{btnCancel, m.tr("ui.consent.keep", nil)},
+			{btnDownload, m.tr("ui.consent.go", args)},
+		},
+		pending: download{slug: j.Slug, title: j.Title, link: max(j.LinkIndex, 1), consent: consent.Size(j), replaces: j.ID},
+	}
+	return m.openDialog(d, now), nil
 }

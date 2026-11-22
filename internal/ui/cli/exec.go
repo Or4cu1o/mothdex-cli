@@ -15,6 +15,10 @@ type outcome struct {
 	meta  *app.ResultMeta
 	human func(p *printer)
 	warn  func(p *printer) // reports warnings in both modes (stderr, and warnings[] with --json)
+	// follow runs after the outcome was printed, in a Shell with a person at the terminal: it may ask
+	// something and return the outcome of what it started (the "Download anyway" question). Its error
+	// replaces the one of the outcome it follows.
+	follow func() (outcome, error)
 }
 
 // exec opens the service, runs fn, and prints the result in the mode the flags select.
@@ -28,19 +32,26 @@ func (r *runtime) exec(fn func(ctx context.Context, s *Session) (outcome, error)
 	if ferr != nil && out.data == nil {
 		return ferr
 	}
-	p.meta = out.meta
-	if out.warn != nil {
-		out.warn(p)
-	}
-	if p.g.JSON {
-		r.jsonDone = true
-		if werr := p.writeJSON(r.cmd, out.data, ferr); werr != nil {
-			return werr
+	for {
+		p.meta = out.meta
+		if out.warn != nil {
+			out.warn(p)
 		}
-	} else if out.human != nil {
-		out.human(p)
+		if p.g.JSON {
+			r.jsonDone = true
+			if werr := p.writeJSON(r.cmd, out.data, ferr); werr != nil {
+				return werr
+			}
+		} else if out.human != nil {
+			out.human(p)
+		}
+		if out.follow == nil || p.g.JSON {
+			return ferr
+		}
+		if out, ferr = out.follow(); ferr != nil && out.data == nil {
+			return ferr
+		}
 	}
-	return ferr
 }
 
 // noSession is for commands that never need the service (version, shell, tui, gui).

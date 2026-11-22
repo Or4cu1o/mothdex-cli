@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changed; a probe error exits 1 after the CLI install completes, while not eligible exits 0; an install that does not
   install the release's GUI removes an older `mothdex-gui`, `SDL2.dll` and `mothdex-licenses/`, so versions never mix;
   `mothdex-licenses/` is removed by safe file name, with no manifest.
+- T-74 (PR-37 backlog): `stripArgument` maps U+2028 and U+2029 to a space; the locale loader's warnings (which can echo a
+  path or YAML text from the locale folder) are cleaned of control characters; `readCatalog` opens the file once, checks
+  type and size on the open handle and caps the read, so a file that grew after the stat cannot pass the 1 MiB limit.
+  Production loads the user's locale folder only through `LoadDir` (os.Root); `Load(locales.FS)` is used with the embedded
+  files alone.
 - T-72 contract text: `gui.md` §2 and `ports.md` §3 say that on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories`
   with the application folder and System32 before it loads `SDL2.dll`, and does not load it if the call fails (T-70 IC-8).
 - T-69: backlog cleanup. The stale-session search warning already existed (T-25) and now has a CLI test; the
@@ -34,6 +39,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-56 (Medium), "Download anyway" in the TUI, the Shell and the GUI: a download that stopped with
+  `confirmation_required` is a warning that waits for a person, not a failure. The queue row is `! Title: Needs your OK: the file is
+  {size}, listed as {estimate}.` (`ui.consent.*`, copy by Bússola, 4 languages); on that row `r` or `d` asks `[y/N]` with both sizes and
+  the folder and queues the request again with `SizeConsent` equal to the real size shown, and the footer says `r download anyway`.
+  `r` on all failed jobs skips these rows: each needs its own OK. In the Shell the question comes after the batch, one per stopped job,
+  only with a terminal on both ends; without one the row and the `-f` hint are printed. The sizes come from the error and the
+  snapshot, so a catalog size above 500 MiB (T-64, cli#77) needs no other path. The TUI uses `app.ConfirmBytes` instead of its own
+  500 MiB constant. New helper package `internal/ui/consent`. In the GUI the action sheet of such a row is Download anyway, Details,
+  Close (Retry would only stop again); Download anyway opens the dialog of gui.md 5.12 (`This file is {size}, not {estimate}.`, buttons
+  Don't download, the default and B, and Download {size}), and Download queues the request again with the consent and takes the stopped
+  row's place. The row is the warn color with `!` and wraps to two lines (nothing is cut); the toast is `Needs your OK: {title}`
+  instead of `Download failed`. UX review (Bússola): a stopped job is counted apart from the failures, so the summaries (GUI and TUI
+  toasts, the Shell line, the GUI exit screen) say `N waiting for your OK` instead of `failed`; Details shows the real size and a
+  Status line instead of `0 B` and `Error`.
+  Review (Crivo): the Shell keeps the stopped result when one job is refused and the other downloads, and Ctrl+C at a question aborts
+  all of them (nothing already answered yes is queued); the size to accept comes only from the error (`Size` is 0 without it, and then
+  the job is an ordinary failure, never offered the catalog's size); the texts share `consent.Args`; tests for the proxy answering
+  another size after the consent in the three UIs.
 - T-68: contract `docs/contracts/cli/ports.md` for the frontend Ports of `mothdex-gui` on Batocera, EmuELEC and RetroBat
   (Recalbox has no Port in 10.1.2): launcher location and fixed `v2` template that sets no environment (never
   `LD_LIBRARY_PATH`), SDL2 per system, gamepad mapping sources, ROM destination through the profiles, install, upgrade
