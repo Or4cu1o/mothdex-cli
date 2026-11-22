@@ -22,7 +22,7 @@ What was and was not checked while preparing this page is at the end.
    - Environment `release` with the owner as required reviewer, deployments restricted to tags `v*`. Without it GitHub
      creates an unprotected environment on first use and `publish` runs without approval.
    - Tag ruleset for `v*`: creation only by the owner (or the bot, see D2), update and deletion blocked.
-   - `Release check` is not a required status check (it is path-filtered).
+   - `Release check` (job `goreleaser snapshot`) may be a required status check: it runs on every pull request and skips its own steps when nothing release-relevant changed.
    - Recommended: immutable releases, so assets cannot be replaced after publishing.
 3. **Prepare PR** (docs only, Low): in `CHANGELOG.md` move the `[Unreleased]` entries under `## [0.1.0] - <date>` and add a
    fresh empty `[Unreleased]`; check README and `docs/release.md` say pre-alpha only where that is still true. Merge.

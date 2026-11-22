@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-65: `release-check.yml`, `gui-spike.yml` and `gui-spike-qemu.yml` no longer use a `paths:` filter, so their jobs can be
+  required status checks (a workflow skipped by a path filter never reports a check). The first step of each job runs
+  `scripts/ci-scope.sh`, which compares the pull request with its base using plain `git diff` (no new action, no token, fails
+  closed to "run"); when nothing the job checks changed, its later steps are skipped and the job succeeds under the same name.
+  The lists live once in the script as named scopes (`release`, `gui`, `gui-qemu`) and include the go:embed folders `locales/` and
+  `profiles/`; a path that is quoted by git or a pattern that matches no tracked file (a moved path) answers "run". The `static`
+  GUI job always runs. Matrix jobs are never skipped whole, only their steps.
 - T-64: when the catalog size is already above 500 MiB and was confirmed, a `Content-Length` over 2x that size asks for
   confirmation again (`confirmation_required`); `-f` still skips it and the exact-length pin across retries stays
   (downloader.md 3.2 step 6).

@@ -2,23 +2,16 @@ name: GUI spike
 
 # The SDL2 spike of docs/contracts/cli/gui.md section 2 ("What the spike must prove"), kept afterwards as the GUI
 # smoke test. The arm64, armv7 and armv6 legs are in gui-spike-qemu.yml (they need an action the repository does not allow yet). Read-only token, actions pinned by SHA, no dependency cache. Nothing here publishes anything.
-# It runs only when the GUI code, its scripts or this file change, so do not mark its jobs as required checks.
+# It runs on every pull request, so its jobs can be required status checks. The probe jobs start with
+# scripts/ci-scope.sh: when the pull request touches neither the GUI code, its scripts, go.mod and go.sum nor this
+# file, every later step is skipped and the job succeeds. The static job is cheap and always runs, because the
+# isolation check (mothdex free of purego) can break from a change outside the GUI paths.
 #
 # Decision rule (gui.md): a failure on a Tier 1 target (linux amd64, linux arm64, windows amd64) stops the spike and
 # goes to Regente; a failure only on arm32 means v0.3.0 ships without the arm32 GUI. The armv6 leg is best effort
 # and may fail (continue-on-error): it is not a stop.
 on:
   pull_request:
-    paths:
-      - "internal/ui/gui/**"
-      - "cmd/mothdex-gui/**"
-      - "scripts/gui-probe.sh"
-      - "scripts/check-gui-isolation.sh"
-      - "scripts/check-sdl-constants.sh"
-      - "scripts/sdl2-windows.pin"
-      - ".github/workflows/gui-spike.yml"
-      - "go.mod"
-      - "go.sum"
   workflow_dispatch:
 
 permissions:
@@ -44,7 +37,7 @@ jobs:
       - name: Install the SDL2 headers (libsdl2-dev)
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libsdl2-dev
       - name: shellcheck the GUI scripts
-        run: shellcheck -s sh scripts/gui-probe.sh scripts/check-gui-isolation.sh scripts/check-sdl-constants.sh
+        run: shellcheck -s sh scripts/gui-probe.sh scripts/check-gui-isolation.sh scripts/check-sdl-constants.sh scripts/ci-scope.sh
       - name: mothdex stays free of purego and the GUI packages
         run: scripts/check-gui-isolation.sh
       - name: The binding constants and struct layouts equal the SDL2 headers
@@ -60,23 +53,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Scope (does this pull request touch what this job checks?)
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/ci-scope.sh gui
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
+        if: steps.scope.outputs.run == 'true'
       - name: Install the distro SDL2 and readelf
         run: |
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libsdl2-2.0-0 binutils
           dpkg -s libsdl2-2.0-0 | grep '^Version'
+        if: steps.scope.outputs.run == 'true'
       - name: Build, readelf and run the probe
         env:
           SDL_VIDEODRIVER: dummy
         run: scripts/gui-probe.sh linux/amd64
+        if: steps.scope.outputs.run == 'true'
       - name: go test -tags gui ./internal/ui/gui/sdl
         env:
           SDL_VIDEODRIVER: dummy
           GUI_REQUIRE_SDL: "1" # a broken libsdl2 install fails here instead of skipping the smoke test
         run: go test -tags gui -count=1 -v ./internal/ui/gui/sdl
+        if: steps.scope.outputs.run == 'true'
       - name: Library planting is ignored (a garbage libSDL2-2.0.so.0 in the cwd and next to the probe)
         env:
           SDL_VIDEODRIVER: dummy
@@ -91,11 +95,13 @@ jobs:
           out=$(cd "$plant/cwd" && "$plant/exe/mothdex-gui-probe")
           echo "$out"
           echo "$out" | grep -q 'probe ok'
+        if: steps.scope.outputs.run == 'true'
       - name: Cross-build and readelf linux/386 (optional target, not run)
         continue-on-error: true
         env:
           GUI_PROBE_RUN: "0"
         run: scripts/gui-probe.sh linux/386
+        if: steps.scope.outputs.run == 'true'
       - name: Size report
         run: |
           {
@@ -105,6 +111,7 @@ jobs:
             find dist-gui -type f -name 'mothdex-gui-probe*' -exec ls -l {} +
             printf '%s\n' '```'
           } >> "$GITHUB_STEP_SUMMARY"
+        if: steps.scope.outputs.run == 'true'
 
   windows-amd64:
     name: probe (windows/amd64, pinned SDL2.dll)
@@ -114,10 +121,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Scope (does this pull request touch what this job checks?)
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/ci-scope.sh gui
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
+        if: steps.scope.outputs.run == 'true'
       - name: Fetch SDL2.dll by the pinned URL and verify its SHA-256
         shell: pwsh
         run: |
@@ -139,11 +154,13 @@ jobs:
             [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $dest 'SDL2.dll'), $true)
           } finally { $archive.Dispose() }
           'SDL2.dll sha256: ' + (Get-FileHash -Algorithm SHA256 -Path (Join-Path $dest 'SDL2.dll')).Hash.ToLowerInvariant()
+        if: steps.scope.outputs.run == 'true'
       - name: Build and run the probe next to SDL2.dll (dummy driver)
         shell: bash
         env:
           SDL_VIDEODRIVER: dummy
         run: scripts/gui-probe.sh windows/amd64
+        if: steps.scope.outputs.run == 'true'
       - name: Library planting is ignored (garbage SDL2.dll on PATH and in the cwd; real DLL only beside the exe)
         shell: pwsh
         env:
@@ -178,6 +195,7 @@ jobs:
           Write-Host $out
           if ($code -ne 1) { throw "case 2: expected exit 1 (SDL2 not found), got ${code}: a DLL outside the application and system folders was loaded" }
           exit 0 # the last native command exited 1 on purpose: do not let PowerShell hand that to the step
+        if: steps.scope.outputs.run == 'true'
       - name: go test -tags gui, run from the folder that holds SDL2.dll
         shell: bash
         env:
@@ -186,8 +204,9 @@ jobs:
         run: |
           go test -c -tags gui -trimpath -o dist-gui/windows_amd64/sdl.test.exe ./internal/ui/gui/sdl
           cd dist-gui/windows_amd64 && ./sdl.test.exe -test.v -test.count=1
+        if: steps.scope.outputs.run == 'true'
       - name: Size report
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         shell: bash
         run: |
           {
