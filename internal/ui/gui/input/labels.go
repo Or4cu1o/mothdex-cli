@@ -113,6 +113,12 @@ func RoleButton(role Action, confirmEast bool) (Button, bool) {
 // Hint is the label a hint bar shows for a role on the pad in hand: what the document calls "(A) Open".
 // A role with no button, such as a direction, gives "".
 func Hint(role Action, t ControllerType, confirmEast bool) string {
+	switch role { // the D-pad has no printed label: the arrows of the font stand for its directions
+	case Left:
+		return "←"
+	case Right:
+		return "→"
+	}
 	b, ok := RoleButton(role, confirmEast)
 	if !ok {
 		return ""

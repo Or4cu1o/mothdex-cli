@@ -139,9 +139,9 @@ func (m Model) activateMenu(id string, now time.Time) (Model, []Cmd) {
 	case menuHistory:
 		return m.openHistory()
 	case menuSettings:
-		return m.notYetNamed(m.tr("ui.gui.menu.settings", nil), now), nil
+		return m.openSettings()
 	case menuButtons:
-		return m.notYetNamed(m.tr("ui.gui.menu.buttons", nil), now), nil
+		return m.openButtons(), nil
 	case menuDontQuit:
 		m.quitPending = false
 	case menuQuit:

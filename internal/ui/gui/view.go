@@ -135,10 +135,15 @@ func (m Model) Render(now time.Time, l *draw.List) {
 	case screenHistory:
 		m.drawFrame(p, m.historyFrame())
 		m.drawHistory(p)
+	case screenSettings:
+		m.drawFrame(p, m.settingsFrame())
+		m.drawSettings(p)
 	}
 	switch m.overlay {
 	case overlayMenu:
 		m.drawMenu(p)
+	case overlayButtons:
+		m.drawButtons(p)
 	case overlayDialog:
 		m.drawDialog(p)
 	}
@@ -361,9 +366,12 @@ func (m Model) drawHintBar(p painter, hints []hint, start string, withStart bool
 		items := make([]placed, 0, len(hs))
 		total := 0
 		for _, hnt := range hs {
-			labels := []string{input.Hint(hnt.role, m.pad, m.cfg.confirmEast)}
-			if hnt.role2 != input.None {
-				labels = append(labels, input.Hint(hnt.role2, m.pad, m.cfg.confirmEast))
+			var labels []string // a hint with no button is only words, such as "Set by MOTHDEX_DOWNLOAD_CONCURRENCY"
+			if hnt.role != input.None {
+				labels = append(labels, input.Hint(hnt.role, m.pad, m.cfg.confirmEast))
+				if hnt.role2 != input.None {
+					labels = append(labels, input.Hint(hnt.role2, m.pad, m.cfg.confirmEast))
+				}
 			}
 			items = append(items, placed{labels, hnt.label})
 			for _, l := range labels {
