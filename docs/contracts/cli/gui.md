@@ -198,7 +198,7 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 - The release workflow must not cache it (T-4-audit).
 - Sentinela reviews this step.
 
-**`install.sh` / `install.ps1`.**
+**`install.sh` / `install.ps1`.** The Port details (launcher template, eligibility probe, flags, upgrade and uninstall) are in [`ports.md`](ports.md), which wins where the two differ.
 - `--gui` (default on once the GUI ships, which flips D22) installs `mothdex-gui` next to `mothdex` when the archive exists for the arch.
 - On Linux, the installer checks that `libSDL2-2.0.so.0` resolves (`ldconfig -p`, else the profile's lib dirs). If it does not, it warns and skips the GUI.
 - The launcher runs `mothdex-gui` when it is installed, else `mothdex tui` (profiles §4 already says so).
