@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-72 (High, DLL planting; Sentinela T-70, IC-8): on Windows `mothdex-gui.exe` calls `SetDefaultDllDirectories` with the application folder
+  and System32 before it loads `SDL2.dll`, and does not load it if the call fails. `LoadLibraryEx` with those flags already protected
+  `SDL2.dll`, but SDL loads `vulkan-1`, `opengl32`, `XInput` and `hid` later with a plain `LoadLibrary`, which searches the working
+  directory and `PATH`. `TestPlainLoadLibraryIgnoresThePathAndTheWorkingFolderOnceSDLIsOpen` plants a DLL in both and checks that a plain
+  load does not find it while a DLL beside the executable and a System32 DLL still load; the Windows job of `gui-spike.yml` runs it as
+  its own step. Not done here: IC-13 (the diagnostics line reports `LD_PRELOAD` and `SDL_DYNAMIC_API`), because that line is the PRT-G3
+  item of cli#82 and does not exist yet.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a
