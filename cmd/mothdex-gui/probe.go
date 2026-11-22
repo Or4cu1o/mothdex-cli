@@ -10,7 +10,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/sdl"
 )
 
-// runProbe is `mothdex-gui -probe`: the headless check of the SDL2 binding that the CI runs as the smoke
+// runProbe is `mothdex-gui -spike`: the headless check of the SDL2 binding that the CI runs as the smoke
 // test (docs/contracts/cli/gui.md section 2). It loads the system library, draws one rectangle on a hidden
 // software window, reads a pixel back, round-trips one event, prints the SDL version and exits.
 func runProbe(driver string, stdout, stderr io.Writer) int {

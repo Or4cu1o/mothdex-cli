@@ -78,7 +78,7 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	}
 
 	warn := func(msg string) { log.Warn(msg) }
-	mappings := input.LoadMappings(assets.ControllerDB, filepath.Join(sess.DataDir, userMappingsFile), input.SDLPlatform(runtime.GOOS), os.Getenv, warn)
+	mappings, mappingCounts := input.LoadMappingsCounted(assets.ControllerDB, filepath.Join(sess.DataDir, userMappingsFile), input.SDLPlatform(runtime.GOOS), os.Getenv, warn)
 	be, err := sdl.OpenBackend(lib, font, sdl.BackendOptions{
 		Title: "mothdex", Driver: o.driver, Windowed: o.height > 0, Width: o.width, Height: o.height, Mappings: mappings, Log: log,
 	})
@@ -87,6 +87,9 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	}
 	defer be.Close()
 	w, h := be.Size()
+	log.Info("gui: diagnostics", diagnostics{
+		SDLVersion: lib.Version().String(), Driver: be.Driver(), Getenv: os.Getenv, Mappings: mappingCounts, Pads: be.ControllerTypes(),
+	}.attrs()...)
 	log.Info("gui: started", "driver", be.Driver(), "width", w, "height", h, "version", buildinfo.Get().Version)
 
 	model, cmds := gui.New(gui.Options{

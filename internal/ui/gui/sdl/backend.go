@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"time"
 
 	gdraw "github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
@@ -200,6 +201,21 @@ func (b *Backend) openController(index int) {
 	b.pads[id], b.padType[id] = c, typ
 	b.log.Info("sdl: controller", "name", b.lib.ControllerName(c), "type", int(typ))
 	b.setPad(typ)
+}
+
+// ControllerTypes are the types of the pads that are open, in the order SDL numbered them, for the start-up
+// diagnostics line: the type only, never a name or a path.
+func (b *Backend) ControllerTypes() []input.ControllerType {
+	ids := make([]int32, 0, len(b.padType))
+	for id := range b.padType {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	out := make([]input.ControllerType, len(ids))
+	for i, id := range ids {
+		out[i] = b.padType[id]
+	}
+	return out
 }
 
 // setPad records the pad in hand and queues a notice for the loop when it changed (the first pad always

@@ -379,7 +379,10 @@ func TestLoadMappingsOrderIsEmbeddedUserFileThenTheEnvironment(t *testing.T) {
 	}
 	getenv := func(k string) string { return env[k] }
 
-	got := LoadMappings(embedded, user, "Linux", getenv, warn)
+	got, counts := LoadMappingsCounted(embedded, user, "Linux", getenv, warn)
+	if counts != (MappingCounts{Embedded: 1, User: 1, File: 1, Env: 1}) { // for the start-up diagnostics line: lines kept per source
+		t.Fatalf("counts %+v", counts)
+	}
 	want := []string{ // SDL keeps the last line for a pad: the frontend's wins over the file, the user's file and the embedded one
 		"03000000deadbeef0000000000000001,Pad B,a:b0,platform:Linux,",
 		"03000000deadbeef0000000000000001,Pad B fixed,a:b1,platform:Linux,",

@@ -4,11 +4,14 @@
 // gui build tag so that `mothdex` stays fully static (docs/contracts/cli/gui.md section 1).
 //
 //	mothdex-gui [-config file] [-profile id] [-lang xx_yy] [-driver name] [-window WxH]
-//	mothdex-gui -probe [-driver dummy]
+//	mothdex-gui --probe
+//	mothdex-gui -spike [-driver dummy]
 //
-// With no flags it opens the full screen window and runs the GUI. -probe only checks the SDL2 binding on a
-// hidden window and exits (the CI smoke test). -window opens a window of that size instead of the full
-// screen, for a desktop session.
+// With no flags it opens the full screen window and runs the GUI. --probe is the eligibility check the installer
+// runs (docs/contracts/cli/ports.md section 5.2): it loads SDL2, checks the version, opens no window and says
+// "sdl X.Y.Z" and exits 0, or says why and exits 1. -spike checks the whole SDL2 binding on a hidden window and
+// exits (the CI smoke test; an executable named mothdex-gui-probe does it with no flag). -window opens a window
+// of that size instead of the full screen, for a desktop session.
 //
 // Exit codes follow section 5 of the contract: 0 normal exit or SIGTERM, 1 SDL missing, too old or no
 // display, 2 configuration error, 3 internal error.
@@ -49,7 +52,8 @@ func probeByName(arg0 string) bool {
 }
 
 type options struct {
-	probe   bool
+	probe   bool // --probe: the installer's eligibility check
+	spike   bool // -spike: the CI smoke test of the whole binding
 	driver  string
 	config  string
 	profile string
@@ -65,7 +69,8 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	var o options
 	var window string
-	fs.BoolVar(&o.probe, "probe", false, "check the SDL2 binding on a hidden window and exit")
+	fs.BoolVar(&o.probe, "probe", false, "check that SDL2 can be used (no window): print sdl X.Y.Z and exit 0, or the reason and exit 1")
+	fs.BoolVar(&o.spike, "spike", false, "check the whole SDL2 binding on a hidden window and exit (the CI smoke test)")
 	fs.StringVar(&o.driver, "driver", "", "SDL video driver to force, for example dummy (default: SDL_VIDEODRIVER or SDL's choice)")
 	fs.StringVar(&o.config, "config", "", "configuration file (default: the standard location)")
 	fs.StringVar(&o.profile, "profile", "", "frontend profile id (default: detected)")
@@ -83,7 +88,10 @@ func run(argv []string, stdout, stderr io.Writer) int {
 			return exitInternal
 		}
 	}
-	if o.probe || probeByName(argv[0]) {
+	switch {
+	case o.probe: // before anything else is read or opened: the installer runs this as root
+		return runEligibility(stdout, stderr)
+	case o.spike || probeByName(argv[0]):
 		return runProbe(o.driver, stdout, stderr)
 	}
 	return runGUI(o, stderr)

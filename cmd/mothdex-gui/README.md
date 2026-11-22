@@ -6,14 +6,16 @@ The gamepad front end of mothdex for emulation frontends (Batocera, EmuELEC, Ret
 
 ```
 mothdex-gui [-config file] [-profile id] [-lang xx_yy] [-driver name] [-window WxH]
-mothdex-gui -probe [-driver dummy]
+mothdex-gui --probe
+mothdex-gui -spike [-driver dummy]
 ```
 
 | Flag | Meaning |
 |---|---|
 | `-window WxH` | a window of that size instead of the full screen (desktop session) |
 | `-driver name` | force an SDL video driver, such as `dummy` |
-| `-probe` | check the SDL2 binding on a hidden window and exit (the CI smoke test); an executable named `mothdex-gui-probe` does this with no flag |
+| `--probe` | the installer's eligibility check: load SDL2, check the version, open no window, read no config, write no file or log; prints `sdl X.Y.Z` and exits 0, or the reason (one line, at most 200 bytes) on stderr and exits 1 |
+| `-spike` | check the whole SDL2 binding on a hidden window and exit (the CI smoke test); an executable named `mothdex-gui-probe` does this with no flag |
 
 Exit codes: 0 normal exit or SIGTERM/SIGINT, 1 SDL missing, too old or no display, 2 configuration error, 3 internal error. Every
 failure is written to the log file and to stderr.
