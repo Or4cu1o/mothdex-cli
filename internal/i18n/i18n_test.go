@@ -1,6 +1,7 @@
 package i18n
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -319,18 +320,13 @@ func TestArgumentsCannotBreakLinesWithUnicodeSeparators(t *testing.T) {
 	}
 }
 
-// T-74 S2: a warning that echoes text from the locale folder (here its path) carries no control character.
+// T-74 S2: a warning that echoes text from the locale folder (a path, YAML text) carries no control character.
+// Built through warn, because Windows refuses such characters in a file name.
 func TestWarningsAreSanitised(t *testing.T) {
-	notDir := filepath.Join(t.TempDir(), "a\x1b[31mb"+bidi)
-	if err := os.WriteFile(notDir, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	b, err := LoadDir(fstest.MapFS{"en_us.yaml": {Data: []byte("a: 'A'\n")}}, notDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	b := &Bundle{}
+	b.warn("%s skipped: %v", "a\x1b[31mb"+bidi, errors.New("invalid YAML: line\x1b]52;c;AAAA\x07 "+lineSep+"x"))
 	ws := b.Warnings()
-	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b"+bidi) {
+	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b\x07"+bidi+lineSep) {
 		t.Fatalf("warnings: %q", ws)
 	}
 }
