@@ -708,8 +708,15 @@ func (m model) status(top screen, sv screenView) string {
 		more = "  " + m.env.T("ui.tui.more", nil)
 	}
 	parts := make([]string, len(keys))
+	onConsent := false
+	if q, ok := top.(queueScreen); ok {
+		onConsent = q.consentFocused(m.rt())
+	}
 	for i, k := range keys {
 		parts[i] = k.keys + " " + m.env.T("ui.tui.key."+k.label, nil)
+		if onConsent && k.label == "retry" { // r means "download anyway" on a row that waits for the OK
+			parts[i] = m.env.T("ui.consent.footer", nil)
+		}
 	}
 	return strings.Join(parts, "  ") + more
 }

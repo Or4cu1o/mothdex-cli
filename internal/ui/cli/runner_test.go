@@ -478,3 +478,82 @@ func TestShellBatchNamesTheLinkOfEveryEntryWithSeveralLinks(t *testing.T) {
 		t.Fatalf("the CLI stays silent without a preference:\n%s", plain.err.String())
 	}
 }
+
+// A download that stopped on its real size is not a plain failure (T-56): inside an interactive Shell the
+// question comes after the batch, names both sizes and the folder, and a yes queues it again with the
+// consent for exactly that size; a no leaves the result as the batch had it, with no second error block.
+func TestShellAsksDownloadAnywayAfterTheBatch(t *testing.T) {
+	const real, catalog = int64(700 << 20), int64(40 << 20)
+	stopped := func(id app.JobID) app.JobSnapshot {
+		return app.JobSnapshot{ID: id, Slug: "zelda", Title: "Zelda", State: app.StateFailed, Expected: real, CatalogSize: catalog,
+			Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}
+	}
+	// yes
+	var queued [][]app.DownloadRequest
+	calls := 0
+	f := &fake{
+		enqueue: func(r []app.DownloadRequest) ([]app.JobID, error) {
+			queued = append(queued, r)
+			return []app.JobID{"a"}, nil
+		},
+		wait: func() (app.BatchResult, error) {
+			calls++
+			if calls == 1 {
+				return app.BatchResult{Jobs: []app.JobSnapshot{stopped("a")}, Failed: 1}, nil
+			}
+			return app.BatchResult{Jobs: []app.JobSnapshot{{ID: "a", Slug: "zelda", Title: "Zelda", State: app.StateDone, Path: "/roms/gbc/z.gb", Bytes: real}}, Done: 1}, nil
+		},
+	}
+	rig := newShellRig(t, f, true, "y")
+	if code := rig.r.Run(context.Background(), []string{"download", "1"}); code != 0 {
+		t.Fatalf("exit %d: %s", code, rig.err.String())
+	}
+	wantAsk := "Zelda is 700.0 MB, not 40.0 MB. Download it anyway to /roms/gbc? [y/N] "
+	if len(rig.prompts) != 1 || rig.prompts[0] != wantAsk {
+		t.Fatalf("prompts %q, want %q", rig.prompts, wantAsk)
+	}
+	if len(queued) != 2 || queued[0][0].SizeConsent != 0 || queued[1][0].SizeConsent != real {
+		t.Fatalf("the second batch carries the consent for %d: %+v", real, queued)
+	}
+	if strings.Contains(rig.err.String(), "confirmation_required") {
+		t.Fatalf("a yes leaves no error behind:\n%s", rig.err.String())
+	}
+
+	// no
+	queued, calls = nil, 0
+	rig = newShellRig(t, f, true, "n")
+	code := rig.r.Run(context.Background(), []string{"download", "1"})
+	if code == 0 || len(queued) != 1 || strings.Contains(rig.err.String(), "Error:") {
+		t.Fatalf("a no queues nothing and prints no second error block: exit %d, queued %d\n%s", code, len(queued), rig.err.String())
+	}
+
+	// no terminal: the row and the way out are printed, nothing is asked
+	queued, calls = nil, 0
+	rig = newShellRig(t, f, false, "y")
+	_ = rig.r.Run(context.Background(), []string{"download", "1"})
+	if len(rig.prompts) != 0 || len(queued) != 1 || !strings.Contains(rig.err.String(), "-f") {
+		t.Fatalf("without a terminal nothing is asked and -f is the way out: %q\n%s", rig.prompts, rig.err.String())
+	}
+}
+
+// In a batch the stopped job is a warning line with its code and the way out, not a failure.
+func TestBatchLineOfAJobThatWaitsForItsOK(t *testing.T) {
+	f := &fake{wait: func() (app.BatchResult, error) {
+		return app.BatchResult{Failed: 1, Done: 1, Jobs: []app.JobSnapshot{
+			{ID: "a", Slug: "mario", Title: "Mario", State: app.StateDone, Path: "/roms/m.nes", Bytes: 10},
+			{ID: "b", Slug: "zelda", Title: "Zelda", State: app.StateFailed, Expected: 700 << 20, CatalogSize: 40 << 20,
+				Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": int64(700 << 20), "path": "/roms/gbc"}}},
+		}}, nil
+	}}
+	rig := newShellRig(t, f, false)
+	rig.r.Run(context.Background(), []string{"download", "1", "2"})
+	got := rig.err.String()
+	for _, want := range []string{"! Zelda: Needs your OK: the file is 700.0 MB, listed as 40.0 MB. [confirmation_required]", "Add -f to download it anyway."} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "[x] Zelda") || strings.Contains(got, "✘ Zelda") {
+		t.Fatalf("it is not drawn as a failure:\n%s", got)
+	}
+}

@@ -95,6 +95,22 @@ ui:
     skipped: 'Skipped'
     failed: 'Failed'
     canceled: 'Canceled'
+  consent:
+    # A download whose real size needs a person's OK (error code confirmation_required): "Download anyway".
+    row: 'Needs your OK: the file is {size}, listed as {estimate}.'
+    row_unknown: 'Needs your OK: the file is {size}.'
+    action: 'Download anyway'
+    title: 'This file is {size}, not {estimate}.'
+    title_unknown: 'This file is {size}.'
+    detail: 'The catalog listed a smaller size. It will be saved to {dir}.'
+    detail_unknown: 'The catalog had no size for it. It will be saved to {dir}.'
+    keep: "Don't download"
+    go: 'Download {size}'
+    tui_ask: 'Download {name} anyway? It is {size}, not {estimate}, saved to {dir}. [y/N]'
+    tui_ask_unknown: 'Download {name} anyway? It is {size}, saved to {dir}. [y/N]'
+    footer: 'r download anyway'
+    shell_ask: '{name} is {size}, not {estimate}. Download it anyway to {dir}? [y/N]'
+    shell_ask_unknown: '{name} is {size}. Download it anyway to {dir}? [y/N]'
   units:
     b: 'B'
     kb: 'KB'

@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- T-56 (Medium), "Download anyway" in the TUI and the Shell (the GUI follows in its own commit): a download that stopped with
+  `confirmation_required` is a warning that waits for a person, not a failure. The queue row is `! Title: Needs your OK: the file is
+  {size}, listed as {estimate}.` (`ui.consent.*`, copy by Bússola, 4 languages); on that row `r` or `d` asks `[y/N]` with both sizes and
+  the folder and queues the request again with `SizeConsent` equal to the real size shown, and the footer says `r download anyway`.
+  `r` on all failed jobs skips these rows: each needs its own OK. In the Shell the question comes after the batch, one per stopped job,
+  only with a terminal on both ends; without one the row and the `-f` hint are printed. The sizes come from the error and the
+  snapshot, so a catalog size above 500 MiB (T-64, cli#77) needs no other path. The TUI uses `app.ConfirmBytes` instead of its own
+  500 MiB constant. New helper package `internal/ui/consent`.
 - PR-71 review rounds (Crivo, Bússola): Quit when finished quits at once when the last job ended under the dialog; `SDL_GAMECONTROLLERCONFIG`
   and `SDL_GAMECONTROLLERCONFIG_FILE` are read in Go and added after the embedded database and the user file so they win (SDL applies them
   at `SDL_Init`, before our lines, which would have replaced them; `gui.md` and the contract say so now); when the exit sequence runs out of

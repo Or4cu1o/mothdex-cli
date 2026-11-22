@@ -94,6 +94,8 @@ func (p *printer) sym(name string) string {
 		return "[ok]"
 	case name == "fail" && utf8:
 		return "\u2718"
+	case name == "warn":
+		return "!"
 	}
 	return "[x]"
 }
