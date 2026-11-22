@@ -48,13 +48,14 @@ Both installers always check the SHA-256 of the archive against `checksums.txt`
 and, when `cosign` (or an authenticated `gh`) is on the machine, the signature
 and provenance with the identity below; a failing check aborts before anything
 is installed. The binary goes to the profile `bin_dir` (mode 0755; on Windows
-`%LocalAppData%\Programs\mothdex` by default), and the launcher (Port) only to the profile launcher folder, from a fixed template with a marker line (`v2`; a `v1`
-launcher of an earlier install is upgraded), so an existing file of yours is never overwritten. When the release ships a `mothdex-gui_`
+`%LocalAppData%\Programs\mothdex` by default), and the launcher (Port) only to the profile launcher folder, from a fixed template with a marker line (`v3`, which runs `mothdex-gui` and nothing else; a `v1` or `v2` launcher of an
+earlier install is upgraded), so an existing file of yours is never overwritten. When the release ships a `mothdex-gui_`
 archive for your machine (decided from the verified `checksums.txt` only), the installer also fetches and verifies it, proves that the GUI starts
 (`mothdex-gui --probe`, run from `bin_dir` with a scrubbed environment), installs `mothdex-gui` and the licence notices in
-`mothdex-licenses/`, and the launcher is **on by default** (`--no-launcher` / `-NoLauncher` turns it off, `--no-gui` / `-NoGui`
-installs the CLI only). For a release without a GUI archive the launcher stays opt-in (`--launcher` / `-Launcher`). On Windows the launcher
-is written only when `<RetroBat>\roms\windows` cannot be written by other users. After writing a launcher on Batocera, EmuELEC or RetroBat the installer asks the
+`mothdex-licenses/`, and the launcher is written **whenever the GUI is installed** (`--no-launcher` / `-NoLauncher` turns it off, `--no-gui` / `-NoGui`
+installs the CLI only). A Port has no terminal, so there is no `mothdex tui` fallback: without the GUI (not eligible, `--no-gui`, no GUI archive for
+the machine) no launcher is written and an existing launcher that carries one of our markers is removed, with a note; a file without our marker is never touched. On Windows the launcher
+is written only when `<RetroBat>\roms\windows` cannot be written by other users. After writing or removing a launcher on Batocera, EmuELEC or RetroBat the installer asks the
 frontend to reload its game list once (loopback, no proxy, never fatal). A dry run executes the verified probe from a staging name in an existing `bin_dir` and removes it again. On a default `C:\RetroBat` the launcher check will usually skip the launcher, because the root of `C:\` lets Authenticated Users modify new subfolders (not verified on a real machine); restrict the permissions of `roms\windows` to enable it. Release checklist: when a file is added to `THIRD_PARTY/`, add its name to `NOTICE_NAMES` in `install.sh` and `$NoticeNames` in `install.ps1` (a test fails otherwise); an installer downloaded before that release aborts on an unknown notice, by design. Details: [ports.md](contracts/cli/ports.md). `install.sh` needs curl (it forces https, redirects included), or GNU wget together with cosign or a logged-in `gh`:
 wget can follow an https to http redirect, so the signature check is what protects that path (busybox wget does not
 verify TLS certificates and is refused). On Windows, an existing `-BinDir` outside `%LocalAppData%` is accepted only when its

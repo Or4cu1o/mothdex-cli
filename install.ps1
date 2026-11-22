@@ -13,8 +13,8 @@
   When the release lists a mothdex-gui_ archive for this machine it also installs mothdex-gui.exe and SDL2.dll, after
   proving that the GUI starts (`mothdex-gui.exe --probe`, run from the install folder with a minimal environment), and
   the licence notices in mothdex-licenses. Default location: %LocalAppData%\Programs\mothdex (per-user, not writable by
-  other users). With RetroBat found, a launcher (Mothdex.bat, a Port) is written to <RetroBat>\roms\windows, but only
-  when that folder is not writable by other users. See docs/contracts/cli/ports.md and
+  other users). With RetroBat found and the GUI installed, a launcher (Mothdex.bat, a Port that runs mothdex-gui and nothing
+  else) is written to <RetroBat>\roms\windows, but only when that folder is not writable by other users. See docs/contracts/cli/ports.md and
   docs/contracts/cli/release-artifacts.md.
 
 .PARAMETER Version
@@ -25,7 +25,8 @@
   Install here instead of %LocalAppData%\Programs\mothdex. A folder outside %LocalAppData% gets an explicit ACL
   (current user, SYSTEM and Administrators full control; Users read and execute).
 .PARAMETER Launcher
-  Create the RetroBat launcher. On by default when the release ships a GUI archive for this machine, off otherwise.
+  Create the RetroBat launcher (the default). It is written only when the GUI is installed: a Port has no terminal to fall back to
+  the text interface, so without the GUI no launcher is written and an existing one of ours is removed.
 .PARAMETER NoLauncher
   Do not create or rewrite the launcher.
 .PARAMETER Gui
@@ -59,7 +60,8 @@ $Base = "https://github.com/$Repo/releases"
 $SignerIdentity = "https://github.com/$Repo/.github/workflows/release.yml@refs/tags/"
 $OidcIssuer = 'https://token.actions.githubusercontent.com'
 $MarkerV1 = 'rem mothdex-launcher v1'
-$Marker = 'rem mothdex-launcher v2'
+$MarkerV2 = 'rem mothdex-launcher v2'
+$Marker = 'rem mothdex-launcher v3'
 $LauncherName = 'Mothdex.bat'
 $LicensesName = 'mothdex-licenses'
 # The notices this installer ships (T-70 IC-5): the only names ever removed from mothdex-licenses.
@@ -403,7 +405,7 @@ function Remove-GuiFiles([string]$BinDirPath, [string]$Why, [bool]$Dry) {
 
 function Test-HasMarker([string]$Path) {
   if (Test-ReparsePoint $Path) { return $false }
-  foreach ($line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) { if (($line -ceq $Marker) -or ($line -ceq $MarkerV1)) { return $true } }
+  foreach ($line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) { if (($line -ceq $Marker) -or ($line -ceq $MarkerV2) -or ($line -ceq $MarkerV1)) { return $true } }
   return $false
 }
 
@@ -422,13 +424,25 @@ function Install-Launcher([string]$LauncherDir, [string]$BinDirPath) {
     Write-Warning "$LauncherDir is owned by another user, is a link, or can be written by other users: launcher skipped (restrict its permissions to enable it)"; return
   }
   $gui = Join-Path $BinDirPath 'mothdex-gui.exe'
-  $cli = Join-Path $BinDirPath 'mothdex.exe'
-  $text = "@echo off`r`n$Marker`r`nsetlocal DisableDelayedExpansion`r`nif not exist `"$gui`" goto tui`r`n`"$gui`"`r`nexit /b %errorlevel%`r`n:tui`r`n`"$cli`" tui`r`n"
+  $text = "@echo off`r`n$Marker`r`nsetlocal DisableDelayedExpansion`r`n`"$gui`"`r`nexit /b %errorlevel%`r`n"
   $tmp = Join-Path $LauncherDir ".$LauncherName.$PID.tmp"
   [IO.File]::WriteAllText($tmp, $text, (New-Object Text.UTF8Encoding($false)))
   Move-Item -LiteralPath $tmp -Destination $target -Force
   $script:LauncherWritten = $true
   Write-Output "Launcher: $target (opt out with -NoLauncher; -Uninstall removes it)"
+}
+
+# D32 (PRT-G8): without the GUI a launcher of ours would start nothing, so it is removed; never a file without one of our
+# markers (Test-HasMarker refuses a reparse point too).
+function Remove-Launcher([string]$LauncherDir, [string]$Why, [bool]$Dry) {
+  if (-not $LauncherDir) { return }
+  $target = Join-Path $LauncherDir $LauncherName
+  if (-not (Test-Path -LiteralPath $target)) { return }
+  if (-not (Test-HasMarker $target)) { return }
+  if ($Dry) { Write-Output "Would remove $target ($Why)"; return }
+  Remove-Item -LiteralPath $target -Force
+  $script:LauncherRemoved = $true
+  Write-Output "Removed $target ($Why)"
 }
 
 # T-70 IC-11 (TH-22): ask RetroBat to reload its game list. Literal loopback URL, no proxy, no redirect, 3 seconds,
@@ -457,6 +471,7 @@ function Invoke-FrontendRefresh {
 # --- main ----------------------------------------------------------------------------------------------------------
 
 $script:LauncherWritten = $false
+$script:LauncherRemoved = $false
 $arch = Get-TargetArch
 $retrobat = Find-RetroBat
 if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\mothdex' }
@@ -537,14 +552,12 @@ try {
   # T-70 IC-3: whether a GUI archive exists comes only from the verified checksums.txt. Not listed: skip with a note.
   # Listed but not downloadable, or failing verification: abort the whole install, before anything is written.
   $guiZipName = "mothdex-gui_${Version}_windows_$arch.zip"
-  $guiListed = $false
   $guiReady = $false
   $guiNotices = @()
   $guiStage = Join-Path $work 'gui'
   $listedCount = Get-ListedCount $checksums $guiZipName
   if ($listedCount -gt 1) { Fail "checksums.txt lists $guiZipName more than once" }
   if ($listedCount -eq 1) {
-    $guiListed = $true
     if (-not $NoGui) {
       $guiZip = Join-Path $work $guiZipName
       try { Get-Remote "$url/$guiZipName" $guiZip } catch { Fail "$guiZipName is listed in checksums.txt but could not be downloaded: nothing was installed" }
@@ -561,31 +574,30 @@ try {
     Write-Output "note: release $tag has no GUI archive for windows_${arch}: CLI only"
   }
 
-  # D22: the launcher is on by default when the release ships a GUI archive for this machine, opt-in otherwise.
-  $launcherOn = $false
-  if ($NoLauncher) { $launcherOn = $false } elseif ($Launcher) { $launcherOn = $true } elseif ($guiListed) { $launcherOn = $true }
-  if ($launcherOn -and (-not $launcherDir)) {
-    $launcherOn = $false
-    if ($Launcher) { Write-Output 'note: RetroBat was not found: launcher skipped' }
-  }
-
   if ($DryRun) {
     Write-Output "Dry run: nothing was installed. Verified $zipName ($signature)."
     Write-Output "Would install: $exe"
+    $dryGui = 'none' # eligible, none (the GUI would not be installed) or unknown (eligibility not checked)
     if ($guiReady) {
       Write-Output "GUI archive: $guiZipName (verified)"
       if (Test-Path -LiteralPath $BinDir) {
         $result = Install-Gui $guiStage $BinDir $false
-        if ($result.Verdict -eq 'eligible') { Write-Output "GUI eligibility: eligible ($($result.Message)); would install $guiExe, SDL2.dll and $(Join-Path $BinDir $LicensesName)" }
+        if ($result.Verdict -eq 'eligible') { $dryGui = 'eligible'; Write-Output "GUI eligibility: eligible ($($result.Message)); would install $guiExe, SDL2.dll and $(Join-Path $BinDir $LicensesName)" }
         elseif ($result.Verdict -eq 'not-eligible') { Write-Output "GUI eligibility: not eligible: $($result.Message); the GUI would not be installed"; Remove-GuiFiles $BinDir 'not eligible' $true }
         else { Write-Output "GUI eligibility: the probe failed (exit $($result.Code)): $($result.Message)"; Remove-GuiFiles $BinDir 'probe error' $true }
-      } else { Write-Output "GUI eligibility: not checked ($BinDir does not exist yet)" }
+      } else { $dryGui = 'unknown'; Write-Output "GUI eligibility: not checked ($BinDir does not exist yet)" }
     } else {
       $why = 'this release has no GUI archive'
       if ($NoGui) { $why = '-NoGui' }
       Remove-GuiFiles $BinDir $why $true
     }
-    if ($launcherOn) { Write-Output "Would write: $(Join-Path $launcherDir $LauncherName)" }
+    if ($dryGui -eq 'eligible') {
+      if ((-not $NoLauncher) -and $launcherDir) { Write-Output "Would write: $(Join-Path $launcherDir $LauncherName)" }
+    } elseif ($dryGui -eq 'unknown') {
+      if ((-not $NoLauncher) -and $launcherDir) { Write-Output 'Launcher: would be written only if the GUI turns out to be eligible' }
+    } else {
+      Remove-Launcher $launcherDir 'the GUI would not be installed' $true
+    }
     return
   }
 
@@ -606,7 +618,7 @@ try {
       Write-Output "Installed $guiExe ($($result.Message))"
       Install-Licenses $guiStage $guiNotices $BinDir
     } elseif ($result.Verdict -eq 'not-eligible') {
-      Write-Warning "mothdex-gui was not installed: $($result.Message). The CLI works; the launcher, when on, runs 'mothdex tui'."
+      Write-Warning "mothdex-gui was not installed: $($result.Message). The CLI works; no launcher is written, because a Port has no terminal for 'mothdex tui'."
     } else {
       # a probe failure of the Windows archive is a packaging bug: reported as an error, the CLI install still completes (IC-9)
       Write-Warning "error: mothdex-gui.exe --probe failed (exit $($result.Code)): $($result.Message)"
@@ -620,8 +632,16 @@ try {
     Remove-GuiFiles $BinDir $why $false
   }
 
-  if ($launcherOn) { Install-Launcher $launcherDir $BinDir }
-  if ($script:LauncherWritten -and ($profileId -eq 'retrobat')) { Invoke-FrontendRefresh }
+  # D32 (PRT-G8): the launcher is written only when the GUI is installed (and -NoLauncher was not given); without the GUI an existing
+  # launcher of ours is removed, and a user's file is never touched
+  if ($guiInstalled) {
+    if ((-not $NoLauncher) -and $launcherDir) { Install-Launcher $launcherDir $BinDir }
+    elseif ((-not $NoLauncher) -and $Launcher) { Write-Output 'note: RetroBat was not found: launcher skipped' }
+  } else {
+    if ($Launcher) { Write-Output "note: no launcher: it is written only when the GUI is installed (a Port has no terminal for 'mothdex tui')" }
+    Remove-Launcher $launcherDir 'the GUI is not installed: a Port needs it' $false
+  }
+  if (($script:LauncherWritten -or $script:LauncherRemoved) -and ($profileId -eq 'retrobat')) { Invoke-FrontendRefresh }
   $check = Invoke-Native $exe @('--version')
   if ($check.Code -eq 0) { Write-Output $check.Output } else { Write-Warning "$exe --version exited with $($check.Code); the file is installed." }
   Write-Output "Add $BinDir to your PATH to run 'mothdex' directly."

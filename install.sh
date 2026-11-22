@@ -11,8 +11,8 @@
 #   - checks the archive SHA-256 against checksums.txt of the same release, always, before anything is executable;
 #   - verifies the cosign signature of checksums.txt when `cosign` is installed (or `gh attestation verify` when `gh`
 #     is installed and logged in);
-#   - installs the `mothdex` binary (0755) into the profile's bin_dir and, where the system has one, a launcher
-#     (a Port) into the profile's launcher dir;
+#   - installs the `mothdex` binary (0755) into the profile's bin_dir and, only when the GUI is installed and the system has
+#     one, a launcher (a Port, which runs mothdex-gui and nothing else) into the profile's launcher dir;
 #   - when the release lists a `mothdex-gui_` archive for this machine, also installs `mothdex-gui` after proving
 #     that it starts (`mothdex-gui --probe`, run from bin_dir with a scrubbed environment), plus its licence notices.
 # It never runs the downloaded archive's contents before verification and never pipes anything to a shell.
@@ -27,7 +27,8 @@ BASE="https://github.com/$REPO/releases"
 SIGNER_IDENTITY="https://github.com/$REPO/.github/workflows/release.yml@refs/tags/"
 OIDC_ISSUER="https://token.actions.githubusercontent.com"
 MARKER_V1="# mothdex-launcher v1"
-MARKER="# mothdex-launcher v2"
+MARKER_V2="# mothdex-launcher v2"
+MARKER="# mothdex-launcher v3"
 LAUNCHER_NAME="Mothdex.sh"
 LICENSES_NAME="mothdex-licenses"
 # A THIRD_PARTY member must have a plain name (IC-4) and be one of the notices this installer ships; only those names are
@@ -44,7 +45,7 @@ PROFILE=""
 BIN_DIR_OPT=""
 DRY_RUN=0
 UNINSTALL=0
-LAUNCHER_OPT=""   # "" = decided by the release (D22 flip), 1 = --launcher, 0 = --no-launcher
+LAUNCHER_OPT=""   # "" = default (on when the GUI is installed), 1 = --launcher (the same), 0 = --no-launcher
 GUI_OPT=""        # "" = default (on), 1 = --gui, 0 = --no-gui
 FAILED=0          # set when a step reports an error after the CLI install completed: exit status 1 at the end
 TMP=""
@@ -77,8 +78,8 @@ Usage: sh install.sh [options]
   --profile <id>       batocera | emuelec | recalbox | lakka | emudeck | retrodeck | generic
                        (default: detected from the system)
   --bin-dir <dir>      install the binary here instead of the profile's bin_dir
-  --launcher           create the Port/launcher (on by default when the release ships a GUI archive for this
-                       machine, off otherwise)
+  --launcher           create the Port/launcher (the default; it is written only when the GUI is installed, because a
+                       Port has no terminal to fall back to the text interface)
   --no-launcher        do not create or rewrite the launcher
   --gui                install mothdex-gui when the release has one (the default)
   --no-gui             install the CLI only; an installed mothdex-gui is removed (upgrade)
@@ -412,7 +413,6 @@ download_and_verify() {
 
 # --- the GUI archive (ports.md section 5.2) ---------------------------------------------------------------------
 
-GUI_LISTED=0 # the release lists a mothdex-gui_ archive for this machine (decided from the verified checksums.txt only)
 GUI_ON=0     # that archive was downloaded, verified and extracted
 GUI_ARCHIVE=""
 
@@ -430,7 +430,6 @@ gui_prepare() {
     1) ;;
     *) die "checksums.txt lists $GUI_ARCHIVE more than once" ;;
   esac
-  GUI_LISTED=1
   [ "$GUI_OPT" != 0 ] || return 0
   fetch "$URL/$GUI_ARCHIVE" "$TMP/$GUI_ARCHIVE" ||
     die "$GUI_ARCHIVE is listed in checksums.txt but could not be downloaded: nothing was installed"
@@ -561,7 +560,7 @@ install_gui() {
       ;;
     not-eligible)
       drop_stage
-      warn "mothdex-gui was not installed: ${PROBE_MSG:-not eligible on this system}. The CLI works; the launcher, when on, runs 'mothdex tui'."
+      warn "mothdex-gui was not installed: ${PROBE_MSG:-not eligible on this system}. The CLI works; no launcher is written, because a Port has no terminal for 'mothdex tui'."
       ;;
     *)
       drop_stage
@@ -632,26 +631,49 @@ remove_gui() {
   fi
 }
 
-has_marker() { [ ! -L "$1" ] && { grep -qxF "$MARKER" "$1" 2>/dev/null || grep -qxF "$MARKER_V1" "$1" 2>/dev/null; }; }
+has_marker() {
+  [ ! -L "$1" ] && { grep -qxF "$MARKER" "$1" 2>/dev/null || grep -qxF "$MARKER_V2" "$1" 2>/dev/null || grep -qxF "$MARKER_V1" "$1" 2>/dev/null; }
+}
 
-# D22: the launcher is on by default when the release ships a GUI archive for this machine (decided from the verified
-# checksums.txt, IC-3), opt-in otherwise. --launcher and --no-launcher win.
+# D32 (PRT-G8): a Port has no terminal, so the launcher is written only when the GUI is installed and runs mothdex-gui and
+# nothing else. D22 reads "launcher on when the GUI is installed". Without the GUI (not eligible, --no-gui, no GUI archive)
+# no launcher is written and an existing launcher that carries one of our markers is removed. --no-launcher stops the
+# installer from writing or rewriting it.
 LAUNCHER_ON=0
 LAUNCHER_WRITTEN=0
-decide_launcher() {
+LAUNCHER_REMOVED=0
+decide_launcher() { # after the GUI outcome is known
   LAUNCHER_ON=0
-  case $LAUNCHER_OPT in
-    1) LAUNCHER_ON=1 ;;
-    0) ;;
-    *) if [ "$GUI_LISTED" -eq 1 ]; then LAUNCHER_ON=1; fi ;;
-  esac
-  if [ "$LAUNCHER_ON" -eq 1 ] && [ -z "$LAUNCHER_DIR" ]; then
-    LAUNCHER_ON=0
+  if [ "$GUI_INSTALLED" -ne 1 ]; then
+    if [ "$LAUNCHER_OPT" = 1 ]; then say "note: no launcher: it is written only when the GUI is installed (a Port has no terminal for 'mothdex tui')"; fi
+    return 0
+  fi
+  [ "$LAUNCHER_OPT" != 0 ] || return 0
+  if [ -z "$LAUNCHER_DIR" ]; then
     if [ "$LAUNCHER_OPT" = 1 ]; then say "note: the $PROFILE profile has no launcher folder: launcher skipped"; fi
+    return 0
+  fi
+  LAUNCHER_ON=1
+}
+
+# Without the GUI, a launcher of ours would start nothing: it is removed, never anything without a marker (has_marker refuses
+# a symbolic link too). $1 says why.
+remove_launcher() {
+  [ -n "$LAUNCHER_DIR" ] || return 0
+  target="$LAUNCHER_DIR/$LAUNCHER_NAME"
+  if [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi
+  has_marker "$target" || return 0
+  valid_path "$LAUNCHER_DIR" || { warn "launcher dir '$LAUNCHER_DIR' has unsafe characters: launcher left alone"; return 0; }
+  if [ "$DRY_RUN" -eq 1 ]; then
+    say "Would remove $target ($1)"
+  else
+    rm -f "$target"
+    LAUNCHER_REMOVED=1
+    say "Removed $target ($1)"
   fi
 }
 
-# Fixed template (marker v2); the only variable part is the validated bin_dir. No argument forwarding (IC-6) and no
+# Fixed template (marker v3); the only variable part is the validated bin_dir. No argument forwarding (IC-6) and no
 # environment of its own (ports.md 2.3). Atomic; never overwrites a file without a marker.
 install_launcher() {
   [ "$LAUNCHER_ON" -eq 1 ] || return 0
@@ -674,8 +696,7 @@ install_launcher() {
     return 0
   fi
   tmpl="$LAUNCHER_DIR/.$LAUNCHER_NAME.$$"
-  printf '#!/bin/sh\n%s\nif [ -x "%s/mothdex-gui" ]; then exec "%s/mothdex-gui"; fi\nexec "%s/mothdex" tui\n' \
-    "$MARKER" "$BIN_DIR" "$BIN_DIR" "$BIN_DIR" >"$tmpl" || {
+  printf '#!/bin/sh\n%s\nexec "%s/mothdex-gui"\n' "$MARKER" "$BIN_DIR" >"$tmpl" || {
     rm -f "$tmpl"
     warn "cannot write the launcher: skipped"
     return 0
@@ -689,7 +710,7 @@ install_launcher() {
 # IC-11 (TH-22): ask the frontend to reload its game list, only where the profile has a verified http_get refresh
 # (profiles/*.yaml). Literal loopback URL, no proxy, no redirect, 3 seconds, curl only, never fatal.
 refresh_frontend() {
-  [ "$LAUNCHER_WRITTEN" -eq 1 ] || return 0
+  if [ "$LAUNCHER_WRITTEN" -ne 1 ] && [ "$LAUNCHER_REMOVED" -ne 1 ]; then return 0; fi
   case $PROFILE in batocera | emuelec) ;; *) return 0 ;; esac
   if command -v curl >/dev/null 2>&1 &&
     curl -q --noproxy '*' --max-redirs 0 --max-time 3 -fs -o /dev/null "$REFRESH_URL" 2>/dev/null; then
@@ -757,22 +778,23 @@ if ! bin_dir_usable "$BIN_DIR"; then
 fi
 
 download_and_verify
-decide_launcher
 
 if [ "$DRY_RUN" -eq 1 ]; then
   say "Dry run: nothing was installed. Verified $ARCHIVE ($SIGNATURE)."
   say "Would install: $BIN_DIR/mothdex (0755)"
+  dry_gui=none # eligible, none (the GUI would not be installed) or unknown (eligibility not checked)
   if [ "$GUI_ON" -eq 1 ]; then
     say "GUI archive: $GUI_ARCHIVE (verified)"
     if [ -d "$BIN_DIR" ]; then
       stage_and_probe
       drop_stage
       case $GUI_VERDICT in
-        eligible) say "GUI eligibility: eligible ($PROBE_MSG); would install $BIN_DIR/mothdex-gui and $BIN_DIR/$LICENSES_NAME" ;;
+        eligible) dry_gui=eligible; say "GUI eligibility: eligible ($PROBE_MSG); would install $BIN_DIR/mothdex-gui and $BIN_DIR/$LICENSES_NAME" ;;
         not-eligible) say "GUI eligibility: not eligible: ${PROBE_MSG:-no reason given}; the GUI would not be installed"; remove_gui "not eligible" ;;
         *) say "GUI eligibility: the probe could not run (exit $PROBE_RC): ${PROBE_MSG:-no output}"; remove_gui "probe error" ;;
       esac
     else
+      dry_gui=unknown
       say "GUI eligibility: not checked ($BIN_DIR does not exist yet)"
     fi
   elif [ "$GUI_OPT" = 0 ]; then
@@ -780,7 +802,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
   else
     remove_gui "this release has no GUI archive"
   fi
-  if [ "$LAUNCHER_ON" -eq 1 ]; then say "Would write: $LAUNCHER_DIR/$LAUNCHER_NAME"; fi
+  case $dry_gui in
+    eligible) if [ "$LAUNCHER_OPT" != 0 ] && [ -n "$LAUNCHER_DIR" ]; then say "Would write: $LAUNCHER_DIR/$LAUNCHER_NAME"; fi ;;
+    unknown) if [ "$LAUNCHER_OPT" != 0 ] && [ -n "$LAUNCHER_DIR" ]; then say "Launcher: would be written only if the GUI turns out to be eligible"; fi ;;
+    *) remove_launcher "the GUI would not be installed" ;;
+  esac
   exit 0
 fi
 
@@ -792,7 +818,8 @@ if [ "$GUI_INSTALLED" -ne 1 ]; then
   remove_gui "$why"
 fi
 install_licenses
-install_launcher
+decide_launcher
+if [ "$GUI_INSTALLED" -eq 1 ]; then install_launcher; else remove_launcher "the GUI is not installed: a Port needs it"; fi
 refresh_frontend
 "$BIN_DIR/mothdex" --version || warn "the installed binary did not run; check that this is the right architecture"
 case ":${PATH:-}:" in
