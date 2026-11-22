@@ -1,6 +1,6 @@
 # UX: gamepad GUI (`mothdex-gui`, emulator mode)
 
-Status: v1.1 (T-50; cli#71 review rules, PR-71-ux) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
+Status: v1.2 (T-50; cli#71 review rules, PR-71-ux; Download anyway, T-56) · Owner: Bússola · Implementer: one engineer (E-M3) · Risk: Medium
 Contract: [`gui.md`](../contracts/cli/gui.md) (Alicerce, T-51, PR #58), which owns the engineering detail behind this document.
 Services: [`app-service.md`](../contracts/cli/app-service.md) only. Flows mirror [`tui.md`](tui.md); wording, units and the
 Warming rules come from [`cli-conventions.md`](cli-conventions.md); link ranking from [`prefer-syntax.md`](prefer-syntax.md).
@@ -519,6 +519,7 @@ the field; otherwise the cycle is `abc → àé`.
 - **A opens an action sheet** for the focused job, never a direct cancel:
   - active or queued: `Cancel download` · `Details` · `Close`
   - failed or canceled: `Retry` (`Enqueue{Ref{Slug}, LinkSelector{Index: job.LinkIndex}}`) · `Details` · `Close`
+  - stopped with `confirmation_required`: `Download anyway` · `Details` · `Close` (see **Download anyway** below)
   - done or skipped: `Details` · `Hide from list` · `Close`
 - Y opens **Details** directly: file name, path, size, SHA-256 (first 16 hex digits, then `…`), crc state, attempts,
   duration, and the error message with its code.
@@ -528,6 +529,30 @@ the field; otherwise the cycle is `abc → àé`.
 - Empty: `No downloads. Press X on a game to download it.`
 - With `download.boxart` on, the GUI calls `SaveJobBoxart` after each `Done` job, as the CLI does. A failure is a
   toast in warn, never a job failure.
+
+**Download anyway** (`confirmation_required`, T-56). With `interface.confirm_downloads` on, a job stops before its
+first body byte when the proxy's real size crosses 500 MiB and the catalog size was below it (downloader.md §3.2 step
+6). Nothing failed: the job waits for a person.
+
+- **Copy states facts only**: the real size (`{size}`, the error's `size`, else `Expected`), the catalog size
+  (`{estimate}`, `CatalogSize`) and the folder (`{dir}`). Never "much larger": 499 MiB to 501 MiB also trips the rule.
+  Keys are `ui.consent.*`; each text has an `_unknown` variant without the catalog part, for `CatalogSize` 0.
+- **Row**: warn color with `!` (a shape, §1.3), never error with ✘: `Needs your OK: the file is 712.0 MB, listed as
+  43.0 MB.` The sentence wraps to 2 lines (the row is 3 lines tall); only the title may be cut.
+- **Action sheet**: `Download anyway` · `Details` · `Close`. `Retry` is not offered, since it would only stop again.
+  The focus starts on `Download anyway`, which only opens the dialog.
+- **Dialog** (§5.12): title `This file is 712.0 MB, not 43.0 MB.`, detail `The catalog listed a smaller size. It will
+  be saved to {dir}.` with the folder shortened in the middle (§1.3). Buttons `[Don't download]` (left, initial focus,
+  and B) and `[Download 712.0 MB]`. Don't download leaves the row as it is. Download queues the same link again with
+  `SizeConsent` equal to the size shown, and the new job takes the stopped row's place in the list and the counts.
+- **Nothing implies consent**: no bulk action queues these jobs; each needs its own OK. If the proxy then reports
+  another size, the job stops again and the row shows the new size, with no extra text.
+- **Toast** when a job stops outside the Queue: `Needs your OK: {title}` in warn. The title comes last, so a cut falls
+  on it.
+- **Counts**: these jobs are never counted as failed. The summary toast becomes `2 downloaded, 0 skipped, 0 failed, 1
+  waiting for your OK` (`ui.tui.summary_waiting`, only when there is one) in warn; the exit screen adds `1 waiting for
+  your OK`.
+- **Details**: `Size` is the real size, and the line is `Status: <row text> [confirmation_required]`, not `Error`.
 
 ### 5.9 History (Home › History or Start menu)
 
