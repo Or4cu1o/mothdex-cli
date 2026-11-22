@@ -2,8 +2,8 @@
 
 <!-- impeccable:product-schema 1 -->
 
-Status: **draft for the owner** (T-81, brand session of Decisions D28 8b). The facts come from `docs/PLAN-v0.md`,
-the owner's decisions D1-D29 and the UX docs. Lines marked *(to confirm)* are inferences the owner has not stated.
+Status: **approved by the owner (D30)** (T-81, brand session of Decisions D28 8b). The facts come from
+`docs/PLAN-v0.md`, the owner's decisions D1-D30 and the UX docs.
 
 ## Platform
 
@@ -27,7 +27,7 @@ the download, without the user touching a file manager.
 ## Positioning
 
 Unofficial clients for the public Mothdex API, built for the device where the games are played: the GUI starts from
-the frontend as a Port, and the profiles know each system's folders. *(to confirm: the exact public wording)*
+the frontend as a Port, and the profiles know each system's folders.
 
 ## Operating Context
 
@@ -45,10 +45,9 @@ the frontend as a Port, and the profiles know each system's folders. *(to confir
 ## Brand Commitments
 
 - Name: Mothdex, written `mothdex` in the apps. The moth is the emblem.
-- The GUI looks like mothdex.net, with a retro-game appearance (D29). It takes inspiration only: no logo, artwork or
-  files from the site or from any game.
-- Voice: plain and factual, and states what happened and what to do next (cli-conventions, gui.md). *(to confirm
-  for the public pages)*
+- The GUI looks like mothdex.net, with a retro-game appearance (D29); the direction is "Night moth arcade" in
+  `DESIGN.md` (D30). It takes inspiration only: no logo, artwork or files from the site or from any game.
+- Voice: plain and factual, and states what happened and what to do next (cli-conventions, gui.md).
 
 ## Evidence on Hand
 

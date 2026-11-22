@@ -62,7 +62,7 @@ All content, bars and dialogs live inside the **safe rectangle**; only the backg
 
 ### 1.3 Type scale (pixels at the logical height; one embedded font, Latin + Cyrillic)
 
-> Visual identity (T-81, proposal): `DESIGN.md` adds a `display` face (Handjet) for short labels and a pixel grid.
+> Visual identity (T-81, approved D30): `DESIGN.md` adds a `display` face (Handjet) for short labels and a pixel grid.
 > The sizes below stay the authority.
 
 | Role | compact | standard | large | Use |
@@ -108,7 +108,7 @@ area has `2u` padding inside the safe rectangle.
 
 ### 1.5 Color tokens (functional baseline, dark)
 
-> Visual identity (T-81, proposal): `DESIGN.md` replaces these values with the mothdex.net night palette and adds
+> Visual identity (T-81, approved D30): `DESIGN.md` replaces these values with the mothdex.net night palette and adds
 > `surface.raised`, `frame` and the moth colors. Until it is implemented, the code follows this table.
 
 | Token | Hex | Use |

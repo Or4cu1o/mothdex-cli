@@ -1,7 +1,7 @@
 # Design
 
-Owner: Bússola (UX/UI). Status: **proposal for the owner** (T-81, Decisions D28 8b and D29). Nothing here is
-implemented yet; Vitral implements it after the owner approves the direction.
+Owner: Bússola (UX/UI). Status: **approved by the owner (D30)** (T-81, Decisions D28 8b, D29 and D30). Not
+implemented yet; Vitral implements it.
 
 This file holds the visual identity. Behavior, layout per screen, focus model and copy stay in
 [`docs/ux/gui.md`](docs/ux/gui.md) (GUI), [`docs/ux/tui.md`](docs/ux/tui.md), [`docs/ux/shell.md`](docs/ux/shell.md)
@@ -200,6 +200,8 @@ Measured contrast (WCAG 2.x formula):
 
 - The sprite is drawn as cell rectangles or as a small embedded PNG scaled by nearest neighbor; it is never smoothed.
 - **No new runtime dependency.** Handjet is one more embedded font file, rendered by the existing text package.
+- **Art license (D30):** the sprite, icons and any art made for the project are owned by the project and ship
+  with the repository under its license.
 
 ### Do and don't
 
