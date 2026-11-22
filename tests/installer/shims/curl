@@ -1,6 +1,8 @@
 #!/bin/sh
-# curl stand-in: takes the same arguments install.sh passes (-o <dest> and a URL).
-dest=""; url=""
+# curl stand-in: takes the same arguments install.sh passes (-o <dest> and a URL). The frontend refresh (a literal
+# loopback URL) is recorded with its arguments in $FAKE_LOG.refresh and answers REFRESH_RC (default 0); every other URL
+# goes to fake-fetch, which only serves the GitHub release files.
+dest=""; url=""; args="$*"
 while [ $# -gt 0 ]; do
   case $1 in
     -o) dest=$2; shift 2 ;;
@@ -8,4 +10,10 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
+case $url in
+  http://127.0.0.1:1234/reloadgames)
+    printf '%s\n' "$args" >>"$FAKE_LOG.refresh"
+    exit "${REFRESH_RC:-0}"
+    ;;
+esac
 exec "$(dirname "$0")/fake-fetch" "$url" "$dest"

@@ -39,11 +39,11 @@ Every GitHub release `vX.Y.Z` (tag with a `v`) contains exactly:
 | `darwin_arm64` | | macOS Apple silicon |
 
 Not built: `windows_386`, `windows_arm`, `darwin_386`, `darwin_arm`. `linux_riscv64` (Batocera jh7110) may be added
-later (additive). All binaries are static (`CGO_ENABLED=0`, `-trimpath`).
+later (additive). The `mothdex` binaries are static (`CGO_ENABLED=0`, `-trimpath`). `mothdex-gui` is built the same way but on Linux it is dynamic: it needs the system loader to find `libSDL2-2.0.so.0` (gui.md §2, ports.md §3), so the installer proves it starts before installing it.
 
 ## 3. `uname` → archive mapping (`install.sh`)
 
-The binary is static, so only the **kernel** architecture matters, and `uname -m` reports exactly that: a 32-bit
+The `mothdex` binary is static, so only the **kernel** architecture matters, and `uname -m` reports exactly that (the `mothdex-gui` archive uses the same mapping; its loader and SDL2 are checked by the installer's probe): a 32-bit
 userland on a 64-bit kernel (some EmuELEC builds) reports `aarch64` and takes `arm64`. Do not use `getconf LONG_BIT`,
 which reports the userland.
 

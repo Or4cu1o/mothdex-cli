@@ -189,7 +189,7 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 - targets: linux amd64, arm64, armv7, armv6, and windows amd64 (386 only if the spike passes it); no darwin and no windows arm64 in v0.3.0.
 
 **Archives.** `mothdex-gui_<version>_<os>_<arch>`, never inside `mothdex_` archives (release-artifacts §1).
-- Each holds the binary, `LICENSE`, `README.md`, `CHANGELOG.md` and `THIRD_PARTY.md`: purego Apache-2.0, x/image BSD-3, Noto OFL-1.1 with `OFL.txt`, GameControllerDB zlib, SDL2 zlib on Windows.
+- Each holds the binary, `LICENSE`, `README.md`, `CHANGELOG.md` and the `THIRD_PARTY/` folder (the repository layout; ports.md PRT-G5): purego Apache-2.0, x/image BSD-3, Noto OFL-1.1, GameControllerDB zlib, SDL2 zlib on Windows. The installer copies it to `bin_dir/mothdex-licenses/`.
 - Each has an SBOM and is listed in the same `checksums.txt` and cosign bundle.
 - `release-artifacts.md` must change "All binaries are static" to "`mothdex` is static; `mothdex-gui` is dynamic on Linux (glibc `ld.so`, `libdl`) and needs system SDL2". Guindaste's PR.
 
@@ -200,7 +200,7 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 
 **`install.sh` / `install.ps1`.** The Port details (launcher template, eligibility probe, flags, upgrade and uninstall) are in [`ports.md`](ports.md), which wins where the two differ.
 - `--gui` (default on once the GUI ships, which flips D22) installs `mothdex-gui` next to `mothdex` when the archive exists for the arch.
-- On Linux, the installer checks that `libSDL2-2.0.so.0` resolves (`ldconfig -p`, else the profile's lib dirs). If it does not, it warns and skips the GUI.
+- On Linux, the installer proves that the GUI can start by running `mothdex-gui --probe` from `bin_dir` with a scrubbed environment (ports.md §5.2). It replaces the earlier `ldconfig -p` check: one run proves the interpreter, the userland arch and the SDL2 soname together, and does not need `ldconfig`. If the probe says no, the installer warns with its reason and skips the GUI.
 - The launcher runs `mothdex-gui` when it is installed, else `mothdex tui` (profiles §4 already says so).
 - Checksum and signature verification are as for `mothdex_`.
 - WinGet, Scoop and Homebrew stay CLI-only until E-M4.
