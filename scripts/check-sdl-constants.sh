@@ -19,6 +19,7 @@ PKG=${SDL_GO_PKG:-internal/ui/gui/sdl}
 # Go constant -> C expression. A new numeric constant in the package must be added here, or the check fails.
 MAP='InitVideo SDL_INIT_VIDEO
 InitGameController SDL_INIT_GAMECONTROLLER
+WindowShown SDL_WINDOW_SHOWN
 WindowHidden SDL_WINDOW_HIDDEN
 WindowFullscreenDesktop SDL_WINDOW_FULLSCREEN_DESKTOP
 RendererSoftware SDL_RENDERER_SOFTWARE

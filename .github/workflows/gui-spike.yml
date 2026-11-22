@@ -85,14 +85,15 @@ jobs:
         run: |
           probe=dist-gui/linux_amd64/mothdex-gui-probe
           # Eligible: the installer runs it as `env -i PATH=... timeout 20 mothdex-gui --probe` (ports.md 5.2, T-70 IC-1,
-          # IC-10). Exit 0 and exactly one line, "sdl X.Y.Z", on stdout. (An explicit --probe beats the probe name.)
+          # IC-10). Exit 0 and exactly one line, "sdl X.Y.Z word", on stdout: the word says where SDL2 was loaded from (PRT-G9).
+          # (An explicit --probe beats the probe name.)
           set +e
           out=$(env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin timeout 20 "$probe" --probe 2>probe.err)
           code=$?
           set -e
           echo "exit $code, stdout [$out], stderr [$(cat probe.err)]"
           [ "$code" -eq 0 ] || { echo "::error::--probe exited $code with SDL2 installed"; exit 1; }
-          printf '%s\n' "$out" | grep -Eq '^sdl [0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::stdout is not one line sdl X.Y.Z"; exit 1; }
+          printf '%s\n' "$out" | grep -Eq '^sdl [0-9]+\.[0-9]+\.[0-9]+ (system|ld_library_path|other|unknown)$' || { echo "::error::stdout is not one line sdl X.Y.Z word"; exit 1; }
           [ ! -s probe.err ] || { echo "::error::an eligible probe wrote to stderr"; exit 1; }
           # Not eligible: a machine with no SDL2 (a Debian image without libsdl2). Exit 1, nothing on stdout, one clean
           # line of reason on stderr, at most 200 bytes.

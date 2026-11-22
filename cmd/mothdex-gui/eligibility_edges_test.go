@@ -15,8 +15,8 @@ import (
 
 // The limit of the contract is 200 bytes, written here as a number so the test does not move with the constant it checks.
 func TestProbeReasonIsCutAtTwoHundredBytes(t *testing.T) {
-	defer func(old func() (sdl.Version, error)) { checkSDL = old }(checkSDL)
-	checkSDL = func() (sdl.Version, error) { return sdl.Version{}, errors.New(strings.Repeat("x", 500)) }
+	defer func(old func() (sdl.Found, error)) { checkSDL = old }(checkSDL)
+	checkSDL = func() (sdl.Found, error) { return sdl.Found{}, errors.New(strings.Repeat("x", 500)) }
 	var out, errOut bytes.Buffer
 	if code := run([]string{"mothdex-gui", "--probe"}, &out, &errOut); code != 1 {
 		t.Fatalf("exit %d", code)
@@ -28,8 +28,8 @@ func TestProbeReasonIsCutAtTwoHundredBytes(t *testing.T) {
 
 // The eligible answer is one line and nothing else, whatever SDL the machine running the test has.
 func TestProbeEligibleOutputWithAStubbedCheck(t *testing.T) {
-	defer func(old func() (sdl.Version, error)) { checkSDL = old }(checkSDL)
-	checkSDL = func() (sdl.Version, error) { return sdl.Version{Major: 2, Minor: 32, Patch: 4}, nil }
+	defer func(old func() (sdl.Found, error)) { checkSDL = old }(checkSDL)
+	checkSDL = func() (sdl.Found, error) { return sdl.Found{Version: sdl.Version{Major: 2, Minor: 32, Patch: 4}}, nil }
 	var out, errOut bytes.Buffer
 	if code := run([]string{"mothdex-gui", "--probe"}, &out, &errOut); code != 0 || out.String() != "sdl 2.32.4\n" || errOut.Len() != 0 {
 		t.Fatalf("exit %d, stdout %q, stderr %q", code, out.String(), errOut.String())
@@ -86,11 +86,11 @@ func TestProbeWritesNoFile(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", root+"/xdg")
 	t.Setenv("TMPDIR", root+"/tmp")
 	t.Setenv("TEMP", root+"/tmp")
-	defer func(old func() (sdl.Version, error)) { checkSDL = old }(checkSDL)
-	for _, check := range []func() (sdl.Version, error){
+	defer func(old func() (sdl.Found, error)) { checkSDL = old }(checkSDL)
+	for _, check := range []func() (sdl.Found, error){
 		checkSDL, // the real check: eligible or not, depending on the machine
-		func() (sdl.Version, error) { return sdl.Version{Major: 2, Minor: 32, Patch: 4}, nil },
-		func() (sdl.Version, error) { return sdl.Version{}, errors.New("no SDL2") },
+		func() (sdl.Found, error) { return sdl.Found{Version: sdl.Version{Major: 2, Minor: 32, Patch: 4}}, nil },
+		func() (sdl.Found, error) { return sdl.Found{}, errors.New("no SDL2") },
 	} {
 		checkSDL = check
 		var out, errOut bytes.Buffer

@@ -42,6 +42,9 @@ type api struct {
 	getCurrentVideoDriver    func() string
 	createWindow             func(title string, x, y, w, h int32, flags uint32) uintptr
 	destroyWindow            func(window uintptr)
+	showWindow               func(window uintptr)
+	raiseWindow              func(window uintptr)
+	getWindowFlags           func(window uintptr) uint32
 	createRenderer           func(window uintptr, index int32, flags uint32) uintptr
 	destroyRenderer          func(renderer uintptr)
 	setRenderDrawColor       func(renderer uintptr, r, g, b, a uint8) int32
@@ -105,6 +108,9 @@ func (a *api) table() []binding {
 		{"SDL_GetCurrentVideoDriver", v200, &a.getCurrentVideoDriver, false},
 		{"SDL_CreateWindow", v200, &a.createWindow, false},
 		{"SDL_DestroyWindow", v200, &a.destroyWindow, false},
+		{"SDL_ShowWindow", v200, &a.showWindow, false},
+		{"SDL_RaiseWindow", v200, &a.raiseWindow, false},
+		{"SDL_GetWindowFlags", v200, &a.getWindowFlags, false},
 		{"SDL_CreateRenderer", v200, &a.createRenderer, false},
 		{"SDL_DestroyRenderer", v200, &a.destroyRenderer, false},
 		{"SDL_SetRenderDrawColor", v200, &a.setRenderDrawColor, false},
