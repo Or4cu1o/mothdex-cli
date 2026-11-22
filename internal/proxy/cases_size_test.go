@@ -234,6 +234,16 @@ func TestCase32eSecondConfirmationOverTwiceTheEstimate(t *testing.T) {
 	if res := run(t, 30_001, 30_001); res.State != proxy.StateDone {
 		t.Fatalf("the exact consent passes: %+v err %v", res, res.Err)
 	}
+	// the edge of the new branch: the smallest estimate above the threshold
+	edge := func(cl int) proxy.Result {
+		r := newRig(t, cfg)
+		r.srv.Script("/f/b", fakeproxy.OK(fakeproxy.Pattern(cl)))
+		return r.download(r.job("/f/b", "b.zip", 10_001))
+	}
+	if res := edge(20_002); res.State != proxy.StateDone {
+		t.Fatalf("edge 2x passes: %+v err %v", res, res.Err)
+	}
+	wantFailed(t, edge(20_003), proxy.CodeConfirmationRequired)
 }
 
 // Case 35 (T-27): the claim made for link.size is swapped for Content-Length before the body.
