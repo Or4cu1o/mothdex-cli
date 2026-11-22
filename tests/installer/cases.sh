@@ -256,7 +256,7 @@ fs_lakka() {
   export HOME
 }
 
-# The launcher is opt-in (D22): tests ask for it unless INST_LAUNCHER=0.
+# D32: the launcher is written when the GUI is installed (--launcher is the same thing, kept for the old tests); INST_LAUNCHER=0 omits the flag.
 INST_LAUNCHER=1
 inst() {
   if [ "$INST_LAUNCHER" -eq 1 ]; then
@@ -280,7 +280,7 @@ fi
 
 reset batocera-install
 fs_batocera
-inst --version v1.2.3
+inst --version v1.3.0
 check "exit 0" rc_is 0
 check "binary is 0755" mode_is /userdata/system/bin/mothdex 755
 check "bin_dir is 0755" mode_is /userdata/system/bin 755
@@ -288,17 +288,17 @@ check "binary runs" runs_ok /userdata/system/bin/mothdex --version
 check "launcher exists" test -f /userdata/roms/ports/Mothdex.sh
 check "launcher is 0755" mode_is /userdata/roms/ports/Mothdex.sh 755
 check "launcher owned by installer" owned_by_me /userdata/roms/ports/Mothdex.sh
-check "launcher marker" file_has /userdata/roms/ports/Mothdex.sh '# mothdex-launcher v2'
-check "launcher template" file_has /userdata/roms/ports/Mothdex.sh 'exec "/userdata/system/bin/mothdex" tui'
+check "launcher marker" file_has /userdata/roms/ports/Mothdex.sh '# mothdex-launcher v3'
+check "launcher template runs the GUI only" file_has /userdata/roms/ports/Mothdex.sh 'exec "/userdata/system/bin/mothdex-gui"'
 check "launcher passes sh -n" sh -n /userdata/roms/ports/Mothdex.sh
-check "launcher forwards no arguments (IC-6)" text_is "$(/userdata/roms/ports/Mothdex.sh 'a b')" "mothdex 1.2.3 linux_amd64 tui"
+check "launcher forwards no arguments (IC-6)" text_is "$(/userdata/roms/ports/Mothdex.sh 'a b')" "gui "
 check "only GitHub release URLs used" log_lacks BLOCKED
 check "no leftovers in temp dir" test -z "$(ls -d /tmp/mothdex-install.* 2>/dev/null)"
 check "missing signature tools are reported" out_has "SHA-256 only"
 
 reset emuelec-install
 fs_emuelec
-inst --version v1.2.3
+inst --version v1.3.0
 check "exit 0" rc_is 0
 check "profile emuelec" out_has "profile: emuelec"
 check "binary in /storage/.local/bin" mode_is /storage/.local/bin/mothdex 755
@@ -414,10 +414,10 @@ HOME="/home/a b" inst --version v1.2.3
 check "HOME with a space refused" rc_not0
 reset case51-safe-odd-path
 fs_batocera
-inst --bin-dir /opt/mo+th-dex.v1/bin --version v1.2.3
+inst --bin-dir /opt/mo+th-dex.v1/bin --version v1.3.0
 check "safe unusual chars accepted" rc_is 0
 check "launcher passes sh -n" sh -n /userdata/roms/ports/Mothdex.sh
-check "launcher runs the literal path" text_is "$(/userdata/roms/ports/Mothdex.sh x)" "mothdex 1.2.3 linux_amd64 tui"
+check "launcher runs the literal path" text_is "$(/userdata/roms/ports/Mothdex.sh x)" "gui "
 
 # T-16 case 52: launcher permissions and re-install
 reset case52-world-writable-bin-dir
@@ -457,14 +457,14 @@ reset case52-symlink-to-marked-file
 fs_batocera
 printf '#!/bin/sh\n# mothdex-launcher v1\necho precious\n' >/tmp/victim
 ln -s /tmp/victim /userdata/roms/ports/Mothdex.sh
-inst --version v1.2.3
+inst --version v1.3.0
 check "symlink to a marked file is not replaced" test -L /userdata/roms/ports/Mothdex.sh
 check "marked target untouched" file_has /tmp/victim "echo precious"
 reset fat-world-writable-batocera-root
 fs_batocera
 mkdir -p /userdata/system/bin
 chmod 0777 /userdata/system/bin /userdata/roms/ports
-FAKE_FSTYPE=exfat inst --version v1.2.3
+FAKE_FSTYPE=exfat inst --version v1.3.0
 check "exFAT bin_dir as root on batocera installs" rc_is 0
 check "binary installed" test -x /userdata/system/bin/mothdex
 check "warns about missing file permissions" out_has "has no file permissions"
@@ -515,28 +515,28 @@ check "FAT exception still requires owner root" rc_not0
 reset case52-world-writable-launcher-dir
 fs_batocera
 chmod 0777 /userdata/roms/ports
-inst --version v1.2.3
+inst --version v1.3.0
 check "binary still installed" test -x /userdata/system/bin/mothdex
 check "launcher skipped" absent /userdata/roms/ports/Mothdex.sh
 check "skip is explained" out_has "launcher skipped"
 reset case52-keeps-user-launcher
 fs_batocera
 printf '#!/bin/sh\necho mine\n' >/userdata/roms/ports/Mothdex.sh
-inst --version v1.2.3
+inst --version v1.3.0
 check "user launcher kept" text_is "$(cat /userdata/roms/ports/Mothdex.sh)" "$(printf '#!/bin/sh\necho mine')"
 check "kept is reported" out_has "keeping existing"
 reset case52-overwrites-own-launcher
 fs_batocera
-inst --version v1.2.3
+inst --version v1.3.0
 printf '#!/bin/sh\n# mothdex-launcher v1\necho stale\n' >/userdata/roms/ports/Mothdex.sh
-inst --version v1.2.3
-check "marked launcher refreshed" file_has /userdata/roms/ports/Mothdex.sh 'exec "/userdata/system/bin/mothdex" tui'
+inst --version v1.3.0
+check "marked launcher refreshed" file_has /userdata/roms/ports/Mothdex.sh 'exec "/userdata/system/bin/mothdex-gui"'
 check "still 0755" mode_is /userdata/roms/ports/Mothdex.sh 755
 reset case52-symlink-launcher
 fs_batocera
 echo precious >/tmp/victim
 ln -s /tmp/victim /userdata/roms/ports/Mothdex.sh
-inst --version v1.2.3
+inst --version v1.3.0
 check "symlink target untouched" text_is "$(cat /tmp/victim)" precious
 check "symlink left alone" test -L /userdata/roms/ports/Mothdex.sh
 
@@ -550,7 +550,7 @@ check "no launcher" absent /userdata/roms/ports/Mothdex.sh
 
 reset uninstall
 fs_batocera
-inst --version v1.2.3
+inst --version v1.3.0
 : >"$FAKE_LOG"
 inst --uninstall
 check "uninstall ok" rc_is 0
@@ -645,16 +645,19 @@ make_tag v2.1.0-rc-1
 inst --version 2.1.0-rc-1
 check "hyphen inside a pre-release identifier is accepted" rc_is 0
 
-reset launcher-opt-in
+reset launcher-needs-the-gui
 fs_batocera
 INST_LAUNCHER=0
 inst --version v1.2.3
-check "binary installed" test -x /userdata/system/bin/mothdex
-check "no launcher without --launcher" absent /userdata/roms/ports/Mothdex.sh
+check "a release without a GUI archive: binary installed" test -x /userdata/system/bin/mothdex
+check "no launcher without the GUI" absent /userdata/roms/ports/Mothdex.sh
 inst --launcher --version v1.2.3
-check "launcher with --launcher" test -x /userdata/roms/ports/Mothdex.sh
+check "--launcher without the GUI still writes nothing" absent /userdata/roms/ports/Mothdex.sh
+check "and says why" out_has "written only when the GUI is installed"
+inst --version v1.3.0
+check "with the GUI the launcher is written" test -x /userdata/roms/ports/Mothdex.sh
 inst --uninstall
-check "uninstall removes the opt-in launcher" absent /userdata/roms/ports/Mothdex.sh
+check "uninstall removes the launcher" absent /userdata/roms/ports/Mothdex.sh
 INST_LAUNCHER=1
 
 reset wget-latest-refused
@@ -706,27 +709,29 @@ CASE=notice-lists
 check "install.sh notice list equals THIRD_PARTY/" text_is "$(notice_list_sh)" "$(notice_files)"
 check "install.ps1 notice list equals THIRD_PARTY/" text_is "$(notice_list_ps1)" "$(notice_files)"
 
-# --- Ports: GUI archive, eligibility, launcher v2, default flip (ports.md sections 2 and 5; T-70 IC-1 to IC-12) ---------
+# --- Ports: GUI archive, eligibility, launcher v3 (GUI only, D32), default (ports.md sections 2 and 5; T-70 IC-1 to IC-12) --- (ports.md sections 2 and 5; T-70 IC-1 to IC-12) ---------
 
 BATOCERA_BIN=/userdata/system/bin
 PORT=/userdata/roms/ports/Mothdex.sh
-V2_TEMPLATE=$(printf '#!/bin/sh\n# mothdex-launcher v2\nif [ -x "%s/mothdex-gui" ]; then exec "%s/mothdex-gui"; fi\nexec "%s/mothdex" tui' \
+V3_TEMPLATE=$(printf '#!/bin/sh\n# mothdex-launcher v3\nexec "%s/mothdex-gui"' "$BATOCERA_BIN")
+V2_FILE=$(printf '#!/bin/sh\n# mothdex-launcher v2\nif [ -x "%s/mothdex-gui" ]; then exec "%s/mothdex-gui"; fi\nexec "%s/mothdex" tui' \
   "$BATOCERA_BIN" "$BATOCERA_BIN" "$BATOCERA_BIN")
 
-# The default flip (D22): the release lists a GUI archive for this machine, so the launcher is on without --launcher.
+# D32: the launcher is on whenever the GUI is installed, without --launcher.
 INST_LAUNCHER=0
 reset gui-flip-default
 fs_batocera
 http_proxy=http://127.0.0.1:9 inst --version v1.3.0
 check "exit 0" rc_is 0
 check "GUI installed 0755" mode_is $BATOCERA_BIN/mothdex-gui 755
-check "launcher is on by default for a release with a GUI archive" test -x $PORT
-check "launcher content equals the v2 template" text_is "$(cat $PORT)" "$V2_TEMPLATE"
+check "launcher is on by default when the GUI is installed" test -x $PORT
+check "launcher content equals the v3 template" text_is "$(cat $PORT)" "$V3_TEMPLATE"
+check "the v3 launcher has no tui fallback" file_lacks $PORT 'tui'
 # shellcheck disable=SC2016  # the strings are looked up literally
 check "launcher has no argument forwarding (IC-6)" file_lacks $PORT '"$@"'
 check "launcher has no percent-star (IC-6)" file_lacks $PORT '%*'
 check "launcher sets no environment (2.3)" file_lacks $PORT 'LD_LIBRARY_PATH'
-check "launcher prefers the GUI" text_is "$($PORT)" "gui "
+check "launcher runs the GUI" text_is "$($PORT)" "gui "
 check "licence directory is 0755" mode_is $BATOCERA_BIN/mothdex-licenses 755
 check "licence file is 0644" mode_is $BATOCERA_BIN/mothdex-licenses/NotoSans-OFL-1.1.txt 644
 check "both notices installed" test -f $BATOCERA_BIN/mothdex-licenses/SDL_GameControllerDB-zlib.txt
@@ -797,7 +802,8 @@ check "GUI not installed" absent $BATOCERA_BIN/mothdex-gui
 check "the probe's reason is shown" out_has "libSDL2-2.0.so.0 not found"
 check "no licence notices without the GUI" absent $BATOCERA_BIN/mothdex-licenses
 check "staging file removed" no_stage $BATOCERA_BIN
-check "launcher still written and falls back to tui" text_is "$($PORT)" "mothdex 1.3.1 linux_amd64 tui"
+check "no launcher: a Port has no terminal for tui" absent $PORT
+check "and says so" out_has "no launcher is written"
 for pair in 'v1.3.2 exec-failure' 'v1.3.3 crash'; do
   # shellcheck disable=SC2086  # intentional word splitting of the "tag name" pair
   set -- $pair
@@ -818,7 +824,7 @@ inst --version v1.2.3
 check "exit 0" rc_is 0
 check "skipped with a note" out_has "no GUI archive"
 check "CLI installed" test -x $BATOCERA_BIN/mothdex
-check "launcher stays opt-in for that release" absent $PORT
+check "no launcher without a GUI archive" absent $PORT
 check "no GUI download attempted" log_lacks mothdex-gui_
 check "no refresh without a launcher" absent "$FAKE_LOG.refresh"
 reset gui-flag-before-the-gui-release
@@ -827,10 +833,10 @@ inst --gui --version v1.2.3
 check "--gui before the GUI release does nothing, exit 0" rc_is 0
 check "no GUI" absent $BATOCERA_BIN/mothdex-gui
 INST_LAUNCHER=1
-reset launcher-opt-in-still-works
+reset launcher-flag-without-the-gui
 fs_batocera
 inst --version v1.2.3
-check "--launcher still writes the launcher" test -x $PORT
+check "--launcher does not write a launcher without the GUI" absent $PORT
 INST_LAUNCHER=0
 reset gui-listed-not-downloadable
 fs_batocera
@@ -903,7 +909,7 @@ fs_batocera
 # shellcheck disable=SC2016  # the old template is literal on purpose
 printf '#!/bin/sh\n# mothdex-launcher v1\nexec "/userdata/system/bin/mothdex" tui "$@"\n' >$PORT
 inst --version v1.3.0
-check "v1 launcher becomes v2" text_is "$(cat $PORT)" "$V2_TEMPLATE"
+check "v1 launcher becomes v3" text_is "$(cat $PORT)" "$V3_TEMPLATE"
 reset upgrade-keeps-unmarked
 fs_batocera
 printf '#!/bin/sh\necho mine\n' >$PORT
@@ -932,13 +938,14 @@ inst --no-gui --version v1.3.0
 check "exit 0" rc_is 0
 check "--no-gui removes the GUI" absent $BATOCERA_BIN/mothdex-gui
 check "--no-gui removes the notices" absent $BATOCERA_BIN/mothdex-licenses
-check "the launcher falls back to tui" text_is "$($PORT)" "mothdex 1.3.0 linux_amd64 tui"
+check "--no-gui: the launcher of ours is removed (a Port has no terminal for tui)" absent $PORT
+check "and says so" out_has "Removed $PORT"
 check "the GUI archive is not downloaded for --no-gui" log_lacks mothdex-gui_
 reset no-gui-first-install
 fs_batocera
 inst --no-gui --version v1.3.0
 check "CLI only" absent $BATOCERA_BIN/mothdex-gui
-check "launcher default follows the release, not --no-gui" test -x $PORT
+check "--no-gui: no launcher is written" absent $PORT
 reset flag-conflicts
 inst --gui --no-gui --version v1.3.0
 check "--gui with --no-gui is refused" rc_not0
@@ -995,7 +1002,7 @@ for pair in 'v1.3.1 not-eligible 0' 'v1.3.2 probe-error 1' 'v1.2.3 not-listed 0'
   check "$2: the older GUI is gone" absent $BATOCERA_BIN/mothdex-gui
   check "$2: its notices are gone" absent $BATOCERA_BIN/mothdex-licenses
   check "$2: said so" out_has "Removed $BATOCERA_BIN/mothdex-gui"
-  check "$2: the launcher runs tui next to the new CLI" text_is "$($PORT)" "mothdex ${1#v} linux_amd64 tui"
+  check "$2: the launcher of the older install is removed" absent $PORT
 done
 reset probe-killed-by-the-bound
 fs_batocera
@@ -1031,6 +1038,82 @@ for pair in 'v1.4.4 a-space' 'v1.4.5 a-star'; do
   check "$2: a member name outside A-Za-z0-9._- aborts as unsafe (IC-4)" rc_not0
   check "$2: says unsafe member name" out_has "unsafe member name"
   check "$2: nothing installed" absent $BATOCERA_BIN/mothdex
+done
+
+# D32 (PRT-G8): without the GUI no launcher is written and a launcher of ours is removed; a file without our marker, or a link,
+# is never touched. The four ways of not installing the GUI: not eligible, a probe error, no GUI archive, --no-gui.
+for scen in 'v1.3.1|' 'v1.3.2|' 'v1.2.3|' 'v1.3.0|--no-gui'; do
+  tag=${scen%%|*}
+  flag=${scen#*|}
+  for marker in v1 v2 v3; do
+    reset "d32-$tag-$marker"
+    fs_batocera
+    printf '#!/bin/sh\n# mothdex-launcher %s\necho old\n' "$marker" >$PORT
+    # shellcheck disable=SC2086  # $flag is empty or one option
+    inst --version "$tag" $flag
+    check "$tag $flag, a $marker launcher: removed" absent $PORT
+    check "$tag $flag, a $marker launcher: the removal is reported" out_has "Removed $PORT"
+    check "$tag $flag, a $marker launcher: the frontend is asked to reload (batocera)" test -s "$FAKE_LOG.refresh"
+    check "$tag $flag, a $marker launcher: the CLI is installed" test -x $BATOCERA_BIN/mothdex
+  done
+  reset "d32-user-$tag"
+  fs_batocera
+  printf '#!/bin/sh\necho mine\n' >$PORT
+  # shellcheck disable=SC2086
+  inst --version "$tag" $flag
+  check "$tag $flag: a launcher without our marker is never touched" text_is "$(cat $PORT)" "$(printf '#!/bin/sh\necho mine')"
+  check "$tag $flag: nothing was removed, so no refresh" absent "$FAKE_LOG.refresh"
+  reset "d32-link-$tag"
+  fs_batocera
+  printf '#!/bin/sh\n# mothdex-launcher v2\necho precious\n' >/tmp/victim
+  ln -s /tmp/victim $PORT
+  # shellcheck disable=SC2086
+  inst --version "$tag" $flag
+  check "$tag $flag: a link is left alone" test -L $PORT
+  check "$tag $flag: the target of the link is untouched" file_has /tmp/victim "echo precious"
+  reset "d32-fresh-$tag"
+  fs_batocera
+  # shellcheck disable=SC2086
+  inst --version "$tag" $flag
+  check "$tag $flag: a fresh install writes no launcher" absent $PORT
+done
+reset d32-upgrade-v2
+fs_batocera
+printf '%s\n' "$V2_FILE" >$PORT
+inst --version v1.3.0
+check "a v2 launcher (with the tui fallback) becomes v3 when the GUI is installed" text_is "$(cat $PORT)" "$V3_TEMPLATE"
+reset d32-no-launcher-keeps-v2
+fs_batocera
+printf '%s\n' "$V2_FILE" >$PORT
+inst --no-launcher --version v1.3.0
+check "--no-launcher with the GUI: an existing launcher is left as it is" text_is "$(cat $PORT)" "$V2_FILE"
+reset d32-no-launcher-no-gui
+fs_batocera
+printf '%s\n' "$V2_FILE" >$PORT
+inst --no-launcher --no-gui --version v1.3.0
+check "--no-launcher without the GUI: a launcher of ours would start nothing, so it is removed" absent $PORT
+reset d32-dry-run
+fs_batocera
+mkdir -p $BATOCERA_BIN
+printf '%s\n' "$V2_FILE" >$PORT
+inst --dry-run --version v1.3.1
+check "dry run, not eligible: says it would remove the launcher" out_has "Would remove $PORT"
+check "dry run, not eligible: the launcher is still there" test -f $PORT
+check "dry run, not eligible: no refresh" absent "$FAKE_LOG.refresh"
+inst --dry-run --version v1.3.0
+check "dry run, eligible: says it would write the launcher" out_has "Would write: $PORT"
+check "dry run, eligible: the old launcher is untouched" text_is "$(cat $PORT)" "$V2_FILE"
+reset d32-dry-run-unknown
+fs_batocera
+inst --dry-run --version v1.3.0
+check "dry run without a bin_dir: the launcher depends on the eligibility" out_has "only if the GUI turns out to be eligible"
+check "dry run without a bin_dir: no launcher path claimed" out_lacks "Would write: $PORT"
+reset d32-uninstall-all-markers
+fs_batocera
+for marker in v1 v2 v3; do
+  printf '#!/bin/sh\n# mothdex-launcher %s\n' "$marker" >$PORT
+  inst --uninstall
+  check "uninstall removes a $marker launcher" absent $PORT
 done
 
 # arch mapping of the GUI archive (the same as the CLI archive)
