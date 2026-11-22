@@ -21,6 +21,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
+	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 	"github.com/Or4cu1o/mothdex-cli/profiles"
@@ -158,6 +159,7 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	}
 
 	info, detect := detectProfile(o, cfg, paths, file, &warnings)
+	warnings = append(warnings, info.StorageWarnings...) // RAM disk (PRT-G11): said at every start, downloads depend on it
 	svc, err := app.New(app.Options{
 		Client: client, Cache: store, Clock: realClock{}, BaseURL: cfg.API.BaseURL, Covers: fetcher,
 		AllowedHosts: cfg.Download.AllowedHosts, PageSize: cfg.Interface.PageSize, Prefer: preference(cfg.Download.Prefer),
@@ -221,12 +223,13 @@ func detectProfile(o Options, cfg config.Config, paths config.ResolvedPaths, fil
 		*warnings = append(*warnings, e.Error())
 	}
 	lcfg := library.Config{Flag: o.Profile, ID: cfg.Profile.ID, ROMRoot: cfg.Profile.ROMRoot, RetroBatPath: cfg.Profile.RetroBatPath,
-		Folders: cfg.Profile.Folders, RefreshOff: !cfg.Profile.Refresh, GenericROMRoot: paths.ROMRoot}
+		Folders: cfg.Profile.Folders, RefreshOff: !cfg.Profile.Refresh, GenericROMRoot: paths.ROMRoot, DataDir: paths.Data}
 	run := func(context.Context) (library.ProfileInfo, error) {
 		env, err := library.OSEnv()
 		if err != nil {
 			return library.ProfileInfo{}, err
 		}
+		env.MemoryBacked = proxy.IsMemoryBacked
 		return library.Detect(env, loaded.Profiles, lcfg), nil
 	}
 	info, _ := run(context.Background())
