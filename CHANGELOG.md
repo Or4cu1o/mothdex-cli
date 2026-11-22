@@ -44,6 +44,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installer constraints IC-1 to IC-13; `ports.md` follows it: launchers forward no arguments, the probe runs from
   `bin_dir` with a scrubbed environment, the GUI archive is decided from `checksums.txt`, and a failed Windows probe
   installs neither `mothdex-gui.exe` nor `SDL2.dll`.
+- T-56 (Medium), "Download anyway" in the TUI, the Shell and the GUI: a download that stopped with
+  `confirmation_required` is a warning that waits for a person, not a failure. The queue row is `! Title: Needs your OK: the file is
+  {size}, listed as {estimate}.` (`ui.consent.*`, copy by Bússola, 4 languages); on that row `r` or `d` asks `[y/N]` with both sizes and
+  the folder and queues the request again with `SizeConsent` equal to the real size shown, and the footer says `r download anyway`.
+  `r` on all failed jobs skips these rows: each needs its own OK. In the Shell the question comes after the batch, one per stopped job,
+  only with a terminal on both ends; without one the row and the `-f` hint are printed. The sizes come from the error and the
+  snapshot, so a catalog size above 500 MiB (T-64, cli#77) needs no other path. The TUI uses `app.ConfirmBytes` instead of its own
+  500 MiB constant. New helper package `internal/ui/consent`. In the GUI the action sheet of such a row is Download anyway, Details,
+  Close (Retry would only stop again); Download anyway opens the dialog of gui.md 5.12 (`This file is {size}, not {estimate}.`, buttons
+  Don't download, the default and B, and Download {size}), and Download queues the request again with the consent and takes the stopped
+  row's place. The row is the warn color with `!` and wraps to two lines (nothing is cut); the toast is `Needs your OK: {title}`
+  instead of `Download failed`. UX review (Bússola): a stopped job is counted apart from the failures, so the summaries (GUI and TUI
+  toasts, the Shell line, the GUI exit screen) say `N waiting for your OK` instead of `failed`; Details shows the real size and a
+  Status line instead of `0 B` and `Error`.
+  Review (Crivo): the Shell keeps the stopped result when one job is refused and the other downloads, and Ctrl+C at a question aborts
+  all of them (nothing already answered yes is queued); the size to accept comes only from the error (`Size` is 0 without it, and then
+  the job is an ordinary failure, never offered the catalog's size); the texts share `consent.Args`; tests for the proxy answering
+  another size after the consent in the three UIs.
 - PR-76 review rounds (Crivo, Bússola): a page answer that arrives late is taken only if its page is still the one next to the window, never
   drops the rows that hold the focus, and the focus is always clamped (it used to panic and leave the focus outside the list); B on a wait
   cancels the call itself (`context`); a cover that failed for a reason that may pass (network, timeout) is asked again after 30 s while a

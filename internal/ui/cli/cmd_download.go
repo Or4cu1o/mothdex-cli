@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/consent"
 )
 
 const confirmBytes = app.ConfirmBytes // confirm_downloads asks above this size or for more than one file
@@ -277,7 +279,103 @@ func (r *runtime) transfer(ctx context.Context, s *Session, reqs []app.DownloadR
 				}
 			}
 		}}
+	if stopped := consentJobs(res); len(stopped) > 0 && r.canAskConsent() {
+		reqOf := make(map[app.JobID]app.DownloadRequest, len(ids))
+		for i, id := range ids {
+			reqOf[id] = reqs[i]
+		}
+		out.follow = func() (outcome, error) { return r.askConsent(ctx, s, f, stopped, reqOf, batchError(res)) }
+	}
 	return out, batchError(res)
+}
+
+// consentJobs are the jobs of a batch that stopped on their real size and wait for a person's OK.
+func consentJobs(res app.BatchResult) []app.JobSnapshot {
+	var out []app.JobSnapshot
+	for _, j := range res.Jobs {
+		if consent.Needed(j) {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// canAskConsent: the "Download anyway" question is asked only inside the Shell, when a person is at a
+// terminal on both ends (a Runner is interactive only then), never with --json or -q. The plain command
+// line keeps its -f and its exit code.
+func (r *runtime) canAskConsent() bool {
+	return r.run != nil && r.run.interactive && !r.g.JSON && !r.g.Quiet
+}
+
+// askConsent asks once per stopped job, after the batch ended, naming the real size and the catalog's,
+// and queues again the ones answered yes with the consent for exactly that size. If the proxy then
+// reports another size, the same question comes back with the new one. firstErr is what the batch
+// returned: it stays the result when nothing is downloaded anyway, and also when some job was refused
+// (the others may download, but the refused one still stopped), without a second error block, since the
+// questions said it all. Ctrl+C or the end of input at a question aborts the lot: nothing is queued.
+func (r *runtime) askConsent(ctx context.Context, s *Session, f downloadFlags, stopped []app.JobSnapshot, reqOf map[app.JobID]app.DownloadRequest, firstErr error) (outcome, error) {
+	p := r.printer()
+	var again []app.DownloadRequest
+	refused := 0
+	for _, j := range stopped {
+		req, ok := reqOf[j.ID]
+		if !ok {
+			continue
+		}
+		suffix, args := consentArgs(j)
+		line, err := r.readAnswer(clean(p.T("ui.consent.shell_ask"+suffix, args)) + " ")
+		if err != nil {
+			return outcome{}, &exitError{err: &app.Error{Code: app.CodeCanceled, Message: "canceled"}, code: 130, silent: true}
+		}
+		if p.isYes(strings.TrimSpace(line)) {
+			again = append(again, consent.WithConsent(req, j))
+		} else {
+			refused++
+		}
+	}
+	kept := silent(firstErr)
+	if len(again) == 0 {
+		return outcome{}, kept
+	}
+	out, err := r.transfer(ctx, s, again, f)
+	if refused == 0 {
+		return out, err
+	}
+	// A refused job still stopped: the result of the new batch must not hide it, even when that batch is clean
+	// or asks its own questions.
+	if inner := out.follow; inner != nil {
+		out.follow = func() (outcome, error) {
+			next, nerr := inner()
+			if nerr == nil {
+				nerr = kept
+			}
+			return next, nerr
+		}
+	}
+	if err == nil {
+		err = kept
+	}
+	return out, err
+}
+
+// silent is the error of a batch with no second error block: the lines and questions already said it all.
+func silent(err error) error {
+	var ee *exitError
+	if errors.As(err, &ee) {
+		return ee
+	}
+	var ae *app.Error
+	if errors.As(err, &ae) {
+		return &exitError{err: ae, code: ae.ExitCode(), silent: true}
+	}
+	return err
+}
+
+// consentArgs are the values of the "Download anyway" texts and the suffix of their keys (see consent.Args).
+func consentArgs(j app.JobSnapshot) (suffix string, args i18n.Args) {
+	suffix, a := consent.Args(j, humanSize)
+	a["name"], a["dir"] = clean(firstNonEmpty(j.Name, firstNonEmpty(j.Title, j.Slug))), clean(consent.Dir(j))
+	return suffix, i18n.Args(a)
 }
 
 // saveBoxarts writes the cover of every finished job, named after its file; a failure is a warning,
@@ -384,7 +482,10 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 			}
 			p.info("%s", p.dim(p.T("ui.cli.download.skipped", i18n.Args{"path": clean(j.Path)})))
 		case app.StateFailed, app.StateCanceled:
-			if len(res.Jobs) > 1 {
+			switch {
+			case consent.Needed(j) && len(res.Jobs) > 1:
+				p.consentLine(title, j)
+			case len(res.Jobs) > 1:
 				p.failedLine(title, j.Err)
 			}
 		}
@@ -395,7 +496,24 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 	if len(res.Jobs) == 1 && res.Jobs[0].State == app.StateCanceled {
 		return // Ctrl+C on a single download: the exit code says it, nothing else is printed
 	}
-	p.info("%s", p.T("ui.download.summary", i18n.Args{"done": res.Done, "skipped": res.Skipped, "failed": res.Failed + res.Cancel, "elapsed": humanDuration(elapsed)}))
+	waiting := len(consentJobs(res)) // stopped on their real size: nothing failed, the summary says so apart
+	args := i18n.Args{"done": res.Done, "skipped": res.Skipped, "failed": max(res.Failed-waiting, 0) + res.Cancel, "elapsed": humanDuration(elapsed), "waiting": waiting}
+	if waiting > 0 {
+		p.info("%s", p.T("ui.download.summary_waiting", args))
+		return
+	}
+	p.info("%s", p.T("ui.download.summary", args))
+}
+
+// consentLine prints a job that waits for the person's OK to its real size: a warning, not a failure,
+// with the way out (-f) under it; the code stays visible for scripts.
+func (p *printer) consentLine(title string, j app.JobSnapshot) {
+	suffix, args := consentArgs(j)
+	line := fmt.Sprintf("%s %s: %s [%s]", p.sym("warn"), title, clean(p.T("ui.consent.row"+suffix, args)), j.Err.Code)
+	_, _ = fmt.Fprintln(p.err, p.warn(line))
+	if suffix == "" {
+		_, _ = fmt.Fprintln(p.err, "  "+p.dim(clean(p.T("errors.confirmation_required.size_hint_cli", i18n.Args{"size": args["size"], "estimate": args["estimate"]}))))
+	}
 }
 
 // failedLine prints one failed job: "x <title>: <message> [code]".
