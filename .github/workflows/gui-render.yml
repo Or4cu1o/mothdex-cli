@@ -1,0 +1,67 @@
+name: GUI render
+
+# The render harness (T-67): the screens of the GUI drawn by the real SDL2 software renderer with the real font (the
+# pinned Noto Sans), written as PNG files and uploaded as the workflow artifact "gui-renders", so the screens can be
+# looked at without a device (docs/ux/gui.md section 10). Nothing is compared with a stored image: the job fails only
+# when SDL cannot draw a frame or a frame comes out blank. See internal/ui/gui/sdl/render_test.go for the scene list.
+#
+# It runs on every pull request, with no "paths:" filter, so its job name stays stable and the job can be a required
+# status check (a workflow skipped by a paths filter never reports one). It takes about a minute and has no scope step:
+# the screens depend on the model, the locales and the font, so almost any change can alter them. Read-only token,
+# actions pinned by SHA, no dependency cache. Nothing here publishes anything.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  render:
+    name: render (linux/amd64, SDL2 software renderer, Noto Sans)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install the distro SDL2
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libsdl2-2.0-0
+          dpkg -s libsdl2-2.0-0 | grep '^Version'
+      - name: Render the screens
+        env:
+          SDL_VIDEODRIVER: dummy
+          GUI_REQUIRE_SDL: "1" # a broken libsdl2 install fails here instead of skipping the test
+          GUI_RENDER_DIR: ${{ runner.temp }}/gui-renders
+        run: go test -tags gui -count=1 -v -run '^TestRenderScenes$' ./internal/ui/gui/sdl
+      - name: List the renders
+        if: always()
+        env:
+          GUI_RENDER_DIR: ${{ runner.temp }}/gui-renders
+        run: |
+          {
+            echo "### GUI renders"
+            echo
+            echo 'Download the artifact `gui-renders` of this run to look at them.'
+            echo
+            printf '%s\n' '```'
+            cat "$GUI_RENDER_DIR/index.txt" 2>/dev/null || echo "no index: the test did not finish"
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the renders
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gui-renders
+          path: ${{ runner.temp }}/gui-renders
+          if-no-files-found: error
+          retention-days: 14
