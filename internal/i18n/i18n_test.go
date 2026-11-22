@@ -13,7 +13,12 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/locales"
 )
 
-var bidi = string(rune(0x202E)) // right-to-left override
+var bidi = string(rune(0x202E))
+
+var (
+	lineSep = string(rune(0x2028))
+	paraSep = string(rune(0x2029))
+) // right-to-left override
 
 func embedded(t *testing.T) *Bundle {
 	t.Helper()
@@ -308,7 +313,7 @@ func TestEmbeddedLocalesTranslateTheErrorTable(t *testing.T) {
 // T-74 S1: U+2028 and U+2029 are Zl/Zp, not Cc/Cf, and some terminals and log viewers break a line on them.
 func TestArgumentsCannotBreakLinesWithUnicodeSeparators(t *testing.T) {
 	b, _ := Load(fstest.MapFS{"en_us.yaml": {Data: []byte("m: 'x {h} y'\n")}})
-	got := b.New("en_us").T("m", Args{"h": "a b c"})
+	got := b.New("en_us").T("m", Args{"h": "a" + lineSep + "b" + paraSep + "c"})
 	if got != "x a b c y" {
 		t.Fatalf("U+2028 and U+2029 must become spaces: %q", got)
 	}
@@ -316,7 +321,7 @@ func TestArgumentsCannotBreakLinesWithUnicodeSeparators(t *testing.T) {
 
 // T-74 S2: a warning that echoes text from the locale folder (here its path) carries no control character.
 func TestWarningsAreSanitised(t *testing.T) {
-	notDir := filepath.Join(t.TempDir(), "a\x1b[31mb‮")
+	notDir := filepath.Join(t.TempDir(), "a\x1b[31mb"+bidi)
 	if err := os.WriteFile(notDir, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +330,7 @@ func TestWarningsAreSanitised(t *testing.T) {
 		t.Fatal(err)
 	}
 	ws := b.Warnings()
-	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b‮") {
+	if len(ws) != 1 || strings.ContainsAny(ws[0], "\x1b"+bidi) {
 		t.Fatalf("warnings: %q", ws)
 	}
 }
