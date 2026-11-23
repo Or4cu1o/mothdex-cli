@@ -22,7 +22,7 @@ On every system, first run `mothdex --version` and `mothdex-gui --probe` (GUI sy
 | macOS | Install; `mothdex` and `mothdex tui` (there is no GUI build for macOS yet); search and a download. |
 
 For each system note: installed, launcher visible in the menu, GUI starts, controller works, search, download,
-uninstall. These are the items of the [device report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml).
+uninstall. These are the items of the [install report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml).
 
 ## Install from the release tag
 
@@ -52,8 +52,16 @@ everything it installed, run it again with `--uninstall`. Details: [docs/release
 
 ## How to report
 
-1. Open the [device report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml) (one per
-   system and device), and tick what worked.
+Pick the form by what you tested:
+
+- **The GUI, or the Port on a frontend** (Batocera, EmuELEC, RetroBat and similar): the
+  [Ports beta report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=ports-beta.yml).
+- **Everything else** (the CLI, the shell, the TUI, the installer, on any system): the
+  [install report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml).
+
+One report per system and device. Then:
+
+1. Tick or answer each item of the form.
 2. Paste the install command and the `mothdex-gui --probe` output.
 3. **Replace your user name** in every path before pasting (`/home/USER`, `C:\Users\USER`).
 

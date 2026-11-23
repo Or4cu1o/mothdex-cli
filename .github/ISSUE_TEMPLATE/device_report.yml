@@ -1,11 +1,11 @@
-name: Device report
-description: Tell us how Mothdex runs on your device (community testing, one report per system and device)
+name: Install report (CLI and installer on any system)
+description: Tell us how the CLI and the installer run on your system (one report per system and device). For the GUI or the Port on a frontend, use the Ports beta report.
 labels: [device-report, needs-triage]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for testing! Open **one report per system and device**. Mark a step "Not tried" when you skipped it:
+        Thank you for testing! Open **one report per system and device**. This form is for the CLI and the installer; to report on the GUI or the Port on a frontend, use the **Ports beta report** form instead. Mark a step "Not tried" when you skipped it:
         that is a useful answer too. The [beta testing guide](https://github.com/Or4cu1o/mothdex-cli/blob/main/docs/beta-testing.md)
         says what to try on each system.
 

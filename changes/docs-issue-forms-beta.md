@@ -1,6 +1,6 @@
 ### Added
 
-- T-103: `device_report.yml` for community device testing and `docs/beta-testing.md` (what to test per system, how to install from the release tag, how to report). README links to them and to the issue forms of both repositories.
+- T-103: `device_report.yml` (the install report: CLI and installer on any system; the Ports beta report stays the form for the GUI and the Port, and gains the `device-report` and `needs-triage` labels) and `docs/beta-testing.md` (what to test per system, how to install from the release tag, how to report). README links to them and to the issue forms of both repositories.
 
 ### Changed
 
