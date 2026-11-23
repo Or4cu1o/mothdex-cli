@@ -12,7 +12,10 @@ separate archives; never map `armv6l` to `armv7`), one `<archive>.sbom.json` per
 archive, `checksums.txt` and `checksums.txt.sigstore.json`. The GUI has its own archives,
 `mothdex-gui_<version>_<os>_<arch>` for linux amd64, arm64, armv7, armv6 and windows amd64
 (the Windows one carries the pinned `SDL2.dll`, fetched by `scripts/fetch-sdl2-windows.sh` with its
-SHA-256 checked, never cached). `checksums.txt` lists all 28 archives and SBOMs, and the cosign
+SHA-256 checked, never cached). Every archive carries the licence notices of the Go modules linked into its binary
+(`THIRD_PARTY/go-modules-mothdex.txt` in the CLI archives; the GUI archives carry the whole `THIRD_PARTY/` folder, with `go-modules-mothdex-gui.txt` too).
+`scripts/gen-go-notices.sh` writes those files from the module list of each binary, and the `Release check` job fails when a file is not current;
+`scripts/verify-dist.sh` checks each built binary's `go version -m` against the file in its archive. `checksums.txt` lists all 28 archives and SBOMs, and the cosign
 bundle signs it; the attestation covers every listed file. `scripts/verify-dist.sh` checks the
 members, the loader and the build flags of every archive, and the snapshot check runs the
 installers' own member rules against the GUI archives (`scripts/check-gui-archives.sh`). The

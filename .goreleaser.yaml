@@ -98,6 +98,12 @@ archives:
       - src: CHANGELOG.md
         info:
           mtime: "{{ .CommitDate }}"
+      # the licence notices of the Go modules linked into this binary (scripts/gen-go-notices.sh)
+      - src: THIRD_PARTY/go-modules-mothdex.txt
+        dst: THIRD_PARTY
+        strip_parent: true
+        info:
+          mtime: "{{ .CommitDate }}"
 
   # GUI archives: mothdex-gui_<version>_<os>_<arch>, never inside the mothdex_ archives. The members are exactly what
   # install.sh and install.ps1 extract by name: the binary, LICENSE, README.md, CHANGELOG.md, the files of THIRD_PARTY/

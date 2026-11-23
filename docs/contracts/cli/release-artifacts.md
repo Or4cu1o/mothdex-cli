@@ -20,7 +20,8 @@ Every GitHub release `vX.Y.Z` (tag with a `v`) contains exactly:
 
 - `<version>` is the tag **without** the leading `v` (`0.1.0`, `0.2.0-rc.1`). A tag containing `-` is a pre-release.
 - Inside each archive: the binary at the **root** (`mothdex`, or `mothdex.exe` on Windows; the tar keeps mode `0755`),
-  plus `LICENSE`, `README.md` and `CHANGELOG.md`. No top-level directory.
+  plus `LICENSE`, `README.md`, `CHANGELOG.md` and `THIRD_PARTY/go-modules-mothdex.txt` (the licence texts of the Go modules linked into
+  that binary). No top-level directory.
 - The GUI binary ships in its **own** archives with the prefix `mothdex-gui_` and is never added inside
   `mothdex_` archives. Installers match `mothdex_<version>_` or `mothdex-gui_<version>_` exactly, never a bare `mothdex*` glob.
 - GUI archives (`mothdex-gui_<version>_<os>_<arch>.<ext>`, each with its `.sbom.json`, all in `checksums.txt`) exist for `linux_amd64`,

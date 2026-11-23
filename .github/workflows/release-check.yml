@@ -47,6 +47,9 @@ jobs:
           done
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
         if: steps.scope.outputs.run == 'true'
+      - name: Every Go module linked into a binary has its licence notice (THIRD_PARTY/go-modules-*.txt)
+        run: scripts/gen-go-notices.sh --check
+        if: steps.scope.outputs.run == 'true'
       - run: goreleaser check
         if: steps.scope.outputs.run == 'true'
       - run: goreleaser release --snapshot --clean --skip=sign

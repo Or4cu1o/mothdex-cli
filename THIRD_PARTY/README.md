@@ -1,7 +1,11 @@
 # Third-party components of `mothdex-gui`
 
 What the GUI binary carries or loads, with the licence of each and where it is pinned. `mothdex` (the CLI) carries none of
-the first five rows. Go modules are listed by `go.mod` and the SBOM of each release archive.
+the first five rows. The Go modules linked into each binary have their full licence texts in two generated files:
+`go-modules-mothdex.txt` (the CLI, shipped in every CLI archive) and `go-modules-mothdex-gui.txt` (the GUI). They are written by
+`scripts/gen-go-notices.sh` from the module list of the release build (`go list -deps`, versions pinned by `go.mod`); never edit them by hand.
+CI fails when they are not current, and `scripts/verify-dist.sh` checks every module a built binary links against them. The
+`purego` and `x/image` texts below stay as the project's own copies.
 
 | Component | Use | Licence | Pin |
 |---|---|---|---|
