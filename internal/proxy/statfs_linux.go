@@ -2,7 +2,13 @@
 
 package proxy
 
-import "golang.org/x/sys/unix"
+import (
+	"errors"
+	"io/fs"
+	"path/filepath"
+
+	"golang.org/x/sys/unix"
+)
 
 // Filesystem magic numbers of memory-backed file systems (statfs f_type).
 const (
@@ -20,11 +26,26 @@ func blockSize(st *unix.Statfs_t) int64 {
 }
 
 // IsMemoryBacked reports whether dir is on tmpfs or ramfs, where a download eats RAM (TH-14).
-// The caller warns; it is false when the check is not possible.
+// A not-yet-created folder inherits the nearest existing ancestor. Other errors
+// leave the filesystem unknown (false); the caller warns.
 func IsMemoryBacked(dir string) bool {
-	var st unix.Statfs_t
-	if unix.Statfs(dir, &st) != nil {
+	if dir == "" {
 		return false
 	}
-	return int64(st.Type) == tmpfsMagic || int64(st.Type) == ramfsMagic
+	dir = filepath.Clean(dir)
+	for {
+		var st unix.Statfs_t
+		err := unix.Statfs(dir, &st)
+		if err == nil {
+			return int64(st.Type) == tmpfsMagic || int64(st.Type) == ramfsMagic
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return false
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
 }

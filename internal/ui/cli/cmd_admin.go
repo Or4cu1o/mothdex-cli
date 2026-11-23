@@ -13,6 +13,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/library"
 )
 
 // ---- history ----
@@ -237,7 +238,11 @@ func (r *runtime) profileCmd() *cobra.Command {
 						return outcome{}, err
 					}
 				}
-				warns := nonNil(append(append([]string{}, info.Warnings...), info.StorageWarnings...))
+				warns := append([]string{}, info.Warnings...)
+				for _, w := range info.StorageWarnings {
+					warns = append(warns, s.T.T(library.StorageWarningKey(w), nil))
+				}
+				warns = nonNil(warns)
 				data := map[string]any{
 					"profile":    map[string]any{"id": info.ID, "name": info.Name, "host": info.Host, "source": info.Source, "rom_root": info.RomRoot, "verified": info.Verified, "warnings": warns},
 					"unverified": nonNil(info.Unverified),

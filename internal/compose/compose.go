@@ -159,7 +159,10 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	}
 
 	info, detect := detectProfile(o, cfg, paths, file, &warnings)
-	warnings = append(warnings, info.StorageWarnings...) // RAM disk (PRT-G11): said at every start, downloads depend on it
+	// RAM disk (PRT-G11): said at every start in the selected interface language.
+	for _, w := range info.StorageWarnings {
+		warnings = append(warnings, tr.T(library.StorageWarningKey(w), nil))
+	}
 	svc, err := app.New(app.Options{
 		Client: client, Cache: store, Clock: realClock{}, BaseURL: cfg.API.BaseURL, Covers: fetcher,
 		AllowedHosts: cfg.Download.AllowedHosts, PageSize: cfg.Interface.PageSize, Prefer: preference(cfg.Download.Prefer),

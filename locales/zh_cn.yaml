@@ -4,6 +4,9 @@ locale:
   iso_code: 'zh-CN'
   status: 'best effort: only the keys below are translated; the rest falls back to en_us'
 ui:
+  storage:
+    rom_root_in_ram: '游戏文件夹位于内存盘上：重启后下载的游戏将丢失。'
+    data_dir_in_ram: '数据文件夹位于内存盘上：重启后历史记录、缓存和设置将丢失。'
   messages:
     yes: '是'
     no: '否'

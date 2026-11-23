@@ -84,3 +84,14 @@ func TestTheSystemCardKeepsItsVerificationLinesApart(t *testing.T) {
 func shows(h *harness, text string) bool {
 	return strings.Contains(strings.Join(h.texts(), " "), text)
 }
+
+func TestSystemCardLocalizesStorageWarnings(t *testing.T) {
+	svc := settingsFixture()
+	svc.Profile = app.ProfileInfo{Verified: true, StorageWarnings: []string{gamesInRAM, dataInRAM}}
+	h := openSettingsFromHome(t, svc, 1280, 720)
+	h.m.o.T = shared.bundle.New("pt_br")
+	openSystemCard(t, h)
+	if !shows(h, "Os jogos baixados serão perdidos ao reiniciar.") || !shows(h, "O histórico, o cache e as configurações serão perdidos ao reiniciar.") {
+		t.Fatalf("storage warnings are not localized: %v", h.texts())
+	}
+}

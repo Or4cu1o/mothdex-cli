@@ -4,9 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/config"
+	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
 )
 
 func isolated(t *testing.T) string {
@@ -83,5 +87,31 @@ func TestOpenRepairToleratesABrokenFile(t *testing.T) {
 	defer s.Close()
 	if len(s.Warnings) == 0 {
 		t.Fatal("Repair must warn that defaults are in use")
+	}
+}
+
+// T-100: compose must wire both the filesystem probe and the resolved data directory.
+func TestDetectProfileWiresMemoryBackedStorage(t *testing.T) {
+	if runtime.GOOS != "linux" || !proxy.IsMemoryBacked("/dev/shm") {
+		t.Skip("requires Linux tmpfs /dev/shm")
+	}
+	for _, tc := range []struct {
+		name, rom, data string
+		want            []string
+	}{
+		{"ROM root", "/dev/shm", "", []string{"Games folder is on a RAM disk: downloaded games are lost at reboot."}},
+		{"data directory", "", "/dev/shm", []string{"Data folder is on a RAM disk: history, cache and settings are lost at reboot."}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var warnings []string
+			info, detect := detectProfile(Options{Profile: "generic"}, config.Config{}, config.ResolvedPaths{ROMRoot: tc.rom, Data: tc.data}, filepath.Join(t.TempDir(), "config.yaml"), &warnings)
+			if !slices.Equal(info.StorageWarnings, tc.want) {
+				t.Fatalf("startup warnings %v, want %v", info.StorageWarnings, tc.want)
+			}
+			again, err := detect(context.Background())
+			if err != nil || !slices.Equal(again.StorageWarnings, tc.want) {
+				t.Fatalf("redetection %+v, %v", again, err)
+			}
+		})
 	}
 }

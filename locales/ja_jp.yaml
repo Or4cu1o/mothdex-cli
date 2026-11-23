@@ -4,6 +4,9 @@ locale:
   iso_code: 'ja-JP'
   status: 'best effort: only the keys below are translated; the rest falls back to en_us'
 ui:
+  storage:
+    rom_root_in_ram: 'ゲームフォルダーは RAM ディスク上にあります。再起動するとダウンロードしたゲームは失われます。'
+    data_dir_in_ram: 'データフォルダーは RAM ディスク上にあります。再起動すると履歴、キャッシュ、設定は失われます。'
   messages:
     yes: 'はい'
     no: 'いいえ'

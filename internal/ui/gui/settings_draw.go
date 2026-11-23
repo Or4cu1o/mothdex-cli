@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 )
@@ -412,7 +413,7 @@ func (m Model) infoLines(p painter, row string) []infoLine {
 		// Where files go is not a verification problem (PRT-G11): a RAM disk is its own warning, with no "Not verified"
 		// prefix, and the Verified line above does not depend on it.
 		for _, w := range m.profile.StorageWarnings {
-			lines = append(lines, infoLine{text: app.SanitizeText(w), warn: true})
+			lines = append(lines, infoLine{text: app.SanitizeText(m.tr(library.StorageWarningKey(w), nil)), warn: true})
 		}
 	default:
 		lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_version", nil) + ": " + app.SanitizeText(m.o.Version)})
