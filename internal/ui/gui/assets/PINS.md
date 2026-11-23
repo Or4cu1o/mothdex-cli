@@ -67,3 +67,12 @@ the file together; `assets_test.go` fails if they disagree.
   `moth-wings-up.png`: 207 bytes, SHA-256 `396e2413e23030ca4ff7bf093e7147bcbb4bc094cb40c7772c7aa83b1a19e87c`.
 - The GUI draws them as cell rectangles (one cell is `P`), never smoothed. The splash alternates the frames every
   250 ms while it shows; Home and the top bar show the wings-down frame.
+
+## `mothdex-icon-256.png`
+
+- Source: the T-83a set (Aquarela, approved by Bússola, 2026-11-22): `mothdex-icon-256.png`, the transparent app icon (not the
+  plate variant), 256 x 256, RGBA with binary alpha, 8 px per cell of the 32-cell master, unchanged.
+- Original project-owned art (D30), shipped under the licence of the repository: no notice in `THIRD_PARTY/`.
+- 1,490 bytes, SHA-256 `17f7f920da00659261a59786b703df2ac497dc96caceffb2bf84112cd80b3c0f`.
+- It is the window icon (`SDL_SetWindowIcon`). SDL2 takes one picture per window, so only this size is embedded; the 16 to 128
+  exports of the set are for packaging (the Windows `.ico` and the like), not for the window.

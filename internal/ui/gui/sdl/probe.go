@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"image"
 	"runtime"
 )
 
@@ -105,6 +106,13 @@ func Probe(opts ProbeOptions) (Report, error) {
 	}
 	defer lib.DestroyRenderer(ren)
 	pass("window and renderer")
+
+	// The icon is cosmetic: an SDL2 older than 2.0.5 has no way to make the surface, and that is not a failure. The dummy
+	// driver ignores the icon, so this proves that the three bound functions exist, take these arguments and do not fail.
+	if err := lib.SetWindowIcon(win, image.NewRGBA(image.Rect(0, 0, 16, 16))); err != nil && !errors.Is(err, ErrNoWindowIcon) {
+		return fail("window icon", err)
+	}
+	pass("window icon")
 
 	atlas, err := uploadAtlas(lib, ren)
 	if err != nil {

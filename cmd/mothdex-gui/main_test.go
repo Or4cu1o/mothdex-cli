@@ -6,7 +6,10 @@ import (
 	"bytes"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 )
 
 func TestTheProbeNameSelectsProbeMode(t *testing.T) {
@@ -32,6 +35,40 @@ func TestBadFlagsExitWithTheInternalCode(t *testing.T) {
 		if code := run(args, &out, &errOut); code != exitInternal {
 			t.Errorf("%v: exit %d, want %d (%s)", args, code, exitInternal, errOut.String())
 		}
+	}
+}
+
+// --version is the line of `mothdex version`, from the same buildinfo the release ldflags fill, and it works where SDL2 is
+// missing (this test needs none): it opens nothing.
+func TestVersionPrintsTheCLIVersionLineAndExitsZero(t *testing.T) {
+	want := buildinfo.Get().String() + "\n"
+	for _, flag := range []string{"--version", "-version"} {
+		var out, errOut bytes.Buffer
+		if code := run([]string{"mothdex-gui", flag}, &out, &errOut); code != exitOK {
+			t.Fatalf("%s exits %d, want 0 (%s)", flag, code, errOut.String())
+		}
+		if out.String() != want || !strings.HasPrefix(want, "mothdex ") || errOut.Len() != 0 {
+			t.Errorf("%s printed %q (stderr %q), want %q", flag, out.String(), errOut.String(), want)
+		}
+	}
+}
+
+// The window icon is set from the embedded T-83a export: it must decode to a square picture with the transparent corners the
+// art has (binary alpha), or the window would silently open with SDL's default icon.
+func TestTheEmbeddedAppIconDecodesToATransparentSquare(t *testing.T) {
+	img, err := appIcon()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := img.Bounds()
+	if b.Dx() != 256 || b.Dy() != 256 {
+		t.Fatalf("the icon is %dx%d, want 256x256", b.Dx(), b.Dy())
+	}
+	if _, _, _, a := img.At(0, 0).RGBA(); a != 0 {
+		t.Error("the corner of the icon is not transparent")
+	}
+	if _, _, _, a := img.At(b.Dx()/2, b.Dy()/2).RGBA(); a == 0 {
+		t.Error("the middle of the icon is transparent")
 	}
 }
 

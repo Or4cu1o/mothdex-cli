@@ -5,6 +5,7 @@ package sdl
 import (
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"log/slog"
 	"slices"
@@ -29,9 +30,10 @@ type BackendOptions struct {
 	Width    int
 	Height   int
 	Hidden   bool
-	Software bool       // use the software renderer
-	Mappings []string   // game controller database lines to add, in order, later ones winning
-	Display  *text.Font // the display face for short labels; nil draws them in the body font
+	Icon     *image.RGBA // the window icon; nil leaves SDL's default
+	Software bool        // use the software renderer
+	Mappings []string    // game controller database lines to add, in order, later ones winning
+	Display  *text.Font  // the display face for short labels; nil draws them in the body font
 	Log      *slog.Logger
 }
 
@@ -163,6 +165,11 @@ func (b *Backend) openWindow(o BackendOptions) error {
 	var err error
 	if b.win, err = b.lib.CreateWindow(title, w, h, flags); err != nil {
 		return err
+	}
+	if o.Icon != nil { // before the window is shown, so the first frame of the window manager already has it
+		if err := b.lib.SetWindowIcon(b.win, o.Icon); err != nil {
+			b.log.Warn("sdl: the window icon was not set", "err", err) // cosmetic: the window opens with the default one
+		}
 	}
 	if !o.Hidden {
 		b.showAndFocus()

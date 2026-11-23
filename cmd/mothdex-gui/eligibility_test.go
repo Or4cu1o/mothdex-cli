@@ -55,7 +55,7 @@ func TestProbeKeepsItsContract(t *testing.T) {
 		code := run([]string{"mothdex-gui", flag}, &out, &errOut)
 		switch code {
 		case exitOK:
-			if !regexp.MustCompile(`^sdl [0-9]+\.[0-9]+\.[0-9]+\n$`).MatchString(out.String()) || errOut.Len() != 0 {
+			if !regexp.MustCompile(`^sdl [0-9]+\.[0-9]+\.[0-9]+( (system|ld_library_path|other|unknown))?\n$`).MatchString(out.String()) || errOut.Len() != 0 {
 				t.Errorf("%s eligible: stdout %q stderr %q", flag, out.String(), errOut.String())
 			}
 		case exitSDL:
@@ -198,7 +198,7 @@ func TestSpikeIsNotTheEligibilityCheckAndProbeBeatsTheName(t *testing.T) {
 	code = run([]string{"mothdex-gui-probe", "--probe"}, &out, &errOut)
 	switch code {
 	case exitOK:
-		if !regexp.MustCompile(`^sdl [0-9]+\.[0-9]+\.[0-9]+\n$`).MatchString(out.String()) {
+		if !regexp.MustCompile(`^sdl [0-9]+\.[0-9]+\.[0-9]+( (system|ld_library_path|other|unknown))?\n$`).MatchString(out.String()) {
 			t.Errorf("the probe name with --probe must give the one line: %q", out.String())
 		}
 	default:
