@@ -562,3 +562,18 @@ func TestProfileShowReportsRAMStorage(t *testing.T) {
 		t.Fatalf("human output lacks the warning: %q %q", h.out.String(), h.err.String())
 	}
 }
+
+// T-100: profile warning text follows the selected language in human and JSON output.
+func TestProfileStorageWarningUsesTheSelectedLocale(t *testing.T) {
+	b, err := i18n.Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fake{profile: app.ProfileInfo{StorageWarnings: []string{"Games folder is on a RAM disk: downloaded games are lost at reboot."}}}
+	for _, args := range [][]string{{"profile", "show"}, {"profile", "show", "--json"}} {
+		r := exec(t, f, func(s *cli.Session) { s.T = b.New("pt_br") }, args...)
+		if r.code != 0 || !strings.Contains(r.out.String()+r.err.String(), "Os jogos baixados serão perdidos ao reiniciar.") {
+			t.Fatalf("exit %d: %s %s", r.code, r.out.String(), r.err.String())
+		}
+	}
+}

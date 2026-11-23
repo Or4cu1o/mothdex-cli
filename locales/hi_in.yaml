@@ -4,6 +4,9 @@ locale:
   iso_code: 'hi-IN'
   status: 'best effort: only the keys below are translated; the rest falls back to en_us'
 ui:
+  storage:
+    rom_root_in_ram: 'गेम फ़ोल्डर RAM डिस्क पर है: रीबूट करने पर डाउनलोड किए गए गेम खो जाएंगे।'
+    data_dir_in_ram: 'डेटा फ़ोल्डर RAM डिस्क पर है: रीबूट करने पर इतिहास, कैश और सेटिंग्स खो जाएंगे।'
   messages:
     yes: 'हाँ'
     no: 'नहीं'

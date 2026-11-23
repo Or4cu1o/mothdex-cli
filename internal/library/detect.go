@@ -352,14 +352,26 @@ func (d detector) unverified(p Profile, res probeResult) []string {
 
 // Warnings for storage that lives in RAM (ports.md PRT-G11): Batocera falls back to a 256 MiB tmpfs
 // when its storage fails to mount, so downloads and history vanish at reboot. The texts are the
-// plain English strings the other profile warnings use (wording by Bússola).
+// stable English strings kept in ProfileInfo; display boundaries translate them.
 const (
 	warnROMRootInRAM = "Games folder is on a RAM disk: downloaded games are lost at reboot."
 	warnDataDirInRAM = "Data folder is on a RAM disk: history, cache and settings are lost at reboot."
 )
 
-// ramWarnings checks the ROM root and the data directory; a path that does not exist is not on a
-// RAM disk as far as this check can tell.
+// StorageWarningKey returns the translation key for a known storage warning.
+// Unknown messages pass through so custom or future warnings remain readable.
+func StorageWarningKey(warning string) string {
+	switch warning {
+	case warnROMRootInRAM:
+		return "ui.storage.rom_root_in_ram"
+	case warnDataDirInRAM:
+		return "ui.storage.data_dir_in_ram"
+	default:
+		return warning
+	}
+}
+
+// ramWarnings checks the ROM root and data directory using the environment probe.
 func (d detector) ramWarnings(romRoot string) []string {
 	if d.env.MemoryBacked == nil {
 		return nil

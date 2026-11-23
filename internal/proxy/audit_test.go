@@ -55,11 +55,13 @@ func TestIsMemoryBacked(t *testing.T) {
 	if err != nil || !strings.Contains(string(mounts), " /dev/shm tmpfs ") {
 		t.Skip("no tmpfs /dev/shm to assert on (not Linux, or not mounted)")
 	}
-	if !IsMemoryBacked("/dev/shm") {
-		t.Fatal("/dev/shm is tmpfs and must be reported as memory-backed")
+	for _, dir := range []string{"/dev/shm", "/dev/shm/mothdex-not-created/roms"} {
+		if !IsMemoryBacked(dir) {
+			t.Errorf("%s must inherit the tmpfs storage warning", dir)
+		}
 	}
-	if IsMemoryBacked("/definitely/not/there") {
-		t.Fatal("an unreadable path is not reported as memory-backed")
+	if IsMemoryBacked("") {
+		t.Fatal("an empty path does not select the current directory")
 	}
 }
 

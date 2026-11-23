@@ -76,6 +76,9 @@ errors:
     message: 'Unexpected error.'
     hint: 'Details are in {log_path}. Please report it.'
 ui:
+  storage:
+    rom_root_in_ram: 'Games folder is on a RAM disk: downloaded games are lost at reboot.'
+    data_dir_in_ram: 'Data folder is on a RAM disk: history, cache and settings are lost at reboot.'
   messages:
     error: 'error'
     yes: 'Yes'
