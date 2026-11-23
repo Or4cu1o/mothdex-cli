@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-23
+
+### Added
+
+- T-102: the licence notices of the Go modules linked into the binaries. `scripts/gen-go-notices.sh` writes `THIRD_PARTY/go-modules-mothdex.txt` (37 modules, every CLI archive now ships it under `THIRD_PARTY/`) and `THIRD_PARTY/go-modules-mothdex-gui.txt` (14 modules, in the GUI archives) with the full licence files of each module, from the module list of the release build; a module without a licence file fails the run. `Release check` runs `gen-go-notices.sh --check` and `scripts/verify-dist.sh` checks every module of each built binary (`go version -m`) against the file in its archive.
+- T-103: `device_report.yml` (the install report: CLI and installer on any system; the Ports beta report stays the form for the GUI and the Port, and gains the `device-report` and `needs-triage` labels) and `docs/beta-testing.md` (what to test per system, how to install from the release tag, how to report). README links to them and to the issue forms of both repositories.
+- T-101: `mothdex-gui --version` prints the same version line as `mothdex version` (name, version, short commit and
+  date, from the ldflags the release build already passes to the GUI) and exits 0, without loading SDL2 or reading the
+  configuration.
+- T-101: the GUI window shows the moth app icon (T-83a) through `SDL_SetWindowIcon`, on drivers that support window
+  icons (X11 and Windows; Wayland and the dummy driver ignore it). With an SDL2 older than 2.0.5 the window keeps the
+  default icon, and the minimum SDL2 version does not change.
+
+### Changed
+
+- T-102: `install.sh` and `install.ps1` accept the two new notice files (`NOTICE_NAMES`, `$NoticeNames`), and a THIRD_PARTY member they do not know now says that the installer may be older than the release and to fetch it from the release tag.
+- T-103: the bug report form asks for the component, how it was installed, the version, the system and device, the `mothdex-gui --probe` output and logs; the issue forms add the `needs-triage` label. `config.yml` keeps blank issues off and links Discussions (Q&A), the private security advisory page and https://mothdex.net.
+- T-100: document the deliberate POSIX versus C locale fallback choice, use `search --page-size` in the checklist, and close the already fixed T-22 F3 terminal finding.
+
+### Fixed
+
+- T-102 (upgrading from v0.1.0): the `install.sh` and `install.ps1` of v0.1.0 refuse the GUI archives of this release ("unexpected member", nothing installed, the CLI is not updated either) because the new notice files are not in their fixed allowlist. Download the installer of the new release tag again before updating (or pass `--no-gui` / `-NoGui` to the old one).
+- T-100: RAM-disk warnings follow the selected language in startup warnings, CLI profile output and the GUI System card, in all seven locales.
+- T-100: a ROM root or data folder that does not exist yet inherits the nearest existing ancestor's RAM-disk warning; compose wiring is covered by regression tests.
+
 ## [0.1.0] - 2026-11-22
 
 ### Added

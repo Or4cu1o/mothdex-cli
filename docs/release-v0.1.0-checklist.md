@@ -94,7 +94,7 @@ gh release view "$TAG" --repo Or4cu1o/mothdex-cli --json assets --jq '.assets | 
    `checksums.txt`, so steps 1 to 3 already bind it to the signed release.
 5. **Binary:** extract the `linux_amd64` archive; `./mothdex --version` prints
    `mothdex 0.1.0 (commit <7 chars of the tag commit>, <commit date>)`; the archive holds only the binary, `LICENSE`,
-   `README.md` and `CHANGELOG.md` at its root, the binary with mode 0755. The GUI archives (`mothdex-gui_<version>_<os>_<arch>`,
+   `README.md`, `CHANGELOG.md` and `THIRD_PARTY/go-modules-mothdex.txt` (from v0.1.1; the licence texts of the linked Go modules), the binary with mode 0755. The GUI archives (`mothdex-gui_<version>_<os>_<arch>`,
    4 linux and `windows_amd64`) hold `mothdex-gui` and `THIRD_PARTY/` on linux, and `mothdex-gui.exe`, `SDL2.dll` and
    `THIRD_PARTY/` on windows. The GUI has `--probe` but no `--version`, so check it with `./mothdex-gui --probe`.
 6. **Installer against the published release** (the installer of the tag, never piped to a shell):
