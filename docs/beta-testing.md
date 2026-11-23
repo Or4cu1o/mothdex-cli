@@ -1,0 +1,63 @@
+# Beta testing Mothdex
+
+Thank you for helping. The command-line client, the shell and the terminal UI are tested in CI. The graphical frontend
+(`mothdex-gui`) and the Ports launcher have **not been tried on real devices yet**, so your report is the most useful
+thing you can give the project. One short report per system and device is plenty.
+
+## What to test per system
+
+On every system, first run `mothdex --version` and `mothdex-gui --probe` (GUI systems), and keep the output for the form.
+
+| System | What to try |
+| --- | --- |
+| Batocera | Install; the **Mothdex** entry shows in the Ports menu (restart or update the game list if not); GUI starts from it with the pad; search and a download; uninstall. |
+| Recalbox | Install; there is no Ports system, so run `mothdex-gui` or `mothdex tui` over SSH; the pad in the GUI; search and a download. |
+| EmuELEC | Install; **Mothdex** shows in the ports scripts menu; the GUI starts with the pad; search and a download; uninstall. |
+| Lakka | Install over SSH (no launcher on Lakka); `mothdex` search and a download. |
+| RetroBat | Install with `install.ps1` (RetroBat is detected, or pass its path); **Mothdex** shows in the Windows system; GUI, pad, search, download; uninstall. |
+| EmuDeck | Install; run `mothdex-gui` from Desktop Mode or `mothdex tui` in a terminal; Steam Deck controls; search and a download. |
+| RetroDECK | Install; same as EmuDeck. |
+| Linux | Install with the `generic` profile; `mothdex`, `mothdex tui`, `mothdex-gui` (on X11 and Wayland if you can); uninstall. |
+| Windows | Install with `install.ps1`; `mothdex`, `mothdex-gui`; search and a download; uninstall. |
+| macOS | Install; `mothdex` and `mothdex tui` (there is no GUI build for macOS yet); search and a download. |
+
+For each system note: installed, launcher visible in the menu, GUI starts, controller works, search, download,
+uninstall. These are the items of the [device report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml).
+
+## Install from the release tag
+
+Fetch the installer from the tag you are testing, so the installer and the release match (use the version the
+announcement names; `v0.1.1` is only an example). A pre-release tag needs `--version` because the installer skips
+pre-releases by default.
+
+```sh
+# Linux, macOS, Batocera, Recalbox, EmuELEC, Lakka, EmuDeck, RetroDECK (over SSH or a terminal)
+curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/v0.1.1/install.sh
+less install.sh                      # read it first
+sh install.sh --version v0.1.1 --dry-run    # downloads and verifies, changes nothing
+sh install.sh --version v0.1.1
+```
+
+```powershell
+# Windows and RetroBat
+Invoke-WebRequest https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/v0.1.1/install.ps1 -OutFile install.ps1
+Get-Content install.ps1              # read it first
+.\install.ps1 -Version v0.1.1 -DryRun
+.\install.ps1 -Version v0.1.1
+```
+
+The installer picks the profile for your system. To force one, add `--profile batocera` (or `recalbox`, `emuelec`,
+`lakka`, `emudeck`, `retrodeck`, `generic`), and `--no-gui` to install the command-line client only. To remove
+everything it installed, run it again with `--uninstall`. Details: [docs/release.md](release.md#installing).
+
+## How to report
+
+1. Open the [device report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml) (one per
+   system and device), and tick what worked.
+2. Paste the install command and the `mothdex-gui --probe` output.
+3. **Replace your user name** in every path before pasting (`/home/USER`, `C:\Users\USER`).
+
+Found a bug that is not about a device? Use the
+[bug report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug_report.yml). Questions go to
+[Discussions](https://github.com/Or4cu1o/mothdex-cli/discussions/categories/q-a). The MCP server has its own
+[issue forms](https://github.com/Or4cu1o/mothdex-mcp/issues/new/choose).

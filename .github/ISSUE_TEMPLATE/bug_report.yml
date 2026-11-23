@@ -1,7 +1,39 @@
 name: Bug report
 description: Something does not work as documented
-labels: [bug]
+labels: [bug, needs-triage]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. A few details help us reproduce it quickly.
+        Testing on a handheld or a retro-gaming system? The **Device report** form is the better fit.
+        For a vulnerability, please use the private security advisory link on the previous page instead.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Mothdex is affected? Triage adds the matching area label.
+      options:
+        - CLI
+        - Shell
+        - TUI
+        - GUI
+        - installer
+        - Ports launcher
+    validations:
+      required: true
+  - type: dropdown
+    id: installed-with
+    attributes:
+      label: How did you install it?
+      options:
+        - install.sh
+        - install.ps1
+        - Release archive (manual)
+        - Built from source
+        - Other
+    validations:
+      required: true
   - type: textarea
     id: what
     attributes:
@@ -19,19 +51,27 @@ body:
     id: version
     attributes:
       label: Version
-      description: Output of `mothdex` (version line).
+      description: Output of `mothdex --version`, and `mothdex-gui --version` for the GUI (v0.1.1 and later).
+      placeholder: mothdex 0.1.0 (commit 1234567, 2026-11-22T00:00:00Z)
     validations:
       required: true
   - type: input
     id: system
     attributes:
-      label: Operating system and architecture
-      description: For example Batocera 41 arm64, Windows 11 amd64, Debian 13 amd64.
+      label: System and device
+      description: Operating system and its version, CPU architecture and device.
+      placeholder: Batocera 41, Raspberry Pi 4 (arm64)
     validations:
       required: true
+  - type: textarea
+    id: probe
+    attributes:
+      label: mothdex-gui --probe output
+      description: Only for GUI issues. Replace your user name in any path (`/home/USER`, `C:\Users\USER`).
+      render: shell
   - type: textarea
     id: logs
     attributes:
       label: Output or logs
-      description: Remove any personal paths or tokens before pasting.
+      description: Remove personal paths and tokens before pasting.
       render: shell
