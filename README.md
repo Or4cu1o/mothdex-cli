@@ -30,6 +30,16 @@ Download `install.sh` (or `install.ps1` on Windows) from this repository, read i
 verifies checksums and signatures before installing. Details and options:
 [docs/release.md](docs/release.md#installing).
 
+## Test it and report
+
+Testing on a handheld or a retro-gaming system? Read the [beta testing guide](docs/beta-testing.md), then send a
+[Ports beta report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=ports-beta.yml) for the GUI or the Port
+on a frontend, or an [install report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml)
+for everything else. Other forms:
+[bug report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug_report.yml) and
+[feature request](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=feature_request.yml) here, and the
+[MCP server's forms](https://github.com/Or4cu1o/mothdex-mcp/issues/new/choose).
+
 ## Build
 
 Requires the Go version declared in [`go.mod`](go.mod).

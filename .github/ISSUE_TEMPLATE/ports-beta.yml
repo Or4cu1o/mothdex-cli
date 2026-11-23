@@ -1,6 +1,6 @@
-name: Ports beta report
+name: Ports beta report (GUI and Port on a frontend)
 description: One report per system and device, for the Mothdex GUI and its Port on a frontend (community beta)
-labels: [ports-beta]
+labels: [ports-beta, device-report, needs-triage]
 body:
   - type: markdown
     attributes:

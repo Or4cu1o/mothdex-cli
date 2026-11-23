@@ -1,0 +1,84 @@
+name: Install report (CLI and installer on any system)
+description: Tell us how the CLI and the installer run on your system (one report per system and device). For the GUI or the Port on a frontend, use the Ports beta report.
+labels: [device-report, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing! Open **one report per system and device**. This form is for the CLI and the installer; to report on the GUI or the Port on a frontend, use the **Ports beta report** form instead. Mark a step "Not tried" when you skipped it:
+        that is a useful answer too. The [beta testing guide](https://github.com/Or4cu1o/mothdex-cli/blob/main/docs/beta-testing.md)
+        says what to try on each system.
+
+        **Before you paste anything, replace your user name** in every path (`/home/<name>` becomes `/home/USER`,
+        `C:\Users\<name>` becomes `C:\Users\USER`).
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Model and CPU architecture.
+      placeholder: Raspberry Pi 4 (arm64), Steam Deck (amd64), a PC (amd64)
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System and its version
+      placeholder: Batocera 41, Recalbox 10.1, EmuELEC 4.7, RetroBat 7, Windows 11
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Install profile used
+      description: The `--profile` you passed, or what the installer detected. RetroBat uses install.ps1.
+      options:
+        - detected automatically
+        - batocera
+        - recalbox
+        - emuelec
+        - lakka
+        - emudeck
+        - retrodeck
+        - generic
+        - retrobat (install.ps1)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mothdex version
+      description: Output of `mothdex --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Install command
+      description: The exact command you ran and its output.
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: What worked
+      description: Tick what worked. Leave the rest unticked and tell us more below.
+      options:
+        - label: Installed without errors
+        - label: The launcher shows in the system menu
+        - label: The GUI starts
+        - label: The controller works
+        - label: Search works
+        - label: A download completes
+        - label: Uninstall works and leaves my ROMs and config alone
+  - type: textarea
+    id: probe
+    attributes:
+      label: mothdex-gui --probe output
+      description: Paste it as it is, with your user name replaced in any path.
+      render: shell
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: What failed and how, or anything surprising, in your words.
