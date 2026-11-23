@@ -130,6 +130,8 @@ make_gui_tag() {
     echo handjet >/tmp/build/THIRD_PARTY/Handjet-OFL-1.1.txt
     echo zlib >/tmp/build/THIRD_PARTY/SDL_GameControllerDB-zlib.txt
     echo readme >/tmp/build/THIRD_PARTY/README.md
+    echo gomods >/tmp/build/THIRD_PARTY/go-modules-mothdex.txt
+    echo gomodsgui >/tmp/build/THIRD_PARTY/go-modules-mothdex-gui.txt
     members="mothdex-gui LICENSE THIRD_PARTY"
     name=mothdex-gui_${ver}_$t.tar.gz
     case $variant in
@@ -735,6 +737,7 @@ check "launcher runs the GUI" text_is "$($PORT)" "gui "
 check "licence directory is 0755" mode_is $BATOCERA_BIN/mothdex-licenses 755
 check "licence file is 0644" mode_is $BATOCERA_BIN/mothdex-licenses/NotoSans-OFL-1.1.txt 644
 check "both notices installed" test -f $BATOCERA_BIN/mothdex-licenses/SDL_GameControllerDB-zlib.txt
+check "the Go module notices installed" test -f $BATOCERA_BIN/mothdex-licenses/go-modules-mothdex-gui.txt
 check "no staging or temp leftovers in bin_dir" no_stage $BATOCERA_BIN
 check "path and opt-out printed (IC-12)" out_has "opt out with --no-launcher"
 check "GUI archive comes from the same release" file_has "$FAKE_LOG" "download/v1.3.0/mothdex-gui_1.3.0_linux_amd64.tar.gz"
@@ -1027,7 +1030,8 @@ reset gui-archive-unknown-notice
 fs_batocera
 inst --version v1.4.6
 check "a safe but unknown THIRD_PARTY name aborts (the allowlist, IC-4)" rc_not0
-check "says unexpected member" out_has "unexpected member"
+check "says the member is unknown and the installer may be older than the release" out_has "installer may be older than the release"
+check "points to the installer of the release tag" out_has "fetch install.sh from the release tag"
 check "nothing installed" absent $BATOCERA_BIN/mothdex
 for pair in 'v1.4.4 a-space' 'v1.4.5 a-star'; do
   # shellcheck disable=SC2086  # intentional word splitting of the "tag name" pair

@@ -303,6 +303,8 @@ function New-GuiTag([string]$Tag, [string]$Variant) {
     'THIRD_PARTY/Handjet-OFL-1.1.txt' = 'handjet'
     'THIRD_PARTY/SDL2-zlib.txt' = 'zlib'
     'THIRD_PARTY/README.md' = 'readme'
+    'THIRD_PARTY/go-modules-mothdex.txt' = 'gomods'
+    'THIRD_PARTY/go-modules-mothdex-gui.txt' = 'gomodsgui'
   }
   $links = @()
   switch ($Variant) {
@@ -454,7 +456,7 @@ foreach ($pair in @(@('v1.4.1', 'space'), @('v1.4.2', 'star'))) {
 # IC-4: a safe name that is not a shipped notice is refused as unexpected (the allowlist)
 $dirU = Join-Path $root 'bn-unknown'
 Invoke-Install @{ Version = 'v1.4.4'; BinDir = $dirU }
-Check 'a safe but unknown THIRD_PARTY name aborts as unexpected member' ($script:threw -and ($script:message -match 'unexpected member') -and (-not (Test-Path (Join-Path $dirU 'mothdex.exe'))))
+Check 'a safe but unknown THIRD_PARTY name aborts and says the installer may be older than the release' ($script:threw -and ($script:message -match 'installer may be older than the release') -and ($script:message -match 'fetch install.ps1 from the release tag') -and (-not (Test-Path (Join-Path $dirU 'mothdex.exe'))))
 
 # IC-10: a probe that hangs is killed after 20 seconds and means not eligible (the staging folder can only be removed
 # once the process is gone, so its absence proves the Kill)

@@ -65,7 +65,7 @@ $Marker = 'rem mothdex-launcher v3'
 $LauncherName = 'Mothdex.bat'
 $LicensesName = 'mothdex-licenses'
 # The notices this installer ships (T-70 IC-5): the only names ever removed from mothdex-licenses.
-$NoticeNames = @('README.md', 'Handjet-OFL-1.1.txt', 'NotoSans-OFL-1.1.txt', 'SDL_GameControllerDB-zlib.txt', 'SDL2-zlib.txt', 'purego-Apache-2.0.txt', 'x-image-BSD-3-Clause.txt')
+$NoticeNames = @('README.md', 'Handjet-OFL-1.1.txt', 'NotoSans-OFL-1.1.txt', 'SDL_GameControllerDB-zlib.txt', 'SDL2-zlib.txt', 'purego-Apache-2.0.txt', 'x-image-BSD-3-Clause.txt', 'go-modules-mothdex.txt', 'go-modules-mothdex-gui.txt')
 $ProbeSeconds = 20
 $RefreshUrl = 'http://127.0.0.1:1234/reloadgames'
 $script:Failed = $false
@@ -256,7 +256,7 @@ function Expand-GuiArchive([string]$Zip, [string]$ZipName, [string]$Dest) {
       if ($name.StartsWith('THIRD_PARTY/', [StringComparison]::Ordinal)) {
         $base = $name.Substring(12)
         if (-not (Test-SafeName $base)) { Fail "$ZipName has an unsafe member name: nothing was installed" }
-        if ($NoticeNames -cnotcontains $base) { Fail "$ZipName has an unexpected member: nothing was installed" }
+        if ($NoticeNames -cnotcontains $base) { Fail "$ZipName has a THIRD_PARTY member this installer does not know ($base): nothing was installed. This installer may be older than the release: fetch install.ps1 from the release tag (raw.githubusercontent.com/$Repo/<tag>/install.ps1)" }
         [void]$wanted.Add(@($entry, ('THIRD_PARTY\' + $base))); continue
       }
       Fail "$ZipName has an unexpected member: nothing was installed"

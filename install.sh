@@ -34,7 +34,7 @@ LICENSES_NAME="mothdex-licenses"
 # A THIRD_PARTY member must have a plain name (IC-4) and be one of the notices this installer ships; only those names are
 # ever removed from mothdex-licenses/ (IC-5), so a file of the user's in that folder is never deleted.
 NAME_RE='^[A-Za-z0-9._-]+$'
-NOTICE_NAMES="README.md Handjet-OFL-1.1.txt NotoSans-OFL-1.1.txt SDL_GameControllerDB-zlib.txt SDL2-zlib.txt purego-Apache-2.0.txt x-image-BSD-3-Clause.txt"
+NOTICE_NAMES="README.md Handjet-OFL-1.1.txt NotoSans-OFL-1.1.txt SDL_GameControllerDB-zlib.txt SDL2-zlib.txt purego-Apache-2.0.txt x-image-BSD-3-Clause.txt go-modules-mothdex.txt go-modules-mothdex-gui.txt"
 # Scrubbed environment and time bound of the probe (IC-1, IC-10).
 PROBE_PATH=/usr/sbin:/usr/bin:/sbin:/bin
 PROBE_SECONDS=20
@@ -462,7 +462,7 @@ extract_gui() {
         base=${m#THIRD_PARTY/}
         case $base in . | .. | '') die "$GUI_ARCHIVE has an unsafe member name: nothing was installed" ;; esac
         printf '%s\n' "$base" | grep -Eq "$NAME_RE" || die "$GUI_ARCHIVE has an unsafe member name: nothing was installed"
-        notice_known "$base" || die "$GUI_ARCHIVE has an unexpected member: nothing was installed"
+        notice_known "$base" || die "$GUI_ARCHIVE has a THIRD_PARTY member this installer does not know ($base): nothing was installed. This installer may be older than the release: fetch install.sh from the release tag (raw.githubusercontent.com/$REPO/<tag>/install.sh)"
         list="$list THIRD_PARTY/$base"
         GUI_NOTICES="$GUI_NOTICES $base"
         ;;
