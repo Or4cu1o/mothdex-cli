@@ -5,11 +5,14 @@
 //
 //	mothdex-gui [-config file] [-profile id] [-lang xx_yy] [-driver name] [-window WxH]
 //	mothdex-gui --probe
+//	mothdex-gui --version
 //	mothdex-gui -spike [-driver dummy]
 //
 // With no flags it opens the full screen window and runs the GUI. --probe is the eligibility check the installer
 // runs (docs/contracts/cli/ports.md section 5.2): it loads SDL2, checks the version, opens no window and says
-// "sdl X.Y.Z" and exits 0, or says why and exits 1. -spike checks the whole SDL2 binding on a hidden window and
+// "sdl X.Y.Z" and exits 0, or says why and exits 1. --version prints the version line of `mothdex version` (name, version,
+// short commit and date, from the ldflags of the release build) and exits 0, touching neither SDL2 nor the configuration.
+// -spike checks the whole SDL2 binding on a hidden window and
 // exits (the CI smoke test; an executable named mothdex-gui-probe does it with no flag). -window opens a window
 // of that size instead of the full screen, for a desktop session.
 //
@@ -26,6 +29,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 )
 
 const (
@@ -52,6 +57,7 @@ func probeByName(arg0 string) bool {
 }
 
 type options struct {
+	version bool // --version: print the version line and exit
 	probe   bool // --probe: the installer's eligibility check
 	spike   bool // -spike: the CI smoke test of the whole binding
 	driver  string
@@ -69,6 +75,7 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	var o options
 	var window string
+	fs.BoolVar(&o.version, "version", false, "print the version line and exit 0")
 	fs.BoolVar(&o.probe, "probe", false, "check that SDL2 can be used (no window): print sdl X.Y.Z and exit 0, or the reason and exit 1")
 	fs.BoolVar(&o.spike, "spike", false, "check the whole SDL2 binding on a hidden window and exit (the CI smoke test)")
 	fs.StringVar(&o.driver, "driver", "", "SDL video driver to force, for example dummy (default: SDL_VIDEODRIVER or SDL's choice)")
@@ -89,6 +96,9 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		}
 	}
 	switch {
+	case o.version: // nothing is loaded, read or opened: it is the version of this binary and nothing else
+		_, _ = fmt.Fprintln(stdout, buildinfo.Get().String())
+		return exitOK
 	case o.probe: // before anything else is read or opened: the installer runs this as root
 		return runEligibility(stdout, stderr)
 	case o.spike || probeByName(argv[0]):

@@ -17,6 +17,8 @@ var (
 	ErrIncompatible = errors.New("SDL2 lacks a function this program needs")
 	ErrTooOld       = errors.New("SDL2 is too old")
 	ErrNoDisplay    = errors.New("SDL2 has no video device")
+	// ErrNoWindowIcon is not fatal: SDL2 before 2.0.5 cannot make a surface from pixels, so the window keeps its default icon.
+	ErrNoWindowIcon = errors.New("SDL2 cannot set a window icon (needs 2.0.5)")
 	// ErrSearchPath is Windows only: the process could not be limited to its own folder and System32 for DLLs,
 	// so SDL2 was not loaded. It is not "not found": the library may be right there (T-72).
 	ErrSearchPath = errors.New("cannot restrict the DLL search path")
@@ -83,6 +85,10 @@ type api struct {
 	joystickDeviceGUID     func(index int32) JoystickGUID // SDL 2.0.6; nil on an older SDL2 and where purego cannot return a struct
 	startTextInput         func()
 	stopTextInput          func()
+
+	createRGBSurfaceWithFormatFrom func(pixels unsafe.Pointer, w, h, depth, pitch int32, format uint32) uintptr // SDL 2.0.5; nil on an older SDL2
+	freeSurface                    func(surface uintptr)                                                        // SDL 2.0.5 table entry, with the function above
+	setWindowIcon                  func(window, surface uintptr)                                                // SDL 2.0.5 table entry, with the functions above
 }
 
 // binding is one function to look up: its C name, the SDL2 release that introduced it, and where the
@@ -97,6 +103,7 @@ type binding struct {
 
 func (a *api) table() []binding {
 	v200 := Version{2, 0, 0}
+	v205 := Version{2, 0, 5}
 	v206 := Version{2, 0, 6}
 	v2012 := Version{2, 0, 12}
 	return []binding{
@@ -149,6 +156,11 @@ func (a *api) table() []binding {
 		{"SDL_JoystickGetDeviceGUID", v206, &a.joystickDeviceGUID, true},
 		{"SDL_StartTextInput", v200, &a.startTextInput, false},
 		{"SDL_StopTextInput", v200, &a.stopTextInput, false},
+		// The window icon is cosmetic: an SDL2 older than 2.0.5 has no SDL_CreateRGBSurfaceWithFormatFrom and the window
+		// simply keeps the default icon, so these do not raise the minimum version.
+		{"SDL_CreateRGBSurfaceWithFormatFrom", v205, &a.createRGBSurfaceWithFormatFrom, true},
+		{"SDL_FreeSurface", v205, &a.freeSurface, true},
+		{"SDL_SetWindowIcon", v205, &a.setWindowIcon, true},
 	}
 }
 

@@ -5,6 +5,8 @@ package sdl
 import (
 	"errors"
 	"fmt"
+	"image"
+	"runtime"
 	"unsafe"
 )
 
@@ -103,6 +105,28 @@ func (l *Library) CreateWindow(title string, w, h int32, flags uint32) (Window, 
 
 // ShowWindow asks for the window to be shown.
 func (l *Library) ShowWindow(w Window) { l.a.showWindow(uintptr(w)) }
+
+// SetWindowIcon sets the icon of the window from a picture. SDL2 keeps one icon per window and copies what it needs
+// during the call, so the surface made here is freed before it returns. It gives ErrNoWindowIcon on an SDL2 older than
+// 2.0.5; the icon is cosmetic, so the caller logs any error and goes on.
+func (l *Library) SetWindowIcon(w Window, img *image.RGBA) error {
+	if l.a.createRGBSurfaceWithFormatFrom == nil || l.a.freeSurface == nil || l.a.setWindowIcon == nil {
+		return ErrNoWindowIcon
+	}
+	if img == nil || img.Bounds().Empty() {
+		return errors.New("window icon: the picture is empty")
+	}
+	pixels, pitch := argbFromRGBA(img)
+	b := img.Bounds()
+	surface := l.a.createRGBSurfaceWithFormatFrom(unsafe.Pointer(&pixels[0]), int32(b.Dx()), int32(b.Dy()), 32, int32(pitch), PixelFormatARGB8888) //nolint:gosec // an icon is at most a few hundred px a side
+	if surface == 0 {
+		return l.sdlError("SDL_CreateRGBSurfaceWithFormatFrom")
+	}
+	l.a.setWindowIcon(uintptr(w), surface)
+	l.a.freeSurface(surface)
+	runtime.KeepAlive(pixels) // the surface points into it until it is freed
+	return nil
+}
 
 // RaiseWindow asks for the window to be on top with the input focus.
 func (l *Library) RaiseWindow(w Window) { l.a.raiseWindow(uintptr(w)) }

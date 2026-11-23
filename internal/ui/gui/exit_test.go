@@ -73,6 +73,9 @@ type exitFake struct {
 	closeErr error
 	waitHold chan struct{} // when set, Wait blocks until it is closed or its context ends
 	waitCtx  context.Context
+	// waitStarted, when set, is closed once Wait has recorded its context. runExit calls Wait on its own goroutine, so
+	// a test that fires the budget timer must first wait for this: the timer can be armed before that goroutine runs.
+	waitStarted chan struct{}
 }
 
 func (f *exitFake) record(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
@@ -94,7 +97,11 @@ func (f *exitFake) Wait(ctx context.Context) (app.BatchResult, error) {
 	f.mu.Lock()
 	f.waitCtx = ctx
 	hold := f.waitHold
+	started := f.waitStarted
 	f.mu.Unlock()
+	if started != nil {
+		close(started)
+	}
 	if hold != nil {
 		select {
 		case <-hold:
@@ -141,7 +148,7 @@ func TestExitSequenceWithoutCancelDoesNotTouchJobs(t *testing.T) {
 // A Wait that never returns is abandoned when the budget runs out, its context is canceled, and Close still
 // runs afterwards.
 func TestAStuckWaitIsAbandonedAtTheBudgetAndCloseStillRuns(t *testing.T) {
-	fake := &exitFake{waitHold: make(chan struct{})}
+	fake := &exitFake{waitHold: make(chan struct{}), waitStarted: make(chan struct{})}
 	defer close(fake.waitHold)
 	clk := &fakeClock{now: time.Unix(0, 0)}
 	done := make(chan exitResult, 1)
@@ -160,6 +167,11 @@ func TestAStuckWaitIsAbandonedAtTheBudgetAndCloseStillRuns(t *testing.T) {
 	}
 	if want := exitBudget - closeReserv; timer.d != want {
 		t.Errorf("Wait is bounded by %v, want the budget minus the Close reserve, %v", timer.d, want)
+	}
+	select { // the timer is armed before the Wait goroutine runs: fire it only once Wait is really stuck
+	case <-fake.waitStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Wait was never called")
 	}
 	timer.ch <- time.Now() // the Wait budget is used up
 	res := <-done

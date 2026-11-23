@@ -1,4 +1,4 @@
-// Package assets embeds the data the GUI ships with: two fonts, the moth sprite and the SDL game controller database. Each
+// Package assets embeds the data the GUI ships with: two fonts, the moth sprite, the app icon and the SDL game controller database. Each
 // is pinned (see PINS.md), and a test checks its SHA-256, so a change to one of them is a reviewed change to
 // the pin and the file together (docs/contracts/cli/gui.md sections 3 and 4). Their licences are in
 // THIRD_PARTY/ at the root of the repository.
@@ -30,6 +30,13 @@ var MothWingsDown []byte
 //
 //go:embed moth-wings-up.png
 var MothWingsUp []byte
+
+// AppIcon is the application icon, the 256 x 256 export of the T-83a moth icon (RGBA PNG with binary alpha, 8 px per cell),
+// set as the window icon. SDL2 takes one picture per window, so one size is embedded: the integer-scale export, which a
+// window manager or the system scales down from. Original project-owned art (D30), so it has no notice.
+//
+//go:embed mothdex-icon-256.png
+var AppIcon []byte
 
 // ControllerDB is gamecontrollerdb.txt from gabomdq/SDL_GameControllerDB (zlib), byte for byte.
 //

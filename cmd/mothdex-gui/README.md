@@ -7,6 +7,7 @@ The gamepad front end of mothdex for emulation frontends (Batocera, EmuELEC, Ret
 ```
 mothdex-gui [-config file] [-profile id] [-lang xx_yy] [-driver name] [-window WxH]
 mothdex-gui --probe
+mothdex-gui --version
 mothdex-gui -spike [-driver dummy]
 ```
 
@@ -15,7 +16,11 @@ mothdex-gui -spike [-driver dummy]
 | `-window WxH` | a window of that size instead of the full screen (desktop session) |
 | `-driver name` | force an SDL video driver, such as `dummy` |
 | `--probe` | the installer's eligibility check: load SDL2, check the version, open no window, read no config, write no file or log; prints `sdl X.Y.Z` and, on Linux, one word for where SDL2 was loaded from (`system`, `ld_library_path`, `other` or `unknown`, never a path), and exits 0, or the reason (one line, at most 200 bytes) on stderr and exits 1 |
+| `--version` | print the version line of `mothdex version` (`mothdex 0.1.1 (commit 1a2b3c4, 2026-11-22)`, or `mothdex dev` for a build without ldflags) and exit 0; loads no SDL2 and reads no configuration |
 | `-spike` | check the whole SDL2 binding on a hidden window and exit (the CI smoke test); an executable named `mothdex-gui-probe` does this with no flag |
+
+The window carries the moth app icon (`internal/ui/gui/assets/mothdex-icon-256.png`, T-83a) through `SDL_SetWindowIcon`; SDL2 takes one picture per window,
+and the X11 and Windows drivers use it (Wayland and the dummy driver ignore it). If it cannot be set, the log says so and the window opens with the default icon.
 
 Exit codes: 0 normal exit or SIGTERM/SIGINT, 1 SDL missing, too old or no display, 2 configuration error, 3 internal error. Every
 failure is written to the log file and to stderr.

@@ -83,8 +83,12 @@ func runGUI(o options, stderr io.Writer) (code int) {
 
 	warn := func(msg string) { log.Warn(msg) }
 	mappings, mappingCounts := input.LoadMappingsCounted(assets.ControllerDB, filepath.Join(sess.DataDir, userMappingsFile), input.SDLPlatform(runtime.GOOS), os.Getenv, warn)
+	icon, err := appIcon()
+	if err != nil {
+		log.Warn("gui: no window icon", "err", err) // cosmetic: the window opens with SDL's default icon
+	}
 	be, err := sdl.OpenBackend(lib, font, sdl.BackendOptions{
-		Display: display, Title: "mothdex", Driver: o.driver, Windowed: o.height > 0, Width: o.width, Height: o.height, Mappings: mappings, Log: log,
+		Display: display, Title: "mothdex", Icon: icon, Driver: o.driver, Windowed: o.height > 0, Width: o.width, Height: o.height, Mappings: mappings, Log: log,
 	})
 	if err != nil {
 		return fail(exitSDL, err)
