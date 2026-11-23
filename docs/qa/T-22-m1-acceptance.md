@@ -56,5 +56,4 @@ Met with evidence: A1, A3 (linux), A4, A5 (offline subset), B1 to B3, C1, C3 to 
 Partly met: C2 (live download and live cover save ok), A2.
 Open or not verified: A2 (needs the tag), full `verify-dist.sh`, cosign, Windows binary smoke, D1 to D3 (release gates, Regente), `--prefer` through the binary.
 
-
 T-100 update: F3 is closed by `4c9b278`; F4 is corrected in the docs. Other historical observations above remain scoped to the commits on which they were recorded.
