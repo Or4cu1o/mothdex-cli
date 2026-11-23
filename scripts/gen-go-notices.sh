@@ -57,7 +57,7 @@ EOF
   while read -r path version dir; do
     [ -n "$path" ] || continue
     # an empty Dir (the module is not in the cache) must not turn the licence glob into a glob of the current folder or of /
-    [ -n "$dir" ] && [ -d "$dir" ] || fail "module $path $version has no directory in the module cache (run go mod download)"
+    if [ -z "$dir" ] || [ ! -d "$dir" ]; then fail "module $path $version has no directory in the module cache (run go mod download)"; fi
     mapfile -t files < <(licence_files "$dir")
     [ "${#files[@]}" -gt 0 ] || fail "module $path $version has no licence file (it is linked into $title and needs a notice)"
     printf '\n================================================================================\nModule: %s %s\n================================================================================\n' "$path" "$version"
