@@ -5,3 +5,7 @@
 ### Changed
 
 - T-102: `install.sh` and `install.ps1` accept the two new notice files (`NOTICE_NAMES`, `$NoticeNames`), and a THIRD_PARTY member they do not know now says that the installer may be older than the release and to fetch it from the release tag.
+
+### Fixed
+
+- T-102 (upgrading from v0.1.0): the `install.sh` and `install.ps1` of v0.1.0 refuse the GUI archives of this release ("unexpected member", nothing installed, the CLI is not updated either) because the new notice files are not in their fixed allowlist. Download the installer of the new release tag again before updating (or pass `--no-gui` / `-NoGui` to the old one).
