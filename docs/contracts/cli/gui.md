@@ -163,16 +163,26 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
   3. `Close`, which flushes the history;
   4. exit.
 - If the budget runs out, exit anyway; the next start's journal cleanup removes the `.part` files.
-- Exit codes:
+- Exit codes ([`cli-output.md`](cli-output.md) §4.1; `--probe` uses 0, 8 and 1):
 
   | Code | Meaning |
   |---|---|
-  | 0 | normal exit |
-  | 1 | SDL missing or too old, or no display |
-  | 2 | config error |
-  | 3 | internal error |
+  | 0 | normal exit, also after SIGTERM or SIGINT; `--help` and `--version` |
+  | 1 | internal error, including a panic (the log line carries the stack) |
+  | 2 | configuration error: configuration, flags or profile |
+  | 8 | SDL missing or too old, or no display |
 
-- Every failure is written to the log file, because a Port has no visible terminal, and also to stderr.
+  Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors.
+- Every failure of a normal start is written to the log file, because a Port has no visible terminal, and also to
+  stderr. A command line or configuration error found before the log is open goes to stderr only.
+
+**Command line.** `--config`, `--profile` and `--lang` mean what they mean in the CLI. `--log-level` is the shortcut
+of `MOTHDEX_LOG_LEVEL` (`log.level`, flag over variable over file). `--help` lists the flags, exit codes and variables
+in the language of `--lang`, else `interface.language`, else the system's (en_us fills what a locale lacks); it loads
+no SDL2 and writes nothing. Flags take one dash or two.
+
+**Console window on Windows.** The release build does not pass `-H=windowsgui`, so Windows opens a console window
+along with the GUI. Kept on purpose during the beta (it shows start-up errors to a tester); to review for 1.0.
 
 **Covers.**
 - `Catalog.Cover` gives the cached reader, already checked by the fetcher (≤ 5 MiB, ≤ 4096×4096, magic bytes agree).

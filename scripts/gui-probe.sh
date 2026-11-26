@@ -11,8 +11,9 @@
 #   GUI_PROBE_RUNNER  a prefix to run the binary with, e.g. "qemu-aarch64 -L /usr/aarch64-linux-gnu"
 #   DIST              output folder (default dist-gui)
 #
-# Exit codes: 0 built (and probe ok when run), 1 SDL missing or too old on the machine that ran it,
-# 2 the build or the ELF check failed, 3 a check of the probe failed.
+# Exit codes: 0 built (and probe ok when run), 2 the build or the ELF check failed. When the probe runs and
+# fails, its own code (docs/contracts/cli/cli-output.md section 4.1): 8 SDL missing or too old, or no
+# display, on the machine that ran it, 1 any other check of the probe.
 set -eu
 cd "$(dirname "$0")/.."
 

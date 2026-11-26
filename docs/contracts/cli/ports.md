@@ -217,10 +217,10 @@ The GUI is dynamic on Linux, so the installer must prove it can start before it 
 **`mothdex-gui --probe`** (gap PRT-G3, Vitral):
 - loads SDL2 exactly as at normal start (§3), calls `SDL_GetVersion` and applies the version rule;
 - opens no window, initializes no video or input subsystem, reads no config and writes no file or log;
-- gives up by itself after 15 s (one line "SDL2 did not answer within 15 seconds", exit 1), inside the installer's
+- gives up by itself after 15 s (one line "SDL2 did not answer within 15 seconds", exit 8), inside the installer's
   own 20 s bound (T-70 IC-10), so a library that blocks in a constructor cannot hang the install even without `timeout`;
-- prints `sdl <major>.<minor>.<patch>` and, on Linux, a word for where the loader found SDL2 (`system`, `ld_library_path`, `other` or `unknown`; never a path), in one sanitized line of at most 200 bytes, and exits 0, or prints the reason and exits 1, the code gui.md §5 uses for SDL
-  problems.
+- prints `sdl <major>.<minor>.<patch>` and, on Linux, a word for where the loader found SDL2 (`system`, `ld_library_path`, `other` or `unknown`; never a path), in one sanitized line of at most 200 bytes, and exits 0, or prints the reason and exits 8, the code gui.md §5 uses for SDL
+  problems; 1 means an internal error. Releases before 0.2.0 exit 1 when not eligible.
 
 This replaces the `ldconfig -p` check of gui.md §6. One run proves the interpreter, the userland arch and the SDL
 soname together, and does not depend on `ldconfig` being present on these images (Unverified).

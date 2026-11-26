@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -36,20 +37,14 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 
-	sess, err := compose.Open(ctx, compose.Options{ConfigFile: o.config, Profile: o.profile, Lang: o.lang, Downloads: true, Session: true})
+	sess, err := compose.Open(ctx, compose.Options{ConfigFile: o.config, Profile: o.profile, Lang: o.lang, LogLevel: o.logLevel, Downloads: true, Session: true})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "mothdex-gui: %v\n", err)
 		return configExitCode(err)
 	}
 	defer sess.Close()
 	log := sess.Log
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error("gui: internal error", "panic", r)
-			_, _ = fmt.Fprintf(stderr, "mothdex-gui: internal error: %v (see %s)\n", r, sess.LogPath)
-			code = exitInternal
-		}
-	}()
+	defer recoverInternal(&code, log, sess.LogPath, stderr)
 	for _, w := range sess.Warnings {
 		log.Warn(w)
 	}
@@ -111,12 +106,24 @@ func runGUI(o options, stderr io.Writer) (code int) {
 		Model: model, Cmds: cmds, Backend: be, Events: sess.Svc, Clock: time.Now, Signals: terminationSignals(), Log: log,
 	})
 	if err != nil {
-		return fail(exitSDL, err)
+		return fail(sdlExitCode(err), err)
 	}
 	if leaveStuck(final.ExitTimedOut(), log, be.Close, os.Exit) {
 		return exitOK // only reached by a test: os.Exit does not return
 	}
 	return exitOK
+}
+
+// recoverInternal turns a panic into exit code 1, with the stack in the log line: a Port has no visible
+// terminal, so the log is the only place a tester's report can take it from. It must be deferred directly.
+func recoverInternal(code *int, log *slog.Logger, logPath string, stderr io.Writer) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	log.Error("gui: internal error", "panic", r, "stack", string(debug.Stack()))
+	_, _ = fmt.Fprintf(stderr, "mothdex-gui: internal error: %v (see %s)\n", r, logPath)
+	*code = exitInternal
 }
 
 // leaveStuck ends the process at once when the exit sequence ran out of its budget. A Wait or Close that did
@@ -160,10 +167,10 @@ func translator(t *i18n.Translator) (*i18n.Translator, bool, error) {
 	return bundle.New(i18n.Fallback), true, nil
 }
 
-// configExitCode is 2 for a configuration problem and 3 for anything else that stopped the start.
+// configExitCode is 2 for a configuration or usage problem and 1 for anything else that stopped the start.
 func configExitCode(err error) int {
 	var ae *app.Error
-	if errors.As(err, &ae) && ae.Code == app.CodeInvalidConfig {
+	if errors.As(err, &ae) && ae.ExitCode() == exitConfig {
 		return exitConfig
 	}
 	return exitInternal

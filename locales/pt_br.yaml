@@ -260,6 +260,45 @@ ui:
       number: 'Mostra a entrada com esse número (igual a info)'
       d: 'Baixa entradas pelo número: d 1 3, ou d 2-4'
   gui:
+    cmdline:
+      summary: "O mothdex-gui é a interface por controle do mothdex para frontends de emulação.\nSem opções, ele abre em tela cheia."
+      usage: 'Uso:'
+      options: 'opções'
+      flags_title: 'Opções:'
+      values:
+        file: 'arquivo'
+        id: 'id'
+        level: 'nível'
+        size: 'LxA'
+        name: 'nome'
+      flags:
+        config: 'Arquivo de configuração (padrão: o local padrão)'
+        profile: "Perfil do frontend, como batocera\n(padrão: detectado)"
+        lang: "Idioma da interface, como pt_br\n(padrão: interface.language)"
+        log_level: "Detalhe do log: debug, info, warn ou error.\nAtalho para MOTHDEX_LOG_LEVEL (padrão: log.level)"
+        window: 'Abre uma janela desse tamanho em vez da tela cheia'
+        driver: "Força um driver de vídeo do SDL, como dummy\n(padrão: SDL_VIDEODRIVER ou a escolha do SDL)"
+        probe: "Verifica se o SDL2 pode ser usado, sem janela:\nmostra a versão e sai"
+        version: 'Mostra a versão e sai'
+        spike: "Testa a ligação com o SDL2 numa janela oculta\ne sai (usado por testes automáticos)"
+        help: 'Mostra esta ajuda e sai'
+      dashes: 'As opções aceitam um ou dois hifens: -config e --config são iguais.'
+      exit_title: 'Códigos de saída:'
+      exit:
+        c0: 'Saída normal, também após SIGTERM ou Ctrl+C'
+        c1: 'Erro interno inesperado'
+        c2: 'Erro de configuração: configuração, opções ou perfil'
+        c8: 'SDL2 ausente ou antigo demais, ou não há tela'
+      env_title: 'Variáveis de ambiente:'
+      env:
+        config: 'Arquivo de configuração, quando não há --config'
+        log_level: 'O mesmo que --log-level'
+        key: 'Qualquer chave: maiúsculas, pontos viram _'
+      examples_title: 'Exemplos:'
+      log_note: 'As falhas são gravadas em mothdex.log, na pasta de logs (paths.logs).'
+      see_help: 'Execute mothdex-gui --help para ver as opções.'
+      bad_flags: 'Linha de comando inválida: {detail}'
+      bad_window: '--window espera LxA, no mínimo 160x120, como 1280x720.'
     kb:
       space: 'espaço'
       delete: 'Apagar'

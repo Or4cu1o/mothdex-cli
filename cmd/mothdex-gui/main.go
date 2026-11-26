@@ -3,25 +3,26 @@
 // Command mothdex-gui is the SDL2 emulator-mode front end, a separate binary built CGO_ENABLED=0 with the
 // gui build tag so that `mothdex` stays fully static (docs/contracts/cli/gui.md section 1).
 //
-//	mothdex-gui [-config file] [-profile id] [-lang xx_yy] [-driver name] [-window WxH]
+//	mothdex-gui [--config file] [--profile id] [--lang xx_yy] [--log-level level] [--window WxH] [--driver name]
 //	mothdex-gui --probe
 //	mothdex-gui --version
-//	mothdex-gui -spike [-driver dummy]
+//	mothdex-gui --spike [--driver dummy]
+//	mothdex-gui --help
 //
 // With no flags it opens the full screen window and runs the GUI. --probe is the eligibility check the installer
 // runs (docs/contracts/cli/ports.md section 5.2): it loads SDL2, checks the version, opens no window and says
-// "sdl X.Y.Z" and exits 0, or says why and exits 1. --version prints the version line of `mothdex version` (name, version,
+// "sdl X.Y.Z" and exits 0, or says why and exits 8. --version prints the version line of `mothdex version` (name, version,
 // short commit and date, from the ldflags of the release build) and exits 0, touching neither SDL2 nor the configuration.
-// -spike checks the whole SDL2 binding on a hidden window and
-// exits (the CI smoke test; an executable named mothdex-gui-probe does it with no flag). -window opens a window
-// of that size instead of the full screen, for a desktop session.
+// --spike checks the whole SDL2 binding on a hidden window and
+// exits (the CI smoke test; an executable named mothdex-gui-probe does it with no flag). --window opens a window
+// of that size instead of the full screen, for a desktop session. --log-level is a shortcut for MOTHDEX_LOG_LEVEL.
+// --help prints the flags and exit codes in the interface language. Go takes one dash or two.
 //
-// Exit codes follow section 5 of the contract: 0 normal exit or SIGTERM, 1 SDL missing, too old or no
-// display, 2 configuration error, 3 internal error.
+// Exit codes follow docs/contracts/cli/cli-output.md section 4.1: 0 normal exit or SIGTERM/SIGINT, 1 internal
+// error, 2 configuration error (configuration, flags or profile), 8 SDL missing or too old, or no display.
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -31,13 +32,14 @@ import (
 	"strings"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
+	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 )
 
 const (
 	exitOK       = 0
-	exitSDL      = 1
+	exitInternal = 1
 	exitConfig   = 2
-	exitInternal = 3
+	exitSDL      = 8
 )
 
 func init() {
@@ -57,42 +59,59 @@ func probeByName(arg0 string) bool {
 }
 
 type options struct {
-	version bool // --version: print the version line and exit
-	probe   bool // --probe: the installer's eligibility check
-	spike   bool // -spike: the CI smoke test of the whole binding
-	driver  string
-	config  string
-	profile string
-	lang    string
-	width   int
-	height  int // zero: the full screen
+	help     bool // -h, --help: print the help and exit
+	version  bool // --version: print the version line and exit
+	probe    bool // --probe: the installer's eligibility check
+	spike    bool // --spike: the CI smoke test of the whole binding
+	driver   string
+	config   string
+	profile  string
+	lang     string
+	logLevel string // --log-level: log.level for this run
+	window   string // --window as written; width and height are its parsed form
+	width    int
+	height   int // zero: the full screen
+}
+
+// newFlags declares every flag. The flag package prints nothing: the help and the errors are written by this
+// program, in the interface language (help.go). A test fails when a flag declared here has no help text.
+func newFlags(o *options) *flag.FlagSet {
+	fs := flag.NewFlagSet("mothdex-gui", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.BoolVar(&o.help, "help", false, "")
+	fs.BoolVar(&o.help, "h", false, "")
+	fs.BoolVar(&o.version, "version", false, "")
+	fs.BoolVar(&o.probe, "probe", false, "")
+	fs.BoolVar(&o.spike, "spike", false, "")
+	fs.StringVar(&o.driver, "driver", "", "")
+	fs.StringVar(&o.config, "config", "", "")
+	fs.StringVar(&o.profile, "profile", "", "")
+	fs.StringVar(&o.lang, "lang", "", "")
+	fs.StringVar(&o.logLevel, "log-level", "", "")
+	fs.StringVar(&o.window, "window", "", "")
+	return fs
 }
 
 // run takes os.Args: the name the program was started under, then its flags.
-func run(argv []string, stdout, stderr io.Writer) int {
-	args := argv[1:]
-	fs := flag.NewFlagSet("mothdex-gui", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	var o options
-	var window string
-	fs.BoolVar(&o.version, "version", false, "print the version line and exit 0")
-	fs.BoolVar(&o.probe, "probe", false, "check that SDL2 can be used (no window): print sdl X.Y.Z and exit 0, or the reason and exit 1")
-	fs.BoolVar(&o.spike, "spike", false, "check the whole SDL2 binding on a hidden window and exit (the CI smoke test)")
-	fs.StringVar(&o.driver, "driver", "", "SDL video driver to force, for example dummy (default: SDL_VIDEODRIVER or SDL's choice)")
-	fs.StringVar(&o.config, "config", "", "configuration file (default: the standard location)")
-	fs.StringVar(&o.profile, "profile", "", "frontend profile id (default: detected)")
-	fs.StringVar(&o.lang, "lang", "", "interface language, such as pt_br (default: interface.language)")
-	fs.StringVar(&window, "window", "", "open a window of WxH pixels instead of the full screen, such as 1280x720")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) { // -h prints the usage and is not a failure
-			return exitOK
+func run(argv []string, stdout, stderr io.Writer) (code int) {
+	// A panic outside the normal mode (which logs its own, gui.go) must not leave with the code Go gives a
+	// crash, 2, which the contract keeps for configuration errors.
+	defer func() {
+		if r := recover(); r != nil {
+			_, _ = fmt.Fprintf(stderr, "mothdex-gui: internal error: %s\n", oneLine(fmt.Sprint(r), reasonMax))
+			code = exitInternal
 		}
-		return exitInternal
+	}()
+	var o options
+	if err := newFlags(&o).Parse(argv[1:]); err != nil {
+		return usageError(o, stderr, "ui.gui.cmdline.bad_flags", i18n.Args{"detail": err.Error()})
 	}
-	if window != "" {
-		if _, err := fmt.Sscanf(window, "%dx%d", &o.width, &o.height); err != nil || o.width < 160 || o.height < 120 {
-			_, _ = fmt.Fprintf(stderr, "mothdex-gui: -window wants WxH, such as 1280x720\n")
-			return exitInternal
+	if o.help { // before the checks below and every mode: asking for help never fails on another flag's value
+		return runHelp(o, stdout, stderr)
+	}
+	if o.window != "" {
+		if _, err := fmt.Sscanf(o.window, "%dx%d", &o.width, &o.height); err != nil || o.width < 160 || o.height < 120 {
+			return usageError(o, stderr, "ui.gui.cmdline.bad_window", nil)
 		}
 	}
 	switch {
