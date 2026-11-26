@@ -40,7 +40,7 @@ downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https.
 curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
 less install.sh
 sh install.sh --dry-run          # downloads and verifies in a temp dir, installs nothing
-sh install.sh                    # or: --version, --profile, --bin-dir, --launcher, --no-launcher, --gui, --no-gui, --no-modify-path, --uninstall
+sh install.sh                    # or: --version, --profile, --bin-dir, --launcher, --no-launcher, --gui, --no-gui, --alias, --no-alias, --no-modify-path, --uninstall
 ```
 
 The installer adds the install folder to your PATH without administrator rights: the user `Path` and the current
@@ -48,10 +48,15 @@ session on Windows, one line marked `# mothdex` in your shell's startup file els
 file cannot be written by other users). `-NoModifyPath` / `--no-modify-path` prints the command to copy instead, and
 uninstall removes only the entry recorded in `.mothdex-install.json` ([contract](contracts/cli/install-state.md)).
 
+It also creates the shortcut `mdex` (`mthd` when `mdex` is taken; none when both are): a hard link `mdex.exe` on
+Windows, a relative symbolic link elsewhere. `-Alias <name>` / `--alias <name>` picks another name (2 to 16 characters,
+a-z 0-9 and -), `-NoAlias` / `--no-alias` creates none. The installer cannot see aliases or functions defined only in
+your interactive shell's startup files.
+
 To install a specific version, fetch the installer from that tag (`.../mothdex-cli/vX.Y.Z/install.sh`) so installer and release match.
 
 On Windows, download `install.ps1`, read it, then run `.\install.ps1` (options
-`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-NoLauncher`, `-Gui`, `-NoGui`, `-NoModifyPath`, `-DryRun`, `-Uninstall`).
+`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-NoLauncher`, `-Gui`, `-NoGui`, `-Alias`, `-NoAlias`, `-NoModifyPath`, `-DryRun`, `-Uninstall`).
 Both installers always check the SHA-256 of the archive against `checksums.txt`
 and, when `cosign` (or an authenticated `gh`) is on the machine, the signature
 and provenance with the identity below; a failing check aborts before anything

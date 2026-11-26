@@ -46,6 +46,8 @@ REFRESH_URL="http://127.0.0.1:1234/reloadgames"
 STATE_NAME=".mothdex-install.json"
 STATE_MAX=16384
 RC_MARK="# mothdex"
+ALIAS_DEFAULT=mdex
+ALIAS_FALLBACK=mthd
 
 VERSION=""
 PROFILE=""
@@ -53,6 +55,8 @@ BIN_DIR_OPT=""
 DRY_RUN=0
 UNINSTALL=0
 MODIFY_PATH=1
+ALIAS_OPT="" # --alias <name>
+NO_ALIAS=0
 LAUNCHER_OPT=""   # "" = default (on when the GUI is installed), 1 = --launcher (the same), 0 = --no-launcher
 GUI_OPT=""        # "" = default (on), 1 = --gui, 0 = --no-gui
 FAILED=0          # set when a step reports an error after the CLI install completed: exit status 1 at the end
@@ -95,31 +99,53 @@ Usage: sh install.sh [options]
   --no-launcher        do not create or rewrite the launcher
   --gui                install mothdex-gui when the release has one (the default)
   --no-gui             install the CLI only; an installed mothdex-gui is removed (upgrade)
+  --alias <name>       shortcut to create next to mothdex (default: mdex, or mthd when mdex is taken)
+  --no-alias           create no shortcut; one an earlier install created is removed
   --no-modify-path     do not add the install folder to your PATH; print the command to do it yourself
   --dry-run            download and verify, then print what would be installed; leaves nothing changed
                        (the GUI check runs in an existing bin_dir and removes its staging file)
-  --uninstall          remove the binaries, the licence notices, the launcher and the PATH line created by this installer
+  --uninstall          remove the binaries, the licence notices, the launcher, the shortcut and the PATH line created by this installer
   -h, --help           show this help
 
 Paths must be absolute and contain only A-Z a-z 0-9 _ . / + -
 EOF
 }
 
+# ^[a-z][a-z0-9-]{1,15}$ and not a name of ours or a Windows device name (TM-12; the state file is shared with Windows).
+# The letters are spelled out: a range can match capitals in some locales.
+valid_alias() {
+  case $1 in
+    '' | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;;
+    [!abcdefghijklmnopqrstuvwxyz]*) return 1 ;;
+    mothdex | mothdex-gui | con | prn | aux | nul | com[0123456789] | lpt[0123456789]) return 1 ;;
+  esac
+  [ "${#1}" -ge 2 ] && [ "${#1}" -le 16 ]
+}
+
+set_alias_opt() {
+  [ "$NO_ALIAS" -eq 0 ] || die "--alias and --no-alias cannot be used together"
+  valid_alias "$1" || die "invalid alias: use 2 to 16 characters, a-z 0-9 and -, starting with a letter (not mothdex)"
+  ALIAS_OPT=$1
+}
+
 parse_args() {
 while [ $# -gt 0 ]; do
   case $1 in
-    --version | --profile | --bin-dir)
+    --version | --profile | --bin-dir | --alias)
       [ $# -ge 2 ] || die "$1 needs a value"
       case $1 in
         --version) VERSION=$2 ;;
         --profile) PROFILE=$2 ;;
         --bin-dir) BIN_DIR_OPT=$2 ;;
+        --alias) set_alias_opt "$2" ;;
       esac
       shift 2
       ;;
     --version=*) VERSION=${1#*=}; shift ;;
     --profile=*) PROFILE=${1#*=}; shift ;;
     --bin-dir=*) BIN_DIR_OPT=${1#*=}; shift ;;
+    --alias=*) set_alias_opt "${1#*=}"; shift ;;
+    --no-alias) [ -z "$ALIAS_OPT" ] || die "--alias and --no-alias cannot be used together"; NO_ALIAS=1; shift ;;
     --launcher) [ "$LAUNCHER_OPT" != 0 ] || die "--launcher and --no-launcher cannot be used together"; LAUNCHER_OPT=1; shift ;;
     --no-launcher) [ "$LAUNCHER_OPT" != 1 ] || die "--launcher and --no-launcher cannot be used together"; LAUNCHER_OPT=0; shift ;;
     --gui) [ "$GUI_OPT" != 0 ] || die "--gui and --no-gui cannot be used together"; GUI_OPT=1; shift ;;
@@ -750,6 +776,7 @@ ST_ADDED=false
 ST_KIND=""
 ST_FILE=""
 ST_VALUE="" # raw JSON text of path_value; only ever compared, never evaluated
+ST_ALIAS=""
 
 # The raw text of one string field, or "" ; fails unless the key appears on exactly one line in the canonical layout.
 state_string() {
@@ -786,7 +813,7 @@ read_state() {
   if state_valid "$f"; then
     ST_PRESENT=1
   else
-    ST_ADDED=false; ST_KIND=""; ST_FILE=""; ST_VALUE=""; ST_INSTALLED_AT=""
+    ST_ADDED=false; ST_KIND=""; ST_FILE=""; ST_VALUE=""; ST_INSTALLED_AT=""; ST_ALIAS=""
     warn "ignoring $f: it is not a valid install state of this folder"
   fi
 }
@@ -801,6 +828,10 @@ state_valid() {
   v=$(state_string "$1" version) && valid_version "$v" || return 1
   ST_INSTALLED_AT=$(state_string "$1" installed_at) || return 1
   printf '%s\n' "$ST_INSTALLED_AT" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+)$' || return 1
+  ST_ALIAS=$(state_string "$1" alias) || return 1
+  v=$(state_string "$1" alias_kind) || return 1
+  if [ -z "$ST_ALIAS" ]; then [ -z "$v" ] || return 1
+  else valid_alias "$ST_ALIAS" && [ "$v" = symlink ] || return 1; fi
   ST_KIND=$(state_string "$1" path_kind) || return 1
   ST_FILE=$(state_string "$1" path_file) || return 1
   ST_VALUE=$(state_string "$1" path_value) || return 1
@@ -827,6 +858,8 @@ write_state() {
   if [ "$GUI_INSTALLED" -eq 1 ]; then gui=true; fi
   launcher=""
   if [ -n "$LAUNCHER_DIR" ] && has_marker "$LAUNCHER_DIR/$LAUNCHER_NAME"; then launcher="$LAUNCHER_DIR/$LAUNCHER_NAME"; fi
+  alias_kind=""
+  if [ -n "$ALIAS" ]; then alias_kind=symlink; fi
   tmps=$(mktemp "$BIN_DIR/$STATE_NAME.new.XXXXXX" 2>/dev/null) || {
     warn "cannot write $f: mothdex upgrade will not be available for this install"
     return 0
@@ -841,8 +874,8 @@ write_state() {
   "target": "%s",
   "profile": "%s",
   "gui": %s,
-  "alias": "",
-  "alias_kind": "",
+  "alias": "%s",
+  "alias_kind": "%s",
   "path_added": %s,
   "path_kind": "%s",
   "path_file": "%s",
@@ -851,7 +884,7 @@ write_state() {
   "installed_at": "%s",
   "updated_at": "%s",
   "updated_by": "installer"
-}\n' "$BIN_DIR" "$VERSION" "$TARGET" "$PROFILE" "$gui" "$ST_ADDED" "$ST_KIND" "$ST_FILE" "$ST_VALUE" "$launcher" \
+}\n' "$BIN_DIR" "$VERSION" "$TARGET" "$PROFILE" "$gui" "$ALIAS" "$alias_kind" "$ST_ADDED" "$ST_KIND" "$ST_FILE" "$ST_VALUE" "$launcher" \
     "${ST_INSTALLED_AT:-$now}" "$now" >"$tmps" && chmod 0644 "$tmps" && mv -f "$tmps" "$f"; then
     NEWSTATE=""
   else
@@ -859,6 +892,61 @@ write_state() {
     NEWSTATE=""
     warn "cannot write $f: mothdex upgrade will not be available for this install"
   fi
+}
+
+# --- the shortcut (T-110 TM-12, TM-13) ------------------------------------------------------------------------------
+
+ALIAS=""      # the shortcut of this install, "" for none
+ALIAS_BUSY="" # what holds the last name that was refused
+
+# Our link is the relative symbolic link to mothdex, so an upgrade needs nothing.
+alias_is_ours() { [ -L "$BIN_DIR/$1" ] && [ "$(readlink "$BIN_DIR/$1")" = mothdex ]; }
+
+# A name is free when nothing in bin_dir holds it and the shell resolves it to nothing; the link the state records as
+# ours does not count.
+alias_free() {
+  p="$BIN_DIR/$1"
+  recorded=0
+  if [ "$1" = "$ST_ALIAS" ] && alias_is_ours "$1"; then recorded=1; fi
+  if { [ -e "$p" ] || [ -L "$p" ]; } && [ "$recorded" -eq 0 ]; then ALIAS_BUSY=$p; return 1; fi
+  found=$(command -v "$1" 2>/dev/null) || return 0
+  if [ "$recorded" -eq 1 ] && [ "$found" -ef "$p" ]; then return 0; fi
+  ALIAS_BUSY=$found
+  return 1
+}
+
+# Sets ALIAS. A name the user chose has no fallback; otherwise the recorded one, then mdex, then mthd.
+choose_alias() {
+  ALIAS=""
+  [ "$NO_ALIAS" -eq 0 ] || return 0
+  if [ -n "$ALIAS_OPT" ]; then names=$ALIAS_OPT; else names="$ST_ALIAS $ALIAS_DEFAULT $ALIAS_FALLBACK"; fi
+  tried=" "
+  for name in $names; do
+    case $tried in *" $name "*) continue ;; esac
+    tried="$tried$name "
+    if alias_free "$name"; then ALIAS=$name; return 0; fi
+    warn "$name is already used ($ALIAS_BUSY): left alone"
+  done
+}
+
+remove_alias() { # name; only our link
+  if alias_is_ours "$1"; then
+    rm -f "$BIN_DIR/$1" && say "Removed $BIN_DIR/$1"
+  elif [ -e "$BIN_DIR/$1" ] || [ -L "$BIN_DIR/$1" ]; then
+    warn "keeping $BIN_DIR/$1: it is not the shortcut this installer created"
+  fi
+}
+
+update_alias() {
+  choose_alias
+  if [ -n "$ALIAS" ] && ! alias_is_ours "$ALIAS"; then
+    # ln -s never replaces an existing name
+    if ! ln -s mothdex "$BIN_DIR/$ALIAS" 2>/dev/null; then
+      warn "cannot create the shortcut $BIN_DIR/$ALIAS (the file system may not support links)"
+      ALIAS=""
+    fi
+  fi
+  if [ -n "$ST_ALIAS" ] && [ "$ST_ALIAS" != "$ALIAS" ]; then remove_alias "$ST_ALIAS"; fi
 }
 
 # bash, zsh, fish, sh (anything POSIX, which reads ~/.profile) or other.
@@ -1037,7 +1125,9 @@ final_message() {
       present) say "$ok A pasta já está no PATH." ;;
       *) say "O PATH não foi alterado. Use o comando acima, ou rode $BIN_DIR/mothdex." ;;
     esac
-    say "Teste: mothdex --version"
+    if [ -n "$ALIAS" ]; then say "Atalho: $ALIAS"
+    elif [ "$NO_ALIAS" -eq 0 ]; then say "Sem atalho: os nomes já estão em uso ou o link não pôde ser criado (veja acima)."; fi
+    say "Teste: ${ALIAS:-mothdex} --version"
   else
     say "mothdex $VERSION installed in $BIN_DIR"
     case $PATH_RESULT in
@@ -1045,7 +1135,9 @@ final_message() {
       present) say "$ok The folder is already on your PATH." ;;
       *) say "PATH was not changed. Use the command above, or run $BIN_DIR/mothdex." ;;
     esac
-    say "Test: mothdex --version"
+    if [ -n "$ALIAS" ]; then say "Shortcut: $ALIAS"
+    elif [ "$NO_ALIAS" -eq 0 ]; then say "No shortcut: the names are taken or the link could not be created (see above)."; fi
+    say "Test: ${ALIAS:-mothdex} --version"
   fi
 }
 
@@ -1078,12 +1170,16 @@ do_uninstall() {
     fi
   fi
   if [ "$ST_PRESENT" -eq 1 ]; then
+    if [ -n "$ST_ALIAS" ]; then
+      if [ "$DRY_RUN" -eq 0 ]; then remove_alias "$ST_ALIAS"
+      elif alias_is_ours "$ST_ALIAS"; then say "Would remove $BIN_DIR/$ST_ALIAS"; fi
+    fi
     remove_path_line
     state="$BIN_DIR/$STATE_NAME"
     if [ "$DRY_RUN" -eq 1 ]; then say "Would remove $state"
     elif [ "$MODIFY_PATH" -eq 1 ]; then rm -f "$state"; say "Removed $state"; fi
   else
-    say "note: no install state in $BIN_DIR: any PATH entry for it was not added by this installer, or must be removed by hand."
+    say "note: no install state in $BIN_DIR: a shortcut or PATH entry for it was not created by this installer, or must be removed by hand."
   fi
   say "Your configuration, data, history, cache and ROMs were not touched."
 }
@@ -1147,6 +1243,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     unknown) if [ "$LAUNCHER_OPT" != 0 ] && [ -n "$LAUNCHER_DIR" ]; then say "Launcher: would be written only if the GUI turns out to be eligible"; fi ;;
     *) remove_launcher "the GUI would not be installed" ;;
   esac
+  read_state
+  choose_alias
+  if [ -n "$ALIAS" ]; then say "Would create the shortcut $BIN_DIR/$ALIAS"; fi
   exit 0
 fi
 
@@ -1170,6 +1269,7 @@ elif [ "$FAILED" -ne 0 ]; then
   print_path_block
 else
   read_state
+  update_alias
   update_path
   write_state
   final_message

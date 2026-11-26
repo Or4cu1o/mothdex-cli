@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The installers create a short name for `mothdex`: `mdex`, or `mthd` when `mdex` is already taken on the machine (a hard link on Windows, a symbolic link elsewhere). They never overwrite a command or file that is not theirs. `-Alias <name>` / `--alias <name>` chooses another name, `-NoAlias` / `--no-alias` creates none, an upgrade keeps it working, and uninstall removes only the one the installer created.
 - The installers add the install folder to your PATH, without administrator rights. On Windows it goes into the user `Path` (nothing else in it is rewritten) and into the current PowerShell window. On Linux and macOS it is one line marked `# mothdex` in the startup file of your shell (bash, zsh, fish or `~/.profile`). `-NoModifyPath` / `--no-modify-path` prints the command to copy instead. Uninstall removes only the entry the installer added.
 - The installers record what they did in `.mothdex-install.json` in the install folder, and end with a short summary, in Portuguese on a Portuguese system.
 - Grouped command help, full descriptions and executable examples, usage modes, separate global flags, and config/exit-code/error reference topics. `docs/errors.md` is generated from the error locale keys. Shell help includes its navigation commands.

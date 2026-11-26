@@ -33,12 +33,17 @@
   Install mothdex-gui when the release has one (the default).
 .PARAMETER NoGui
   Install the CLI only; an installed mothdex-gui.exe and SDL2.dll are removed (upgrade).
+.PARAMETER Alias
+  Shortcut to create next to mothdex.exe (a hard link). Default: mdex, or mthd when mdex is taken. 2 to 16 characters,
+  a-z 0-9 and -, starting with a letter.
+.PARAMETER NoAlias
+  Create no shortcut; one an earlier install created is removed.
 .PARAMETER NoModifyPath
   Do not add the install folder to your user PATH; print the command to do it yourself. With -Uninstall, keep the entry.
 .PARAMETER DryRun
   Download and verify, print what would be installed, leave nothing changed (the GUI check runs in an existing install folder and removes its staging file).
 .PARAMETER Uninstall
-  Remove the binaries, the licence notices, the launcher and the user PATH entry created by this installer.
+  Remove the binaries, the licence notices, the launcher, the shortcut and the user PATH entry created by this installer.
 #>
 # The public parameter names are aliases: `Invoke-Expression` binds a param block into the caller's scope, where
 # $Version or $BinDir would overwrite the user's own variables (T-110 TM-3).
@@ -51,6 +56,8 @@ param(
   [Alias('NoLauncher')][switch]$MothdexNoLauncher,
   [Alias('Gui')][switch]$MothdexGui,
   [Alias('NoGui')][switch]$MothdexNoGui,
+  [Alias('Alias')][string]$MothdexAlias = '',
+  [Alias('NoAlias')][switch]$MothdexNoAlias,
   [Alias('NoModifyPath')][switch]$MothdexNoModifyPath,
   [Alias('DryRun')][switch]$MothdexDryRun,
   [Alias('Uninstall')][switch]$MothdexUninstall
@@ -70,6 +77,8 @@ $Launcher = $MothdexLauncher
 $NoLauncher = $MothdexNoLauncher
 $Gui = $MothdexGui
 $NoGui = $MothdexNoGui
+$Alias = $MothdexAlias
+$NoAlias = $MothdexNoAlias
 $NoModifyPath = $MothdexNoModifyPath
 $DryRun = $MothdexDryRun
 $Uninstall = $MothdexUninstall
@@ -91,13 +100,15 @@ $RefreshUrl = 'http://127.0.0.1:1234/reloadgames'
 $StateName = '.mothdex-install.json'
 $StateMaxBytes = 16384
 $MaxPathLength = 32767
+$AliasDefaults = @('mdex', 'mthd')
 # shared by the functions below (a hashtable, so a child scope changes it without touching the user's session)
-$State = @{ Failed = $false; LauncherWritten = $false; LauncherRemoved = $false; PathResult = ''; PathAdded = $false; FromCmd = $false }
+$State = @{ Failed = $false; LauncherWritten = $false; LauncherRemoved = $false; PathResult = ''; PathAdded = $false; FromCmd = $false; Alias = '' }
 
 function Fail([string]$Message) { throw "mothdex install: $Message" }
 
 if ($Gui -and $NoGui) { Fail '-Gui and -NoGui cannot be used together' }
 if ($Launcher -and $NoLauncher) { Fail '-Launcher and -NoLauncher cannot be used together' }
+if ($Alias -and $NoAlias) { Fail '-Alias and -NoAlias cannot be used together' }
 
 # Only URLs built from $Base are ever downloaded.
 function Get-Remote([string]$Url, [string]$Dest) {
@@ -626,6 +637,129 @@ function Update-UserPath([string]$Dir, $Previous) {
   }
 }
 
+# --- the shortcut (T-110 TM-12, TM-13) ------------------------------------------------------------------------------
+
+# Not a name of ours or a Windows device name.
+function Test-AliasName([string]$Name) {
+  return ($Name -cmatch '^[a-z][a-z0-9-]{1,15}\z') -and ($Name -cnotmatch '^(mothdex|mothdex-gui|con|prn|aux|nul|com[0-9]|lpt[0-9])\z')
+}
+
+# kernel32 for hard links and file identity: neither has a cmdlet that works the same on PowerShell 5.1 and 7.
+function Initialize-LinkApi {
+  if ('Mothdex.Link' -as [type]) { return }
+  Add-Type -Namespace Mothdex -Name Link -MemberDefinition @'
+[StructLayout(LayoutKind.Sequential)]
+public struct Info {
+  public uint Attributes;
+  public System.Runtime.InteropServices.ComTypes.FILETIME Created, Accessed, Written;
+  public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+}
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, out Info info);
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern bool CreateHardLinkW(string newName, string existingName, IntPtr securityAttributes);
+'@
+}
+
+function Get-FileId([string]$Path) {
+  Initialize-LinkApi
+  $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+  try {
+    $info = New-Object 'Mothdex.Link+Info'
+    if (-not [Mothdex.Link]::GetFileInformationByHandle($stream.SafeFileHandle, [ref]$info)) { throw "cannot identify $Path" }
+    return "$($info.Volume):$($info.IndexHigh):$($info.IndexLow)"
+  } finally { $stream.Dispose() }
+}
+
+# True only when both are regular files and one and the same file; any doubt is false.
+function Test-SameFile([string]$First, [string]$Second) {
+  try {
+    if ((Test-ReparsePoint $First) -or (Test-ReparsePoint $Second)) { return $false }
+    if (-not ((Test-Path -LiteralPath $First -PathType Leaf) -and (Test-Path -LiteralPath $Second -PathType Leaf))) { return $false }
+    return (Get-FileId $First) -ceq (Get-FileId $Second)
+  } catch {
+    Write-Verbose $_.Exception.Message
+    return $false
+  }
+}
+
+# What holds the name, or '' when it is free. $Owned is the recorded shortcut that was proven to be our hard link.
+function Find-AliasHolder([string]$BinDirPath, [string]$Name, [string]$Owned) {
+  $mine = Join-Path $BinDirPath "$Name.exe"
+  foreach ($extension in '.com', '.exe', '.bat', '.cmd', '.ps1') {
+    $file = Join-Path $BinDirPath "$Name$extension"
+    if (((Test-Path -LiteralPath $file) -or (Test-ReparsePoint $file)) -and -not (($Name -ceq $Owned) -and ($file -ieq $mine))) { return $file }
+  }
+  # cmdlets, functions, aliases and programs on PATH, as far as this process sees them
+  foreach ($command in @(Get-Command -Name $Name -All -ErrorAction SilentlyContinue)) {
+    if (($Name -ceq $Owned) -and ($command.CommandType -eq 'Application') -and ($command.Source -ieq $mine)) { continue }
+    if (($command.CommandType -eq 'Application') -and $command.Source) { return $command.Source }
+    return "the $($command.CommandType) $($command.Name)"
+  }
+  return ''
+}
+
+# A name the user chose has no fallback; otherwise the recorded one, then mdex, then mthd. '' means none.
+function Select-Alias([string]$BinDirPath, [string]$Owned) {
+  if ($NoAlias) { return '' }
+  if ($Alias) { $names = @($Alias) } else { $names = @(@($Owned) + $AliasDefaults | Where-Object { $_ } | Select-Object -Unique) }
+  foreach ($name in $names) {
+    $holder = Find-AliasHolder $BinDirPath $name $Owned
+    if (-not $holder) { return $name }
+    Write-Warning "$name is already used ($holder): left alone"
+  }
+  return ''
+}
+
+# Creates or recreates <Name>.exe as a hard link to mothdex.exe (an upgrade replaces mothdex.exe, so an older link still
+# names the old file). An old link that is running can be renamed but not deleted: it goes at the next install.
+function New-AliasLink([string]$BinDirPath, [string]$Name) {
+  $target = Join-Path $BinDirPath 'mothdex.exe'
+  $link = Join-Path $BinDirPath "$Name.exe"
+  if (Test-SameFile $link $target) { return }
+  $old = ''
+  if (Test-Path -LiteralPath $link) {
+    $old = "$link.old"
+    if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $old) { $old = "$link.old-$PID" }
+    Move-Item -LiteralPath $link -Destination $old
+  }
+  try {
+    Initialize-LinkApi
+    if (-not [Mothdex.Link]::CreateHardLinkW($link, $target, [IntPtr]::Zero)) {
+      throw "Windows error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+    }
+    if (-not (Test-SameFile $link $target)) { throw 'the link does not name mothdex.exe' }
+  } catch {
+    if ($old -and -not (Test-Path -LiteralPath $link)) { Move-Item -LiteralPath $old -Destination $link }
+    throw
+  }
+  if ($old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
+}
+
+# Removes a shortcut proven to be ours; one that is running is renamed aside.
+function Remove-AliasLink([string]$BinDirPath, [string]$Name) {
+  $link = Join-Path $BinDirPath "$Name.exe"
+  try {
+    try { Remove-Item -LiteralPath $link -Force } catch { Move-Item -LiteralPath $link -Destination "$link.old-$PID" }
+    Write-Output "Removed $link"
+  } catch { Write-Warning "could not remove ${link}: $($_.Exception.Message)" }
+}
+
+# Sets $State.Alias. $Owned is the recorded shortcut that was our hard link before mothdex.exe was replaced.
+function Update-Alias([string]$BinDirPath, [string]$Owned) {
+  $name = Select-Alias $BinDirPath $Owned
+  if ($name) {
+    try { New-AliasLink $BinDirPath $name }
+    catch {
+      Write-Warning "cannot create the shortcut $name (the file system may not support hard links): $($_.Exception.Message)"
+      $name = ''
+    }
+  }
+  if ($Owned -and ($Owned -cne $name) -and (Test-Path -LiteralPath (Join-Path $BinDirPath "$Owned.exe"))) { Remove-AliasLink $BinDirPath $Owned }
+  $State.Alias = $name
+}
+
 # Every value is checked again on read (TM-14). An invalid file counts as absent: warned about, nothing it names touched.
 function Read-InstallState([string]$BinDirPath) {
   $file = Join-Path $BinDirPath $StateName
@@ -636,18 +770,22 @@ function Read-InstallState([string]$BinDirPath) {
     if ($item.PSIsContainer -or ($item.Length -gt $StateMaxBytes)) { throw 'not a small regular file' }
     $text = [IO.File]::ReadAllText($file)
     $data = $text | ConvertFrom-Json
-    foreach ($name in 'schema_version', 'source', 'dir', 'version', 'path_added', 'path_kind', 'path_file', 'path_value', 'installed_at') {
+    foreach ($name in 'schema_version', 'source', 'dir', 'version', 'alias', 'alias_kind', 'path_added', 'path_kind', 'path_file', 'path_value', 'installed_at') {
       if (-not $data.PSObject.Properties[$name]) { throw "no $name" }
     }
     if (($data.schema_version -is [string]) -or ($data.schema_version -ne 1)) { throw 'schema' }
     if (($data.source -cne 'installer') -or ([string]$data.dir -ine $BinDirPath) -or (-not (Test-Version ([string]$data.version)))) { throw 'source, dir or version' }
+    $alias = [string]$data.alias
+    if ($alias) {
+      if ((-not (Test-AliasName $alias)) -or ($data.alias_kind -cne 'hardlink')) { throw 'alias' }
+    } elseif ([string]$data.alias_kind -cne '') { throw 'alias_kind' }
     if (($data.path_added -isnot [bool]) -or ([string]$data.path_file -cne '')) { throw 'path_added or path_file' }
     if ($data.path_added) {
       if (($data.path_kind -cne 'user_env') -or ([string]$data.path_value -ine $BinDirPath)) { throw 'path_value' }
     } elseif (([string]$data.path_kind -cne '') -or ([string]$data.path_value -cne '')) { throw 'path_kind' }
     # read from the text: PowerShell 7 turns a date string into a DateTime
     if ($text -notmatch '"installed_at"\s*:\s*"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+))"') { throw 'installed_at' }
-    return [pscustomobject]@{ Added = [bool]$data.path_added; Value = [string]$data.path_value; InstalledAt = $Matches[1] }
+    return [pscustomobject]@{ Added = [bool]$data.path_added; Value = [string]$data.path_value; InstalledAt = $Matches[1]; Alias = $alias }
   } catch {
     Write-Warning "ignoring ${file}: it is not a valid install state of this folder"
     return $null
@@ -691,6 +829,9 @@ function Show-FinalMessage([string]$Dir, [string]$Installed) {
   $ok = [char]0x2713
   $a = [char]0x00E1   # a acute
   $t = [char]0x00E3   # a tilde
+  $o = [char]0x00F4   # o circumflex
+  $command = 'mothdex'
+  if ($State.Alias) { $command = $State.Alias }
   Write-Output ''
   if ((Get-UICulture).Name -like 'pt*') {
     Write-Output "mothdex $Installed instalado em $Dir"
@@ -698,14 +839,18 @@ function Show-FinalMessage([string]$Dir, [string]$Installed) {
     elseif ($State.FromCmd) { Write-Output "$ok PATH do usu${a}rio atualizado. Abra um terminal novo." }
     elseif ($State.PathResult -eq 'present') { Write-Output "$ok A pasta j${a} est${a} no PATH do usu${a}rio. Nesta janela j${a} funciona." }
     else { Write-Output "$ok PATH do usu${a}rio atualizado. Nesta janela j${a} funciona; em outras, abra um terminal novo." }
-    Write-Output 'Teste: mothdex --version'
+    if ($State.Alias) { Write-Output "Atalho: $($State.Alias)" }
+    elseif (-not $NoAlias) { Write-Output "Sem atalho: os nomes j${a} est${a}o em uso ou o link n${t}o p${o}de ser criado (veja acima)." }
+    Write-Output "Teste: $command --version"
   } else {
     Write-Output "mothdex $Installed installed in $Dir"
     if ($State.PathResult -eq 'manual') { Write-Output 'PATH was not changed. Use the command above.' }
     elseif ($State.FromCmd) { Write-Output "$ok User PATH updated. Open a new terminal." }
     elseif ($State.PathResult -eq 'present') { Write-Output "$ok The folder is already on your user PATH. It works in this window." }
     else { Write-Output "$ok User PATH updated. It works in this window; in others, open a new terminal." }
-    Write-Output 'Test: mothdex --version'
+    if ($State.Alias) { Write-Output "Shortcut: $($State.Alias)" }
+    elseif (-not $NoAlias) { Write-Output 'No shortcut: the names are taken or the link could not be created (see above).' }
+    Write-Output "Test: $command --version"
   }
 }
 
@@ -714,6 +859,7 @@ function Show-FinalMessage([string]$Dir, [string]$Installed) {
 try {
 & {
 $State.FromCmd = Test-FromCmd
+if ($Alias -and -not (Test-AliasName $Alias)) { Fail 'invalid -Alias: use 2 to 16 characters, a-z 0-9 and -, starting with a letter (not mothdex)' }
 $arch = Get-TargetArch
 $retrobat = Find-RetroBat
 if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\mothdex' }
@@ -732,6 +878,15 @@ if ($retrobat) { $profileId = 'retrobat' }
 Write-Output "System: windows_$arch, profile: $profileId"
 
 if ($Uninstall) {
+  $previous = Read-InstallState $BinDir
+  if ($previous -and $previous.Alias) {
+    $link = Join-Path $BinDir "$($previous.Alias).exe"
+    if (Test-SameFile $link $exe) {
+      if ($DryRun) { Write-Output "Would remove $link" } else { Remove-AliasLink $BinDir $previous.Alias }
+    } elseif (Test-Path -LiteralPath $link) {
+      Write-Warning "keeping ${link}: it is not the shortcut this installer created"
+    }
+  }
   if (Test-Path -LiteralPath $exe) {
     if ($DryRun) { Write-Output "Would remove $exe" } else { Remove-Item -LiteralPath $exe -Force; Write-Output "Removed $exe" }
   } else { Write-Output "No binary at $exe" }
@@ -758,7 +913,6 @@ if ($Uninstall) {
       } else { Write-Warning "keeping $launcherFile`: it was not created by this installer" }
     }
   }
-  $previous = Read-InstallState $BinDir
   if ($previous) {
     $stateFile = Join-Path $BinDir $StateName
     if ($NoModifyPath) {
@@ -780,7 +934,7 @@ if ($Uninstall) {
       if (-not $keepState) { Remove-Item -LiteralPath $stateFile -Force; Write-Output "Removed $stateFile" }
     }
   } else {
-    Write-Output "note: no install state in ${BinDir}: any PATH entry for it was not added by this installer, or must be removed by hand."
+    Write-Output "note: no install state in ${BinDir}: a shortcut or PATH entry for it was not created by this installer, or must be removed by hand."
   }
   Write-Output 'Your configuration, data, history, cache and ROMs were not touched.'
   return
@@ -864,12 +1018,25 @@ try {
     } else {
       Remove-Launcher $launcherDir 'the GUI would not be installed' $true
     }
+    $previous = Read-InstallState $BinDir
+    $owned = ''
+    if ($previous -and $previous.Alias -and (Test-SameFile (Join-Path $BinDir "$($previous.Alias).exe") $exe)) { $owned = $previous.Alias }
+    $name = Select-Alias $BinDir $owned
+    if ($name) { Write-Output "Would create the shortcut $(Join-Path $BinDir "$name.exe")" }
     return
   }
 
   if (-not (Test-Path -LiteralPath $BinDir)) {
     New-Item -ItemType Directory -Path $BinDir | Out-Null
     if (-not $binInLocalAppData) { Protect-Folder $BinDir }
+  }
+  # the recorded shortcut is ours only if it is the same file as the mothdex.exe about to be replaced (TM-12, TM-13)
+  $previous = Read-InstallState $BinDir
+  $owned = ''
+  if ($previous -and $previous.Alias) {
+    if (Test-SameFile (Join-Path $BinDir "$($previous.Alias).exe") $exe) { $owned = $previous.Alias }
+    Get-ChildItem -LiteralPath $BinDir -Filter "$($previous.Alias).exe.old*" -File -ErrorAction SilentlyContinue |
+      Remove-Item -Force -ErrorAction SilentlyContinue
   }
   $new = Join-Path $BinDir ".mothdex.new.$PID.exe"
   Copy-Item -LiteralPath $staged -Destination $new -Force
@@ -915,10 +1082,12 @@ try {
   } elseif ($State.Failed) {
     Write-Output $check.Output
     Write-Warning 'a step failed (see above): PATH was not changed'
+    # an existing shortcut of ours must not keep starting the old version
+    if ($owned) { try { New-AliasLink $BinDir $owned } catch { Write-Warning "the shortcut $owned could not be updated: $($_.Exception.Message)" } }
     Show-PathBlock $BinDir
   } else {
     Write-Output $check.Output
-    $previous = Read-InstallState $BinDir
+    Update-Alias $BinDir $owned
     Update-UserPath $BinDir $previous
     $now = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
     $installedAt = $now
@@ -931,9 +1100,11 @@ try {
       $candidate = Join-Path $launcherDir $LauncherName
       if ((Test-Path -LiteralPath $candidate) -and (Test-HasMarker $candidate)) { $recordedLauncher = $candidate }
     }
+    $aliasKind = ''
+    if ($State.Alias) { $aliasKind = 'hardlink' }
     Write-InstallState $BinDir ([ordered]@{
         schema_version = 1; source = 'installer'; installer = 'install.ps1'; dir = $BinDir; version = $Version
-        target = "windows_$arch"; profile = $profileId; gui = $guiInstalled; alias = ''; alias_kind = ''
+        target = "windows_$arch"; profile = $profileId; gui = $guiInstalled; alias = $State.Alias; alias_kind = $aliasKind
         path_added = $State.PathAdded; path_kind = $kind; path_file = ''; path_value = $value; launcher = $recordedLauncher
         installed_at = $installedAt; updated_at = $now; updated_by = 'installer'
       })
