@@ -119,6 +119,9 @@ in the CLI.
 | 2 | configuration error: bad config file, flag or profile, before the window opens |
 | 8 | SDL2 missing or too old, or no display |
 
+- **Exit 2 from a runtime crash.** The Go runtime itself exits 2 when a panic escapes in a goroutine other than the main
+  one, so an exit 2 can also be a crash. The session log tells which: with a crash, the trace is in the session file
+  (logs.md §5).
 - **`--probe`:** exit 0 means eligible, 8 means not eligible, and anything else is a probe error.
 - **Installers switch on the release version.** For releases before `0.2.0`, which `--version` can still install,
   exit 1 means not eligible. Owner: Guindaste, in `install.sh`, `install.ps1` and `tests/installer`.
