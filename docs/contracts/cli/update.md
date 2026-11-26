@@ -16,20 +16,21 @@ type Options struct {
     DataDir  string                       // paths.data, for the check cache (§5)
     Log      *slog.Logger
     Now      func() time.Time
-    Verifier Verifier                     // nil => DefaultVerifier(LookPath); §3
-    LookPath func(string) (string, error) // exec.LookPath; cosign, gh
+    Verifier Verifier                     // nil => DefaultVerifier(): native sigstore-go (D35); §3
+    LookPath func(string) (string, error) // unused since D35, kept for source compatibility
 }
 
 // Verifier proves the origin of a release's checksums.txt and archives (step 3). SHA-256 against checksums.txt
-// (step 2/4) is never part of it and never optional. DefaultVerifier tries cosign, then gh attestation, else reports
-// "none". A native sigstore-go verifier (TM-32, pending owner decision) replaces it without touching any caller.
+// (step 2/4) is never part of it and never optional. DefaultVerifier is the native sigstore-go verifier (D35): the
+// embedded Public Good trusted root, no network or TUF request at runtime, the policy of §3 step 3. It returns
+// "native". No Verifier may return "none".
 type Verifier interface {
     Verify(ctx context.Context, r VerifyInput) (Signature string, err error) // "cosign" | "attestation" | "native" | "none"
 }
 type VerifyInput struct {
     Tag                 string            // v<version>
-    Checksums, Bundle   []byte            // checksums.txt and checksums.txt.sigstore.json (Bundle may be nil)
-    Archives            map[string]string // asset name -> verified local path, for attestations
+    Checksums, Bundle   []byte            // checksums.txt and checksums.txt.sigstore.json; nil or empty Bundle (404) => integrity
+    Archives            map[string]string // asset name -> verified local path; unused by the native verifier
 }
 func New(o Options) (*Updater, error)
 func (u *Updater) Managed() (State, error)                       // install-state.md §4; *app.Error update_unavailable
@@ -117,22 +118,22 @@ from §6.
    says `gui: true`. A GUI archive missing from a release is `update_failed` with `reason: gui_missing`, and the hint
    is the installer command.
 3. **Signature (TM-31),** through `Verifier`. It is called once, after the SHA-256 of every archive (first bullet of
-   step 4) and before extraction. `DefaultVerifier` uses the first tool `LookPath` finds (absolute paths
-   only):
-   - **cosign:** `cosign verify-blob --bundle … --certificate-identity https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version> --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt`;
-   - **otherwise a logged-in `gh`:**
-     `gh attestation verify <archive> --repo Or4cu1o/mothdex-cli --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml --source-ref refs/tags/v<version>`,
-     run on **every** archive after step 4;
-   - **otherwise `none`,** printed and logged as "SHA-256 only", the way the installer reports it (residual R6).
-   - **Native verifier (D35, TM-32), when in use,** applies a sigstore-go policy. The bundle must verify the
-     `checksums.txt` bytes. The certificate SAN must be exactly the workflow identity of tag `v<version>`, and the
-     issuer exactly the Actions issuer.
-     - It requires at least one transparency-log entry, at least one SCT (`WithSignedCertificateTimestamps(1)`), and
-       at least one observer timestamp (the integrated time).
-     - A missing bundle is `integrity`, with no SHA-only fallback.
-
-   Tools run by argv, never through a shell, with a 60 s timeout, and pass only on exit 0. A tool that is present and
-   fails, or times out, is `integrity`.
+   step 4) and before extraction. The default is the **native sigstore-go verifier (D35, TM-32)**. Its policy:
+   - **Bundle and identity.** The bundle must verify the bytes of `checksums.txt` (artifact digest). The certificate SAN
+     must be exactly `https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version>`, and
+     the issuer exactly `https://token.actions.githubusercontent.com`.
+   - **Evidence.** It requires at least one verified transparency-log entry, at least one SCT
+     (`WithSignedCertificateTimestamps(1)`, as `cosign verify-blob` checks by default), and at least one
+     authenticated observer timestamp. The certificate is validated at that time, not at the wall clock.
+   - **Trusted root.** The trusted root is `internal/update/trusted-root.json`, embedded. A test pins its SHA-256, and
+     `scripts/update-trusted-root.go` refreshes it through Sigstore TUF, writing pretty JSON and printing the old and
+     new hashes. Nothing is fetched at runtime.
+   - **Failure.** Any verification failure, including a missing bundle, is `integrity` with `reason: signature`.
+     There is no SHA-256-only path.
+   - **Hints.** The reinstall hint is shown only for trust-material errors: an unknown CA, an unknown log key, or a
+     time outside the root's validity. Identity or digest mismatches and a missing bundle show a neutral "possible
+     tampering, do not reinstall, report it" hint. Otherwise a tampered release would steer users to the SHA-256-only
+     installers (R6).
 4. **Archives.**
    - Download into `<dir>/.mothdex-update-<random>/` (mode `0700`) and check each SHA-256 against its line. A mismatch
      is `integrity`; a body longer than its limit is `size_mismatch`.
@@ -282,7 +283,7 @@ only a warning.
 These run against a TLS test server and a temporary install folder:
 
 - a tampered `checksums.txt`, or a tampered archive, changes nothing;
-- a cosign failure aborts;
+- a bundle with the wrong tag, repo, ref or issuer, a tampered `checksums.txt`, no tlog entry, no SCT, or a missing bundle aborts and leaves the install byte-identical; one fixture is a real public release bundle verified against the embedded root;
 - a redirect to another host is refused;
 - a new binary whose `--version` fails is rolled back;
 - the Windows rename path runs while the old `.exe` is still open, and `CleanupOld` then deletes the `.old`;
@@ -301,7 +302,7 @@ the threat model for its test).
 | TM-29 | §2 Origin |
 | TM-30 | §2 latest and cross-check |
 | TM-31 | §3 |
-| TM-32 | `Verifier` (§1), pending the owner |
+| TM-32 | §1 and §3, done (D35) |
 | TM-33 | install-state.md §4 |
 | TM-34 | §4 |
 | TM-35 | §4 step 8 |
@@ -313,8 +314,9 @@ the threat model for its test).
 
 Residual risks:
 
-- **R6.** Without cosign, a logged-in gh or a native verifier, an upgrade is SHA-256 only: it proves transit, not
-  origin.
+- **R6.** Closed for `upgrade` by D35. Installers without cosign or a logged-in gh remain SHA-256 only.
+- **Embedded root staleness (new, D35).** A Sigstore root, CA or Rekor-shard rotation that the embedded root lacks
+  makes older binaries fail closed, and they need a reinstall. Revocations arrive only with a Mothdex release.
 - **R8.** A malicious release built by the real workflow passes every check. It reaches only the users who run
   `upgrade`, because nothing is ever installed automatically.
 - **R10.** The check reveals IP address and timing to GitHub. The off switches exist for that.
