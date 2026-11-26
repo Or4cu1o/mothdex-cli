@@ -4,6 +4,8 @@ package main
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"syscall"
@@ -39,6 +41,9 @@ func TestAForcedPanicLeavesACrashFileAndShowsTheCrashScreen(t *testing.T) {
 		t.Skipf("no SDL2 here: %v", err)
 	}
 	home := isolate(t)
+	api := httptest.NewServer(http.HandlerFunc(http.NotFound)) // never the real API
+	defer api.Close()
+	t.Setenv("MOTHDEX_API_BASE_URL", api.URL)
 	crashing := wrapBackend
 	exited := -1
 	defer func(w func(loop.Backend) loop.Backend, e func(int)) { wrapBackend, exitProcess = w, e }(wrapBackend, exitProcess)
@@ -64,5 +69,8 @@ func TestAForcedPanicLeavesACrashFileAndShowsTheCrashScreen(t *testing.T) {
 	}
 	if !strings.Contains(latest, "ref="+ref+" code=internal") {
 		t.Errorf("latest.log lacks the line of %s:\n%s", ref, latest)
+	}
+	if strings.Contains(latest, api.URL) {
+		t.Errorf("the API address reached latest.log:\n%s", latest)
 	}
 }
