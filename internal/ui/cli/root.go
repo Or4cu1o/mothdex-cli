@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
+
 	"github.com/spf13/cobra"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
@@ -31,7 +33,9 @@ type runtime struct {
 	ctx  context.Context
 	cmd  string // command name used in the --json envelope
 
-	jsonDone bool // the envelope was already written (a partial batch result)
+	updateResult <-chan update.CheckResult
+	updateCancel context.CancelFunc
+	jsonDone     bool // the envelope was already written (a partial batch result)
 
 	// run is set when the line comes from the Shell: the session is already open and belongs to the
 	// Shell, the command tree has no shell, tui or gui, and some flags are start-up only.
@@ -46,6 +50,7 @@ func Execute(ctx context.Context, d Deps, args []string) int {
 	root.SetOut(d.Stdout)
 	root.SetErr(d.Stderr)
 	err := root.ExecuteContext(ctx)
+	r.finishUpdateCheck()
 	if r.sess != nil && r.sess.Close != nil {
 		defer r.sess.Close()
 	}
@@ -148,6 +153,7 @@ func (r *runtime) open() (*Session, error) {
 		return nil, err
 	}
 	r.sess = s
+	r.startUpdateCheck(s)
 	p := r.printer()
 	p.t = s.T
 	p.setColor(s.Color)
@@ -203,7 +209,7 @@ func (r *runtime) rootCommand() *cobra.Command {
 	root.AddCommand(
 		r.searchCmd(), r.infoCmd(), r.randomCmd(), r.downloadCmd(), r.boxartCmd(),
 		r.platformsCmd(), r.regionsCmd(), r.dbInfoCmd(), r.historyCmd(), r.cacheCmd(),
-		r.configCmd(), r.profileCmd(), r.versionCmd(),
+		r.configCmd(), r.profileCmd(), r.versionCmd(), r.upgradeCmd(),
 	)
 	if r.run == nil { // the Shell never runs shell, tui or gui
 		root.AddCommand(r.shellCmd(), r.tuiCmd(), r.guiCmd())

@@ -136,7 +136,9 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 	defer func() { _ = logs.Close() }()
 	exe := executable(logs.Logger())
 	if exe != "" {
-		update.CleanupOld(filepath.Dir(exe), logs.Logger()) // what an earlier update left behind (update.md section 4)
+		// What an earlier update left behind (update.md section 4). Not before the modes above: it writes a lock
+		// file, and --probe, which the installer runs as root, writes nothing (ports.md section 5.2).
+		update.CleanupOld(filepath.Dir(exe), logs.Logger())
 	}
 	again := false
 	code = runGUI(o, logs, &again, stderr)

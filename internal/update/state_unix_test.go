@@ -13,7 +13,7 @@ import (
 func TestManagedUntrustedOwnerAndLinks(t *testing.T) {
 	t.Run("group writable", func(t *testing.T) {
 		u, s := fixture(t)
-		_ = os.Chmod(s.Dir, 0770)
+		_ = os.Chmod(s.Dir, 0770) //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
 		_, err := u.Managed()
 		errorCode(t, err, app.CodeUpdateUnavailable, "untrusted_dir")
 	})

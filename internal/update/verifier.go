@@ -31,7 +31,7 @@ func DefaultVerifier(lookPath func(string) (string, error)) Verifier {
 	return toolVerifier{lookPath}
 }
 func (v toolVerifier) Verify(ctx context.Context, r VerifyInput) (string, error) {
-	if !validVersion(r.Tag[1:]) || r.Tag[0] != 'v' {
+	if len(r.Tag) < 2 || r.Tag[0] != 'v' || !validVersion(r.Tag[1:]) {
 		return "", fmt.Errorf("invalid verification tag")
 	}
 	for _, tool := range []string{"cosign", "gh"} {
@@ -52,7 +52,7 @@ func (v toolVerifier) Verify(ctx context.Context, r VerifyInput) (string, error)
 			if err != nil {
 				return "", err
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			sums, bundle := filepath.Join(dir, "checksums.txt"), filepath.Join(dir, "checksums.txt.sigstore.json")
 			if err = os.WriteFile(sums, r.Checksums, 0600); err != nil {
 				return "", err
@@ -61,7 +61,7 @@ func (v toolVerifier) Verify(ctx context.Context, r VerifyInput) (string, error)
 				return "", err
 			}
 			args := []string{"verify-blob", "--bundle", bundle, "--certificate-identity", "https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/" + r.Tag, "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com", sums}
-			cmd := exec.CommandContext(ctx, path, args...)
+			cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // absolute LookPath result, fixed argv, validated tag; never a shell.
 			cmd.Env = toolEnv()
 			if err = cmd.Run(); err != nil {
 				return "", err
@@ -74,7 +74,7 @@ func (v toolVerifier) Verify(ctx context.Context, r VerifyInput) (string, error)
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			cmd := exec.CommandContext(ctx, path, "attestation", "verify", r.Archives[name], "--repo", "Or4cu1o/mothdex-cli", "--signer-workflow", "Or4cu1o/mothdex-cli/.github/workflows/release.yml", "--source-ref", "refs/tags/"+r.Tag)
+			cmd := exec.CommandContext(ctx, path, "attestation", "verify", r.Archives[name], "--repo", "Or4cu1o/mothdex-cli", "--signer-workflow", "Or4cu1o/mothdex-cli/.github/workflows/release.yml", "--source-ref", "refs/tags/"+r.Tag) //nolint:gosec // absolute LookPath result, fixed argv, validated tag; never a shell.
 			cmd.Env = toolEnv()
 			if err = cmd.Run(); err != nil {
 				return "", err

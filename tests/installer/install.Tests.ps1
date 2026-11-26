@@ -588,6 +588,173 @@ Check 'dry run names the GUI archive, the eligibility and the launcher path' (($
   ($script:output -match 'Would write:'))
 Check 'dry run changes nothing' ((@(Get-ChildItem $g8 -Force).Count -eq 0) -and (-not (Test-Path (Join-Path $rbD 'roms\windows\Mothdex.bat'))))
 
+# 11. PATH, `irm | iex` safety and install state (T-110 TM-1, TM-3, TM-7, TM-8, TM-10, TM-11, TM-14).
+# The user PATH of the machine running these tests is saved and restored.
+$versionExe = New-FakeExe 'cli-ok' 'class P { static int Main(string[] a) { System.Console.WriteLine("mothdex 1.5.0"); return 0; } }'
+New-Tag 'v1.5.0' $false
+$cliStage = Join-Path $root 'stage-cli-ok'
+New-Item -ItemType Directory -Path $cliStage | Out-Null
+Copy-Item $versionExe (Join-Path $cliStage 'mothdex.exe')
+$cliZip = Join-Path $release 'v1.5.0\mothdex_1.5.0_windows_amd64.zip'
+Remove-Item $cliZip
+[IO.Compression.ZipFile]::CreateFromDirectory($cliStage, $cliZip)
+Set-Content -Path (Join-Path $release 'v1.5.0\checksums.txt') -Value "$((Get-FileHash $cliZip -Algorithm SHA256).Hash.ToLowerInvariant())  mothdex_1.5.0_windows_amd64.zip"
+
+$envKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+$noExpand = [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+$savedPath = $envKey.GetValue('Path', $null, $noExpand)
+$savedKind = $null
+if ($null -ne $savedPath) { $savedKind = $envKey.GetValueKind('Path') }
+$savedSessionPath = $env:Path
+function Get-RawPath { return [string]$envKey.GetValue('Path', $null, $noExpand) }
+function Set-RawPath([string]$Value) { $envKey.SetValue('Path', $Value, [Microsoft.Win32.RegistryValueKind]::ExpandString); $env:Path = $savedSessionPath }
+function Count-Entry([string]$List, [string]$Entry) { return @(($List -split ';') | Where-Object { $_ -ieq $Entry }).Count }
+
+try {
+  $preset = '%USERPROFILE%\bin;C:\Other Tool\'
+  foreach ($before in $preset, "$preset;") {
+    Set-RawPath $before
+    $p1 = Join-Path $root ('path1' + $before.Length)
+    $st = Join-Path $p1 '.mothdex-install.json'
+    Invoke-Install @{ Version = 'v1.5.0'; BinDir = $p1 }
+    Check 'path: install succeeds' ((-not $script:threw) -and ($script:exitCode -eq 0))
+    Check 'path: appended once, the rest byte for byte, %VAR% not expanded' ((Get-RawPath) -ceq "$before;$p1")
+    Check 'path: the value kind stays REG_EXPAND_SZ' ($envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    Check 'path: the current session has it' ((Count-Entry $env:Path $p1) -eq 1)
+    Check 'path: mothdex runs by name in this window' ((Get-Command mothdex.exe -ErrorAction SilentlyContinue).Source -ieq (Join-Path $p1 'mothdex.exe'))
+    Check 'path: final message' (($script:output -match 'mothdex 1\.5\.0 (installed in|instalado em)') -and ($script:output -match 'mothdex --version'))
+    $bytes = [IO.File]::ReadAllBytes($st)
+    $data = [IO.File]::ReadAllText($st) | ConvertFrom-Json
+    Check 'state: no byte order mark' ($bytes[0] -eq 0x7B)
+    Check 'state: records the entry' (($data.path_added -eq $true) -and ($data.path_kind -ceq 'user_env') -and ($data.path_value -ceq $p1) -and ($data.version -ceq '1.5.0'))
+    $installedLine = @(Get-Content $st | Where-Object { $_ -match 'installed_at' })[0]
+    Invoke-Install @{ Version = 'v1.5.0'; BinDir = $p1 }
+    Check 'path: a reinstall does not duplicate' ((Count-Entry (Get-RawPath) $p1) -eq 1)
+    Check 'state: a reinstall keeps installed_at and path_added' ((@(Get-Content $st) -contains $installedLine) -and ((Get-Content $st -Raw) -match '"path_added": true'))
+    Invoke-Install @{ BinDir = $p1; Uninstall = $true; DryRun = $true }
+    Check 'uninstall dry run keeps the entry and the state' (((Count-Entry (Get-RawPath) $p1) -eq 1) -and (Test-Path $st))
+    Invoke-Install @{ BinDir = $p1; Uninstall = $true; NoModifyPath = $true }
+    Check 'uninstall -NoModifyPath keeps the entry' ((Count-Entry (Get-RawPath) $p1) -eq 1)
+    Invoke-Install @{ BinDir = $p1; Uninstall = $true }
+    Check 'uninstall restores the previous value exactly' (((Get-RawPath) -ceq $before) -and (-not (Test-Path $st)) -and ((Count-Entry $env:Path $p1) -eq 0))
+  }
+
+  # already present (other case, trailing backslash): nothing added, nothing removed
+  $p2 = Join-Path $root 'path2'
+  Set-RawPath "$preset;$($p2.ToUpperInvariant())\"
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $p2 }
+  Check 'already present: not duplicated' ((Get-RawPath) -ceq "$preset;$($p2.ToUpperInvariant())\")
+  Check 'already present: state says nothing added' ((Get-Content (Join-Path $p2 '.mothdex-install.json') -Raw) -match '"path_added": false')
+  Invoke-Install @{ BinDir = $p2; Uninstall = $true }
+  Check 'already present: uninstall leaves the user entry' ((Get-RawPath) -ceq "$preset;$($p2.ToUpperInvariant())\")
+
+  # -NoModifyPath: the PowerShell command is printed, nothing changes
+  $p3 = Join-Path $root 'path3'
+  Set-RawPath $preset
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $p3; NoModifyPath = $true }
+  Check 'NoModifyPath: registry and session untouched' (((Get-RawPath) -ceq $preset) -and ((Count-Entry $env:Path $p3) -eq 0))
+  Check 'NoModifyPath: the PowerShell command' $script:output.Contains("[Environment]::SetEnvironmentVariable(`"Path`", [Environment]::GetEnvironmentVariable(`"Path`",`"User`") + `";$p3`", `"User`")")
+  Check 'NoModifyPath: never setx' ($script:output -notmatch 'setx')
+
+  # started by CMD (powershell -File): the CMD command, and the exit code reaches the caller
+  $p4 = Join-Path $root "path4 o'neil"
+  $wrapper = Join-Path $root 'wrapper.ps1'
+  Set-Content -Path $wrapper -Value @"
+function Invoke-WebRequest { param([string]`$Uri, [string]`$OutFile, [switch]`$UseBasicParsing, [int]`$MaximumRedirection, [switch]`$PassThru)
+  Copy-Item -LiteralPath (Join-Path '$release' ((`$Uri.Substring('$base'.Length) -replace '^download/', '') -replace '/', '\')) -Destination `$OutFile
+  return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = [uri]`$Uri } } }
+`$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+& '$installer' -Version v1.5.0 -BinDir "$p4" -NoModifyPath
+exit `$LASTEXITCODE
+"@
+  $shellExe = (Get-Process -Id $PID).Path
+  $fromCmd = (& cmd.exe /c "`"$shellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$wrapper`"" | Out-String)
+  Check 'from CMD: exit code 0' ($LASTEXITCODE -eq 0)
+  Check 'from CMD: the CMD command, with the quote doubled' ($fromCmd.Contains("powershell -NoProfile -Command `"[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ';$($p4 -replace "'", "''")', 'User')`""))
+
+  # TM-11: a failed verification or a binary that does not run leaves PATH and state alone
+  foreach ($tag in 'v1.1.0', 'v1.2.3') {
+    $pf = Join-Path $root "path-fail-$tag"
+    Invoke-Install @{ Version = $tag; BinDir = $pf }
+    Check "$tag leaves the PATH and writes no state" (((Get-RawPath) -ceq $preset) -and (-not (Test-Path (Join-Path $pf '.mothdex-install.json'))))
+  }
+
+  # TM-7: a folder others can write to is never added
+  $open = Join-Path $env:LOCALAPPDATA 'open-bin'
+  New-Item -ItemType Directory -Path $open | Out-Null
+  & icacls.exe $open /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $open }
+  Check 'a folder writable by Users is not added to PATH, and the command is printed' (((Get-RawPath) -ceq $preset) -and ($script:output -match 'copy and run'))
+
+  # TM-14: a hostile state removes nothing
+  $p5 = Join-Path $root 'path5'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $p5 }
+  $st5 = Join-Path $p5 '.mothdex-install.json'
+  $good = Get-Content $st5 -Raw
+  foreach ($bad in @(
+      ($good -replace '"path_value": "[^\n]*",', '"path_value": "C:\\Other Tool\\",'),
+      ($good -replace '"schema_version": 1', '"schema_version": 2'),
+      ($good -replace '"dir": "[^\n]*",', '"dir": "C:\\Windows",'),
+      'not json', '[1]')) {
+    [IO.File]::WriteAllText($st5, $bad)
+    Copy-Item $versionExe (Join-Path $p5 'mothdex.exe') -Force
+    $now = Get-RawPath
+    Invoke-Install @{ BinDir = $p5; Uninstall = $true }
+    Check 'hostile state: uninstall succeeds, warns and leaves the PATH' ((-not $script:threw) -and ($script:output -match 'not a valid install state') -and ((Get-RawPath) -ceq $now))
+  }
+  Remove-Item $st5
+  Invoke-Install @{ BinDir = $p5; Uninstall = $true }
+  Check 'uninstall without state says it cannot know the PATH entry' ($script:output -match 'no install state')
+
+  # TM-3 / TM-1: the text of the script, as `irm | iex` and as a script block
+  $text = [IO.File]::ReadAllText($installer)
+  Check 'install.ps1 is ASCII' ($text -notmatch '[^\x00-\x7F]')
+  foreach ($pct in 10, 20, 30, 40, 50, 60, 70, 80, 90, 99) {
+    $parseErrors = $null
+    [void][Management.Automation.Language.Parser]::ParseInput($text.Substring(0, [int]($text.Length * $pct / 100)), [ref]$null, [ref]$parseErrors)
+    Check "a download cut at $pct% is a parse error (nothing runs)" ($parseErrors.Count -gt 0)
+  }
+  $p6 = Join-Path $root 'path6'
+  $threw = $false
+  try { & ([scriptblock]::Create($text)) -Version v1.5.0 -BinDir $p6 -NoModifyPath -NoGui *> $null } catch { $threw = $true }
+  Check 'script block form takes parameters' ((-not $threw) -and (Test-Path (Join-Path $p6 'mothdex.exe')) -and ($LASTEXITCODE -eq 0))
+
+  $baseBefore = $base
+  $tlsBefore = [Net.ServicePointManager]::SecurityProtocol
+  Set-StrictMode -Off
+  $ErrorActionPreference = 'Continue'
+  $ProgressPreference = 'Continue'
+  $global:LASTEXITCODE = 0
+  $threw = $false
+  $script:message = ''
+  # variables of the user with the names of the parameters
+  $Version = 'mine'
+  $BinDir = 'mine'
+  $Uninstall = 'mine'
+  try { Invoke-Expression $text *> $null } catch { $threw = $true; $script:message = "$($_.Exception.Message) @ $($_.InvocationInfo.PositionMessage)" }
+  $afterOk = @{ threw = $threw; code = $LASTEXITCODE; eap = $ErrorActionPreference; progress = $ProgressPreference }
+  $strictOk = $true
+  try { $null = $variableNeverSet } catch { $strictOk = $false }
+  $global:fakeRelease = Join-Path $root 'nowhere'
+  $threw = $false
+  try { Invoke-Expression $text *> $null } catch { $threw = $true }
+  $afterFail = @{ threw = $threw; code = $LASTEXITCODE; eap = $ErrorActionPreference; progress = $ProgressPreference }
+  $global:fakeRelease = $release
+  $ErrorActionPreference = 'Stop'
+  Set-StrictMode -Version 2.0
+  Check "iex success: session alive, exit status 0 (threw=$($afterOk.threw) code=$($afterOk.code))" ((-not $afterOk.threw) -and ($afterOk.code -eq 0))
+  Check "iex failure: session alive, LASTEXITCODE not 0 (threw=$($afterFail.threw) code=$($afterFail.code))" ($afterFail.threw -and ($afterFail.code -ne 0))
+  Check 'iex leaks no preference or strict mode' ($strictOk -and ($afterOk.eap -eq 'Continue') -and ($afterFail.eap -eq 'Continue') -and ($afterFail.progress -eq 'Continue'))
+  Check 'iex leaks no function or variable' ((-not (Get-Command Fail, Get-Remote, Add-UserPathEntry -ErrorAction SilentlyContinue)) -and
+    (-not (Get-Variable Repo, State, NoModifyPath, SignerIdentity, MothdexVersion -ErrorAction SilentlyContinue)) -and ($base -ceq $baseBefore))
+  Check 'iex keeps the variables of the user' (($Version -ceq 'mine') -and ($BinDir -ceq 'mine') -and ($Uninstall -ceq 'mine') -and (-not (Get-Variable Mothdex* -ErrorAction SilentlyContinue)))
+  Check 'TLS settings are not weakened' (([int][Net.ServicePointManager]::SecurityProtocol -band [int]$tlsBefore) -eq [int]$tlsBefore)
+} finally {
+  if ($null -ne $savedPath) { $envKey.SetValue('Path', $savedPath, $savedKind) } else { $envKey.DeleteValue('Path', $false) }
+  $envKey.Dispose()
+  $env:Path = $savedSessionPath
+}
+
 Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 Write-Output "$($script:pass) passed, $($script:fail) failed"
 exit ([int]($script:fail -gt 0))

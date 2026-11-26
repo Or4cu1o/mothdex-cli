@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/compose"
+	"github.com/Or4cu1o/mothdex-cli/internal/config"
 	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 )
 
 // opener builds the service through the shared composition root and wraps it for the command
@@ -28,6 +30,10 @@ func open(ctx context.Context, g cli.Globals, logs *mlog.Session) (*cli.Session,
 		return nil, err
 	}
 	return &cli.Session{
+		Updater: s.Updater, UpdateCheck: s.UpdateCheck, UpdateChannel: s.UpdateChannel,
+		NewUpdater: func(channel string) (*update.Updater, error) {
+			return compose.NewUpdater(config.Update{Check: s.UpdateCheck, Channel: channel}, s.DataDir, s.Log)
+		},
 		Svc: s.Svc, T: s.T, Prefer: s.Prefer, Boxart: s.Boxart, Confirm: s.Confirm, PageSize: s.PageSize, Color: s.Color,
 		Warnings: s.Warnings, LogPath: s.LogPath, Close: s.Close,
 		DataDir: s.DataDir, NoColor: s.NoColor, UTF8: cli.IsUTF8(os.Getenv), Log: s.Log,

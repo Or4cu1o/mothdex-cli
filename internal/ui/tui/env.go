@@ -45,18 +45,19 @@ type service interface {
 
 // env is what every screen shares and never changes.
 type env struct {
-	ctx      context.Context
-	svc      service
-	t        *i18n.Translator
-	st       styles
-	prefer   app.Preference // download.prefer, the baseline of the P overlay
-	confirm  bool           // interface.confirm_downloads at start-up
-	boxart   bool           // download.boxart at start-up
-	pageSize int
-	dataDir  string
-	logPath  string
-	log      *slog.Logger
-	now      func() time.Time
+	updateNotice string
+	ctx          context.Context
+	svc          service
+	t            *i18n.Translator
+	st           styles
+	prefer       app.Preference // download.prefer, the baseline of the P overlay
+	confirm      bool           // interface.confirm_downloads at start-up
+	boxart       bool           // download.boxart at start-up
+	pageSize     int
+	dataDir      string
+	logPath      string
+	log          *slog.Logger
+	now          func() time.Time
 	// after runs msg once d has passed. Tests replace it, so nothing waits on a real clock.
 	after func(d time.Duration, msg tea.Msg) tea.Cmd
 	seq   *atomic.Int64

@@ -9,6 +9,7 @@ import (
 )
 
 var fail string
+var version = "2.0.0"
 
 func main() {
 	exe, _ := os.Executable()
@@ -16,5 +17,5 @@ func main() {
 	if fail == "all" || fail == "installed" && !staged {
 		os.Exit(1)
 	}
-	fmt.Println(`{"data":{"version":"2.0.0"}}`)
+	fmt.Printf("{\"data\":{\"version\":\"%s\"}}\n", version)
 }

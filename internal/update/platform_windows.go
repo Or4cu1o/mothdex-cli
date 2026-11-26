@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 func isReparse(st os.FileInfo) bool {
-	a, ok := st.Sys().(*windows.Win32FileAttributeData)
+	a, ok := st.Sys().(*syscall.Win32FileAttributeData)
 	return ok && a.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 func trustedDir(dir string) (string, error) {
@@ -40,12 +41,16 @@ func trustedDir(dir string) (string, error) {
 	}
 	for i := uint32(0); i < uint32(acl.AceCount); i++ {
 		var ace *windows.ACCESS_ALLOWED_ACE
-		if err = windows.GetAce(acl, i, (*unsafe.Pointer)(unsafe.Pointer(&ace))); err != nil {
+		if err = windows.GetAce(acl, i, &ace); err != nil {
 			return "untrusted_dir", err
 		}
-		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
+		if ace.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
 			continue
 		}
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
+			return "untrusted_dir", fmt.Errorf("unsupported ACL type")
+		}
+
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
 		if (sid.IsWellKnown(windows.WinWorldSid) || sid.IsWellKnown(windows.WinBuiltinUsersSid) || sid.IsWellKnown(windows.WinAuthenticatedUserSid)) && ace.Mask&0x500d0156 != 0 {
 			return "untrusted_dir", fmt.Errorf("broad write ACL")

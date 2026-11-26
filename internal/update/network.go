@@ -40,13 +40,13 @@ func newClient(in *http.Client) *http.Client {
 		if len(via) > 5 || !allowedURL(req.URL) {
 			return errRedirect
 		}
-		req.Header = make(http.Header)
+		req.Header = make(http.Header) //nolint:gosec // all headers are cleared; only a fixed public User-Agent is added.
 		req.Header.Set("User-Agent", "mothdex")
 		return nil
 	}
 	return c
 }
-func (u *Updater) request(ctx context.Context, path string, limit int64, latest bool) ([]byte, string, error) {
+func (u *Updater) request(ctx context.Context, path string, limit int64, latest bool, progress ...func(int64, int64)) ([]byte, string, error) {
 	c := *u.o.Client
 	if latest {
 		c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -64,7 +64,7 @@ func (u *Updater) request(ctx context.Context, path string, limit int64, latest 
 		}
 		return nil, "", failure(code, "download", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if latest {
 		if resp.StatusCode != http.StatusFound {
 			return nil, "", failure(app.CodeNetwork, "latest_status", nil)
@@ -80,7 +80,15 @@ func (u *Updater) request(ctx context.Context, path string, limit int64, latest 
 	if resp.ContentLength > limit {
 		return nil, "", failure("size_mismatch", "body_limit", nil)
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	reader := io.Reader(resp.Body)
+	if len(progress) > 0 && progress[0] != nil {
+		total := resp.ContentLength
+		if total < 0 {
+			total = 0
+		}
+		reader = &downloadProgress{r: resp.Body, total: total, notify: progress[0]}
+	}
+	b, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	if int64(len(b)) > limit || (resp.ContentLength >= 0 && resp.ContentLength != int64(len(b))) {
 		return nil, "", failure("size_mismatch", "body_length", err)
 	}
@@ -133,4 +141,19 @@ func (u *Updater) Latest(ctx context.Context) (Release, error) {
 		}
 	}
 	return best, nil
+}
+
+type downloadProgress struct {
+	r           io.Reader
+	done, total int64
+	notify      func(int64, int64)
+}
+
+func (r *downloadProgress) Read(b []byte) (int, error) {
+	n, err := r.r.Read(b)
+	r.done += int64(n)
+	if n > 0 {
+		r.notify(r.done, r.total)
+	}
+	return n, err
 }

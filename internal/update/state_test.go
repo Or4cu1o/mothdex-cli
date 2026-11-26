@@ -15,11 +15,11 @@ import (
 func fixture(t *testing.T) (*Updater, State) {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.Chmod(dir, 0700); err != nil {
+	if err := os.Chmod(dir, 0700); err != nil { //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
 		t.Fatal(err)
 	}
 	exe := filepath.Join(dir, binaryName(false))
-	if err := os.WriteFile(exe, []byte("old"), 0755); err != nil {
+	if err := os.WriteFile(exe, []byte("old"), 0755); err != nil { //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
 		t.Fatal(err)
 	}
 	s := State{SchemaVersion: 1, Source: "installer", Installer: "install.sh", Dir: dir, Version: "1.0.0", Target: target(), Profile: "generic", InstalledAt: "2026-11-26T14:00:00Z", UpdatedAt: "2026-11-26T14:00:00Z", UpdatedBy: "installer"}
@@ -39,7 +39,7 @@ func writeStateFixture(t *testing.T, s State) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(s.Dir, stateName), b, 0644); err != nil {
+	if err = os.WriteFile(filepath.Join(s.Dir, stateName), b, 0644); err != nil { //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
 		t.Fatal(err)
 	}
 }
@@ -80,7 +80,7 @@ func TestManagedState(t *testing.T) {
 			u, s := fixture(t)
 			tc.change(&s)
 			b, _ := json.Marshal(s)
-			if err := os.WriteFile(filepath.Join(filepath.Dir(u.o.Exe), stateName), b, 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(u.o.Exe), stateName), b, 0644); err != nil { //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
 				t.Fatal(err)
 			}
 			_, err := u.Managed()
@@ -99,13 +99,14 @@ func TestManagedMissingCorruptBOM(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, s := fixture(t)
 			p := filepath.Join(s.Dir, stateName)
-			if tc.body == "" {
+			switch tc.body {
+			case "":
 				_ = os.Remove(p)
-			} else if tc.body == "BOM" {
+			case "BOM":
 				b, _ := json.Marshal(s)
-				_ = os.WriteFile(p, append([]byte{0xef, 0xbb, 0xbf}, b...), 0644)
-			} else {
-				_ = os.WriteFile(p, []byte(tc.body), 0644)
+				_ = os.WriteFile(p, append([]byte{0xef, 0xbb, 0xbf}, b...), 0644) //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
+			default:
+				_ = os.WriteFile(p, []byte(tc.body), 0644) //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
 			}
 			_, err := u.Managed()
 			if tc.reason == "" {

@@ -629,6 +629,9 @@ func (m model) render() string {
 	}
 	top := m.top()
 	sv := top.view(rt, rt.w-4, rt.h-4)
+	if m.env.updateNotice != "" {
+		sv.footer = m.env.updateNotice
+	}
 	spec := frameSpec{title: top.title(rt), right: m.summary(), body: sv.body, footer: sv.footer, status: m.status(top, sv)}
 	if m.help {
 		spec.title = m.env.T("ui.tui.help.title", nil)

@@ -86,11 +86,11 @@ func readBounded(path string, limit int64) ([]byte, error) {
 	if _, err := regular(path); err != nil {
 		return nil, err
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // caller supplies only fixed state/cache paths and regular() rejects links.
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	b, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if int64(len(b)) > limit {
 		return nil, fmt.Errorf("file too large")
@@ -176,7 +176,10 @@ func validAlias(s string) bool {
 	case "mothdex", "mothdex-gui", "con", "prn", "aux", "nul":
 		return false
 	}
-	return !(len(s) == 4 && (strings.HasPrefix(s, "com") || strings.HasPrefix(s, "lpt")) && s[3] >= '0' && s[3] <= '9')
+	if len(s) == 4 && (strings.HasPrefix(s, "com") || strings.HasPrefix(s, "lpt")) && s[3] >= '0' && s[3] <= '9' {
+		return false
+	}
+	return true
 }
 func validState(s State) bool {
 	if !validVersion(s.Version) || s.Target != target() || !filepath.IsAbs(s.Dir) || !profilePattern.MatchString(s.Profile) {
@@ -248,7 +251,7 @@ func atomicJSON(path string, v any, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 	if err = f.Chmod(mode); err == nil {
 		_, err = f.Write(append(b, '\n'))
 	}

@@ -149,6 +149,18 @@ ui:
       other: '{count} arquivos'
   cli:
     help:
+      upgrade:
+        short: 'Atualiza uma instalação gerenciada'
+        long: 'Verifica e atualiza todos os componentes instalados do Mothdex. A verificação ocorre antes da confirmação. Use --version para escolher uma versão exata, inclusive para voltar uma versão.'
+        example: |
+          mdex upgrade
+          mdex upgrade --check
+          mdex upgrade --channel beta
+          mdex upgrade --version 0.2.0 -f
+        flags:
+          check: 'verifica se há versão nova sem baixar os arquivos'
+          version: 'instala esta versão exata (permite voltar uma versão)'
+          channel: 'canal de versões: stable | beta'
       boxart:
         flags:
           output: 'pasta de destino'
@@ -370,6 +382,7 @@ ui:
         Use mothdex config set <chave> <valor> para salvar uma configuração.
       config_columns: 'Chave | Valores aceitos | Padrão | Ambiente'
       config_footer: |-
+        As verificações de atualização não enviam versão nem identificador. Desligue com update.check=false ou MOTHDEX_NO_UPDATE_CHECK=1.
         profile.folders.<plataforma> | nome relativo da pasta | padrão do perfil | —
         Caminhos vazios usam pastas específicas do sistema. interface.language aceita auto ou um idioma como en_us/pt_br.
       error_reference: 'Referência de erros'
@@ -1029,3 +1042,13 @@ ui:
       history: 'histórico'
       settings: 'configurações'
       help: 'ajuda'
+
+update:
+  notice: 'Nova versão disponível: {current} → {latest}. Atualize com: {command} upgrade'
+  confirm: 'Atualizar {current} → {latest} (verificação: {signature}).'
+  confirm_downgrade: 'Voltar de {current} para {latest} (verificação: {signature}).'
+  prompt: 'Aplicar a atualização? [s/N]'
+  current: 'Mothdex {current} está atualizado.'
+  available: 'Nova versão disponível: {current} → {latest}. Execute mothdex upgrade.'
+  updated: 'Atualizado {current} → {latest} (verificação: {signature}).'
+  restart: 'Saia e abra o Mothdex novamente para usar a nova versão.'

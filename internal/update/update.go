@@ -19,6 +19,7 @@ import (
 
 // Options supplies process identity and replaceable I/O dependencies.
 type Options struct {
+	Getenv                         func(string) string
 	Client                         *http.Client
 	Exe, Current, Channel, DataDir string
 	Log                            *slog.Logger
@@ -61,6 +62,9 @@ func New(o Options) (*Updater, error) {
 	o.Exe = resolved
 	if !filepath.IsAbs(o.Exe) {
 		return nil, unavailable("bad_state", nil)
+	}
+	if o.Getenv == nil {
+		o.Getenv = os.Getenv
 	}
 	o.Client = newClient(o.Client)
 	if o.Now == nil {

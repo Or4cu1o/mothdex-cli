@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/app"
 )
 
 type verifierFunc func(context.Context, VerifyInput) (string, error)
@@ -23,24 +26,25 @@ func (f verifierFunc) Verify(ctx context.Context, r VerifyInput) (string, error)
 func probeFixture(t *testing.T, fail string) []byte {
 	t.Helper()
 	exe := filepath.Join(t.TempDir(), binaryName(false))
-	cmd := exec.Command("go", "build", "-ldflags=-X main.fail="+fail, "-o", exe, "./testdata/probe")
+	cmd := exec.CommandContext(context.Background(), "go", "build", "-ldflags=-X main.fail="+fail, "-o", exe, "./testdata/probe") //nolint:gosec // fixture build uses test constants and a private temporary output path.
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("probe build: %v %s", err, out)
 	}
-	b, err := os.ReadFile(exe)
+	b, err := os.ReadFile(exe) //nolint:gosec // generated binary fixture in t.TempDir.
 	if err != nil {
 		t.Fatal(err)
 	}
 	return b
 }
-func archiveFixture(t *testing.T, binary []byte, extra string) []byte {
+func archiveFixture(t *testing.T, binary []byte, extra string, gui ...bool) []byte {
 	t.Helper()
+	isGUI := len(gui) > 0 && gui[0]
 	files := map[string][]byte{}
-	for n := range members(false) {
+	for n := range members(isGUI) {
 		files[n] = []byte("fixture")
 	}
-	files[binaryName(false)] = binary
+	files[binaryName(isGUI)] = binary
 	files["CHANGELOG.md"] = []byte("## [2.0.0]\nNew version\n## [1.0.0]\nOld version")
 	if extra != "" {
 		files[extra] = []byte("extra")
@@ -150,11 +154,16 @@ func TestApplyRiskPaths(t *testing.T) {
 			}
 			if tc.code != "" {
 				errorCode(t, err, tc.code, tc.reason)
+				if tc.restored {
+					var ae *app.Error
+					if !errors.As(err, &ae) || ae.Args["restored"] != true {
+						t.Fatalf("rollback not reported: %v", err)
+					}
+				}
 				if string(installed) != "old" {
 					t.Fatal("installation changed on failure")
 				}
-				var ae interface{ Error() string }
-				_ = ae
+
 			} else {
 				if err != nil {
 					t.Fatal(err)
@@ -174,6 +183,69 @@ func TestApplyRiskPaths(t *testing.T) {
 			for _, entry := range entries {
 				if strings.HasPrefix(entry.Name(), ".mothdex-update-") {
 					t.Error("staging left behind")
+				}
+			}
+		})
+	}
+}
+
+func TestGUIIsVerifiedBeforeAnySwapAndRollsBackTogether(t *testing.T) {
+	working := probeFixture(t, "")
+	badInstalled := probeFixture(t, "installed")
+	for _, tamper := range []bool{true, false} {
+		t.Run(fmt.Sprint("tamper=", tamper), func(t *testing.T) {
+			u, s := fixture(t)
+			s.GUI = true
+			writeStateFixture(t, s)
+			guiPath := filepath.Join(s.Dir, binaryName(true))
+			if err := os.WriteFile(guiPath, []byte("old-gui"), 0700); err != nil { //nolint:gosec // executable GUI fixture.
+				t.Fatal(err)
+			} //nolint:gosec // executable GUI fixture.
+			if runtime.GOOS == "windows" {
+				if err := os.WriteFile(filepath.Join(s.Dir, "SDL2.dll"), []byte("old-dll"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cli := archiveFixture(t, badInstalled, "")
+			gui := archiveFixture(t, working, "", true)
+			cliName, guiName := archiveName("2.0.0", s.Target, false), archiveName("2.0.0", s.Target, true)
+			cliSum, guiSum := sha256.Sum256(cli), sha256.Sum256(gui)
+			if tamper {
+				guiSum[0] ^= 1
+			}
+			sums := fmt.Sprintf("%x  %s\n%x  %s\n", cliSum, cliName, guiSum, guiName)
+			u.o.Verifier = verifierFunc(func(context.Context, VerifyInput) (string, error) { return "cosign", nil })
+			serve(t, u, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/latest"):
+					w.Header().Set("Location", origin+"/tag/v2.0.0")
+					w.WriteHeader(302)
+				case strings.HasSuffix(r.URL.Path, "checksums.txt"):
+					_, _ = w.Write([]byte(sums))
+				case strings.HasSuffix(r.URL.Path, ".sigstore.json"):
+					_, _ = w.Write([]byte("fixture"))
+				case strings.HasSuffix(r.URL.Path, guiName):
+					_, _ = w.Write(gui)
+				default:
+					_, _ = w.Write(cli)
+				}
+			})
+			_, err := u.Apply(context.Background(), ApplyOptions{Confirm: func(Staged) bool { return true }})
+			if tamper {
+				errorCode(t, err, "integrity", "checksum_mismatch")
+			} else {
+				errorCode(t, err, "update_failed", "check_failed")
+			}
+			for name, want := range map[string]string{binaryName(false): "old", binaryName(true): "old-gui"} {
+				b, e := os.ReadFile(filepath.Join(s.Dir, name)) //nolint:gosec // fixed component names in temporary installation fixture.
+				if e != nil || string(b) != want {
+					t.Fatalf("component not restored: %s %v", name, e)
+				}
+			}
+			if runtime.GOOS == "windows" {
+				b, e := os.ReadFile(filepath.Join(s.Dir, "SDL2.dll"))
+				if e != nil || string(b) != "old-dll" {
+					t.Fatal("DLL not restored")
 				}
 			}
 		})

@@ -36,7 +36,7 @@ func (u *Updater) SkipReason(enabled bool, getenv func(string) string) string {
 		return "config"
 	}
 	if getenv == nil {
-		getenv = os.Getenv
+		getenv = u.o.Getenv
 	}
 	v := getenv("MOTHDEX_NO_UPDATE_CHECK")
 	if v != "" && v != "0" && v != "false" {
