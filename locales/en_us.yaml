@@ -1111,6 +1111,29 @@ ui:
       help: 'help'
 
 update:
+  errors:
+    integrity:
+      message: 'The update files failed integrity verification.'
+    size_mismatch:
+      message: 'The update files have an invalid size.'
+    not_found:
+      message: 'The requested update files were not found.'
+    untrusted_redirect:
+      message: 'The update was redirected to an untrusted address.'
+    network:
+      message: 'The update server could not be reached or the transfer was interrupted.'
+    signature:
+      message: 'The release signature could not be verified.'
+    update_failed:
+      message: 'The update could not be completed.'
+    update_unavailable:
+      message: 'This installation cannot be updated automatically.'
+    usage:
+      message: 'The update options are invalid.'
+    canceled:
+      message: 'The update was canceled.'
+    confirmation_required:
+      message: 'The update needs your confirmation.'
   notice: 'New version available: {current} → {latest}. Update with: {command} upgrade'
   confirm: 'Update {current} → {latest} (verification: {signature}).'
   confirm_downgrade: 'Downgrade {current} → {latest} (verification: {signature}).'
@@ -1121,5 +1144,5 @@ update:
   restart: 'Exit and open Mothdex again to use the new version.'
   restored_hint: 'Your previous version was restored. Try again later.'
   unchanged_hint: 'Nothing in your installation changed. Your previous version is still in place.'
-  tamper_hint: 'Possible tampering: do not reinstall from this release. Report the verification failure.'
-  verification_hint: 'Release origin could not be verified. If the signing root rotated, reinstall with the official command: {install_command}'
+  verification_hint: 'Your previous version is still installed. Release origin could not be verified. If the signing root rotated, reinstall with the official command: {install_command}'
+  tamper_hint: 'Your previous version is still installed. The release signature did not verify: it may have been tampered with. Do not reinstall; report it privately: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'

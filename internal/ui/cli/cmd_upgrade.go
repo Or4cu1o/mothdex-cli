@@ -47,7 +47,7 @@ func (r *runtime) upgradeCmd() *cobra.Command {
 				}
 			}
 			if u == nil {
-				return outcome{}, &app.Error{Code: app.CodeUpdateUnavailable, Message: "updater unavailable", Args: map[string]any{"reason": "dev_build", "install_command": update.InstallCommand()}}
+				return outcome{}, &app.Error{Code: app.CodeUpdateUnavailable, Message: "This installation cannot be updated automatically.", Args: map[string]any{"reason": "dev_build", "restored": true, "message_key": "update.errors.update_unavailable.message", "hint_key": "errors.update_unavailable.hint", "install_command": update.InstallCommand()}}
 			}
 			data := upgradeData{Channel: channel}
 			if data.Channel == "" {
@@ -68,7 +68,7 @@ func (r *runtime) upgradeCmd() *cobra.Command {
 					if st.Downgrade {
 						kind = "update.confirm_downgrade"
 					}
-					message := clean(p.T(kind, i18n.Args{"current": st.From, "latest": st.To, "signature": signatureLabel(st.Signature)}))
+					message := clean(p.T(kind, i18n.Args{"current": st.From, "latest": st.To, "signature": st.Signature}))
 					data.Downgrade = st.Downgrade
 					if st.Downgrade {
 						p.warns = append(p.warns, message)
@@ -105,7 +105,7 @@ func (r *runtime) upgradeCmd() *cobra.Command {
 				if data.Updated {
 					key = "update.updated"
 				}
-				_, _ = fmt.Fprintln(p.out, p.T(key, i18n.Args{"current": data.Current, "latest": data.Latest, "signature": signatureLabel(data.Signature)}))
+				_, _ = fmt.Fprintln(p.out, p.T(key, i18n.Args{"current": data.Current, "latest": data.Latest, "signature": data.Signature}))
 				if data.RestartRequired {
 					p.info("%s", p.T("update.restart", nil))
 				}
@@ -116,13 +116,6 @@ func (r *runtime) upgradeCmd() *cobra.Command {
 	c.Flags().StringVar(&version, "version", "", "install this exact version (allows downgrade)")
 	c.Flags().StringVar(&channel, "channel", "", "release channel: stable | beta")
 	return c
-}
-
-func signatureLabel(s string) string {
-	if s == "none" {
-		return "SHA-256 only"
-	}
-	return s
 }
 
 // Only a standalone command may abandon its stdin reader: it exits after cancellation.

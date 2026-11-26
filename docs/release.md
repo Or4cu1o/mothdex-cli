@@ -163,9 +163,30 @@ should use their own installation method; an unmanaged upgrade exits 9 and print
 - `mdex upgrade --json -f`: use the standard JSON envelope, including the signature result and restart hint.
 
 The updater uses the fixed official GitHub release origin. It verifies SHA-256 for every archive, then verifies origin
-with cosign when installed or otherwise `gh attestation` when available. This first implementation reports `none`
-(SHA-256 only) when neither is available. A present verifier that fails aborts; `-f` never skips a verification.
-The following native Sigstore change (D35) removes SHA-256-only updates.
+natively with sigstore-go. The signed manifest must match its SHA-256, chain to the embedded Sigstore Public Good
+Fulcio roots, carry a verified certificate transparency proof (SCT), verified Rekor transparency evidence and an
+authenticated observer timestamp, and have the exact certificate identity of `Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version>` with the GitHub Actions
+OIDC issuer. A failure aborts before extraction or installation. `-f` never skips verification. No external tool or
+SHA-256-only fallback is selected. The reinstall hint appears only when the failure points to the embedded root (an
+unknown or expired certificate authority, transparency log or certificate transparency log). A wrong identity, altered
+file or missing bundle says the release may be tampered with, asks not to reinstall and to report it privately.
+
+The Public Good trusted root is **embedded**, refreshed through verified TUF metadata by
+`go run scripts/update-trusted-root.go` during release preparation and committed for review. Upgrades do not fetch
+TUF, Fulcio, Rekor or certificate URLs at runtime. Root rotations require a new Mothdex release with refreshed trust
+material; a release signed only with an unknown new key fails closed and requires the current installer. Revocations
+and other trust changes are likewise learned through a Mothdex update, rather than a runtime TUF refresh. Root changes
+must be reviewed with the release code; the bundle itself can never supply a trust anchor.
+
+The embedded `internal/update/trusted-root.json` is pinned by SHA-256, and a test fails when the file and the pin differ:
+
+```text
+6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66
+```
+
+The refresh script prints the old and new hash. Review the JSON diff, then record the new hash here and in
+`trustedRootSHA256` (`internal/update/native.go`). A refresh must keep the older keys with their validity windows, or
+the fixtures of the published releases stop verifying.
 
 All components are staged and probed before confirmation. After replacement, the CLI and GUI are checked again.
 Failure restores the previous files in reverse order. The Windows alias hardlink is recreated for the new CLI;
@@ -190,3 +211,9 @@ Even `-f` prints a downgrade warning (or records it in JSON warnings). A failure
 previous installation remains intact; only an incomplete rollback, or a missing GUI asset, advises reinstalling.
 Known GUI notices refresh `mothdex-licenses/` beside the executable, preserving folders containing foreign entries.
 Future regular notices under `THIRD_PARTY/` are accepted within the archive limits and discarded; they are never run.
+
+The native verifier increases the stripped Linux amd64 CLI from 13,566,112 to 25,088,160 bytes (+11,522,048; +84.93%) with
+CGO_ENABLED=0 and identical -trimpath -buildvcs=false -ldflags '-s -w' builds. Allow about 11 MB extra storage and
+additional verification memory on Ports and handhelds; an update stages archives alongside the installed binaries.
+The pflag and YAML module updates are required by sigstore-go v1.4.0 and its Rekor/OpenAPI graph; its minimum Go
+version is 1.27.0. They are not independent dependency upgrades.
