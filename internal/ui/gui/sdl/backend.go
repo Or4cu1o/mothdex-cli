@@ -8,6 +8,7 @@ import (
 	"image"
 	"io"
 	"log/slog"
+	"os"
 	"slices"
 	"time"
 
@@ -68,6 +69,20 @@ type Backend struct {
 	pending []input.Incoming
 }
 
+// videoDriverVars are the variables a person chooses SDL's video driver with; the second is the SDL3 name, which
+// sdl2-compat also reads.
+var videoDriverVars = []string{"SDL_VIDEODRIVER", "SDL_VIDEO_DRIVER"}
+
+// noDisplayFallback reports whether SDL, left to choose, ended on a driver that shows nothing: with no display, or a
+// dead one, it falls back to offscreen (or dummy) and the program would run unseen until something killed it. A
+// driver somebody asked for, with --driver or one of videoDriverVars, is kept whatever it is.
+func noDisplayFallback(chosen, forced string, getenv func(string) string) bool {
+	if forced != "" || (chosen != "offscreen" && chosen != "dummy") {
+		return false
+	}
+	return !slices.ContainsFunc(videoDriverVars, func(name string) bool { return getenv(name) != "" })
+}
+
 // OpenBackend starts SDL's video and game controller subsystems, adds the controller mappings and opens a
 // window with a renderer and the glyph atlas texture. lib must already be loaded and version-checked.
 func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, err error) {
@@ -79,10 +94,11 @@ func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, e
 		atlas: text.NewAtlas(atlasSide, atlasSide),
 		pads:  map[int32]Controller{}, padType: map[int32]input.ControllerType{}, joys: map[int32]padRecord{},
 	}
-	b.images = newLRU(maxImageTextures, func(_ uint64, t Texture) { b.lib.DestroyTexture(t) })
+	b.images = newLRU(maxImageTextures, func(_ uint64, t Texture) { lib.DestroyTexture(t) })
+	opened := b // a "return nil, err" below sets b to nil before the deferred cleanup runs
 	defer func() {
 		if err != nil {
-			b.Close()
+			opened.Close()
 			b = nil
 		}
 	}()
@@ -94,6 +110,9 @@ func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, e
 	}
 	if err = b.initSubsystems(); err != nil {
 		return nil, err
+	}
+	if drv := lib.CurrentVideoDriver(); noDisplayFallback(drv, o.Driver, os.Getenv) {
+		return nil, fmt.Errorf("%w: SDL found no display and fell back to its %q driver", ErrNoDisplay, drv)
 	}
 	if o.Driver != "" && lib.CurrentVideoDriver() != o.Driver {
 		return nil, fmt.Errorf("the video driver %q was asked for and SDL chose %q", o.Driver, lib.CurrentVideoDriver())

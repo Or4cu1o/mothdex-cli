@@ -11,7 +11,7 @@ import (
 	"github.com/ebitengine/purego"
 )
 
-// Errors that tell the caller what is wrong with the SDL2 on this machine (exit code 1 of the GUI).
+// Errors that tell the caller what is wrong with the SDL2 on this machine (exit code 8 of the GUI).
 var (
 	ErrNotFound     = errors.New("SDL2 was not found")
 	ErrIncompatible = errors.New("SDL2 lacks a function this program needs")
