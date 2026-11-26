@@ -125,7 +125,7 @@ The file never redirects a write. Upgrade writes only to the running binary's fo
   `mothdex.exe` (TM-12, TM-13). Otherwise it stays, with a warning.
 - **PATH** (TM-8, TM-10): on Windows, removes exactly the `path_value` entry from the raw user `Path` and leaves the
   rest byte for byte. On Unix, removes only lines equal to `path_value`, and only when `path_value` is the TM-9 line
-  for `dir` and `path_file` is one of `~/.bashrc`, `~/.zshrc`, `~/.profile` or `~/.config/fish/config.fish` under the
+  for `dir` and `path_file` is one of `~/.bashrc`, `~/.bash_profile` (bash login file on macOS), `~/.zshrc`, `~/.profile` or `~/.config/fish/config.fish` under the
   current `HOME`.
 - **Launcher:** only when the file still carries our marker (ports.md).
 - **Without a state file** (installs from 0.1.x), uninstall behaves as it does today and cannot remove an alias or
