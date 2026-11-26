@@ -148,6 +148,10 @@ from §6.
        path and no leading dot.
      - **Accepted extras are never executed**, and are written to `mothdex-licenses` only when they are on the known
        notice list.
+     - **Duplicate names are `integrity`,** including names that differ only in case: they would collide on Windows
+       and on case-insensitive volumes. This holds for every member, not only the extras.
+     - **Extras are never used as notes** or for the CHANGELOG summary, and their content is never logged: only the
+       count, or a sanitized name (Sentinela).
      - **Directory entries:** an empty directory entry named exactly `THIRD_PARTY/` is ignored; any other is
        `integrity`.
    - Run the staged `mothdex --version --json` in the staging folder with a scrubbed environment (IC-1 style) and a

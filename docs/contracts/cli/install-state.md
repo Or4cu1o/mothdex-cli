@@ -84,7 +84,7 @@ UTF-8 JSON, one **flat** object, **no BOM**, at most 16 KiB.
 Readers ignore unknown fields. Adding a field keeps `schema_version: 1`.
 - **`internal/update` keeps unknown top-level fields** when it rewrites the state, for example fields written by a
   newer installer. It decodes them as raw JSON and writes the known fields on top. Unknown fields go after the v1
-  fields, one line each, in compact JSON and in their original order. It never acts on an unknown field.
+  fields, one line each, in compact JSON and in their original order. It never acts on an unknown field. Unknown fields still count toward the 16 KiB cap: a file over the cap is `bad_state`.
 - **The installers write the fields they know.** A newer installer is the one that knows the newer fields.
 Removing a field or changing its meaning bumps the version.
 
