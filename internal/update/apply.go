@@ -235,8 +235,11 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 	}
 	signature, err := u.o.Verifier.Verify(ctx, VerifyInput{Tag: "v" + version, Checksums: sums, Bundle: bundle, Archives: archives})
 	if err != nil {
+		if ctx.Err() != nil {
+			return r, canceled(ctx)
+		}
 		e := failure("integrity", "signature", err)
-		e.Args["hint_key"] = "update.tamper_hint"
+		e.Args["hint_key"] = signatureHint(err)
 		return r, e
 	}
 	r.signature = signature

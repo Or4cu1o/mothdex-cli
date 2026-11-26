@@ -11,6 +11,13 @@ No UI should apply an update without explicit confirmation. `RestartRequired` te
 Tests use TLS fixture servers, generated binary probes and temporary installation records, never production services.
 T-110 TM-29 through TM-40 and `docs/contracts/cli/update.md` define the security boundary.
 
+The default verifier uses sigstore-go with the embedded Public Good root. It validates the artifact digest, Fulcio
+chain, exact release-workflow/tag identity, GitHub Actions OIDC issuer, certificate transparency proof (SCT) and
+authenticated transparency evidence/time. The root is pinned by SHA-256 (see docs/release.md), and `trust.go` limits
+the reinstall hint to failures the embedded root may explain.
+It performs no network requests and never falls back to tools or checksum-only verification. Refresh the embedded
+root through verified TUF metadata with `go run scripts/update-trusted-root.go`; review root changes with each release.
+
 Managed checks are read-only. Apply probes writability after locking, and gives preparation a ten-minute budget;
 confirmation has no preparation deadline. Explicit checks take at most thirty seconds; background checks take three.
 Headers have a fifteen-second limit and each response body a thirty-second idle limit. Future THIRD_PARTY notices

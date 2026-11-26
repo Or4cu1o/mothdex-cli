@@ -807,5 +807,5 @@ update:
   restart: 'Cierra y vuelve a abrir Mothdex para usar la nueva versión.'
   restored_hint: 'Se restauró la versión anterior. Inténtalo más tarde.'
   unchanged_hint: 'No se cambió nada en la instalación. La versión anterior sigue instalada.'
-  tamper_hint: 'Posible manipulación: no reinstales desde esta versión. Informa del fallo de verificación.'
   verification_hint: 'No se pudo verificar el origen de la versión. Si cambió la raíz de firma, reinstala con el comando oficial: {install_command}'
+  tamper_hint: 'La firma de la versión no se aceptó: puede haber sido manipulada. No reinstales; avisa en privado: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'
