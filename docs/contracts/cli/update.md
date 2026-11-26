@@ -124,6 +124,12 @@ from §6.
      `gh attestation verify <archive> --repo Or4cu1o/mothdex-cli --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml --source-ref refs/tags/v<version>`,
      run on **every** archive after step 4;
    - **otherwise `none`,** printed and logged as "SHA-256 only", the way the installer reports it (residual R6).
+   - **Native verifier (D35, TM-32), when in use,** applies a sigstore-go policy. The bundle must verify the
+     `checksums.txt` bytes. The certificate SAN must be exactly the workflow identity of tag `v<version>`, and the
+     issuer exactly the Actions issuer.
+     - It requires at least one transparency-log entry, at least one SCT (`WithSignedCertificateTimestamps(1)`), and
+       at least one observer timestamp (the integrated time).
+     - A missing bundle is `integrity`, with no SHA-only fallback.
 
    Tools run by argv, never through a shell, with a 60 s timeout, and pass only on exit 0. A tool that is present and
    fails, or times out, is `integrity`.
@@ -135,7 +141,8 @@ from §6.
    - Staged files are created with `O_EXCL` under unique names and `fsync`ed.
    - Extract only the exact root members of release-artifacts.md §1 that the install needs (IC-4). Regular files only:
      a link, a path, an extra member or a duplicate name is `integrity`. A member that decompresses past 128 MiB is
-     `size_mismatch`.
+     `size_mismatch`. One exception: an empty directory entry named exactly `THIRD_PARTY/` is ignored (GoReleaser may
+     write it). Any other directory entry is `integrity`.
    - Run the staged `mothdex --version --json` in the staging folder with a scrubbed environment (IC-1 style) and a
      10 s limit; `data.version` must equal the target version exactly.
    - With the GUI: the staged `mothdex-gui --version` must succeed, and `mothdex-gui --probe` must exit 0. Exit 8 is
@@ -147,8 +154,14 @@ from §6.
 ## 4. Swap, check, rollback (`update_failed` on any failure from here on)
 
 The swap set (TM-34) is `mothdex[.exe]`, plus the Windows hardlink alias `<alias>.exe`, plus `mothdex-gui[.exe]` and on
-Windows `SDL2.dll` when `gui` is true. The licence
-notices are replaced after the binaries; a failure there is only a warning.
+Windows `SDL2.dll` when `gui` is true. The licence notices are replaced after the binaries, and a failure there is
+only a warning.
+- **Where they go.** Into `<dir>/mothdex-licenses/`, under the flat names the installers use (their `NOTICE_NAMES`
+  list, T-70 IC-5): `THIRD_PARTY/<name>` becomes `mothdex-licenses/<name>`.
+- **Nothing else.** `LICENSE` and the files of `THIRD_PARTY/` are never written at the root of `dir`, which may be a
+  shared `~/.local/bin`.
+- **How.** Only those names, each through a temporary file and a rename. A `mothdex-licenses` that is a link or a
+  reparse point, or that holds a file of the same name that is not a regular file, is left alone, with a warning.
 
 5. **Swap, Linux and macOS:** for each file, first `link(f, f.old)`, or a copy that keeps the mode when the file system
    has no hardlinks. Then `rename(staged, f)`, which is atomic in the same folder.
@@ -233,7 +246,11 @@ notices are replaced after the binaries; a failure there is only a warning.
   `swap_failed` or `check_failed`, and `details.restored` is a bool.
 - **Reused codes:** `integrity`, `size_mismatch`, `network`, `untrusted_redirect`, `not_found`, and
   `confirmation_required` (`--json` without `-f`).
-- **`upgrade --json` data:** `{current, latest, available, updated, channel, signature, restart_required, notes}`.
+- **`upgrade --json` data:** `{current, latest, available, updated, channel, signature, restart_required, notes,
+  downgrade}`.
+  - A downgrade, even with `-f`, prints a warning on stderr before the swap (human output). Under `--json` the same
+    text goes into `warnings[]` instead (cli-output.md §1).
+  - `-f` skips only the prompt, never the warning.
 - **Log lines:** `msg="update check"` with `current latest channel result duration_ms` (result is `available`,
   `current`, `failed` or `skipped:<reason>`), and `msg="update apply"` with `from to signature result reason restored`.
 
