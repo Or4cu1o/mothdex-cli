@@ -887,6 +887,68 @@ exit `$LASTEXITCODE
   $env:Path = $savedSessionPath
 }
 
+# 12. The published installer carries its release (T-110 TM-5): it installs that one, not the latest.
+$stamped = Join-Path $root 'stamped-install.ps1'
+$source = [IO.File]::ReadAllText($installer)
+Check 'install.ps1 has the line the release stamps' ($source.Contains("`$StampedVersion = ''"))
+[IO.File]::WriteAllText($stamped, $source.Replace("`$StampedVersion = ''", "`$StampedVersion = '1.5.0'"))
+$ps = Join-Path $root 'stamped-bin'
+$global:urls.Clear()
+$threw = $false
+try { & $stamped -BinDir $ps -NoModifyPath -NoAlias -NoGui *> $null } catch { $threw = $true }
+Check 'stamped installer installs its own release' ((-not $threw) -and (Test-Path (Join-Path $ps 'mothdex.exe')) -and
+  (@($global:urls | Where-Object { $_ -like '*/download/v1.5.0/*' }).Count -ge 2) -and (@($global:urls | Where-Object { $_ -like '*/latest/*' }).Count -eq 0))
+
+# 13. install.cmd (TM-4): options reach install.ps1 as data and the exit status reaches CMD. The test copy reads the
+# local install.ps1, with the network double, instead of downloading it; everything else is the real file.
+$cmdSource = [IO.File]::ReadAllText((Join-Path (Split-Path -Parent $installer) 'install.cmd'))
+$download = "& ([scriptblock]::Create((irm 'https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1')))"
+Check 'install.cmd runs the downloaded script as a script block' $cmdSource.Contains($download)
+$shim = Join-Path $root 'cmd-shim.ps1'
+$argLog = Join-Path $root 'cmd-args-left.txt'
+Set-Content -Path $shim -Value @"
+`$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+function Invoke-WebRequest { param([string]`$Uri, [string]`$OutFile, [switch]`$UseBasicParsing, [int]`$MaximumRedirection, [switch]`$PassThru)
+  Set-Content -LiteralPath '$argLog' -Value @(Get-ChildItem Env: | Where-Object { `$_.Name -like 'MOTHDEX_ARG_*' }).Count
+  Copy-Item -LiteralPath (Join-Path '$release' ((`$Uri.Substring('$base'.Length) -replace '^download/', '' -replace '^latest/download/', 'latest/') -replace '/', '\')) -Destination `$OutFile
+  return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = [uri]`$Uri } } }
+"@
+$cmdCopy = Join-Path $root 'install-test.cmd'
+[IO.File]::WriteAllText($cmdCopy, $cmdSource.Replace($download, ". '$shim'; & ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$installer')))"))
+$cmdWork = Join-Path $root 'cmd-work'
+New-Item -ItemType Directory -Path $cmdWork | Out-Null
+function Invoke-Cmd([string]$Arguments) {
+  $driver = Join-Path $root 'driver.cmd'
+  [IO.File]::WriteAllText($driver, "@echo off`r`ncd /d `"$cmdWork`"`r`ncall `"$cmdCopy`" $Arguments`r`nexit /b %errorlevel%`r`n")
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { $script:output = (& cmd.exe /c $driver 2>&1 | ForEach-Object { "$_" }) -join "`n"; $script:exitCode = $LASTEXITCODE }
+  finally { $ErrorActionPreference = $previous }
+  $script:message = $script:output
+}
+$cmdBin = Join-Path $root 'cmd bin'
+Invoke-Cmd "-Version v1.5.0 -BinDir `"$cmdBin`" -NoModifyPath -NoAlias"
+Check "install.cmd installs and exits 0 (exit $($script:exitCode))" (($script:exitCode -eq 0) -and (Test-Path (Join-Path $cmdBin 'mothdex.exe')))
+Check 'install.cmd leaves no MOTHDEX_ARG_ variable to the programs the installer starts' ((Get-Content -LiteralPath $argLog) -eq '0')
+Invoke-Cmd "-version v1.5.0 -bindir `"$cmdBin`" -nomodifypath -noalias -DryRun"
+Check 'install.cmd takes options in any letter case' (($script:exitCode -eq 0) -and ($script:output -match 'Dry run'))
+Invoke-Cmd "-Version v1.3.2 -BinDir `"$(Join-Path $root 'cmd-partial')`" -NoModifyPath -NoAlias"
+Check "a partial failure (GUI probe) reaches CMD as exit status 1 (exit $($script:exitCode))" (($script:exitCode -eq 1) -and ($script:output -match 'probe failed'))
+Invoke-Cmd "-Version v1.1.0 -BinDir `"$(Join-Path $root 'cmd-bad')`" -NoModifyPath"
+Check "a failed verification reaches CMD as a non-zero status (exit $($script:exitCode))" (($script:exitCode -ne 0) -and ($script:output -match 'SHA-256 mismatch'))
+foreach ($attack in @(
+    '-Version "1.0.0;New-Item pwned"',
+    '-Version v1.5.0 "$(New-Item pwned)"',
+    '-BinDir "C:\a & echo x>pwned"',
+    "-Version v1.5.0 -BinDir `"$cmdBin`" `"-NoGui;New-Item pwned`"",
+    "-Version v1.5.0 -Alias `"x';New-Item pwned;'`"",
+    '-Bogus',
+    '-Version',
+    'v1.5.0')) {
+  Invoke-Cmd $attack
+  Check "install.cmd $attack runs nothing and fails (exit $($script:exitCode))" (($script:exitCode -ne 0) -and (@(Get-ChildItem $cmdWork -Force).Count -eq 0))
+}
+
 Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 Write-Output "$($script:pass) passed, $($script:fail) failed"
 exit ([int]($script:fail -gt 0))
