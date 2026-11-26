@@ -144,6 +144,8 @@ func TestAFailedUpdateShowsHowToRecover(t *testing.T) {
 		{"release without the GUI", "update_failed", false, failed("gui_missing", false), "Install again from a terminal: " + command, "incomplete"},
 		{"the new GUI cannot run here", "update_failed", false, failed("gui_not_eligible", true), "cannot run on this system: use mothdex tui.", "Try again"},
 		{"signing root", "integrity", false, map[string]any{"hint_key": "update.verification_hint", "install_command": command}, "reinstall with the official command: " + command, "previous version is back"},
+		// the updater's generic "unchanged" hint must not hide what is particular to this program
+		{"the new GUI cannot run here, generic hint", "update_failed", false, map[string]any{"reason": "gui_not_eligible", "restored": true, "install_command": command, "hint_key": "update.unchanged_hint"}, "cannot run on this system: use mothdex tui.", "still in place"},
 	} {
 		f := newer()
 		f.swaps, f.failure = c.swaps, &app.Error{Code: c.code, Message: c.name, Args: c.args}

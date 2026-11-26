@@ -264,13 +264,17 @@ func (m Model) onUpdateDone(msg updateDoneMsg, now time.Time) (Model, []Cmd) {
 }
 
 // recoveryHint is what the person does about a failed update (docs/contracts/cli/update.md sections 3, 4 and 6).
-// The updater's own hint (Args hint_key, such as a rotated signing root) comes first. A release without this
-// program is fixed by the installer. Otherwise a failure before the swap changed nothing; after it, either the
-// previous version is back or the installation may be incomplete and the command installs it again.
+// A new GUI that cannot run here comes first: the updater's generic "nothing changed" hint would hide it. Then
+// the updater's own hint (Args hint_key, such as a rotated signing root). A release without this program is
+// fixed by the installer. Otherwise a failure before the swap changed nothing; after it, either the previous
+// version is back or the installation may be incomplete and the command installs it again.
 func (m Model) recoveryHint(err error, f failure, swapped bool) string {
 	var ae *app.Error
 	if !errors.As(err, &ae) {
 		return f.hint
+	}
+	if ae.Args["reason"] == "gui_not_eligible" { // trying again changes nothing
+		return m.tr("ui.gui.update.hint_not_eligible", nil)
 	}
 	if key, ok := ae.Args["hint_key"].(string); ok && m.o.T.Has(key) {
 		if text := m.o.T.T(key, i18n.Args(ae.Args)); !unfilled.MatchString(text) {
@@ -286,8 +290,6 @@ func (m Model) recoveryHint(err error, f failure, swapped bool) string {
 	switch {
 	case ae.Args["reason"] == "gui_missing" && command != "":
 		return m.tr("ui.gui.update.hint_installer", with)
-	case ae.Args["reason"] == "gui_not_eligible": // the new GUI does not run here: trying again changes nothing
-		return m.tr("ui.gui.update.hint_not_eligible", nil)
 	case !swapped:
 		return m.tr("ui.gui.update.hint_unchanged", nil)
 	case restored:
