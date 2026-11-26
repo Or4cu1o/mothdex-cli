@@ -297,6 +297,9 @@ ui:
       examples_title: 'Ejemplos:'
       log_note: 'Los fallos se guardan en mothdex.log, en la carpeta de registros (paths.logs).'
       see_help: 'Ejecuta mothdex-gui --help para ver las opciones.'
+      unexpected_argument: 'Argumento inesperado: {argument}'
+      unknown_flag: 'Opción desconocida: {flag}'
+      missing_value: 'La opción {flag} necesita un valor.'
       bad_flags: 'Línea de comandos no válida: {detail}'
       bad_window: '--window requiere AxA, como mínimo 160x120, por ejemplo 1280x720.'
     kb:

@@ -64,6 +64,51 @@ func usageError(o options, stderr io.Writer, key string, args i18n.Args) int {
 	return exitConfig
 }
 
+// flagValue is the value of --name wherever it stands on the command line ("--name v" or "--name=v", one dash
+// or two), for the error of a command line whose parsing stopped before reaching it. The last one wins.
+func flagValue(args []string, name string) string {
+	value := ""
+	for i, a := range args {
+		if a == "--" {
+			break
+		}
+		if !strings.HasPrefix(a, "-") {
+			continue
+		}
+		got, v, joined := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(a, "-"), "-"), "=")
+		switch {
+		case got != name:
+		case joined:
+			value = v
+		case i+1 < len(args) && !strings.HasPrefix(args[i+1], "-"):
+			value = args[i+1]
+		}
+	}
+	return value
+}
+
+// withLanguageFlags is o with --lang and --config taken from the whole command line: parsing stops at the first
+// problem, and the two that pick the language of its message may come after it.
+func withLanguageFlags(o options, args []string) options {
+	o.lang, o.config = flagValue(args, "lang"), flagValue(args, "config")
+	return o
+}
+
+// parseProblem names the message of a flag parsing error. The flag package only words its errors in English, so
+// the two a person can meet are recognized by their text; a test pins it. Any other keeps that text.
+func parseProblem(err error) (key string, args i18n.Args) {
+	text := err.Error()
+	for prefix, key := range map[string]string{
+		"flag provided but not defined: ": "unknown_flag",
+		"flag needs an argument: ":        "missing_value",
+	} {
+		if name, ok := strings.CutPrefix(text, prefix); ok {
+			return helpKey + key, i18n.Args{"flag": name}
+		}
+	}
+	return helpKey + "bad_flags", i18n.Args{"detail": text}
+}
+
 // cmdlineTranslator picks the language of the help and of the command line errors: --lang, else
 // interface.language, else the system's. A configuration that does not load never hides the help.
 func cmdlineTranslator(configFlag, lang string) (*i18n.Translator, error) {

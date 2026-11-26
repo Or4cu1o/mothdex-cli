@@ -305,6 +305,9 @@ ui:
       examples_title: 'Примеры:'
       log_note: 'Сбои записываются в mothdex.log в папке журналов (paths.logs).'
       see_help: 'Запустите mothdex-gui --help, чтобы увидеть параметры.'
+      unexpected_argument: 'Лишний аргумент: {argument}'
+      unknown_flag: 'Неизвестный параметр: {flag}'
+      missing_value: 'Параметру {flag} нужно значение.'
       bad_flags: 'Неверная командная строка: {detail}'
       bad_window: '--window ожидает ШxВ, не меньше 160x120, например 1280x720.'
     kb:

@@ -122,7 +122,7 @@ func recoverInternal(code *int, log *slog.Logger, logPath string, stderr io.Writ
 		return
 	}
 	log.Error("gui: internal error", "panic", r, "stack", string(debug.Stack()))
-	_, _ = fmt.Fprintf(stderr, "mothdex-gui: internal error: %v (see %s)\n", r, logPath)
+	_, _ = fmt.Fprintf(stderr, "mothdex-gui: internal error: %s (see %s)\n", oneLine(fmt.Sprint(r), reasonMax), logPath)
 	*code = exitInternal
 }
 

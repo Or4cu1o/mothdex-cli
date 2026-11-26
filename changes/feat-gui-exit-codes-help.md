@@ -16,3 +16,7 @@
 - T-115: an internal error (panic) of `mothdex-gui` is logged with its stack trace.
 - T-115: when SDL2 cannot open the window (no display, an unknown `--driver`), `mothdex-gui` says why and exits with
   the SDL code instead of crashing.
+- T-115: with no display, `mothdex-gui` exits 8 instead of running unseen on SDL's `offscreen` driver. Asking for that
+  driver with `--driver` or `SDL_VIDEODRIVER` still works.
+- T-115: a positional argument is a command line error (exit 2); before, it was ignored together with the flags after
+  it.

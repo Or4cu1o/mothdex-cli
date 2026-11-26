@@ -298,7 +298,10 @@ ui:
       examples_title: 'Examples:'
       log_note: 'Failures are written to mothdex.log, in the logs folder (paths.logs).'
       see_help: 'Run mothdex-gui --help to see the flags.'
-      bad_flags: '{detail}'
+      unexpected_argument: 'Unexpected argument: {argument}'
+      unknown_flag: 'Unknown flag: {flag}'
+      missing_value: 'The flag {flag} needs a value.'
+      bad_flags: 'Invalid command line: {detail}'
       bad_window: '--window wants WxH, at least 160x120, such as 1280x720.'
     kb:
       space: 'space'

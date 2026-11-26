@@ -148,10 +148,32 @@ func TestABadCommandLineExitsTwoAndPointsAtTheHelp(t *testing.T) {
 			t.Errorf("%v: stdout %q, stderr %q", args, out.String(), errOut.String())
 		}
 	}
-	var out, errOut bytes.Buffer
-	run([]string{"mothdex-gui", "--lang", "pt_br", "-nosuchflag"}, &out, &errOut)
-	if !strings.Contains(errOut.String(), "inválida: flag provided") {
-		t.Errorf("the error is not translated: %q", errOut.String())
+}
+
+// The language holds for the error wherever --lang stands, and the two errors a person can meet are translated.
+func TestABadCommandLineIsReportedInTheChosenLanguage(t *testing.T) {
+	isolate(t)
+	portuguese := configFile(t, "interface:\n  language: pt_br\n")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--lang", "pt_br", "--bogus"}, "Opção desconhecida: -bogus"},
+		{[]string{"--bogus", "--lang", "pt_br"}, "Opção desconhecida: -bogus"},
+		{[]string{"--bogus", "-lang=pt_br"}, "Opção desconhecida: -bogus"},
+		{[]string{"--bogus", "--config", portuguese}, "Opção desconhecida: -bogus"},
+		{[]string{"--lang=pt_br", "--profile"}, "A opção -profile precisa de um valor."},
+		{[]string{"--bogus"}, "Unknown flag: -bogus"},
+		{[]string{"--probe=maybe"}, "invalid boolean value"},
+		{[]string{"extra", "--probe"}, "Unexpected argument: extra"},
+		{[]string{"--probe", "extra"}, "Unexpected argument: extra"},
+		{[]string{"extra", "--lang", "pt_br"}, "Argumento inesperado: extra"},
+		{[]string{"--", "-x"}, "Unexpected argument: -x"},
+	} {
+		var out, errOut bytes.Buffer
+		if code := run(append([]string{"mothdex-gui"}, c.args...), &out, &errOut); code != exitConfig || !strings.Contains(errOut.String(), c.want) {
+			t.Errorf("%v: exit %d, stderr %q, want %q", c.args, code, errOut.String(), c.want)
+		}
 	}
 }
 
