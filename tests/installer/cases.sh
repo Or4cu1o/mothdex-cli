@@ -1482,5 +1482,32 @@ inst --uninstall
 check "a file that replaced our link is kept" text_is "$(cat $GB/mdex)" mine
 INST_LAUNCHER=1
 
+# --- macOS: bash is a login shell there -----------------------------------------------------------------------------
+INST_LAUNCHER=0
+mac() { FAKE_UNAME_S=Darwin FAKE_UNAME_M=arm64 SHELL=/bin/bash inst --version v1.2.3 "$@"; }
+reset mac-bash-new
+mac
+check "exit 0" rc_is 0
+check "line in ~/.bash_profile" count_is /home/u/.bash_profile "$LINE" 1
+check "bashrc not written" absent /home/u/.bashrc
+check "state records it" file_has $ST '"path_file": "/home/u/.bash_profile"'
+mac --uninstall
+check "uninstall removes the line" count_is /home/u/.bash_profile "$LINE" 0
+reset mac-bash-profile-only
+printf 'x\n' >/home/u/.profile
+mac
+check "an existing ~/.profile is used" count_is /home/u/.profile "$LINE" 1
+check "and not shadowed by a new ~/.bash_profile" absent /home/u/.bash_profile
+reset mac-bash-login
+printf 'x\n' >/home/u/.bash_login
+mac
+check "bash_login is not written" text_is "$(cat /home/u/.bash_login)" x
+check "and nothing shadows it" absent /home/u/.bash_profile
+check "command printed" out_has ">> ~/.bash_login"
+reset mac-bash-no-modify
+mac --no-modify-path
+check "block names ~/.bash_profile" out_has ">> ~/.bash_profile"
+INST_LAUNCHER=1
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

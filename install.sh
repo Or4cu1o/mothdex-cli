@@ -800,7 +800,7 @@ json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 known_rc() {
   [ -n "${HOME:-}" ] || return 1
   case $1 in
-    "$HOME/.bashrc" | "$HOME/.zshrc" | "$HOME/.profile" | "$HOME/.config/fish/config.fish") return 0 ;;
+    "$HOME/.bashrc" | "$HOME/.bash_profile" | "$HOME/.zshrc" | "$HOME/.profile" | "$HOME/.config/fish/config.fish") return 0 ;;
   esac
   return 1
 }
@@ -963,6 +963,19 @@ detect_shell() {
   esac
 }
 
+# The startup file bash reads in a new terminal. macOS starts it as a login shell, which reads the first of
+# ~/.bash_profile, ~/.bash_login and ~/.profile and not ~/.bashrc: an existing one is used, never shadowed by a new one.
+bash_rc_name() {
+  case $TARGET in
+    darwin_*) ;;
+    *) printf '.bashrc\n'; return 0 ;;
+  esac
+  for f in .bash_profile .bash_login .profile; do
+    if [ -e "${HOME:-}/$f" ]; then printf '%s\n' "$f"; return 0; fi
+  done
+  printf '.bash_profile\n'
+}
+
 # Follows a chain of symbolic links (dotfile managers) and prints the final path.
 resolve_link() {
   p=$1
@@ -1029,7 +1042,7 @@ print_path_block() {
   say ""
   case $USER_SHELL in
     fish) say "  fish_add_path $BIN_DIR" ;;
-    bash) say "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc" ;;
+    bash) say "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/$(bash_rc_name)" ;;
     zsh) say "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc" ;;
     sh) say "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.profile" ;;
     *) say "  export PATH=\"$BIN_DIR:\$PATH\"    (put it in the startup file of your shell)" ;;
@@ -1046,7 +1059,10 @@ update_path() {
   kind=rc_line
   if [ -n "${HOME:-}" ]; then
     case $USER_SHELL in
-      bash) rc="$HOME/.bashrc" ;;
+      bash)
+        name=$(bash_rc_name)
+        if [ "$name" != .bash_login ]; then rc="$HOME/$name"; fi
+        ;;
       zsh) if [ "${ZDOTDIR:-$HOME}" = "$HOME" ]; then rc="$HOME/.zshrc"; fi ;;
       fish) rc="$HOME/.config/fish/config.fish"; kind=fish ;;
       sh) rc="$HOME/.profile" ;;

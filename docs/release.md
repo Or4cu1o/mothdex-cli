@@ -45,7 +45,8 @@ sh install.sh                    # or: --version, --profile, --bin-dir, --launch
 
 The installer adds the install folder to your PATH without administrator rights: the user `Path` and the current
 session on Windows, one line marked `# mothdex` in your shell's startup file elsewhere (only when the folder and that
-file cannot be written by other users). `-NoModifyPath` / `--no-modify-path` prints the command to copy instead, and
+file cannot be written by other users; for bash on macOS the file is
+the login one, `~/.bash_profile` or an existing `~/.profile`). `-NoModifyPath` / `--no-modify-path` prints the command to copy instead, and
 uninstall removes only the entry recorded in `.mothdex-install.json` ([contract](contracts/cli/install-state.md)).
 
 It also creates the shortcut `mdex` (`mthd` when `mdex` is taken; none when both are): a hard link `mdex.exe` on

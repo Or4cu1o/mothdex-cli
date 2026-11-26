@@ -622,7 +622,7 @@ try {
     Check 'path: the value kind stays REG_EXPAND_SZ' ($envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::ExpandString)
     Check 'path: the current session has it' ((Count-Entry $env:Path $p1) -eq 1)
     Check 'path: mothdex runs by name in this window' ((Get-Command mothdex.exe -ErrorAction SilentlyContinue).Source -ieq (Join-Path $p1 'mothdex.exe'))
-    Check 'path: final message' (($script:output -match 'mothdex 1\.5\.0 (installed in|instalado em)') -and ($script:output -match 'mothdex --version'))
+    Check 'path: final message' (($script:output -match 'mothdex 1\.5\.0 (installed in|instalado em)') -and ($script:output -match 'mdex --version'))
     $bytes = [IO.File]::ReadAllBytes($st)
     $data = [IO.File]::ReadAllText($st) | ConvertFrom-Json
     Check 'state: no byte order mark' ($bytes[0] -eq 0x7B)
