@@ -40,18 +40,20 @@
 .PARAMETER Uninstall
   Remove the binaries, the licence notices, the launcher and the user PATH entry created by this installer.
 #>
+# The public parameter names are aliases: `Invoke-Expression` binds a param block into the caller's scope, where
+# $Version or $BinDir would overwrite the user's own variables (T-110 TM-3).
 [CmdletBinding()]
 param(
-  [string]$Version = '',
-  [string]$RetroBatPath = '',
-  [string]$BinDir = '',
-  [switch]$Launcher,
-  [switch]$NoLauncher,
-  [switch]$Gui,
-  [switch]$NoGui,
-  [switch]$NoModifyPath,
-  [switch]$DryRun,
-  [switch]$Uninstall
+  [Alias('Version')][string]$MothdexVersion = '',
+  [Alias('RetroBatPath')][string]$MothdexRetroBatPath = '',
+  [Alias('BinDir')][string]$MothdexBinDir = '',
+  [Alias('Launcher')][switch]$MothdexLauncher,
+  [Alias('NoLauncher')][switch]$MothdexNoLauncher,
+  [Alias('Gui')][switch]$MothdexGui,
+  [Alias('NoGui')][switch]$MothdexNoGui,
+  [Alias('NoModifyPath')][switch]$MothdexNoModifyPath,
+  [Alias('DryRun')][switch]$MothdexDryRun,
+  [Alias('Uninstall')][switch]$MothdexUninstall
 )
 
 # Everything runs in a child scope: when the text of this script is evaluated in the user's session, no strict mode,
@@ -61,6 +63,16 @@ param(
 & {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+$Version = $MothdexVersion
+$RetroBatPath = $MothdexRetroBatPath
+$BinDir = $MothdexBinDir
+$Launcher = $MothdexLauncher
+$NoLauncher = $MothdexNoLauncher
+$Gui = $MothdexGui
+$NoGui = $MothdexNoGui
+$NoModifyPath = $MothdexNoModifyPath
+$DryRun = $MothdexDryRun
+$Uninstall = $MothdexUninstall
 $ProgressPreference = 'SilentlyContinue'
 
 $Repo = 'Or4cu1o/mothdex-cli'

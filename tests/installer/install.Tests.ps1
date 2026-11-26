@@ -727,6 +727,10 @@ exit `$LASTEXITCODE
   $global:LASTEXITCODE = 0
   $threw = $false
   $script:message = ''
+  # variables of the user with the names of the parameters
+  $Version = 'mine'
+  $BinDir = 'mine'
+  $Uninstall = 'mine'
   try { Invoke-Expression $text *> $null } catch { $threw = $true; $script:message = "$($_.Exception.Message) @ $($_.InvocationInfo.PositionMessage)" }
   $afterOk = @{ threw = $threw; code = $LASTEXITCODE; eap = $ErrorActionPreference; progress = $ProgressPreference }
   $strictOk = $true
@@ -742,7 +746,8 @@ exit `$LASTEXITCODE
   Check "iex failure: session alive, LASTEXITCODE not 0 (threw=$($afterFail.threw) code=$($afterFail.code))" ($afterFail.threw -and ($afterFail.code -ne 0))
   Check 'iex leaks no preference or strict mode' ($strictOk -and ($afterOk.eap -eq 'Continue') -and ($afterFail.eap -eq 'Continue') -and ($afterFail.progress -eq 'Continue'))
   Check 'iex leaks no function or variable' ((-not (Get-Command Fail, Get-Remote, Add-UserPathEntry -ErrorAction SilentlyContinue)) -and
-    (-not (Get-Variable Repo, State, NoModifyPath, SignerIdentity -ErrorAction SilentlyContinue)) -and ($base -ceq $baseBefore))
+    (-not (Get-Variable Repo, State, NoModifyPath, SignerIdentity, MothdexVersion -ErrorAction SilentlyContinue)) -and ($base -ceq $baseBefore))
+  Check 'iex keeps the variables of the user' (($Version -ceq 'mine') -and ($BinDir -ceq 'mine') -and ($Uninstall -ceq 'mine') -and (-not (Get-Variable Mothdex* -ErrorAction SilentlyContinue)))
   Check 'TLS settings are not weakened' (([int][Net.ServicePointManager]::SecurityProtocol -band [int]$tlsBefore) -eq [int]$tlsBefore)
 } finally {
   if ($null -ne $savedPath) { $envKey.SetValue('Path', $savedPath, $savedKind) } else { $envKey.DeleteValue('Path', $false) }
