@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+var temporaryName = regexp.MustCompile(`^\.mothdex-(write-probe|json)-[0-9]+$`)
 var stagingName = regexp.MustCompile(`^\.mothdex-update-[0-9]+$`)
 var stagingMember = regexp.MustCompile(`^(?:mothdex(?:-gui)?(?:\.exe)?|SDL2\.dll|mothdex(?:-gui)?_[0-9A-Za-z.+_-]+\.(?:tar\.gz|zip))$`)
 var oldSuffix = regexp.MustCompile(`^(?:\.old(?:-[a-zA-Z0-9]+)?|\.failed)$`)
@@ -50,7 +51,7 @@ func cleanupOld(exeDir string, log *slog.Logger, now time.Time) {
 		if err != nil || isReparse(st) || st.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
-		remove := false
+		remove := temporaryName.MatchString(entry.Name()) && st.Mode().IsRegular() && now.Sub(st.ModTime()) > time.Hour
 		for _, base := range names {
 			suffix, ok := strings.CutPrefix(entry.Name(), base)
 			if ok && oldSuffix.MatchString(suffix) && st.Mode().IsRegular() {

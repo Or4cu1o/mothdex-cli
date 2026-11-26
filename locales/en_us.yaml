@@ -8,7 +8,7 @@ errors:
     hint: 'Install using the one-line command for your OS: {install_command}'
   update_failed:
     message: 'The update could not be completed.'
-    hint: 'If the previous version was restored, try mothdex upgrade again later; otherwise reinstall: {install_command}'
+    hint: 'Reinstall with the official command: {install_command}'
   usage:
     message: 'Invalid usage: {detail}'
     hint: 'Run "mothdex {command} --help".'
@@ -57,7 +57,7 @@ errors:
     message: 'The downloaded file has the wrong size ({got} of {expected}).'
     hint: 'Try again, or choose another link with --link.'
   integrity:
-    message: 'The downloaded file is corrupt (archive check failed).'
+    message: 'The downloaded content failed integrity or origin verification.'
     hint: 'Try again, or choose another link with --link.'
   permission_denied:
     message: 'Cannot write to {path}.'
@@ -1119,4 +1119,7 @@ update:
   available: 'New version available: {current} → {latest}. Run mothdex upgrade.'
   updated: 'Updated {current} → {latest} (verification: {signature}).'
   restart: 'Exit and open Mothdex again to use the new version.'
+  restored_hint: 'Your previous version was restored. Try again later.'
+  unchanged_hint: 'Nothing in your installation changed. Your previous version is still in place.'
+  tamper_hint: 'Possible tampering: do not reinstall from this release. Report the verification failure.'
   verification_hint: 'Release origin could not be verified. If the signing root rotated, reinstall with the official command: {install_command}'

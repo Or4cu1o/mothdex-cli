@@ -21,6 +21,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/update"
+	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
 type countingTransport struct{ calls atomic.Int64 }
@@ -155,7 +156,11 @@ func testUpgradeExamples(t *testing.T, example string) {
 			if goruntime.GOARCH == "arm" {
 				t.Skip("GOARM target covered in internal/update")
 			}
-			state := update.State{SchemaVersion: 1, Source: "installer", Installer: "install.sh", Dir: dir, Version: "0.1.0", Target: target, Profile: "generic", InstalledAt: "2026-11-26T14:00:00Z", UpdatedAt: "2026-11-26T14:00:00Z", UpdatedBy: "installer"}
+			current := "0.1.0"
+			if strings.HasPrefix(line, "downgrade") {
+				current = "0.3.0"
+			}
+			state := update.State{SchemaVersion: 1, Source: "installer", Installer: "install.sh", Dir: dir, Version: current, Target: target, Profile: "generic", InstalledAt: "2026-11-26T14:00:00Z", UpdatedAt: "2026-11-26T14:00:00Z", UpdatedBy: "installer"}
 			if goruntime.GOOS == "windows" {
 				state.Installer = "install.ps1"
 			}
@@ -164,7 +169,7 @@ func testUpgradeExamples(t *testing.T, example string) {
 				t.Fatal(err)
 			}
 			makeUpdater := func(channel string) (*update.Updater, error) {
-				return update.New(update.Options{Exe: exe, Current: "0.1.0", Channel: channel, DataDir: t.TempDir(), Client: &http.Client{Transport: upgradeExampleTransport{archive.Bytes(), target}}, Verifier: exampleVerifier{}})
+				return update.New(update.Options{Exe: exe, Current: current, Channel: channel, DataDir: t.TempDir(), Client: &http.Client{Transport: upgradeExampleTransport{archive.Bytes(), target}}, Verifier: exampleVerifier{}})
 			}
 			u, err := makeUpdater("stable")
 			if err != nil {
@@ -176,6 +181,34 @@ func testUpgradeExamples(t *testing.T, example string) {
 			d.IsTerminal = func(any) bool { return true }
 			d.Open = func(context.Context, Globals) (*Session, error) {
 				return &Session{T: d.Translator("en_us"), Updater: u, NewUpdater: makeUpdater, UpdateChannel: "stable"}, nil
+			}
+			if strings.HasPrefix(line, "downgrade") {
+				var stderr bytes.Buffer
+				d.Stderr = &stderr
+				args := []string{"upgrade", "--version", "0.2.0", "-f"}
+				if line == "downgrade_json" {
+					args = append(args, "--json")
+				}
+				if code := Execute(context.Background(), d, args); code != 0 {
+					t.Fatalf("exit %d: %s %s", code, out, stderr.String())
+				}
+				if line == "downgrade_json" {
+					var doc struct {
+						Data struct {
+							Downgrade bool `json:"downgrade"`
+						}
+						Warnings []string
+					}
+					if e := json.Unmarshal(out.Bytes(), &doc); e != nil {
+						t.Fatal(e)
+					}
+					if !doc.Data.Downgrade || len(doc.Warnings) == 0 || !strings.Contains(doc.Warnings[0], "0.3.0") {
+						t.Fatalf("missing downgrade warning: %s", out)
+					}
+				} else if !strings.Contains(stderr.String(), "Downgrade") || !strings.Contains(stderr.String(), "0.3.0") || !strings.Contains(stderr.String(), "0.2.0") {
+					t.Fatalf("missing downgrade warning: %s", stderr.String())
+				}
+				return
 			}
 			if line == "cancel_prompt" {
 				ctx, cancel := context.WithCancel(context.Background())
@@ -307,4 +340,38 @@ func (r cancelPromptReader) Read(b []byte) (int, error) {
 }
 func TestUpgradePromptCancellation(t *testing.T) {
 	testUpgradeExamples(t, "cancel_prompt\nshell_abort")
+}
+
+func TestForcedDowngradeWarning(t *testing.T) {
+	testUpgradeExamples(t, "downgrade_human\ndowngrade_json")
+}
+
+type updateErrorService struct{ Service }
+
+func (updateErrorService) DBInfo(context.Context) (app.Result[mothdex.DBInfo], error) {
+	return app.Result[mothdex.DBInfo]{}, &app.Error{Code: app.CodeNetwork, Message: "offline test failure"}
+}
+func TestNoticeFollowsCommandFailure(t *testing.T) {
+	d, out := helpDeps(t)
+	d.IsTerminal = func(any) bool { return true }
+	exe := filepath.Join(t.TempDir(), "mothdex")
+	if err := os.WriteFile(exe, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	u, err := update.New(update.Options{Exe: exe, Current: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := make(chan update.CheckResult, 1)
+	ready <- update.CheckResult{Current: "1.0.0", Latest: "2.0.0", Available: true, Notify: true}
+	r := &runtime{ctx: context.Background(), d: d, sess: &Session{Svc: updateErrorService{}, T: d.Translator("en_us"), Updater: u}, updateResult: ready}
+	if code := r.execute([]string{"db-info"}); code == 0 {
+		t.Fatal("missing command error")
+	}
+	output := out.String()
+	notice := strings.Index(output, "New version available")
+	failure := strings.Index(output, "error:")
+	if failure < 0 || notice < 0 || notice < failure {
+		t.Fatalf("notice before error: %s", output)
+	}
 }

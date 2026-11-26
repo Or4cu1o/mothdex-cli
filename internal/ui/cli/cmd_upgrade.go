@@ -16,6 +16,7 @@ type upgradeData struct {
 	Current         string `json:"current"`
 	Latest          string `json:"latest"`
 	Available       bool   `json:"available"`
+	Downgrade       bool   `json:"downgrade"`
 	Updated         bool   `json:"updated"`
 	Channel         string `json:"channel"`
 	Signature       string `json:"signature"`
@@ -62,15 +63,26 @@ func (r *runtime) upgradeCmd() *cobra.Command {
 				data.Available = result.Available
 			} else {
 				result, err := u.Apply(ctx, update.ApplyOptions{Version: version, AllowDowngrade: version != "", Confirm: func(st update.Staged) bool {
-					if r.g.Force {
-						return true
-					}
 					p := r.printer()
 					kind := "update.confirm"
 					if st.Downgrade {
 						kind = "update.confirm_downgrade"
 					}
-					_, _ = fmt.Fprintf(p.err, "%s\n%s\n", clean(p.T(kind, i18n.Args{"current": st.From, "latest": st.To, "signature": signatureLabel(st.Signature)})), st.Notes)
+					message := clean(p.T(kind, i18n.Args{"current": st.From, "latest": st.To, "signature": signatureLabel(st.Signature)}))
+					data.Downgrade = st.Downgrade
+					if st.Downgrade {
+						p.warns = append(p.warns, message)
+						if !r.g.JSON {
+							_, _ = fmt.Fprintln(p.err, message)
+						}
+					}
+					if r.g.Force {
+						return true
+					}
+					if !st.Downgrade {
+						_, _ = fmt.Fprintln(p.err, message)
+					}
+					_, _ = fmt.Fprintln(p.err, st.Notes)
 					answer, err := r.readUpdateAnswer(ctx, p.T("update.prompt", nil)+" ")
 					return err == nil && p.isYes(strings.TrimSpace(answer))
 				}})

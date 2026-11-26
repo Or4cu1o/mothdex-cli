@@ -22,6 +22,7 @@ const stateName = ".mothdex-install.json"
 
 // State is the v1 installer record. Paths are data and never direct update writes.
 type State struct {
+	extra         []stateField
 	SchemaVersion int    `json:"schema_version"`
 	Source        string `json:"source"`
 	Installer     string `json:"installer"`
@@ -44,14 +45,19 @@ type State struct {
 }
 
 // InstallCommand is the recovery command for this OS.
-func InstallCommand() string {
-	if runtime.GOOS == "windows" {
+func InstallCommand() string { return installCommand(runtime.GOOS) }
+func installCommand(goos string) string {
+	if goos == "windows" {
 		return "irm https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1 | iex"
 	}
 	return "curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh | sh"
 }
 func failure(code, reason string, cause error) *app.Error {
-	return &app.Error{Code: code, Message: reason, Cause: cause, Args: map[string]any{"reason": reason, "restored": false, "install_command": InstallCommand()}}
+	e := &app.Error{Code: code, Message: reason, Cause: cause, Args: map[string]any{"reason": reason, "restored": true, "install_command": InstallCommand()}}
+	if code == app.CodeUpdateFailed && reason != "gui_missing" {
+		e.Args["hint_key"] = "update.unchanged_hint"
+	}
+	return e
 }
 func unavailable(reason string, cause error) error {
 	return failure(app.CodeUpdateUnavailable, reason, cause)
@@ -117,7 +123,7 @@ func decode(b []byte, v any, strict bool) error {
 	return nil
 }
 
-// Managed revalidates the install state and the actual executable directory on every call.
+// Managed revalidates state and directory trust without writing to the installation.
 func (u *Updater) Managed() (State, error) {
 	var s State
 	if !validVersion(u.o.Current) || strings.HasSuffix(target(), "_") {
@@ -154,17 +160,21 @@ func (u *Updater) Managed() (State, error) {
 	if !validState(s) {
 		return s, unavailable("bad_state", nil)
 	}
+	return s, nil
+}
+
+func writeProbe(dir string) error {
 	f, err := os.CreateTemp(dir, ".mothdex-write-probe-")
 	if err != nil {
-		return s, unavailable("read_only", err)
+		return unavailable("read_only", err)
 	}
 	name := f.Name()
 	cerr := f.Close()
 	rerr := os.Remove(name)
 	if cerr != nil || rerr != nil {
-		return s, unavailable("read_only", fmt.Errorf("write probe cleanup failed"))
+		return unavailable("read_only", fmt.Errorf("write probe cleanup failed"))
 	}
-	return s, nil
+	return nil
 }
 func samePath(a, b string) bool {
 	a, b = filepath.Clean(a), filepath.Clean(b)
@@ -252,7 +262,13 @@ func atomicJSON(path string, v any, mode os.FileMode) error {
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	b, err := json.MarshalIndent(v, "", "  ")
+	var b []byte
+	var err error
+	if s, ok := v.(State); ok {
+		b, err = marshalState(s)
+	} else {
+		b, err = json.MarshalIndent(v, "", "  ")
+	}
 	if err != nil {
 		return err
 	}

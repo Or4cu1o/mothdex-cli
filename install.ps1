@@ -3,9 +3,9 @@
   Mothdex installer for Windows and RetroBat (Windows PowerShell 5.1 or PowerShell 7).
 
 .DESCRIPTION
-  Download this file, read it, then run it. Do not pipe it into Invoke-Expression:
-    Invoke-WebRequest https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.ps1 -OutFile install.ps1
-    .\install.ps1 -DryRun
+  Run it in one line, or download it, read it and run it (README "Install"; docs/adr/ADR-0003-pipe-install.md says
+  what the checks below cover and what they cannot). Options after a download in one line:
+    & ([scriptblock]::Create((irm <url>))) -NoGui
 
   It downloads only from https://github.com/Or4cu1o/mothdex-cli/releases (the base URL is fixed in this file), checks
   the zip's SHA-256 against checksums.txt of the same release (always), verifies the cosign signature of checksums.txt
@@ -18,7 +18,8 @@
   docs/contracts/cli/release-artifacts.md.
 
 .PARAMETER Version
-  Release to install (X.Y.Z or vX.Y.Z; pre-releases only by naming them). Default: the latest non-pre-release.
+  Release to install (X.Y.Z or vX.Y.Z; pre-releases only by naming them). Default: the release this installer came
+  with, else the latest non-pre-release.
 .PARAMETER RetroBatPath
   RetroBat folder (contains RetroBat.exe and retrobat.ini). Default: C:\RetroBat when RetroBat.exe is there.
 .PARAMETER BinDir
@@ -85,6 +86,9 @@ $Uninstall = $MothdexUninstall
 $ProgressPreference = 'SilentlyContinue'
 
 $Repo = 'Or4cu1o/mothdex-cli'
+# The release this copy installs by default; empty in the repository, set in the published asset (stamp-installers.sh).
+$StampedVersion = ''
+if (-not $Version) { $Version = $StampedVersion }
 $Base = "https://github.com/$Repo/releases"
 $SignerIdentity = "https://github.com/$Repo/.github/workflows/release.yml@refs/tags/"
 $OidcIssuer = 'https://token.actions.githubusercontent.com'

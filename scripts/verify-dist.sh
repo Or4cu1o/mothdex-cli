@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Verifies the GoReleaser output in a dist directory: archive names and
 # contents, binary format and build settings per target, version info,
-# SBOMs and checksums, and the GUI archives (members, loader, gui tag, the
-# pinned SDL2.dll). Runs the linux CLI binaries (arm via qemu-user-static).
+# SBOMs and checksums, the GUI archives (members, loader, gui tag, the
+# pinned SDL2.dll) and the stamped installers. Runs the linux CLI binaries (arm via qemu-user-static).
 #
 # Usage: scripts/verify-dist.sh [dist-dir] [expected-version]
 # Without an expected version the version must look like X.Y.Z-snapshot.
@@ -206,7 +206,20 @@ $(diff <(echo "$want_members") <(echo "$members") || true)"
 done
 [ "$sdl2_checked" -eq 1 ] || fail "the Windows GUI archive was not checked"
 
-# checksums.txt lists exactly the expected archives and SBOMs and they match.
+# The installers (ADR-0003, T-110 TM-5): present, stamped with this version, and otherwise the committed files.
+scripts/stamp-installers.sh "$version" "$tmp/installers" || fail "could not stamp the installers"
+for f in install.sh install.ps1 install.cmd; do
+  expected_files+=("$f")
+  [ -f "$dist/$f" ] || fail "missing installer $f"
+  cmp -s "$tmp/installers/$f" "$dist/$f" || fail "$f is not the committed installer stamped with $version"
+done
+grep -qxF "STAMPED_VERSION=\"$version\"" "$dist/install.sh" || fail "install.sh is not stamped with $version"
+grep -qxF "\$StampedVersion = '$version'" "$dist/install.ps1" || fail "install.ps1 is not stamped with $version"
+grep -qF "releases/download/v$version/install.ps1" "$dist/install.cmd" || fail "install.cmd does not fetch the install.ps1 of v$version"
+! grep -qF "releases/latest/download" "$dist/install.cmd" || fail "install.cmd still fetches the latest release"
+[ "$(grep -c $'\r$' "$dist/install.cmd")" -eq "$(wc -l <"$dist/install.cmd")" ] || fail "install.cmd does not have CRLF line ends"
+
+# checksums.txt lists exactly the expected archives, SBOMs and installers and they match.
 [ -s "$dist/checksums.txt" ] || fail "checksums.txt missing or empty"
 listed="$(awk '{print $2}' "$dist/checksums.txt" | sort)"
 want_list="$(printf '%s\n' "${expected_files[@]}" | sort)"

@@ -10,3 +10,10 @@ No UI should apply an update without explicit confirmation. `RestartRequired` te
 
 Tests use TLS fixture servers, generated binary probes and temporary installation records, never production services.
 T-110 TM-29 through TM-40 and `docs/contracts/cli/update.md` define the security boundary.
+
+Managed checks are read-only. Apply probes writability after locking, and gives preparation a ten-minute budget;
+confirmation has no preparation deadline. Explicit checks take at most thirty seconds; background checks take three.
+Headers have a fifteen-second limit and each response body a thirty-second idle limit. Future THIRD_PARTY notices
+are discarded within the bounded archive policy. Only known GUI notices refresh mothdex-licenses via a private folder
+and rename; unknown entries preserve the existing folder. The statfs exception for permissionless filesystems is
+shared with the logging and installer policy while effective-user ownership remains mandatory on Unix.

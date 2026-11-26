@@ -89,6 +89,13 @@ Removing a field or changing its meaning bumps the version.
 - **Installer, last step of a successful install or reinstall,** after the binaries are in place and `--version`
   passed (TM-11), and after the alias and PATH entry. A reinstall keeps `installed_at` and keeps the `path_*` fields when it adds nothing new, then rewrites
   the rest. `--dry-run` writes nothing.
+- **Exception: relinking a Windows alias that is ours** (R-145). The alias is part of the binary set, so it follows
+  `mothdex.exe` and is relinked right after the swap, even when the new binary's `--version` then fails. The
+  installer keeps a failing binary in place and does not restore it, so `mdex` and `mothdex` start the same file.
+  - At the same moment the installer rewrites only `alias_file_id` in the existing state, so the field always
+    describes the link on disk.
+  - Everything else still waits for `--version` to pass (TM-11): creating, renaming or removing an alias name, PATH,
+    and the rest of the state.
 - **Installs from 0.1.x** have no file. Running the one-line installer again creates it; until then `mothdex upgrade`
   reports `update_unavailable` (update.md §6).
 - **`internal/update`, after a successful swap and its check (update.md §4).** It sets `version`, `target`, `gui`,

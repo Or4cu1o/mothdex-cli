@@ -17,8 +17,14 @@ Every GitHub release `vX.Y.Z` (tag with a `v`) contains exactly:
 | `mothdex_<version>_<os>_<arch>.<ext>.sbom.json` | one SBOM per archive |
 | `checksums.txt` | `sha256  <asset>` for every archive and SBOM (GNU `sha256sum` format) |
 | `checksums.txt.sigstore.json` | keyless cosign bundle for `checksums.txt` |
+| `install.sh`, `install.ps1`, `install.cmd` | the installers of this release, from v0.2.0 on (ADR-0003, T-110 TM-5). Each is **stamped** by `scripts/stamp-installers.sh`. The default version is this release: `STAMPED_VERSION` in `install.sh`, `$StampedVersion` in `install.ps1`. `install.cmd` fetches the `install.ps1` of `releases/download/v<version>/` and has CRLF line ends. Apart from the stamp, each is the committed file. They are listed in `checksums.txt`, so the cosign bundle and the attestations cover them. |
 
 - `<version>` is the tag **without** the leading `v` (`0.1.0`, `0.2.0-rc.1`). A tag containing `-` is a pre-release.
+- **Installer assets.** The canonical one-line URLs are `https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.<ext>`,
+  kept in one place in the README (TM-6). `releases/latest` never serves a pre-release.
+  - `scripts/verify-dist.sh` rebuilds the stamped files and compares them byte for byte with the release assets. It
+    refuses an `install.cmd` that still points at `releases/latest`, or that lacks CRLF line ends.
+  - Releases before v0.2.0 have no installer assets.
 - Inside each archive: the binary at the **root** (`mothdex`, or `mothdex.exe` on Windows; the tar keeps mode `0755`),
   plus `LICENSE`, `README.md`, `CHANGELOG.md` and `THIRD_PARTY/go-modules-mothdex.txt` (the licence texts of the Go modules linked into
   that binary). No top-level directory.
