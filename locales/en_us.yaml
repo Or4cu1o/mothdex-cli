@@ -3,6 +3,12 @@ locale:
   name: 'English'
   iso_code: 'en-US'
 errors:
+  update_unavailable:
+    message: 'This installation cannot be updated by mothdex.'
+    hint: 'Install using the one-line command for your OS: {install_command}'
+  update_failed:
+    message: 'The update could not be completed.'
+    hint: 'If the previous version was restored, try mothdex upgrade again later; otherwise reinstall: {install_command}'
   usage:
     message: 'Invalid usage: {detail}'
     hint: 'Run "mothdex {command} --help".'

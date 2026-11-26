@@ -169,3 +169,13 @@ func describe(c *cobra.Command) CommandInfo {
 	}
 	return info
 }
+
+// HelpTopics lists registered reference topics so the Shell can route help consistently.
+func (r *Runner) HelpTopics() []string {
+	topics := append(referenceTopics(), r.d.HelpTopics...)
+	names := make([]string, 0, len(topics))
+	for _, topic := range topics {
+		names = append(names, topic.Name)
+	}
+	return names
+}

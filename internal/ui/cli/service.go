@@ -81,6 +81,14 @@ type Session struct {
 
 // Deps are the things the commands need from the outside: tests replace all of them.
 type Deps struct {
+	// ProgramName is the invoked name; empty uses os.Args[0].
+	ProgramName string
+
+	// HelpTopics extends help without coupling commands to another interface.
+	HelpTopics []HelpTopic
+	// Executable locates the CLI for the sibling GUI launcher; nil uses os.Executable.
+	Executable func() (string, error)
+
 	// Open builds the service for one run (config, cache, client, downloader). It is called once,
 	// after the global flags are parsed, and only by commands that need a service.
 	Open func(ctx context.Context, g Globals) (*Session, error)
