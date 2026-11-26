@@ -783,7 +783,8 @@ test) does the same.
 - **Crash screen** (after a panic of the run loop): `Something went wrong` in `error` color, one sentence that asks for
   the logs and the ref, `code · ref`, the log path, then `[Export logs]` (focused) and `[Quit]`. Hints: `(A) Choose`,
   `(B) Quit`; Start does nothing and is not shown.
-- Messages come from `errors.<code>.message`. **Hints** come from `errors.<code>.hint`, except where the CLI hint names
+- Messages come from the error's `message_key` when it names one that can be shown, else from `errors.<code>.message`,
+  as in the CLI. **Hints** come from `errors.<code>.hint`, except where the CLI hint names
   a flag or command the couch user cannot type; those codes use GUI hints `ui.gui.hints.<code>`:
 
 | Code | GUI hint |

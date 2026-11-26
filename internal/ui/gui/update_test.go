@@ -123,6 +123,22 @@ func TestAFailedUpdateShowsItsCodeAndRef(t *testing.T) {
 	h.mustNotMatch(`Close and open`)
 }
 
+// An error that names a more precise message (Args message_key) is shown with it, as on the command line. A key
+// that does not exist, or lacks a value, falls back to the message of the code.
+func TestAMessageKeyNamesTheMessage(t *testing.T) {
+	m := openSettingsFromHome(t, settingsFixture(), 1280, 720).m
+	for _, c := range []struct{ name, key, want string }{
+		{"known", "errors.update_failed.message", "The update could not be completed."},
+		{"unknown", "update.errors.no_such.message", "The downloaded content failed integrity or origin verification."},
+		{"unfilled", "errors.not_found.message", "The downloaded content failed integrity or origin verification."},
+	} {
+		f := m.failureOf(&app.Error{Code: "integrity", Message: "checksum_mismatch", Args: map[string]any{"message_key": c.key}})
+		if f.msg != c.want {
+			t.Errorf("%s: message %q, want %q", c.name, f.msg, c.want)
+		}
+	}
+}
+
 // A failed update says what to do next: whether the old version is back, the command that installs again when it
 // is not, and the updater's own hint when it has one.
 func TestAFailedUpdateShowsHowToRecover(t *testing.T) {
