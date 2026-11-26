@@ -37,12 +37,12 @@ func TestCleanupKeepsForeignFilesAndActiveStaging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	CleanupOld(s.Dir, nil)
+	cleanupOld(s.Dir, nil, time.Date(2026, 11, 26, 15, 0, 0, 0, time.UTC))
 	if _, err = os.Stat(old); err != nil {
 		t.Fatal("cleanup touched active update backup")
 	}
 	unlock()
-	CleanupOld(s.Dir, nil)
+	cleanupOld(s.Dir, nil, time.Date(2026, 11, 26, 15, 0, 0, 0, time.UTC))
 	for _, p := range []string{old, stage} {
 		if _, err = os.Stat(p); !os.IsNotExist(err) {
 			t.Fatalf("did not clean %s: %v", p, err)
