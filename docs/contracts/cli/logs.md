@@ -33,8 +33,10 @@ bundles/mothdex-logs-<yyyymmdd-hhmmss>.zip
   - **Exception:** FAT, exFAT and NTFS mounts have no permission bits; this is proven with `statfs`, never by
     reading the mode. On those, the mode check is skipped, and the session header plus `logs path` carry a WARN line
     `log folder has no file permissions`.
-  - **Windows:** a folder, or a file this process did not create, must be owned by the current user or by the token's
-    default owner (the Administrators group when the process runs elevated). Volumes without access lists (FAT,
+  - **Windows:** a folder, or a file this process did not create, must have one of these owners: the current user,
+    the token's default owner (Administrators when the process runs elevated), SYSTEM (`S-1-5-18`), Administrators
+    (`S-1-5-32-544`) or TrustedInstaller. This is the same trusted set as install.ps1 and the managed gate
+    (install-state.md §4). Volumes without access lists (FAT,
     exFAT, which have no `FILE_PERSISTENT_ACLS`) skip this check, with the same WARN line as above.
 - **Size caps (TM-23).** A session file stops at 20 MiB, after one `log truncated` line. A crash file stops at 1 MiB.
 - **No session file for:** the cobra `__complete` and `__completeNoDesc` commands, `completion`, `version`, `--version`
