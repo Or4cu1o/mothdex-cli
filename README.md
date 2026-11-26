@@ -28,7 +28,7 @@ Command-line client for the [Mothdex](https://api.mothdex.net) API.
 ## Install
 
 Download `install.sh` (or `install.ps1` on Windows) from this repository, read it, and run it; it
-verifies checksums and signatures before installing, and adds the install folder to your PATH (`--no-modify-path` /
+verifies checksums and signatures before installing, creates the short name `mdex`, and adds the install folder to your PATH (`--no-modify-path` /
 `-NoModifyPath` to do it yourself). Details and options:
 [docs/release.md](docs/release.md#installing).
 

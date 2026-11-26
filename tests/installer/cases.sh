@@ -240,7 +240,7 @@ reset() {
     /tmp/pwn /tmp/pwn-abs /tmp/victim /tmp/victimdir /tmp/nocurl /tmp/nocurl2 /tmp/ghonly /tmp/probe.env /tmp/probe.where "$FAKE_LOG.refresh" "$FAKE_LOG.timeout" "$FAKE_LOG.curlfirst" "$FAKE_LOG" "$FAKE_LOG.cosign" "$FAKE_LOG.gh" 2>/dev/null
   : >"$FAKE_LOG"
   mkdir -p /home/u /opt
-  rm -rf /tmp/stdin.seen /tmp/readers /tmp/fishbin /tmp/cut.sh
+  rm -rf /tmp/stdin.seen /tmp/readers /tmp/fishbin /tmp/cut.sh /tmp/foreign
   unset SHELL ZDOTDIR LANG LC_ALL LC_MESSAGES
   HOME=/home/u
   FAKE_UNAME_S=Linux
@@ -1332,7 +1332,7 @@ mkdir -p /tmp/readers
 printf '#!/bin/sh\ncat >>/tmp/stdin.seen\nexit 0\n' >/tmp/readers/cosign
 chmod 0755 /tmp/readers/cosign
 PATH=$SHIMS:/tmp/readers:$BASE_PATH piped --version v1.0.6
-check "install completes" out_has "Test: mothdex --version"
+check "install completes" out_has "Test: mdex --version"
 check "the readers ran and saw an empty stdin (TM-2)" test -f /tmp/stdin.seen -a ! -s /tmp/stdin.seen
 
 reset truncated-download
@@ -1358,6 +1358,176 @@ fs_batocera
 inst --version v1.4.7
 check "from 0.2.0: exit 1 is an error" rc_is 1
 check "from 0.2.0: reported as a probe error" out_has "mothdex-gui --probe (exit 1)"
+INST_LAUNCHER=1
+
+# --- the shortcut (T-110 TM-12, TM-13) ------------------------------------------------------------------------------
+INST_LAUNCHER=0
+link_to_mothdex() { [ -L "$1" ] && [ "$(readlink "$1")" = mothdex ]; }
+fake_cmd() { mkdir -p /tmp/foreign && printf '#!/bin/sh\necho foreign\n' >"/tmp/foreign/$1" && chmod 0755 "/tmp/foreign/$1"; }
+
+reset alias-default
+inst --version v1.2.3
+check "exit 0" rc_is 0
+check "mdex is a relative link to mothdex" link_to_mothdex $GB/mdex
+check "mdex runs" runs_ok $GB/mdex --version
+check "state records it" file_has $ST '"alias": "mdex"'
+check "state kind" file_has $ST '"alias_kind": "symlink"'
+check "message" out_has "Shortcut: mdex"
+check "test line uses it" out_has "Test: mdex --version"
+PATH=$PATH:$GB inst --version v1.0.6
+check "upgrade keeps it" link_to_mothdex $GB/mdex
+check "and it runs the new version" text_is "$($GB/mdex --version </dev/null)" "mothdex 1.0.6"
+check "no second shortcut" absent $GB/mthd
+inst --uninstall
+check "uninstall removes it" absent $GB/mdex
+
+reset alias-conflict
+fake_cmd mdex
+PATH=$PATH:/tmp/foreign inst --version v1.2.3
+check "exit 0" rc_is 0
+check "foreign mdex on PATH: not shadowed" absent $GB/mdex
+check "fallback mthd" link_to_mothdex $GB/mthd
+check "warned" out_has "mdex is already used (/tmp/foreign/mdex)"
+check "state records mthd" file_has $ST '"alias": "mthd"'
+check "foreign file unchanged" text_is "$(/tmp/foreign/mdex)" foreign
+PATH=$PATH:/tmp/foreign inst --uninstall
+check "uninstall removes mthd" absent $GB/mthd
+check "foreign mdex kept" test -x /tmp/foreign/mdex
+
+reset alias-file-in-bin-dir
+mkdir -p $GB
+echo mine >$GB/mdex
+inst --version v1.2.3
+check "a user file is not overwritten" text_is "$(cat $GB/mdex)" mine
+check "fallback" link_to_mothdex $GB/mthd
+inst --uninstall
+check "uninstall keeps the user file" text_is "$(cat $GB/mdex)" mine
+
+reset alias-foreign-link-to-mothdex
+mkdir -p $GB
+ln -s mothdex $GB/mdex
+inst --version v1.2.3
+check "a link the state does not record is not claimed" file_has $ST '"alias": "mthd"'
+inst --uninstall
+check "and it survives uninstall" test -L $GB/mdex
+
+reset alias-both-taken
+fake_cmd mdex
+fake_cmd mthd
+PATH=$PATH:/tmp/foreign inst --version v1.2.3
+check "exit 0" rc_is 0
+check "none created" absent_all $GB/mdex $GB/mthd
+check "says so" out_has "No shortcut:"
+check "state has none" file_has $ST '"alias": ""'
+check "test line uses mothdex" out_has "Test: mothdex --version"
+
+reset alias-chosen
+inst --version v1.2.3 --alias mx-1
+check "chosen name" link_to_mothdex $GB/mx-1
+check "no default" absent $GB/mdex
+inst --version v1.2.3
+check "reinstall keeps the chosen name" file_has $ST '"alias": "mx-1"'
+inst --version v1.2.3 --alias=other
+check "a new choice replaces it" link_to_mothdex $GB/other
+check "the old one is removed" absent $GB/mx-1
+inst --version v1.2.3 --no-alias
+check "--no-alias removes ours" absent $GB/other
+check "--no-alias recorded" file_has $ST '"alias": ""'
+check "--no-alias says nothing about a shortcut" out_lacks "hortcut"
+
+reset alias-chosen-taken
+inst --version v1.2.3 --alias ls
+check "a builtin or command name is refused" absent $GB/ls
+check "no fallback for a chosen name" absent_all $GB/mdex $GB/mthd
+inst --version v1.2.3 --alias cd
+check "builtin refused" absent $GB/cd
+
+reset alias-chosen-taken-keeps-previous
+inst --version v1.2.3
+inst --version v1.2.3 --alias ls
+check "exit 0" rc_is 0
+check "the working shortcut stays" link_to_mothdex $GB/mdex
+check "and stays recorded" file_has $ST '"alias": "mdex"'
+check "says so" out_has "keeping the shortcut mdex"
+check "the taken name is not created" absent $GB/ls
+
+reset alias-state-file-id
+inst --version v1.2.3
+check "alias_file_id is empty for a symlink" file_has $ST '"alias_file_id": ""'
+sed '/"alias_file_id"/d' $ST >/tmp/old.json && cp /tmp/old.json $ST
+inst --uninstall
+check "a state without the field is still valid" absent $GB/mdex
+inst --version v1.2.3
+sed 's|"alias_file_id": ""|"alias_file_id": "1:2:3"|' $ST >/tmp/old.json && cp /tmp/old.json $ST
+inst --uninstall
+check "a file ID in a symlink state is invalid" out_has "not a valid install state"
+rm -f /tmp/old.json
+
+reset alias-invalid
+for bad in mothdex mothdex-gui nul com1 lpt9 ../x a/b X Mdex -x 1x m abcdefghijklmnopq 'a b' 'a;b' "$(printf 'ab\ncd')"; do
+  : >"$FAKE_LOG"
+  inst --version v1.2.3 --alias "$bad"
+  check "invalid alias refused: $bad" rc_not0
+  check "and nothing is downloaded: $bad" no_downloads
+done
+inst --version v1.2.3 --alias mx --no-alias
+check "both options refused" rc_not0
+
+reset alias-dry-run
+inst --version v1.2.3 --dry-run
+check "dry run names it" out_has "Would create the shortcut $GB/mdex"
+check "dry run creates nothing" absent $GB/mdex
+
+reset alias-not-on-failure
+inst --version v1.0.5
+check "no shortcut when --version fails" absent $GB/mdex
+
+reset alias-hostile-state
+inst --version v1.2.3
+cp $ST /tmp/good.json
+echo keep >/tmp/victim
+for bad in 's|"alias": "mdex"|"alias": "../../../../tmp/victim"|' 's|"alias": "mdex"|"alias": "mothdex"|' 's|"alias_kind": "symlink"|"alias_kind": "hardlink"|'; do
+  sed "$bad" /tmp/good.json >$ST
+  mkdir -p $GB && : >$GB/mothdex
+  inst --uninstall
+  check "warned ($bad)" out_has "not a valid install state"
+  check "nothing it names is removed ($bad)" test -L $GB/mdex -a -f /tmp/victim
+done
+rm -f /tmp/good.json
+
+reset alias-replaced-by-user
+inst --version v1.2.3
+rm $GB/mdex
+echo mine >$GB/mdex
+inst --uninstall
+check "a file that replaced our link is kept" text_is "$(cat $GB/mdex)" mine
+INST_LAUNCHER=1
+
+# --- macOS: bash is a login shell there -----------------------------------------------------------------------------
+INST_LAUNCHER=0
+mac() { FAKE_UNAME_S=Darwin FAKE_UNAME_M=arm64 SHELL=/bin/bash inst --version v1.2.3 "$@"; }
+reset mac-bash-new
+mac
+check "exit 0" rc_is 0
+check "line in ~/.bash_profile" count_is /home/u/.bash_profile "$LINE" 1
+check "bashrc not written" absent /home/u/.bashrc
+check "state records it" file_has $ST '"path_file": "/home/u/.bash_profile"'
+mac --uninstall
+check "uninstall removes the line" count_is /home/u/.bash_profile "$LINE" 0
+reset mac-bash-profile-only
+printf 'x\n' >/home/u/.profile
+mac
+check "an existing ~/.profile is used" count_is /home/u/.profile "$LINE" 1
+check "and not shadowed by a new ~/.bash_profile" absent /home/u/.bash_profile
+reset mac-bash-login
+printf 'x\n' >/home/u/.bash_login
+mac
+check "bash_login is not written" text_is "$(cat /home/u/.bash_login)" x
+check "and nothing shadows it" absent /home/u/.bash_profile
+check "command printed" out_has ">> ~/.bash_login"
+reset mac-bash-no-modify
+mac --no-modify-path
+check "block names ~/.bash_profile" out_has ">> ~/.bash_profile"
 INST_LAUNCHER=1
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
