@@ -249,3 +249,7 @@ Other items:
   - `SDL_GAMECONTROLLERCONFIG` and `SDL_VIDEODRIVER` for Ports;
   - SDL2 on Recalbox and muOS;
   - SDL_ttf presence (only for the record).
+
+## Opening from the CLI (T-112)
+
+Use `mothdex gui` or `mdex gui` when the alias is installed. The CLI runs the GUI from its own installation folder and forwards `--config`, `--profile` and `--lang` using the same two-dash spelling. For example: `mothdex gui --config ./mothdex.yaml --profile retrobat --lang pt_br`. The child exit code is preserved. When the GUI is missing, reinstall without `-NoGui` / `--no-gui`, or use `mothdex tui`.
