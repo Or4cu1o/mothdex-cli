@@ -10,6 +10,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
@@ -472,7 +473,14 @@ func errorBody(rt *shared, f failure) []string {
 	if f.hint != "" {
 		lines = append(lines, "  "+f.hint)
 	}
-	return append(lines, "  "+render(rt.st.dim, "code: "+f.code))
+	if f.ref == "" {
+		return append(lines, "  "+render(rt.st.dim, "code: "+f.code))
+	}
+	lines = append(lines, "  "+render(rt.st.dim, cli.CodeLine(rt.t, rt.st.utf8, f.code, f.ref)))
+	if f.log != "" {
+		lines = append(lines, "  "+render(rt.st.dim, cli.LogLine(rt.t, f.log)))
+	}
+	return lines
 }
 
 // bestLink is the link a row's Links and Size columns describe: the first Game link, else the first.

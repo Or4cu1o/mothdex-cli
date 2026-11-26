@@ -24,6 +24,7 @@ type styles struct {
 	g                                       glyphs
 	heading, dim, accent, ok, warn, bad, on lipgloss.Style
 	color                                   bool
+	utf8                                    bool
 }
 
 func newStyles(noColor, utf8 bool) styles {
@@ -44,6 +45,7 @@ func newStyles(noColor, utf8 bool) styles {
 		bad:     fg("1").Bold(true),
 		on:      base.Reverse(true), // the cursor row, always marked with > as well
 		color:   !noColor,
+		utf8:    utf8,
 	}
 }
 

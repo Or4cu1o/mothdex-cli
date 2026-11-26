@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/config"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/locales"
@@ -53,14 +54,25 @@ func runHelp(o options, stdout, stderr io.Writer) int {
 }
 
 // usageError reports a command line the program cannot use, in the interface language, with the exit code of
-// a configuration error.
-func usageError(o options, stderr io.Writer, key string, args i18n.Args) int {
+// a configuration error. A run meant to open the GUI logs it, in English, under a ref.
+func usageError(o options, argv []string, stderr io.Writer, key string, args i18n.Args) int {
 	tr, err := cmdlineTranslator(o.config, o.lang)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "mothdex-gui: %v\n", err)
 		return exitInternal
 	}
-	_, _ = fmt.Fprintf(stderr, "mothdex-gui: %s\n%s\n", tr.T(key, args), tr.T(helpKey+"see_help", nil))
+	_, _ = fmt.Fprintf(stderr, "mothdex-gui: %s\n", tr.T(key, args))
+	if !o.version && !o.probe && !o.spike && !probeByName(argv[0]) {
+		logs := startLog(argv[1:])
+		english := key
+		if en, err := cmdlineTranslator(o.config, i18n.Fallback); err == nil {
+			english = en.T(key, args)
+		}
+		ref := recordError(logs.Logger(), app.CodeUsage, english, nil)
+		_ = logs.Close()
+		support(stderr, tr, app.CodeUsage, ref, logs.SessionPath())
+	}
+	_, _ = fmt.Fprintf(stderr, "%s\n", tr.T(helpKey+"see_help", nil))
 	return exitConfig
 }
 

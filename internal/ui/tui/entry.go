@@ -255,7 +255,7 @@ func (s entryScreen) coverCmd(rt *shared) tea.Cmd {
 			return toastMsg{text: e.T("ui.tui.entry.no_cover", nil), kind: toastWarn}
 		}
 		f := e.failureOf(err)
-		return toastMsg{text: f.msg + " [" + f.code + "]", kind: toastError}
+		return toastMsg{text: f.msg + " " + f.tag(), kind: toastError}
 	}
 }
 

@@ -79,15 +79,20 @@ type (
 
 // Options is what the composition root gives the model.
 type Options struct {
-	Service        Service
-	T              *i18n.Translator
-	Font           *text.Font
-	Display        *text.Font // the display face (Handjet) for short labels; nil draws them in Font at the title size
-	Clock          Clock
-	Log            *slog.Logger
-	DataDir        string // paths.data, where tui_state lives
-	MappingsPath   string // the user's gamecontrollerdb.txt: where a mapping for a joystick SDL does not know is added
-	LogPath        string // the log file, for the internal error text
+	Service      Service
+	T            *i18n.Translator
+	Font         *text.Font
+	Display      *text.Font // the display face (Handjet) for short labels; nil draws them in Font at the title size
+	Clock        Clock
+	Log          *slog.Logger
+	DataDir      string // paths.data, where tui_state lives
+	MappingsPath string // the user's gamecontrollerdb.txt: where a mapping for a joystick SDL does not know is added
+	// LogPath is the log a person is told to send, ready to show (the user's folder abbreviated). It reads the
+	// disk, so the model asks when an error happens or About opens, never while drawing. nil or "" shows none.
+	LogPath func() string
+	// ExportLogs builds the bundle a tester sends and says where it is, ready to show (docs/contracts/cli/logs.md
+	// section 7). Local files only; it runs off the render thread. nil hides the action.
+	ExportLogs     func(context.Context) (string, error)
 	Version        string // shown on the Splash
 	LocaleFallback bool   // the interface language needs a font this screen mode lacks: English is shown
 	Width, Height  int    // the display size at start

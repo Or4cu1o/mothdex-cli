@@ -155,8 +155,7 @@ func (m Model) enqueue(d download) (Model, []Cmd) {
 
 func (m Model) onEnqueued(msg enqueuedMsg, now time.Time) Model {
 	if msg.err != nil {
-		f := m.failureOf(msg.err)
-		return m.withToast(f.msg, toastError, now)
+		return m.withToast(m.report(msg.err, "download").short(), toastError, now)
 	}
 	if msg.replaces != "" { // the stopped job is queued again: the new one takes its place in the list and in the counts
 		m = m.hideJob(msg.replaces)

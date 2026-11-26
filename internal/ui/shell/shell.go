@@ -43,6 +43,7 @@ type runner interface {
 	LastEntry() (mothdex.Entry, bool)
 	Commands() []cli.CommandInfo
 	SetPrompt(fn func(label string) (string, error))
+	Report(code, message string) []string
 }
 
 // service is the part of the app service the Shell uses itself (the banner and Tab).
@@ -160,6 +161,7 @@ func (s *Shell) Loop(ctx context.Context) int {
 		default: // the editor failed: say so, never end silently
 			s.logWarn("cannot read a line", err)
 			_, _ = fmt.Fprintln(s.o.Err, s.bad(s.t("ui.messages.error", nil)+":"), s.t("errors.internal.message", nil))
+			s.report(app.CodeInternal, "cannot read a line: "+err.Error())
 			return 1
 		}
 		quit, code := s.handle(ctx, line)
@@ -403,6 +405,7 @@ func (s *Shell) unknown(name string) int {
 	}
 	_, _ = fmt.Fprintln(s.o.Err, app.SanitizeText(msg))
 	_, _ = fmt.Fprintln(s.o.Err, s.t("ui.shell.type_help", nil))
+	s.report(app.CodeUsage, "unknown command "+name)
 	return exitUsage
 }
 
@@ -415,7 +418,15 @@ func (s *Shell) fail(err error) int {
 	}
 	_, _ = fmt.Fprintln(s.o.Err, s.bad(s.t("ui.messages.error", nil)+":"), app.SanitizeText(msg))
 	_, _ = fmt.Fprintln(s.o.Err, " ", s.t("ui.shell.type_help", nil))
+	s.report(app.CodeUsage, err.Error())
 	return exitUsage
+}
+
+// report prints the code, ref and log lines of a mistake the Shell found itself.
+func (s *Shell) report(code, message string) {
+	for _, line := range s.o.Runner.Report(code, message) {
+		_, _ = fmt.Fprintln(s.o.Err, " ", s.dim(line))
+	}
 }
 
 // say prints a one-line note on stderr, dim.

@@ -51,6 +51,7 @@ func (r *runtime) searchCmd() *cobra.Command {
 	fl.StringVar(&f.sort, "sort", "relevance", "relevance | title | size (current page only)")
 	fl.StringVarP(&f.export, "export", "e", "", "write the results to a file or directory")
 	fl.StringVar(&f.format, "format", "", "export format: txt | json | csv")
+	logValues(fl, "platform", "region", "serial", "page", "page-size", "sort", "format")
 	return c
 }
 
@@ -317,6 +318,7 @@ func (r *runtime) infoCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&slug, "slug", false, "read the argument as a slug")
 	c.Flags().StringArrayVar(&prefer, "prefer", nil, "rank links: key=value[,value...] (repeatable)")
+	logValues(c.Flags(), "slug", "prefer")
 	return c
 }
 
@@ -399,6 +401,7 @@ func (r *runtime) randomCmd() *cobra.Command {
 	fl.StringSliceVarP(&regions, "region", "r", nil, "region id (repeatable)")
 	fl.StringVar(&serial, "serial", "", "exact serial")
 	fl.IntVarP(&count, "count", "n", 1, "how many entries (1..20)")
+	logValues(fl, "platform", "region", "serial", "count")
 	return c
 }
 
@@ -430,6 +433,7 @@ func (r *runtime) platformsCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&brand, "brand", "", "only this brand")
 	c.Flags().StringVar(&class, "class", "", "only this class")
+	logValues(c.Flags(), "brand", "class")
 	return c
 }
 
