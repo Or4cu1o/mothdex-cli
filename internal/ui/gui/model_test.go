@@ -292,11 +292,11 @@ func TestNarrowHomeIsTwoByThree(t *testing.T) {
 func TestAToastEndsAfterThreeSeconds(t *testing.T) {
 	h := started(t, guitest.New(), 1280, 720)
 	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Title: "Contra (USA)", State: app.StateFailed, Err: &app.Error{Code: app.CodeNetwork, Message: "down"}}})
-	h.mustHave("Download failed: Contra (USA)")
+	h.mustMatch(`^network · [0-9A-Z]{6} · Download failed: Contra \(USA\)$`)
 	h.advance(2900 * time.Millisecond)
-	h.mustHave("Download failed: Contra (USA)")
+	h.mustMatch(`^network · [0-9A-Z]{6} · Download failed: Contra \(USA\)$`)
 	h.advance(200 * time.Millisecond)
-	h.mustNotHave("Download failed: Contra (USA)")
+	h.mustNotMatch(`Download failed`)
 }
 
 func TestRecentSearchesComeFromTheSharedStateFile(t *testing.T) {

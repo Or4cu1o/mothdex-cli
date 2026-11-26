@@ -3,6 +3,7 @@
 package sdl
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/png"
@@ -45,6 +46,7 @@ var renderSizes = [][2]int{{640, 480}, {1280, 720}, {1920, 1080}}
 // player drives the model the way the run loop does: messages in, the commands it returns run at once.
 type player struct {
 	t   *testing.T
+	o   gui.Options
 	m   gui.Model
 	now time.Time
 }
@@ -53,7 +55,10 @@ func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confi
 	t.Helper()
 	o := guiOptions(t, font, svc, w, h)
 	o.Confirm = confirm
-	o.LogPath = "/userdata/system/logs/mothdex.log"
+	o.LogPath = func() string { return "/userdata/system/mothdex/data/logs/latest.log" }
+	o.ExportLogs = func(context.Context) (string, error) {
+		return "/userdata/system/mothdex/data/logs/bundles/mothdex-logs-20261126-030000.zip", nil
+	}
 	o.MappingsPath = "/userdata/system/mothdex/data/gamecontrollerdb.txt"
 	if lang != "" { // the screen in another language: the longest labels and reasons show what fits
 		bundle, err := i18n.Load(locales.FS)
@@ -63,7 +68,7 @@ func newPlayer(t *testing.T, font *text.Font, w, h int, svc *guitest.Fake, confi
 		o.T = bundle.New(lang)
 	}
 	m, cmds := gui.New(o, testEpoch)
-	p := &player{t: t, m: m, now: testEpoch}
+	p := &player{t: t, o: o, m: m, now: testEpoch}
 	if !hold { // a held start never runs the first commands, so the model stays on the Splash
 		p.run(cmds)
 	}
@@ -402,11 +407,40 @@ var renderScenes = []scene{
 		p.repeat(input.Down, 12)
 		p.press(input.Confirm)
 	}},
+	{name: "settings-export-ask", what: "T-115: Settings, About, Export logs: the confirmation with Cancel as the default", expect: []string{"Export the logs?", "Cancel", "Export logs"}, steps: aboutExport},
+	{name: "settings-export-done", what: "T-115: where the exported zip is", expect: []string{"Logs saved", "OK"}, steps: func(p *player) {
+		aboutExport(p)
+		p.advance(200 * time.Millisecond)
+		p.press(input.Right, input.Confirm)
+	}},
+	{name: "error-in-place", what: "T-115: an error in place with the code, the ref and the log", expect: []string{"ref: ", "log: ", "latest.log"}, svc: failingCatalog, steps: func(p *player) {
+		p.press(input.Confirm)
+		p.press(input.Up, input.Up, input.Confirm)
+	}},
+	{name: "crash", what: "T-115: the crash screen", expect: []string{"Something went wrong", "code: internal · ref: 7F3K2Q", "latest.log", "Export logs", "Quit"}, steps: crashed},
+	{name: "crash-pt", lang: "pt_br", what: "T-115: the crash screen in pt_br", expect: []string{"Algo deu errado", "7F3K2Q", "Exportar logs"}, steps: crashed},
+	{name: "crash-ru", lang: "ru_ru", what: "T-115: the crash screen in ru_ru, the longest texts", expect: []string{"Что-то пошло не так", "7F3K2Q"}, steps: crashed},
 	{name: "exit", what: "T-83: the exit screen after Quit with nothing running", expect: []string{"Returning to"}, steps: func(p *player) { p.send(gui.QuitRequestMsg{}) }},
 	{name: "quit-busy", what: "Quit with downloads running", expect: []string{"Keep downloading"}, steps: func(p *player) {
 		p.job(app.JobSnapshot{ID: "1", Slug: "mario-world", Title: "Super Mario World (USA)", State: app.StateTransferring, Bytes: 1 << 19, Expected: 1 << 20})
 		p.send(gui.QuitRequestMsg{})
 	}},
+}
+
+func aboutExport(p *player) {
+	p.openFromMenu(3)
+	p.repeat(input.Down, 12)
+	p.press(input.Confirm)
+	p.advance(200 * time.Millisecond)
+	p.press(input.Confirm)
+}
+
+func crashed(p *player) { p.m = gui.NewCrash(p.o, nil, "7F3K2Q", p.now) }
+
+func failingCatalog() *guitest.Fake {
+	s := renderCatalog()
+	s.PlatformErr = &app.Error{Code: app.CodeNetwork, Message: "down"}
+	return s
 }
 
 func TestRenderScenes(t *testing.T) {

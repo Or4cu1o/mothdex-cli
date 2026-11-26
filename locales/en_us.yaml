@@ -597,6 +597,21 @@ ui:
       number: 'Show the entry with that number (same as info)'
       d: 'Download entries by number: d 1 3, or d 2-4'
   gui:
+    error:
+      code: 'code: {code}'
+      code_ref: 'code: {code} · ref: {ref}'
+      log: 'log: {path}'
+    logs:
+      export: 'Export logs'
+      ask: 'Export the logs?'
+      ask_detail: 'A zip with the recent logs is saved on this device. It holds your search terms and file names. Nothing is sent.'
+      exporting: 'Exporting the logs…'
+      done: 'Logs saved'
+      failed: 'The logs were not saved'
+      ok: 'OK'
+    crash:
+      title: 'Something went wrong'
+      body: 'mothdex cannot continue. Export the logs and attach them to your report, with the ref below.'
     cmdline:
       summary: "mothdex-gui is the gamepad interface of mothdex for emulation frontends.\nWith no flags it opens in full screen."
       usage: 'Usage:'
@@ -612,7 +627,7 @@ ui:
         config: 'Configuration file (default: the standard location)'
         profile: 'Frontend profile, such as batocera (default: detected)'
         lang: "Interface language, such as pt_br\n(default: interface.language)"
-        log_level: "Log detail: debug, info, warn or error. Shortcut\nfor MOTHDEX_LOG_LEVEL (default: log.level)"
+        log_level: "Detail of mothdex.log: debug, info, warn or error.\nShortcut for MOTHDEX_LOG_LEVEL (default: log.level)"
         window: 'Open a window of that size instead of full screen'
         driver: "Force an SDL video driver, such as dummy\n(default: SDL_VIDEODRIVER or SDL's choice)"
         probe: "Check that SDL2 can be used, without a window:\nprint its version and exit"
@@ -632,7 +647,7 @@ ui:
         log_level: 'Same as --log-level'
         key: 'Any configuration key: upper case, dots as _'
       examples_title: 'Examples:'
-      log_note: 'Failures are written to mothdex.log, in the logs folder (paths.logs).'
+      log_note: "Every run writes a log; latest.log in the logs folder (paths.logs) is the newest.\nTo send it: Settings > About > Export logs."
       see_help: 'Run mothdex-gui --help to see the flags.'
       unexpected_argument: 'Unexpected argument: {argument}'
       unknown_flag: 'Unknown flag: {flag}'

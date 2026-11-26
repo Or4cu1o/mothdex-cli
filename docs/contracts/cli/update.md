@@ -62,6 +62,12 @@ from §6.
 - **Cancellation.** `Apply` checks `ctx` before every step and again right after `Confirm` returns.
   - Up to step 4 (§3), a cancelled `ctx` deletes the staging folder and returns `canceled`.
   - A `Confirm` that waits on a dialog must also watch `ctx.Done()` and return false when it fires.
+    - **CLI:** reads the answer on a goroutine and selects on `ctx.Done()`. The process ends right after, so the
+      reader left behind does no harm.
+    - **Shell:** keeps its prompt synchronous, so an abandoned read never steals the next line. Ctrl+C at the prompt
+      answers no, giving `canceled`, and only the cancellation of the whole session ends the Shell. `Apply` checks
+      `ctx` again as soon as `Confirm` returns.
+    - **TUI and GUI:** their dialogs are part of the model and already end on `ctx.Done()`.
   - From the first rename of §4 on, `ctx` is no longer read. The swap, check and commit, or the rollback, always run
     to the end, so a cancel never leaves a half-swapped installation.
 - **Off switches** (§5) are decided only in the `update` package. A single function takes `Options.Getenv` and the

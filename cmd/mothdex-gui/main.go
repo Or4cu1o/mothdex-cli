@@ -18,6 +18,9 @@
 // of that size instead of the full screen, for a desktop session. --log-level is a shortcut for MOTHDEX_LOG_LEVEL.
 // --help prints the flags and exit codes in the interface language. Go takes one dash or two.
 //
+// A run that opens the GUI, or tries to, has a session log (docs/contracts/cli/logs.md); --probe, --version,
+// --spike and --help write no file.
+//
 // Exit codes follow docs/contracts/cli/cli-output.md section 4.1: 0 normal exit or SIGTERM/SIGINT, 1 internal
 // error, 2 configuration error (configuration, flags or profile), 8 SDL missing or too old, or no display.
 package main
@@ -106,17 +109,17 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 	flags := newFlags(&o)
 	if err := flags.Parse(argv[1:]); err != nil {
 		key, args := parseProblem(err)
-		return usageError(withLanguageFlags(o, argv[1:]), stderr, key, args)
+		return usageError(withLanguageFlags(o, argv[1:]), argv, stderr, key, args)
 	}
 	if o.help { // before the checks below and every mode: asking for help never fails on another flag's value
 		return runHelp(o, stdout, stderr)
 	}
 	if flags.NArg() > 0 { // the program takes none, and parsing stops at one: the flags after it would be lost
-		return usageError(withLanguageFlags(o, argv[1:]), stderr, "ui.gui.cmdline.unexpected_argument", i18n.Args{"argument": flags.Arg(0)})
+		return usageError(withLanguageFlags(o, argv[1:]), argv, stderr, "ui.gui.cmdline.unexpected_argument", i18n.Args{"argument": flags.Arg(0)})
 	}
 	if o.window != "" {
 		if _, err := fmt.Sscanf(o.window, "%dx%d", &o.width, &o.height); err != nil || o.width < 160 || o.height < 120 {
-			return usageError(o, stderr, "ui.gui.cmdline.bad_window", nil)
+			return usageError(o, argv, stderr, "ui.gui.cmdline.bad_window", nil)
 		}
 	}
 	switch {
@@ -128,5 +131,7 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 	case o.spike || probeByName(argv[0]):
 		return runProbe(o.driver, stdout, stderr)
 	}
-	return runGUI(o, stderr)
+	logs := startLog(argv[1:]) // before the configuration, so that its errors are logged too
+	defer func() { _ = logs.Close() }()
+	return runGUI(o, logs, stderr)
 }

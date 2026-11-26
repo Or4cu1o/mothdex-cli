@@ -182,6 +182,7 @@ func TestSettingsShowAServiceErrorUnderTheRowAndKeepTheValue(t *testing.T) {
 	h := openSettingsFromHome(t, svc, 1280, 720)
 	h.press(input.Right)
 	h.mustHave("Not saved: Invalid setting download.concurrency=3 (from file).")
+	h.mustMatch(`^code: invalid_config · ref: [0-9A-Z]{6}$`)
 	if h.m.settingString("download.concurrency") != "2" {
 		t.Fatal("the old value stays")
 	}
