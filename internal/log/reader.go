@@ -96,45 +96,82 @@ func Last(dir, current string) (string, bool) {
 	return "", false
 }
 
-// Lines reads a session, safe to print. tail > 0 keeps only the last tail lines. id must name a
-// file in sessions/ (TM-24).
-func Lines(dir, id string, tail int) ([]string, error) {
+// Lines reads a session, safe to show: redacted again, because the runtime writes crash traces
+// to the file as they are and older logs were never redacted, and without control characters.
+// secrets are the configured values to hide besides the default API. tail > 0 keeps only the last
+// tail lines. id must name a file in sessions/ (TM-24).
+func Lines(dir, id string, tail int, secrets ...string) ([]string, error) {
+	lines, err := rawLines(dir, id, tail)
+	if err != nil {
+		return nil, err
+	}
+	return redactAll(newRedactor(append([]string{defaultAPI}, secrets...)...), lines), nil
+}
+
+// rawLines reads a session without control characters, not yet redacted.
+func rawLines(dir, id string, tail int) ([]string, error) {
 	if !sessionIDPattern.MatchString(id) {
 		return nil, ErrSession
 	}
+	lines, err := fileLines(sessionFile(dir, id), tail)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, ErrSession
+	}
+	return lines, err
+}
+
+func fileLines(path string, tail int) ([]string, error) {
 	out := []string{}
-	err := eachLine(sessionFile(dir, id), func(line string) {
+	err := eachLine(path, func(line string) {
 		out = append(out, printable(line))
 		if tail > 0 && len(out) > tail {
 			out = out[1:]
 		}
 	})
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, ErrSession
-	}
 	return out, err
 }
 
-// Find returns every error line carrying ref, in one session or, with id empty, in all of them,
-// newest first.
-func Find(dir, id, ref string) ([]Match, error) {
-	ids := []string{id}
-	if id == "" {
-		ids = ids[:0]
-		for _, name := range slices.Backward(matching(filepath.Join(dir, SessionsDir), sessionFilePattern)) {
-			ids = append(ids, strings.TrimSuffix(name, ".log"))
-		}
+func redactAll(r *redactor, lines []string) []string {
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		out[i] = r.text(line)
 	}
+	return out
+}
+
+// Find returns every error line carrying ref, in one session or, with id empty, in all of them,
+// newest first; a session that cannot be read is passed over. When no session has it, mothdex.log
+// and its rotated copies are searched: the errors of commands that keep no session are there. Only
+// the lines returned are redacted, so a search through many sessions stays fast.
+func Find(dir, id, ref string, secrets ...string) ([]Match, error) {
+	redact := newRedactor(append([]string{defaultAPI}, secrets...)...)
 	out := []Match{}
-	for _, session := range ids {
-		lines, err := Lines(dir, session, 0)
-		if err != nil {
-			return nil, err
-		}
+	search := func(name string, lines []string) {
 		for i, line := range lines {
 			if attrs := parseLine(line); attrs["level"] == "ERROR" && attrs["ref"] == ref {
 				around := lines[max(i-ShowContext, 0):min(i+ShowContext+1, len(lines))]
-				out = append(out, Match{Session: session, Ref: ref, Line: i + 1, Context: slices.Clone(around)})
+				out = append(out, Match{Session: name, Ref: ref, Line: i + 1, Context: redactAll(redact, around)})
+			}
+		}
+	}
+	if id != "" {
+		lines, err := rawLines(dir, id, 0)
+		if err != nil {
+			return nil, err
+		}
+		search(id, lines)
+		return out, nil
+	}
+	for _, name := range slices.Backward(matching(filepath.Join(dir, SessionsDir), sessionFilePattern)) {
+		session := strings.TrimSuffix(name, ".log")
+		if lines, err := rawLines(dir, session, 0); err == nil { // pruned meanwhile, or another user's
+			search(session, lines)
+		}
+	}
+	if len(out) == 0 {
+		for _, name := range matching(dir, generalFilePattern) {
+			if lines, err := fileLines(filepath.Join(dir, name), 0); err == nil {
+				search(name, lines)
 			}
 		}
 	}

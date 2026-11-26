@@ -68,6 +68,7 @@ type BundleOptions struct {
 	Home     string
 	Environ  []string         // nil: os.Environ()
 	Now      func() time.Time // nil: time.Now
+	limit    int              // tests lower it; 0 means MaxBundleBytes
 }
 
 // BundleResult says what was written.
@@ -111,8 +112,8 @@ type entry struct {
 	data []byte
 }
 
-// bundleParts are the entries in the order they are given up when the zip is too large: the oldest
-// sessions first, then the mothdex.log tail is shortened, then the oldest crash files.
+// bundleParts are what a zip too large gives up, in this order: all but the newest session, oldest
+// first; the oldest crash files; then the mothdex.log tail is shortened; the newest session last.
 type bundleParts struct {
 	fixed    []entry
 	crashes  []entry // newest first
@@ -144,7 +145,10 @@ func Bundle(ctx context.Context, o BundleOptions) (BundleResult, error) {
 	if err != nil {
 		return BundleResult{}, err
 	}
-	data, sessions, err := pack(ctx, parts, MaxBundleBytes)
+	if o.limit == 0 {
+		o.limit = MaxBundleBytes
+	}
+	data, sessions, err := pack(ctx, parts, o.limit)
 	if err != nil {
 		return BundleResult{}, err
 	}
@@ -282,12 +286,14 @@ func pack(ctx context.Context, p bundleParts, limit int) ([]byte, []string, erro
 			return data, ids, nil
 		}
 		switch {
-		case len(p.sessions) > 0:
+		case len(p.sessions) > 1:
 			p.sessions = p.sessions[:len(p.sessions)-1]
-		case len(p.tail) > 0:
-			p.tail = p.tail[(len(p.tail)+1)/2:]
 		case len(p.crashes) > 0:
 			p.crashes = p.crashes[:len(p.crashes)-1]
+		case len(p.tail) > 0:
+			p.tail = p.tail[(len(p.tail)+1)/2:]
+		case len(p.sessions) > 0:
+			p.sessions = nil
 		default:
 			return nil, nil, errors.New("log: the bundle does not fit its size limit")
 		}

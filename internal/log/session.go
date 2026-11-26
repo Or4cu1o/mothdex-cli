@@ -34,6 +34,7 @@ const (
 	msgEnd       = "session end"
 	msgDropped   = "lines dropped"
 	msgTruncated = "log truncated"
+	msgNoModes   = "log folder has no file permissions"
 )
 
 // SessionOptions describe the process before anything is configured.
@@ -43,6 +44,10 @@ type SessionOptions struct {
 	Flags  map[string]FlagRule // which flag values the header may show; nil redacts them all
 	Build  buildinfo.Info
 	Now    func() time.Time // nil: time.Now
+	// GeneralOnly is for commands that run to look at the logs or at the program: they create no
+	// session file, so they never push the sessions that matter out of the retention nor take
+	// latest.log. Only their errors are written, to mothdex.log, so every ref shown is findable.
+	GeneralOnly bool
 	// DefaultDir is where Close writes when Attach was never called; nil: the default paths.logs.
 	DefaultDir func() (dir, home string, err error)
 }
@@ -54,6 +59,8 @@ type AttachOptions struct {
 	Keep    int      // log.sessions_keep; 0 means 20
 	Secrets []string // values never written (api.base_url)
 	Home    string
+	// MaxSizeMB and MaxFiles rotate mothdex.log for a GeneralOnly session; 0 means 10 and 5.
+	MaxSizeMB, MaxFiles int
 }
 
 // Info is what is only known after the configuration is read; empty fields keep their value.
@@ -88,7 +95,9 @@ type Session struct {
 	home     string
 	secrets  []string
 	info     Info
-	process  *slog.Logger // set by New: the session plus mothdex.log
+	process  *slog.Logger  // set by New: the session plus mothdex.log
+	general  *rotator      // mothdex.log of a GeneralOnly session, opened at its first error
+	rotate   AttachOptions // its size and number of files
 }
 
 // StartSession begins the log of this process. It never returns nil and touches no file.
@@ -143,7 +152,8 @@ func (s *Session) Attached() bool {
 }
 
 // Attach opens the files in a.Dir, writes the lines kept so far and applies retention. Only the
-// first call counts. An error is a warning for the person: the program goes on and lines are
+// first call counts. A folder that is not safe is replaced by the default one when that one is.
+// An error is a warning for the person: the program goes on, and without a safe folder lines are
 // discarded.
 func (s *Session) Attach(a AttachOptions) error {
 	s.redact.add(a.Secrets...)
@@ -163,20 +173,119 @@ func (s *Session) Attach(a AttachOptions) error {
 			level = slog.LevelDebug
 		}
 	}
+	if s.opts.GeneralOnly {
+		s.attachGeneral(a)
+		return levelErr
+	}
 	s.level.Set(level)
 	head := s.drain(level)
-	if err := s.openFiles(head); err != nil {
+	err := s.openFiles(head)
+	if err != nil && s.id == "" && errors.Is(err, errUnsafeDir) {
+		err = s.fallBack(head, err)
+	}
+	if s.id == "" {
 		return errors.Join(levelErr, err)
+	}
+	if permissionless(s.dir) {
+		s.append(fmt.Appendf(nil, "time=%s level=WARN msg=%q\n", s.opts.Now().Format(time.RFC3339Nano), msgNoModes))
 	}
 	keep := a.Keep
 	if keep < 1 {
 		keep = defaultKeep
 	}
-	prune(filepath.Join(a.Dir, SessionsDir), sessionFilePattern, keep, s.id+".log")
-	prune(filepath.Join(a.Dir, CrashDir), crashFilePattern, keepCrashes, "")
-	prune(filepath.Join(a.Dir, BundlesDir), bundleFilePattern, keepBundles, "")
-	return levelErr
+	prune(filepath.Join(s.dir, SessionsDir), sessionFilePattern, keep, s.id+".log")
+	prune(filepath.Join(s.dir, CrashDir), crashFilePattern, keepCrashes, "")
+	prune(filepath.Join(s.dir, BundlesDir), bundleFilePattern, keepBundles, "")
+	return errors.Join(levelErr, err)
 }
+
+// attachGeneral settles the folder of a GeneralOnly session without creating anything, and writes
+// the errors kept so far; the caller holds the lock.
+func (s *Session) attachGeneral(a AttachOptions) {
+	s.rotate = a
+	s.dir = s.usable(a.Dir)
+	s.level.Set(slog.LevelError)
+	for _, line := range s.buf {
+		if lineLevel(line) >= slog.LevelError {
+			s.appendGeneral([]byte(s.redact.text(string(line))))
+		}
+	}
+	s.buf, s.bufBytes = nil, 0
+}
+
+// appendGeneral writes one line to mothdex.log. A log that cannot be written never stops the
+// program.
+func (s *Session) appendGeneral(line []byte) {
+	if s.general == nil {
+		size, files := s.rotate.MaxSizeMB, s.rotate.MaxFiles
+		if size < 1 {
+			size = 10
+		}
+		if files < 1 {
+			files = 5
+		}
+		if !filepath.IsAbs(s.dir) {
+			return
+		}
+		r, err := newRotator(filepath.Join(s.dir, FileName), int64(size)<<20, files)
+		if err != nil {
+			return
+		}
+		s.general = r
+	}
+	_, _ = s.general.Write(line)
+}
+
+// usable is the folder to write to when dir is configured, found without creating anything: the
+// default one when dir exists and is refused.
+func (s *Session) usable(dir string) string {
+	if info, err := os.Lstat(dir); err != nil || info.IsDir() && checkOwner(dir, info) == nil {
+		return dir
+	}
+	if fallback, _, err := s.locate()(); err == nil {
+		return fallback
+	}
+	return dir
+}
+
+func (s *Session) locate() func() (string, string, error) {
+	if s.opts.DefaultDir != nil {
+		return s.opts.DefaultDir
+	}
+	return defaultDir
+}
+
+// fallBack moves the session to the default folder when the configured one is refused; the caller
+// holds the lock. The error returned is the warning to show, also when the move worked.
+func (s *Session) fallBack(head []byte, refused error) error {
+	configured := s.dir
+	dir, _, err := s.locate()()
+	if err != nil || filepath.Clean(dir) == filepath.Clean(configured) {
+		return refused
+	}
+	s.dir = dir
+	if err := s.openFiles(head); s.id == "" {
+		s.dir = configured
+		return errors.Join(refused, err)
+	}
+	return fmt.Errorf("logging to %s instead of %s: %w", dir, configured, refused)
+}
+
+// Dir is the log folder in use, which is not the configured one after a fall back. It is empty
+// while there is none.
+func (s *Session) Dir() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	general := s.opts.GeneralOnly && s.attached
+	if s.id == "" && !general {
+		return ""
+	}
+	return s.dir
+}
+
+// NoPermissions reports a folder on a file system without file permissions (FAT, exFAT, NTFS), to
+// warn the person that other users of the machine may read the logs.
+func NoPermissions(dir string) bool { return permissionless(dir) }
 
 // openFiles creates the session file and claims latest.log; the caller holds the lock.
 func (s *Session) openFiles(head []byte) error {
@@ -246,6 +355,10 @@ func (w sessionWriter) Write(p []byte) (int, error) {
 	case s.closed:
 	case !s.attached:
 		s.keep(bytes.Clone(p))
+	case s.opts.GeneralOnly:
+		if lineLevel(p) >= slog.LevelError {
+			s.appendGeneral(p)
+		}
 	default:
 		s.append(p)
 	}
@@ -323,6 +436,9 @@ func (s *Session) ID() string {
 func (s *Session) LogPath() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.general != nil {
+		return filepath.Join(s.dir, FileName)
+	}
 	if s.latest != nil && s.latest.owns() {
 		return filepath.Join(s.dir, LatestName)
 	}
@@ -334,11 +450,7 @@ func (s *Session) attachDefault() error {
 	if s.Attached() {
 		return nil
 	}
-	locate := s.opts.DefaultDir
-	if locate == nil {
-		locate = defaultDir
-	}
-	dir, home, err := locate()
+	dir, home, err := s.locate()()
 	if err != nil {
 		return err
 	}
@@ -366,6 +478,9 @@ func (s *Session) WriteCrash(recovered any, stack []byte, ref string) (string, e
 	}
 	s.mu.Lock()
 	dir, id := s.dir, s.id
+	if s.opts.GeneralOnly {
+		id = s.baseID()
+	}
 	s.mu.Unlock()
 	if id == "" {
 		return "", errors.New("there is no log folder for the crash file")
@@ -391,9 +506,13 @@ func (s *Session) WriteCrash(recovered any, stack []byte, ref string) (string, e
 }
 
 // Close writes the last line and releases the files. A session that was never attached is written
-// to the default folder. Later calls do nothing.
+// to the default folder; a GeneralOnly one that saw no error writes nothing. Later calls do
+// nothing.
 func (s *Session) Close() error {
 	s.mu.Lock()
+	if s.opts.GeneralOnly && !s.attached && s.errors.Load() == 0 {
+		s.closed, s.buf = true, nil
+	}
 	closed := s.closed
 	s.mu.Unlock()
 	if closed {
@@ -407,6 +526,10 @@ func (s *Session) Close() error {
 	if s.latest != nil {
 		s.latest.close()
 		s.latest = nil
+	}
+	if s.general != nil {
+		err = errors.Join(err, s.general.Close())
+		s.general = nil
 	}
 	if s.file != nil {
 		_ = debug.SetCrashOutput(nil, debug.CrashOptions{})

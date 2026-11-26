@@ -124,12 +124,16 @@ func Open(_ context.Context, o Options) (*Session, error) {
 
 	if o.Logs != nil {
 		if aerr := o.Logs.Attach(attachOptions(cfg, paths, plat)); aerr != nil {
-			warnings = append(warnings, "the session log cannot be written: "+aerr.Error())
+			warnings = append(warnings, "session log: "+aerr.Error())
 		}
 	}
 	logOpts := mlog.FromConfig(cfg.Log, paths, os.Stderr)
 	logOpts.Session, logOpts.Secrets = o.Logs, []string{cfg.API.BaseURL}
 	logger, closeLog, lerr := mlog.New(logOpts)
+	logsDir := paths.Logs
+	if o.Logs != nil && o.Logs.Dir() != "" {
+		logsDir = o.Logs.Dir()
+	}
 	if lerr != nil {
 		warnings = append(warnings, "the log file cannot be written: "+lerr.Error())
 	}
@@ -226,9 +230,9 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	return &Session{
 		Updater: updater, UpdateCheck: updateCheck, UpdateChannel: cfg.Update.Channel,
 		Svc: svc, T: tr, Prefer: preference(cfg.Download.Prefer), Boxart: cfg.Download.Boxart, Confirm: cfg.Interface.ConfirmDownloads,
-		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings, LogPath: filepath.Join(paths.Logs, mlog.FileName),
+		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings, LogPath: filepath.Join(logsDir, mlog.FileName),
 		Close: func() { _ = svc.Close(); _ = closeLog.Close() },
-		Logs:  o.Logs, LogsDir: paths.Logs, configFile: o.ConfigFile, profile: o.Profile,
+		Logs:  o.Logs, LogsDir: logsDir, configFile: o.ConfigFile, profile: o.Profile,
 		DataDir: paths.Data, Log: logger,
 		NoColor: o.NoColor || cfg.Interface.Color == "never" || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 	}, nil

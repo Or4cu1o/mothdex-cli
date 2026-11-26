@@ -2,6 +2,7 @@ package log
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -385,6 +386,76 @@ func TestCloseWithoutAttachWritesToTheDefaultFolder(t *testing.T) {
 	}
 	if err := s.Close(); err != nil {
 		t.Errorf("second Close: %v", err)
+	}
+}
+
+// Looking at the logs must not push the session with the evidence out of the retention, and an
+// error shown meanwhile must still be found by its ref.
+func TestAGeneralOnlySessionKeepsNoSessionFile(t *testing.T) {
+	dir := logDir(t)
+	evidence := startAt(t, 0)
+	attach(t, evidence, dir)
+	slog.New(evidence.Handler()).Error("the evidence", "ref", "ABC123")
+	_ = evidence.Close()
+	general := func(offset time.Duration) *Session {
+		s := StartSession(SessionOptions{Binary: "cli", GeneralOnly: true, Now: func() time.Time { return testStart.Add(offset) }})
+		if err := s.Attach(AttachOptions{Dir: dir, Keep: 1}); err != nil {
+			t.Fatal(err)
+		}
+		slog.New(s.Handler()).Info("looking")
+		return s
+	}
+	quiet := general(time.Second)
+	if quiet.Dir() != dir || quiet.SessionPath() != "" || quiet.LogPath() != "" {
+		t.Errorf("dir %q, session %q, log %q", quiet.Dir(), quiet.SessionPath(), quiet.LogPath())
+	}
+	if err := quiet.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if exists(filepath.Join(dir, FileName)) {
+		t.Error("a run without errors wrote mothdex.log")
+	}
+	failing := general(2 * time.Second)
+	slog.New(failing.Handler()).Error("it failed", "ref", "DEF456")
+	if failing.LogPath() != filepath.Join(dir, FileName) {
+		t.Errorf("log path %q", failing.LogPath())
+	}
+	if err := failing.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(List(dir, "")) != 1 || !strings.Contains(readFile(t, filepath.Join(dir, LatestName)), "the evidence") {
+		t.Fatal("the sessions changed")
+	}
+	for ref, where := range map[string]string{"ABC123": evidence.ID(), "DEF456": FileName} {
+		if found, err := Find(dir, "", ref); err != nil || len(found) != 1 || found[0].Session != where {
+			t.Errorf("%s: %+v, %v", ref, found, err)
+		}
+	}
+}
+
+func TestFindPassesOverAnUnreadableSession(t *testing.T) {
+	dir := logDir(t)
+	s := startAt(t, 0)
+	attach(t, s, dir)
+	slog.New(s.Handler()).Error("x", "ref", "ABC123")
+	plant(t, dir, ".", "elsewhere")
+	if err := os.Link(filepath.Join(dir, "elsewhere"), sessionFile(dir, "20990101-000000-cli-1")); err != nil {
+		t.Skip("no hard links here:", err)
+	}
+	if found, err := Find(dir, "", "ABC123"); err != nil || len(found) != 1 {
+		t.Errorf("%+v, %v", found, err)
+	}
+}
+
+func TestRefsForgetsTheOldestErrors(t *testing.T) {
+	var refs Refs
+	first := errors.New("first")
+	ref := refs.Of(nil, first, ErrorRecord{})
+	for i := range maxRefs {
+		refs.Of(nil, fmt.Errorf("error %d", i), ErrorRecord{})
+	}
+	if len(refs.seen) != maxRefs || refs.Of(nil, first, ErrorRecord{}) == ref {
+		t.Errorf("%d remembered", len(refs.seen))
 	}
 }
 
