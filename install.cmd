@@ -14,5 +14,8 @@ shift
 goto next
 
 :run
+rem A CMD window opened from PowerShell 7 inherits its module path, and Windows PowerShell then cannot load its own
+rem modules (Get-FileHash goes missing). Empty, it rebuilds the default; setlocal gives the caller's value back.
+set "PSModulePath="
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; if ([int][Net.ServicePointManager]::SecurityProtocol -ne 0) { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 }; $p = @{}; $n = [int]$env:MOTHDEX_ARG_COUNT; for ($i = 0; $i -lt $n; $i++) { $a = [string][Environment]::GetEnvironmentVariable('MOTHDEX_ARG_' + $i); $k = $a -replace '^-', ''; if (($a -ne ('-' + $k)) -or (-not $k)) { throw ('mothdex install: unexpected argument: ' + $a) }; if (@('Launcher', 'NoLauncher', 'Gui', 'NoGui', 'NoModifyPath', 'NoAlias', 'DryRun', 'Uninstall') -contains $k) { $p[$k] = $true } elseif ((@('Version', 'BinDir', 'RetroBatPath', 'Alias') -contains $k) -and ($i + 1 -lt $n)) { $i++; $p[$k] = [string][Environment]::GetEnvironmentVariable('MOTHDEX_ARG_' + $i) } else { throw ('mothdex install: unknown option or missing value: ' + $a) } }; & ([scriptblock]::Create((irm 'https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1'))) @p; exit $LASTEXITCODE"
 exit /b %errorlevel%

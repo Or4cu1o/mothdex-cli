@@ -687,7 +687,45 @@ function Test-SameFile([string]$First, [string]$Second) {
   }
 }
 
-# What holds the name, or '' when it is free. $Owned is the recorded shortcut that was proven to be our hard link.
+# The recorded shortcut is ours when it is the same file as mothdex.exe, or still the very file that was recorded: a link
+# that an interrupted upgrade, a failed rollback or a manual copy of mothdex.exe left naming an older binary.
+function Test-OwnAlias([string]$BinDirPath, $Recorded) {
+  if (-not ($Recorded -and $Recorded.Alias)) { return $false }
+  $link = Join-Path $BinDirPath "$($Recorded.Alias).exe"
+  if ((Test-ReparsePoint $link) -or (-not (Test-Path -LiteralPath $link -PathType Leaf))) { return $false }
+  if (Test-SameFile $link (Join-Path $BinDirPath 'mothdex.exe')) { return $true }
+  if (-not $Recorded.AliasFileId) { return $false }
+  try { return (Get-FileId $link) -ceq $Recorded.AliasFileId }
+  catch {
+    Write-Verbose $_.Exception.Message
+    return $false
+  }
+}
+
+# Removes the renamed-aside links this installer made (<name>.exe.old and <name>.exe.old-<number>), nothing else. One that
+# is still running stays.
+function Remove-OldAliasFiles([string]$BinDirPath, [string]$Name) {
+  $pattern = '^' + [regex]::Escape("$Name.exe") + '\.old(-[0-9]+)?\z'
+  Get-ChildItem -LiteralPath $BinDirPath -File -Force -ErrorAction SilentlyContinue |
+    Where-Object { ($_.Name -cmatch $pattern) -and (($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) } |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+}
+
+# Points our shortcut at the mothdex.exe now in place and records the new link's file ID in the existing state (nothing
+# else in it changes), so that even an install that fails afterwards leaves no shortcut on the old binary.
+function Repair-OwnAlias([string]$BinDirPath, [string]$Name) {
+  try {
+    New-AliasLink $BinDirPath $Name
+    $file = Join-Path $BinDirPath $StateName
+    $id = Get-FileId (Join-Path $BinDirPath "$Name.exe")
+    $text = [IO.File]::ReadAllText($file)
+    if ($text -match '"alias_file_id"') { $text = $text -replace '"alias_file_id": "[0-9:]*"', "`"alias_file_id`": `"$id`"" }
+    else { $text = $text -replace '("alias_kind": "hardlink",)(\r?\n)', "`$1`$2  `"alias_file_id`": `"$id`",`$2" }
+    Write-StateText $BinDirPath $text
+  } catch { Write-Warning "the shortcut $Name could not be updated: $($_.Exception.Message)" }
+}
+
+# What holds the name, or '' when it is free. $Owned is the recorded shortcut that was proven to be ours.
 function Find-AliasHolder([string]$BinDirPath, [string]$Name, [string]$Owned) {
   $mine = Join-Path $BinDirPath "$Name.exe"
   foreach ($extension in '.com', '.exe', '.bat', '.cmd', '.ps1') {
@@ -703,7 +741,8 @@ function Find-AliasHolder([string]$BinDirPath, [string]$Name, [string]$Owned) {
   return ''
 }
 
-# A name the user chose has no fallback; otherwise the recorded one, then mdex, then mthd. '' means none.
+# A name the user chose has no fallback, and when it is taken a shortcut of ours stays; otherwise the recorded one, then
+# mdex, then mthd. '' means none.
 function Select-Alias([string]$BinDirPath, [string]$Owned) {
   if ($NoAlias) { return '' }
   if ($Alias) { $names = @($Alias) } else { $names = @(@($Owned) + $AliasDefaults | Where-Object { $_ } | Select-Object -Unique) }
@@ -711,6 +750,10 @@ function Select-Alias([string]$BinDirPath, [string]$Owned) {
     $holder = Find-AliasHolder $BinDirPath $name $Owned
     if (-not $holder) { return $name }
     Write-Warning "$name is already used ($holder): left alone"
+  }
+  if ($Alias -and $Owned) {
+    Write-Warning "keeping the shortcut $Owned"
+    return $Owned
   }
   return ''
 }
@@ -757,7 +800,7 @@ function Update-Alias([string]$BinDirPath, [string]$Owned) {
     try { New-AliasLink $BinDirPath $name }
     catch {
       Write-Warning "cannot create the shortcut $name (the file system may not support hard links): $($_.Exception.Message)"
-      $name = ''
+      if ($Owned -and ($Owned -cne $name)) { $name = $Owned } else { $name = '' }
     }
   }
   if ($Owned -and ($Owned -cne $name) -and (Test-Path -LiteralPath (Join-Path $BinDirPath "$Owned.exe"))) { Remove-AliasLink $BinDirPath $Owned }
@@ -780,6 +823,10 @@ function Read-InstallState([string]$BinDirPath) {
     if (($data.schema_version -is [string]) -or ($data.schema_version -ne 1)) { throw 'schema' }
     if (($data.source -cne 'installer') -or ([string]$data.dir -ine $BinDirPath) -or (-not (Test-Version ([string]$data.version)))) { throw 'source, dir or version' }
     $alias = [string]$data.alias
+    # absent in a state written before the field existed
+    $aliasFileId = ''
+    if ($data.PSObject.Properties['alias_file_id']) { $aliasFileId = [string]$data.alias_file_id }
+    if ($aliasFileId -and ((-not $alias) -or ($aliasFileId -cnotmatch '^[0-9]{1,10}:[0-9]{1,10}:[0-9]{1,10}\z'))) { throw 'alias_file_id' }
     if ($alias) {
       if ((-not (Test-AliasName $alias)) -or ($data.alias_kind -cne 'hardlink')) { throw 'alias' }
     } elseif ([string]$data.alias_kind -cne '') { throw 'alias_kind' }
@@ -789,7 +836,7 @@ function Read-InstallState([string]$BinDirPath) {
     } elseif (([string]$data.path_kind -cne '') -or ([string]$data.path_value -cne '')) { throw 'path_kind' }
     # read from the text: PowerShell 7 turns a date string into a DateTime
     if ($text -notmatch '"installed_at"\s*:\s*"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+))"') { throw 'installed_at' }
-    return [pscustomobject]@{ Added = [bool]$data.path_added; Value = [string]$data.path_value; InstalledAt = $Matches[1]; Alias = $alias }
+    return [pscustomobject]@{ Added = [bool]$data.path_added; Value = [string]$data.path_value; InstalledAt = $Matches[1]; Alias = $alias; AliasFileId = $aliasFileId }
   } catch {
     Write-Warning "ignoring ${file}: it is not a valid install state of this folder"
     return $null
@@ -814,10 +861,19 @@ function Write-InstallState([string]$BinDirPath, $Fields) {
     else { $text = ConvertTo-JsonString $value }
     $lines += "  `"$key`": $text"
   }
-  $json = "{`n" + ($lines -join ",`n") + "`n}`n"
+  Write-StateText $BinDirPath ("{`n" + ($lines -join ",`n") + "`n}`n")
+}
+
+function Write-StateText([string]$BinDirPath, [string]$Json) {
+  $file = Join-Path $BinDirPath $StateName
+  $unavailable = 'mothdex upgrade will not be available for this install'
+  if ((Test-ReparsePoint $file) -or (Test-Path -LiteralPath $file -PathType Container)) {
+    Write-Warning "$file is not a regular file: left alone; $unavailable"
+    return
+  }
   $tmp = Join-Path $BinDirPath "$StateName.new.$PID"
   try {
-    $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($json)
+    $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Json)
     $stream = [IO.File]::Open($tmp, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
     try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
     Move-Item -LiteralPath $tmp -Destination $file -Force
@@ -885,8 +941,11 @@ if ($Uninstall) {
   $previous = Read-InstallState $BinDir
   if ($previous -and $previous.Alias) {
     $link = Join-Path $BinDir "$($previous.Alias).exe"
-    if (Test-SameFile $link $exe) {
-      if ($DryRun) { Write-Output "Would remove $link" } else { Remove-AliasLink $BinDir $previous.Alias }
+    if (Test-OwnAlias $BinDir $previous) {
+      if ($DryRun) { Write-Output "Would remove $link" } else {
+        Remove-AliasLink $BinDir $previous.Alias
+        Remove-OldAliasFiles $BinDir $previous.Alias
+      }
     } elseif (Test-Path -LiteralPath $link) {
       Write-Warning "keeping ${link}: it is not the shortcut this installer created"
     }
@@ -1024,7 +1083,7 @@ try {
     }
     $previous = Read-InstallState $BinDir
     $owned = ''
-    if ($previous -and $previous.Alias -and (Test-SameFile (Join-Path $BinDir "$($previous.Alias).exe") $exe)) { $owned = $previous.Alias }
+    if (Test-OwnAlias $BinDir $previous) { $owned = $previous.Alias }
     $name = Select-Alias $BinDir $owned
     if ($name) { Write-Output "Would create the shortcut $(Join-Path $BinDir "$name.exe")" }
     return
@@ -1034,17 +1093,17 @@ try {
     New-Item -ItemType Directory -Path $BinDir | Out-Null
     if (-not $binInLocalAppData) { Protect-Folder $BinDir }
   }
-  # the recorded shortcut is ours only if it is the same file as the mothdex.exe about to be replaced (TM-12, TM-13)
+  # whether the recorded shortcut is ours is decided before mothdex.exe is replaced (TM-12, TM-13)
   $previous = Read-InstallState $BinDir
   $owned = ''
-  if ($previous -and $previous.Alias) {
-    if (Test-SameFile (Join-Path $BinDir "$($previous.Alias).exe") $exe) { $owned = $previous.Alias }
-    Get-ChildItem -LiteralPath $BinDir -Filter "$($previous.Alias).exe.old*" -File -ErrorAction SilentlyContinue |
-      Remove-Item -Force -ErrorAction SilentlyContinue
+  if (Test-OwnAlias $BinDir $previous) {
+    $owned = $previous.Alias
+    Remove-OldAliasFiles $BinDir $owned
   }
   $new = Join-Path $BinDir ".mothdex.new.$PID.exe"
   Copy-Item -LiteralPath $staged -Destination $new -Force
-  Move-Item -LiteralPath $new -Destination $exe -Force
+  try { Move-Item -LiteralPath $new -Destination $exe -Force }
+  finally { if ($owned) { Repair-OwnAlias $BinDir $owned } }
   Write-Output "Installed $exe $Version ($signature)"
 
   $guiInstalled = $false
@@ -1086,8 +1145,6 @@ try {
   } elseif ($State.Failed) {
     Write-Output $check.Output
     Write-Warning 'a step failed (see above): PATH was not changed'
-    # an existing shortcut of ours must not keep starting the old version
-    if ($owned) { try { New-AliasLink $BinDir $owned } catch { Write-Warning "the shortcut $owned could not be updated: $($_.Exception.Message)" } }
     Show-PathBlock $BinDir
   } else {
     Write-Output $check.Output
@@ -1105,10 +1162,14 @@ try {
       if ((Test-Path -LiteralPath $candidate) -and (Test-HasMarker $candidate)) { $recordedLauncher = $candidate }
     }
     $aliasKind = ''
-    if ($State.Alias) { $aliasKind = 'hardlink' }
+    $aliasFileId = ''
+    if ($State.Alias) {
+      $aliasKind = 'hardlink'
+      try { $aliasFileId = Get-FileId (Join-Path $BinDir "$($State.Alias).exe") } catch { Write-Warning "cannot identify the shortcut: $($_.Exception.Message)" }
+    }
     Write-InstallState $BinDir ([ordered]@{
         schema_version = 1; source = 'installer'; installer = 'install.ps1'; dir = $BinDir; version = $Version
-        target = "windows_$arch"; profile = $profileId; gui = $guiInstalled; alias = $State.Alias; alias_kind = $aliasKind
+        target = "windows_$arch"; profile = $profileId; gui = $guiInstalled; alias = $State.Alias; alias_kind = $aliasKind; alias_file_id = $aliasFileId
         path_added = $State.PathAdded; path_kind = $kind; path_file = ''; path_value = $value; launcher = $recordedLauncher
         installed_at = $installedAt; updated_at = $now; updated_by = 'installer'
       })
