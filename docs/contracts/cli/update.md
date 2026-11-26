@@ -168,8 +168,13 @@ notices are replaced after the binaries; a failure there is only a warning.
      §1). It never runs for `mothdex-gui --probe`, `--version`, `--spike` or `--help` (ports.md §5.2: the probe writes
      nothing), nor for `mothdex version`, `--version`, `completion` or `__complete*`. So neither the staged binary's
      `--version` of §3 step 4 nor the post-swap check of step 7 cleans up anything.
-   - **It creates no file.** A staging folder's lock is tested by opening an existing lock file without `O_CREATE`;
-     a missing lock means the folder is free.
+   - **Locking.** It takes `<dir>/.mothdex-update.lock`, creating the file if needed, only after the managed check
+     (install-state.md §4) has passed. An unmanaged folder or a staging folder therefore never gets a file.
+     - If the lock is held (an `Apply` is running), cleanup is skipped for this run.
+     - A staging folder's own lock is tested by opening the existing file without `O_CREATE`; a missing lock means
+       the folder is free.
+   - **Where it is called.** In the CLI, from a hook after flag parsing and before the service opens. In the GUI,
+     only for a run that opens the GUI.
    - It deletes, in the executable's folder only,
      `mothdex.exe`, `mothdex-gui.exe`, `SDL2.dll` and `<alias>.exe` followed by `.old`, `.old-*` or `.failed`. It also
      deletes `.mothdex-update-*` folders older than 1 h whose lock is free.
