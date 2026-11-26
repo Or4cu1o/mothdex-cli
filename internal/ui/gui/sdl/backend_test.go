@@ -462,3 +462,23 @@ func TestACoverIsDecodedDrawnAndVisibleInTheCoverPanel(t *testing.T) {
 		t.Errorf("the cover pixel at %d,%d is %d,%d,%d", cx, cy, r, g, b)
 	}
 }
+
+// A window that cannot be opened must come back as an error, so the GUI can exit with the SDL code. The
+// cleanup of a failed OpenBackend used to run on a nil backend and panic.
+func TestOpenBackendReturnsAnErrorForAVideoDriverThatDoesNotExist(t *testing.T) {
+	runtime.LockOSThread()
+	t.Cleanup(runtime.UnlockOSThread)
+	lib, err := Open()
+	skipWithoutSDL(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	font, err := text.Parse(assets.NotoSans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	be, err := OpenBackend(lib, font, BackendOptions{Driver: "nosuchdriver"})
+	if err == nil || be != nil {
+		t.Fatalf("backend %v, error %v: want no backend and an error", be, err)
+	}
+}

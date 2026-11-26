@@ -79,10 +79,11 @@ func OpenBackend(lib *Library, font *text.Font, o BackendOptions) (b *Backend, e
 		atlas: text.NewAtlas(atlasSide, atlasSide),
 		pads:  map[int32]Controller{}, padType: map[int32]input.ControllerType{}, joys: map[int32]padRecord{},
 	}
-	b.images = newLRU(maxImageTextures, func(_ uint64, t Texture) { b.lib.DestroyTexture(t) })
+	b.images = newLRU(maxImageTextures, func(_ uint64, t Texture) { lib.DestroyTexture(t) })
+	opened := b // a "return nil, err" below sets b to nil before the deferred cleanup runs
 	defer func() {
 		if err != nil {
-			b.Close()
+			opened.Close()
 			b = nil
 		}
 	}()
