@@ -31,14 +31,11 @@ type guiUpdates struct {
 	running sync.WaitGroup // an Apply that has not returned
 }
 
-// newUpdates is nil when the automatic check is off (update.check, the environment, CI, a development build or
-// an installation the installer does not manage): the GUI then offers nothing and opens no connection.
-func newUpdates(u *update.Updater, enabled bool, getenv func(string) string) *guiUpdates {
-	if u == nil {
-		return nil
-	}
-	if reason := u.SkipReason(enabled, getenv); reason != "" {
-		u.LogSkipped(reason)
+// newUpdates is nil when the automatic check is off: compose.Session.UpdateCheck holds the result of every off
+// switch (update.check, the environment, CI, a development build, an unmanaged installation) and logged why. The
+// GUI then offers nothing and opens no connection.
+func newUpdates(u *update.Updater, check bool) *guiUpdates {
+	if u == nil || !check {
 		return nil
 	}
 	return &guiUpdates{u: u}

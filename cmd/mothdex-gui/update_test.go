@@ -3,43 +3,21 @@
 package main
 
 import (
-	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/update"
 )
 
-// With the check off, or an installation the installer does not manage, the model gets no updater at all, so
-// there is no notice, no action and no request. The client of this updater fails the test if it is used.
-func TestNoUpdaterWhenTheCheckIsOffOrTheInstallationIsNotManaged(t *testing.T) {
-	exe := filepath.Join(t.TempDir(), "mothdex-gui")
-	if err := os.WriteFile(exe, nil, 0o700); err != nil { //nolint:gosec // an empty stand-in for the program
-		t.Fatal(err)
+// With the check off the model gets no updater at all, so there is no notice, no action and no request.
+func TestNoUpdaterWhenTheCheckIsOff(t *testing.T) {
+	off := newUpdates(&update.Updater{}, false)
+	if off.model() != nil || newUpdates(nil, true).model() != nil {
+		t.Error("the GUI got an updater")
 	}
-	u, err := update.New(update.Options{Exe: exe, Current: "0.2.0", DataDir: t.TempDir(), Log: slog.New(slog.DiscardHandler)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, c := range map[string]struct {
-		enabled bool
-		env     map[string]string
-	}{
-		"update.check false":      {false, nil},
-		"MOTHDEX_NO_UPDATE_CHECK": {true, map[string]string{"MOTHDEX_NO_UPDATE_CHECK": "1"}},
-		"CI":                      {true, map[string]string{"CI": "true"}},
-		"no install state":        {true, nil},
-	} {
-		got := newUpdates(u, c.enabled, func(k string) string { return c.env[k] })
-		if got.model() != nil {
-			t.Errorf("%s: the GUI got an updater", name)
-		}
-		got.wait() // a nil updater has nothing to wait for
-	}
-	if newUpdates(nil, true, os.Getenv).model() != nil {
-		t.Error("no updater at all")
+	off.wait() // a nil updater has nothing to wait for
+	if newUpdates(&update.Updater{}, true).model() == nil {
+		t.Error("no updater with the check on")
 	}
 }
 

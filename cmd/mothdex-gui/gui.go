@@ -105,7 +105,7 @@ func runGUI(o options, logs *mlog.Session, again *bool, stderr io.Writer) (code 
 	}.attrs()...)
 	log.Info("gui: started", "driver", be.Driver(), "width", w, "height", h, "version", buildinfo.Get().Version)
 
-	updates := newUpdates(sess.Updater, sess.UpdateCheck, os.Getenv)
+	updates := newUpdates(sess.Updater, sess.UpdateCheck)
 	defer updates.wait() // runs before the closes above: an installation ends before the program does
 	opts := gui.Options{
 		Updates: updates.model(),

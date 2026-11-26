@@ -216,7 +216,8 @@ stays in `internal/update`.
   the screen takes no action, and a program told to leave waits for it (up to 1 minute).
 - After it, `Later` or `Restart`; Restart goes through the quit questions, closes SDL and the service, and runs the
   new `mothdex-gui` by its absolute path with the same arguments (TM-40).
-- `main` calls `update.CleanupOld` for a run that opens the GUI.
+- `main` calls `update.CleanupOld` for a run that opens the GUI only: it writes a lock file beside the program, and
+  `--probe`, `--version`, `--spike` and `--help` write nothing (ports.md §5.2).
 
 **Console window on Windows.** The release build does not pass `-H=windowsgui`, so Windows opens a console window
 along with the GUI. Kept on purpose during the beta (it shows start-up errors to a tester); to review for 1.0.
