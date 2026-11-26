@@ -206,21 +206,23 @@ The GUI is dynamic on Linux, so the installer must prove it can start before it 
    "CLI only".
 3. Extract by exact member name only (T-70 IC-4), copy the binary to its staging name in `bin_dir`, and run
    `mothdex-gui --probe` there with a scrubbed environment and a time bound (IC-1, IC-2, IC-10), never from the temp
-   dir. Exit 0 means eligible: rename it into place. Exit 1 means not eligible: delete the staging file. An exec failure
-   (126, 127, `ENOEXEC`) is an installer error that is reported, never a silent "not eligible".
+   dir. Exit 0 means eligible: rename it into place. Exit 8 means not eligible: delete the staging file. Releases 0.0.x
+   and 0.1.x said "not eligible" with exit 1, so for those versions only 1 counts as not eligible; from 0.2.0 on exit 1
+   is an internal error. An exec failure (126, 127, `ENOEXEC`) is an installer error that is reported, never a silent
+   "not eligible".
 4. Not eligible (missing interpreter, missing or too old SDL2, wrong userland arch): warn with the probe's one-line
    reason, do not install the GUI, and keep the CLI install. No launcher is written, and a marked one is removed (D32).
 5. Exit status (PR-88 decision b): not eligible, or no GUI archive in the release, is a normal outcome, exit 0. A
-   probe that cannot run, or any exit code other than 0 and 1, is an installer error: the CLI install and the launcher
-   still complete, and the installer exits 1. On Windows every non-zero probe result is that error (IC-9).
+   probe that cannot run, or any exit code other than those of step 3, is an installer error: the CLI install and the
+   launcher still complete, the installer changes neither the PATH nor its install state (T-110 TM-11), and exits 1. On Windows every non-zero probe result is that error (IC-9).
 
 **`mothdex-gui --probe`** (gap PRT-G3, Vitral):
 - loads SDL2 exactly as at normal start (§3), calls `SDL_GetVersion` and applies the version rule;
 - opens no window, initializes no video or input subsystem, reads no config and writes no file or log;
-- gives up by itself after 15 s (one line "SDL2 did not answer within 15 seconds", exit 1), inside the installer's
+- gives up by itself after 15 s (one line "SDL2 did not answer within 15 seconds", exit 8), inside the installer's
   own 20 s bound (T-70 IC-10), so a library that blocks in a constructor cannot hang the install even without `timeout`;
-- prints `sdl <major>.<minor>.<patch>` and, on Linux, a word for where the loader found SDL2 (`system`, `ld_library_path`, `other` or `unknown`; never a path), in one sanitized line of at most 200 bytes, and exits 0, or prints the reason and exits 1, the code gui.md §5 uses for SDL
-  problems.
+- prints `sdl <major>.<minor>.<patch>` and, on Linux, a word for where the loader found SDL2 (`system`, `ld_library_path`, `other` or `unknown`; never a path), in one sanitized line of at most 200 bytes, and exits 0, or prints the reason and exits 8, the code gui.md §5 uses for SDL
+  problems; 1 means an internal error. Releases before 0.2.0 exit 1 when not eligible.
 
 This replaces the `ldconfig -p` check of gui.md §6. One run proves the interpreter, the userland arch and the SDL
 soname together, and does not depend on `ldconfig` being present on these images (Unverified).

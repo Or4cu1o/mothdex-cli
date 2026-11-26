@@ -18,7 +18,7 @@ func TestProbeReasonIsCutAtTwoHundredBytes(t *testing.T) {
 	defer func(old func() (sdl.Found, error)) { checkSDL = old }(checkSDL)
 	checkSDL = func() (sdl.Found, error) { return sdl.Found{}, errors.New(strings.Repeat("x", 500)) }
 	var out, errOut bytes.Buffer
-	if code := run([]string{"mothdex-gui", "--probe"}, &out, &errOut); code != 1 {
+	if code := run([]string{"mothdex-gui", "--probe"}, &out, &errOut); code != 8 {
 		t.Fatalf("exit %d", code)
 	}
 	if line := strings.TrimSuffix(errOut.String(), "\n"); len(line) != 200 {

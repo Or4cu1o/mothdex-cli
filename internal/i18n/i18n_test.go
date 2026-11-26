@@ -53,7 +53,15 @@ func TestLocalesAgainstEnUS(t *testing.T) {
 		if extra := b.Extra(id); len(extra) != 0 {
 			t.Errorf("%s defines keys en_us does not: %v", id, extra)
 		}
-		if missing := b.Missing(id); complete[id] && len(missing) != 0 {
+		missing := b.Missing(id)
+		// T-112 promises help/flag translations in en_us and pt_br; other locales
+		// deliberately fall back for this new surface, without weakening existing coverage.
+		if id != "pt_br" {
+			missing = slices.DeleteFunc(missing, func(key string) bool {
+				return strings.HasPrefix(key, "ui.cli.help.") || strings.HasPrefix(key, "ui.cli.flags.") || strings.HasPrefix(key, "ui.cli.template.")
+			})
+		}
+		if complete[id] && len(missing) != 0 {
 			t.Errorf("%s is missing %d keys: %v", id, len(missing), missing)
 		} else if !complete[id] && len(missing) != 0 {
 			t.Logf("%s falls back to en_us for %d keys (best effort locale)", id, len(missing))

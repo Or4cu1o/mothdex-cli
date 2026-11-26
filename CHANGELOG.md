@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The installers add the install folder to your PATH, without administrator rights. On Windows it goes into the user `Path` (nothing else in it is rewritten) and into the current PowerShell window. On Linux and macOS it is one line marked `# mothdex` in the startup file of your shell (bash, zsh, fish or `~/.profile`). `-NoModifyPath` / `--no-modify-path` prints the command to copy instead. Uninstall removes only the entry the installer added.
+- The installers record what they did in `.mothdex-install.json` in the install folder, and end with a short summary, in Portuguese on a Portuguese system.
+- English and Brazilian Portuguese command help, examples, flag descriptions and help headings now follow --lang or interface.language. Other locales fall back to English per key; tests reject commands or flags without English keys.
+- Grouped command help, full descriptions and executable examples, usage modes, separate global flags, and config/exit-code/error reference topics. `docs/errors.md` is generated from the error locale keys. Shell help includes its navigation commands.
+- `mothdex gui` launches the sibling GUI and forwards configuration, profile and language. Usage follows the invoked binary name; completion scripts register both mothdex and mdex.
+
+### Changed
+
+- `install.ps1` is safe to run as text in your PowerShell session: it never closes the window, sets `$LASTEXITCODE` on failure and leaves no settings, functions or variables behind. `install.sh` is safe to run from a pipe: a truncated download runs nothing, and no program it starts can read the script.
+- Linux installer: `mothdex-gui --probe` exit 8 means the GUI cannot run here. Exit 1 means the same only for releases 0.1.x and older; from 0.2.0 on it is reported as an error.
+
 ## [0.1.1] - 2026-11-23
 
 **Upgrading from v0.1.0:** the installers of v0.1.0 refuse this release and install nothing, not even the CLI. Download `install.sh` or `install.ps1` from the v0.1.1 tag and run that one, or pass `--no-gui` (`-NoGui` on Windows) to the old installer to update only the CLI.

@@ -137,7 +137,9 @@ func (r *Runner) newRuntime(ctx context.Context) *runtime { return &runtime{d: r
 // Commands lists the commands the Shell can run, sorted by name, with their flags.
 func (r *Runner) Commands() []CommandInfo {
 	r.cmdsOnce.Do(func() {
-		root := r.newRuntime(context.Background()).rootCommand()
+		rt := r.newRuntime(context.Background())
+		root := rt.rootCommand()
+		localizeHelp(root, rt.helpTranslator())
 		for _, c := range root.Commands() {
 			if !c.Hidden {
 				r.cmds = append(r.cmds, describe(c))
@@ -168,4 +170,14 @@ func describe(c *cobra.Command) CommandInfo {
 		}
 	}
 	return info
+}
+
+// HelpTopics lists registered reference topics so the Shell can route help consistently.
+func (r *Runner) HelpTopics() []string {
+	topics := append(referenceTopics(r.s.T), r.d.HelpTopics...)
+	names := make([]string, 0, len(topics))
+	for _, topic := range topics {
+		names = append(names, topic.Name)
+	}
+	return names
 }

@@ -3,6 +3,12 @@ locale:
   name: 'English'
   iso_code: 'en-US'
 errors:
+  update_unavailable:
+    message: 'This installation cannot be updated by mothdex.'
+    hint: 'Install using the one-line command for your OS: {install_command}'
+  update_failed:
+    message: 'The update could not be completed.'
+    hint: 'If the previous version was restored, try mothdex upgrade again later; otherwise reinstall: {install_command}'
   usage:
     message: 'Invalid usage: {detail}'
     hint: 'Run "mothdex {command} --help".'
@@ -143,6 +149,252 @@ ui:
       one: '{count} file'
       other: '{count} files'
   cli:
+    help:
+      boxart:
+        flags:
+          output: 'destination folder'
+          slug: 'read the argument as a slug'
+        example: |-
+          mothdex search mario
+          mothdex boxart 1 -o ./games
+        long: 'Save an entry cover to the destination folder without downloading the game.'
+        short: 'Save the cover of an entry'
+      cache:
+        example: 'mothdex cache stats'
+        long: 'Inspect local cache usage or clear cached catalog data. Session and state are preserved by default.'
+        short: 'Inspect or clear the cache'
+      cache_clear:
+        example: 'mothdex cache clear'
+        long: 'Clear selected namespaces, or cached data other than session and state when none are given.'
+        short: 'Clear cached data (default: everything except the session and state)'
+      cache_stats:
+        example: 'mothdex cache stats'
+        long: 'Show item counts, sizes and expiry by cache namespace.'
+        short: 'Show cache usage'
+      completion:
+        example: 'mothdex completion bash'
+        long: 'Generate a shell completion script for mothdex and mdex. Load it with source (bash/zsh), pipe to source (fish), or Invoke-Expression (PowerShell).'
+        short: 'Generate shell completion for mothdex and mdex'
+      completion_bash:
+        example: 'mothdex completion bash'
+        long: 'Generate bash completion for mothdex and mdex. Load the script in your shell startup file.'
+        short: 'Generate bash completion'
+      completion_fish:
+        example: 'mothdex completion fish'
+        long: 'Generate fish completion for mothdex and mdex. Load the script in your shell startup file.'
+        short: 'Generate fish completion'
+      completion_powershell:
+        example: 'mothdex completion powershell'
+        long: 'Generate powershell completion for mothdex and mdex. Load the script in your shell startup file.'
+        short: 'Generate powershell completion'
+      completion_zsh:
+        example: 'mothdex completion zsh'
+        long: 'Generate zsh completion for mothdex and mdex. Load the script in your shell startup file.'
+        short: 'Generate zsh completion'
+      config:
+        example: 'mothdex config list'
+        long: 'Read effective settings and their sources, or edit the YAML configuration. Run mothdex help config for accepted values, defaults and environment overrides.'
+        short: 'Read or change settings'
+      config_get:
+        example: 'mothdex config get interface.language'
+        long: 'Print the effective value of one dotted configuration key.'
+        short: 'Show one setting'
+      config_list:
+        example: 'mothdex config list'
+        long: 'List effective values and their sources: default, file, environment or command flag.'
+        short: 'List every setting'
+      config_reset:
+        example: 'mothdex config reset interface.page_size'
+        long: 'Remove an override so a key, section or the whole file returns to defaults.'
+        short: 'Remove a setting from the configuration file'
+      config_set:
+        example: 'mothdex config set interface.page_size 10'
+        long: 'Validate and save a configuration value. The next invocation reads the new value.'
+        short: 'Change a setting in the configuration file'
+      db_info:
+        example: 'mothdex db-info'
+        long: 'Show catalog totals and database metadata from the server.'
+        short: 'Show catalog statistics'
+      download:
+        flags:
+          allow_executable: 'allow file types that can run code'
+          boxart: 'also save the cover'
+          jobs: 'downloads at the same time'
+          link: 'link number to use (wins over --prefer)'
+          no_boxart: 'do not save the cover'
+          output: 'destination folder (becomes the root; files go straight into it)'
+          prefer: 'rank links: key=value[,value...] (repeatable)'
+          search: 'search and download the first result'
+          slug: 'read the arguments as slugs'
+        example: |-
+          mothdex search mario
+          mothdex download 1
+          mothdex download 1 -o ./games
+          mothdex download --search mario
+          mothdex download 1 --link 1
+          mothdex download 1 --boxart
+        long: 'Download by result number or slug. Run search first when using numbers. --search selects the first match. --link selects a numbered link; -o chooses a destination folder and --boxart saves its cover.'
+        short: 'Download entries'
+      gui:
+        example: |-
+          mothdex gui
+          mothdex gui --lang pt_br
+        long: 'Run mothdex-gui from the CLI installation folder. Forward --config, --profile and --lang to the GUI. Reinstall without -NoGui / --no-gui if it is missing, or use mothdex tui.'
+        short: 'Open the gamepad interface'
+      help:
+        example: |-
+          mothdex help download
+          mothdex help exit-codes
+          mothdex help config
+          mothdex help errors
+        long: 'Show help for a command or a reference topic: exit-codes, config or errors.'
+        short: 'Help for commands and reference topics'
+      history:
+        flags:
+          export: 'write the records to a file or directory'
+          failed: 'only failed downloads'
+          format: 'export format: txt | json | csv'
+          limit: 'newest records to show (0 = all)'
+        example: |-
+          mothdex history
+          mothdex history --failed
+        long: 'List previous downloads, including failures. Export records using --export and --format.'
+        short: 'Show past downloads'
+      info:
+        flags:
+          prefer: 'rank links: key=value[,value...] (repeatable)'
+          slug: 'read the argument as a slug'
+        example: |-
+          mothdex search mario
+          mothdex info 1
+        long: 'Show an entry and its download links. Use a number from the last search or an explicit slug with --slug.'
+        short: 'Show one entry and its links'
+      platforms:
+        flags:
+          brand: 'only this brand'
+          class: 'only this class'
+        example: 'mothdex platforms'
+        long: 'List platform identifiers accepted by --platform.'
+        short: 'List platforms'
+      profile:
+        example: 'mothdex profile show'
+        long: 'Inspect the active frontend profile and detected game folders.'
+        short: 'Show or detect the frontend profile'
+      profile_detect:
+        example: 'mothdex profile detect'
+        long: 'Detect the frontend profile again and show the resulting folders and warnings.'
+        short: 'Detect the profile again'
+      profile_show:
+        example: 'mothdex profile show'
+        long: 'Show the active frontend, game root, detection source and storage warnings.'
+        short: 'Show the active profile'
+      random:
+        flags:
+          count: 'how many entries (1..20)'
+          platform: 'platform id (repeatable)'
+          region: 'region id (repeatable)'
+          serial: 'exact serial'
+        example: 'mothdex random'
+        long: 'Pick random catalog entries, optionally filtered by platform and region.'
+        short: 'Show random entries'
+      regions:
+        example: 'mothdex regions'
+        long: 'List region identifiers accepted by --region.'
+        short: 'List regions'
+      root:
+        example: |-
+          mothdex search mario
+          mothdex help config
+        long: |-
+          Search the catalog, inspect entries and download games. Use --json for scripts.
+          Run mothdex help config, mothdex help exit-codes or mothdex help errors for reference.
+        short: 'Search and download from the Mothdex catalog'
+      search:
+        flags:
+          export: 'write the results to a file or directory'
+          format: 'export format: txt | json | csv'
+          page: 'page number'
+          page_size: 'results per page (1..100; default interface.page_size)'
+          platform: 'platform id (repeatable)'
+          region: 'region id (repeatable)'
+          serial: 'exact serial'
+          sort: 'relevance | title | size (current page only)'
+        example: |-
+          mothdex search mario
+          mothdex search mario --platform snes --page-size 10
+        long: 'Search titles and save a numbered result page for info and download. Filter by platform or region; sorting applies to the current page.'
+        short: 'Search the catalog'
+      shell:
+        example: 'mothdex shell'
+        long: 'Open an interactive session with history and Tab completion. Shell-only commands: n, p, page, sort, last, clear, exit and quit.'
+        short: 'Start the interactive shell'
+      tui:
+        example: 'mothdex tui'
+        long: 'Open the full-screen terminal interface. Both input and output must be interactive terminals.'
+        short: 'Start the full-screen terminal UI'
+      version:
+        example: 'mothdex version'
+        long: 'Print version, commit and build date. --json returns the standard output envelope.'
+        short: 'Print the version'
+    flags:
+      config: 'configuration file'
+      force: 'skip prompts; allow overwriting files'
+      help: 'show help for this command'
+      json: 'print one JSON document on stdout'
+      lang: 'interface language, for example pt_br'
+      no_color: 'turn colors off'
+      profile: 'frontend profile id'
+      quiet: 'print only the result and errors'
+      refresh: 'skip cache reads, still write'
+      verbose: 'show the cause of errors'
+      version: 'print the version and exit'
+    template:
+      command_or_topic: 'command or topic'
+      text_token: 'text'
+      key_token: 'key'
+      value_token: 'value'
+      default: 'default'
+      exit_codes: |-
+        Exit  Meaning                         error.code
+        0     Success (including skipped)     —
+        1     Unexpected internal error       internal
+        2     Usage or configuration          usage, invalid_config, invalid_request, confirmation_required, unmapped_platform
+        3     Not found                       not_found, no_session, index_out_of_range
+        4     Network/service unavailable     network, rate_limited, upstream, api_incompatible, untrusted_url, untrusted_redirect
+        5     Integrity                       size_mismatch, integrity
+        6     Local filesystem                permission_denied, disk_full, exists, path_rejected, unsafe_name
+        7     Partial batch                   First failure; all failures in data.jobs[].error
+        9     Self-update not applied         update_unavailable, update_failed
+        130   Interrupted (wins over 7)        canceled
+      config_intro: |-
+        Configuration: defaults < YAML file < MOTHDEX_* environment < command flags.
+        Use mothdex config set <key> <value> to save an override.
+      config_columns: 'Key | Accepted values | Default | Environment'
+      config_footer: |-
+        profile.folders.<platform> | relative folder name | profile default | —
+        Empty paths use platform-specific directories. interface.language accepts auto or a locale such as en_us/pt_br.
+      error_reference: 'Error reference'
+      error_columns: '| Code | Meaning | How to fix |'
+      no_error_action: 'No action required; run the command again to retry.'
+      usage: 'Usage'
+      commands: 'Available Commands'
+      examples: 'Examples'
+      flags: 'Flags'
+      global_flags: 'Global Flags'
+      modes: 'Modes'
+      shell_commands: 'Shell commands: n, p, page <n>, sort <key>, last, clear, exit, quit'
+      catalog: 'Catalog'
+      downloads: 'Downloads'
+      interfaces: 'Interfaces'
+      system: 'System'
+      command_token: 'command'
+      flags_token: 'flags'
+      modes_table: |-
+        Mode    Open                         Purpose
+        CLI     mdex <command>               Scripts and quick use; accepts --json
+        Shell   mdex, or mdex shell          Sequential commands, n/p, history, Tab
+        TUI     mdex tui                     Full-screen keyboard navigation
+        GUI     mdex gui, or mothdex-gui     Gamepad interface for RetroBat, Batocera and similar systems
     warning: 'warning'
     usage_root_hint: 'Run "mothdex --help".'
     name: 'Name'
@@ -261,6 +513,48 @@ ui:
       number: 'Show the entry with that number (same as info)'
       d: 'Download entries by number: d 1 3, or d 2-4'
   gui:
+    cmdline:
+      summary: "mothdex-gui is the gamepad interface of mothdex for emulation frontends.\nWith no flags it opens in full screen."
+      usage: 'Usage:'
+      options: 'flags'
+      flags_title: 'Flags:'
+      values:
+        file: 'file'
+        id: 'id'
+        level: 'level'
+        size: 'WxH'
+        name: 'name'
+      flags:
+        config: 'Configuration file (default: the standard location)'
+        profile: 'Frontend profile, such as batocera (default: detected)'
+        lang: "Interface language, such as pt_br\n(default: interface.language)"
+        log_level: "Log detail: debug, info, warn or error. Shortcut\nfor MOTHDEX_LOG_LEVEL (default: log.level)"
+        window: 'Open a window of that size instead of full screen'
+        driver: "Force an SDL video driver, such as dummy\n(default: SDL_VIDEODRIVER or SDL's choice)"
+        probe: "Check that SDL2 can be used, without a window:\nprint its version and exit"
+        version: 'Print the version and exit'
+        spike: "Test the SDL2 binding on a hidden window and\nexit (used by automated tests)"
+        help: 'Show this help and exit'
+      dashes: 'Flags take one dash or two: -config and --config are the same.'
+      exit_title: 'Exit codes:'
+      exit:
+        c0: 'Normal exit, also after SIGTERM or Ctrl+C'
+        c1: 'Unexpected internal error'
+        c2: 'Configuration error: configuration, flags or profile'
+        c8: 'SDL2 is missing or too old, or there is no display'
+      env_title: 'Environment variables:'
+      env:
+        config: 'Configuration file, when --config is not given'
+        log_level: 'Same as --log-level'
+        key: 'Any configuration key: upper case, dots as _'
+      examples_title: 'Examples:'
+      log_note: 'Failures are written to mothdex.log, in the logs folder (paths.logs).'
+      see_help: 'Run mothdex-gui --help to see the flags.'
+      unexpected_argument: 'Unexpected argument: {argument}'
+      unknown_flag: 'Unknown flag: {flag}'
+      missing_value: 'The flag {flag} needs a value.'
+      bad_flags: 'Invalid command line: {detail}'
+      bad_window: '--window wants WxH, at least 160x120, such as 1280x720.'
     kb:
       space: 'space'
       delete: 'Del'

@@ -1,0 +1,158 @@
+package cli
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// SystemGroup is shared by system commands, including logs and upgrade.
+const SystemGroup = "system"
+
+// HelpTopic registers reference text with `mothdex help <name>`. A topic may share a
+// command name (config); it takes precedence only under help.
+type HelpTopic struct {
+	Name, Short string
+	Text        func() string
+}
+
+func helpID(c *cobra.Command) string {
+	if !c.HasParent() {
+		return "root"
+	}
+	path := strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
+	return strings.NewReplacer(" ", "_", "-", "_").Replace(path)
+}
+
+func (r *runtime) configureHelp(root *cobra.Command) {
+	name := r.d.ProgramName
+	if name == "" {
+		name = os.Args[0]
+	}
+	root.Use = strings.TrimSuffix(filepath.Base(name), ".exe")
+	root.AddGroup(&cobra.Group{ID: "catalog", Title: "Catalog"}, &cobra.Group{ID: "downloads", Title: "Downloads"}, &cobra.Group{ID: "interfaces", Title: "Interfaces"}, &cobra.Group{ID: SystemGroup, Title: "System"})
+	root.SetHelpCommand(r.helpCmd(root))
+	root.InitDefaultHelpCmd()
+	root.CompletionOptions.DisableDefaultCmd = true
+	if r.run == nil {
+		root.AddCommand(r.completionCmd())
+	}
+	for _, c := range root.Commands() {
+		switch c.Name() {
+		case "search", "info", "random", "platforms", "regions", "db-info":
+			c.GroupID = "catalog"
+		case "download", "boxart", "history":
+			c.GroupID = "downloads"
+		case "shell", "tui", "gui":
+			c.GroupID = "interfaces"
+		default:
+			c.GroupID = SystemGroup
+		}
+	}
+	walkCommands(root, func(c *cobra.Command) {
+		c.InitDefaultHelpFlag()
+	})
+	root.SetHelpFunc(func(c *cobra.Command, _ []string) { r.printHelp(c) })
+	root.SetUsageFunc(func(c *cobra.Command) error { r.printHelp(c); return nil })
+}
+
+func walkCommands(c *cobra.Command, f func(*cobra.Command)) {
+	f(c)
+	for _, sub := range c.Commands() {
+		walkCommands(sub, f)
+	}
+}
+
+func (r *runtime) helpCmd(root *cobra.Command) *cobra.Command {
+	return &cobra.Command{Use: "help [command or topic]", Short: "Help for commands and reference topics", ValidArgsFunction: func(_ *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
+		target, _, err := root.Find(args)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var values []string
+		seen := map[string]bool{}
+		add := func(name string) {
+			if !seen[name] && strings.HasPrefix(name, prefix) {
+				values = append(values, name)
+				seen[name] = true
+			}
+		}
+		for _, sub := range target.Commands() {
+			if !sub.Hidden {
+				add(sub.Name())
+			}
+		}
+		if len(args) == 0 {
+			for _, topic := range append(referenceTopics(r.helpTranslator()), r.d.HelpTopics...) {
+				add(topic.Name)
+			}
+		}
+		return values, cobra.ShellCompDirectiveNoFileComp
+	}, RunE: func(c *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			for _, topic := range append(referenceTopics(r.helpTranslator()), r.d.HelpTopics...) {
+				if topic.Name == args[0] {
+					_, err := fmt.Fprintln(c.OutOrStdout(), topic.Text())
+					return err
+				}
+			}
+		}
+		target, rest, err := root.Find(args)
+		if err != nil || len(rest) > 0 {
+			return usageErr("help", "unknown help topic: %s", strings.Join(args, " "))
+		}
+		return target.Help()
+	}}
+}
+
+func (r *runtime) printHelp(c *cobra.Command) {
+	t := r.helpTranslator()
+	localizeHelp(c.Root(), t)
+	label := func(name string) string { return t.T("ui.cli.template."+name, nil) }
+	out := c.OutOrStdout()
+	_, _ = fmt.Fprintln(out, c.Long+"\n")
+	_, _ = fmt.Fprintln(out, label("usage")+":")
+	_, _ = fmt.Fprintln(out, "  "+strings.NewReplacer("[command]", "["+label("command_token")+"]", "[flags]", "["+label("flags_token")+"]", "[command or topic]", "["+label("command_or_topic")+"]", "[text...]", "["+label("text_token")+"...]", "<key>", "<"+label("key_token")+">", "<value>", "<"+label("value_token")+">", "<key|all>", "<"+label("key_token")+"|all>").Replace(c.UseLine()))
+	if c == c.Root() {
+		_, _ = fmt.Fprintln(out, "\n"+label("modes")+":\n"+label("modes_table"))
+		if r.run != nil {
+			_, _ = fmt.Fprintln(out, "\n"+label("shell_commands"))
+		}
+	}
+	printCommands := func(title, group string) {
+		shown := false
+		for _, sub := range c.Commands() {
+			if sub.Hidden || (group != "" && sub.GroupID != group) {
+				continue
+			}
+			if !shown {
+				_, _ = fmt.Fprintln(out, "\n"+title+":")
+				shown = true
+			}
+			_, _ = fmt.Fprintf(out, "  %-18s %s\n", sub.Name(), sub.Short)
+		}
+	}
+	if c == c.Root() {
+		for _, g := range c.Groups() {
+			printCommands(g.Title, g.ID)
+		}
+	} else {
+		printCommands(label("commands"), "")
+	}
+	if c.Example != "" {
+		_, _ = fmt.Fprintln(out, "\n"+label("examples")+":\n  "+strings.ReplaceAll(c.Example, "\n", "\n  "))
+	}
+	local := pflag.NewFlagSet("local", pflag.ContinueOnError)
+	c.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) { local.AddFlag(f) })
+	if local.HasAvailableFlags() {
+		_, _ = fmt.Fprintln(out, "\n"+label("flags")+":\n"+strings.ReplaceAll(local.FlagUsages(), "(default ", "("+label("default")+" "))
+	}
+	global := c.Root().PersistentFlags()
+	if global.HasAvailableFlags() {
+		_, _ = fmt.Fprintln(out, label("global_flags")+":\n"+strings.ReplaceAll(global.FlagUsages(), "(default ", "("+label("default")+" "))
+	}
+}

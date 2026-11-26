@@ -7,6 +7,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"os"
 	"runtime"
 	"slices"
 	"strconv"
@@ -460,5 +461,81 @@ func TestACoverIsDecodedDrawnAndVisibleInTheCoverPanel(t *testing.T) {
 	}
 	if r != 200 || g != 80 || b != 40 { // the solid color guitest.PNG makes
 		t.Errorf("the cover pixel at %d,%d is %d,%d,%d", cx, cy, r, g, b)
+	}
+}
+
+// A window that cannot be opened must come back as an error, so the GUI can exit with the SDL code. The
+// cleanup of a failed OpenBackend used to run on a nil backend and panic.
+func TestOpenBackendReturnsAnErrorForAVideoDriverThatDoesNotExist(t *testing.T) {
+	runtime.LockOSThread()
+	t.Cleanup(runtime.UnlockOSThread)
+	lib, err := Open()
+	skipWithoutSDL(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	font, err := text.Parse(assets.NotoSans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	be, err := OpenBackend(lib, font, BackendOptions{Driver: "nosuchdriver"})
+	if err == nil || be != nil {
+		t.Fatalf("backend %v, error %v: want no backend and an error", be, err)
+	}
+}
+
+// A driver that shows nothing is "no display" only when SDL picked it by itself.
+func TestNoDisplayFallbackOnlyWhenNobodyChoseTheDriver(t *testing.T) {
+	for _, c := range []struct {
+		name, chosen, forced string
+		env                  map[string]string
+		want                 bool
+	}{
+		{"offscreen picked by SDL", "offscreen", "", nil, true},
+		{"dummy picked by SDL", "dummy", "", nil, true},
+		{"an empty variable chooses nothing", "offscreen", "", map[string]string{"SDL_VIDEODRIVER": ""}, true},
+		{"--driver", "dummy", "dummy", nil, false},
+		{"SDL_VIDEODRIVER", "offscreen", "", map[string]string{"SDL_VIDEODRIVER": "offscreen"}, false},
+		{"SDL_VIDEO_DRIVER", "dummy", "", map[string]string{"SDL_VIDEO_DRIVER": "dummy"}, false},
+		{"a Port on KMS", "kmsdrm", "", nil, false},
+		{"a Port on a vendor driver", "mali", "", nil, false},
+		{"X11", "x11", "", nil, false},
+		{"Windows", "windows", "", nil, false},
+	} {
+		if got := noDisplayFallback(c.chosen, c.forced, func(k string) string { return c.env[k] }); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// With no display to find and no driver chosen, OpenBackend must not hand back a window nobody can see.
+func TestOpenBackendNeverRunsUnseenByItsOwnChoice(t *testing.T) {
+	for _, name := range append([]string{"DISPLAY", "WAYLAND_DISPLAY"}, videoDriverVars...) {
+		t.Setenv(name, "") // registers the restore
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime.LockOSThread()
+	t.Cleanup(runtime.UnlockOSThread)
+	lib, err := Open()
+	skipWithoutSDL(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	font, err := text.Parse(assets.NotoSans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	be, err := OpenBackend(lib, font, BackendOptions{Windowed: true, Hidden: true, Software: true, Width: 320, Height: 240})
+	if err != nil {
+		if be != nil || !errors.Is(err, ErrNoDisplay) {
+			t.Fatalf("backend %v, error %v: want no backend and ErrNoDisplay", be, err)
+		}
+		return
+	}
+	defer be.Close()
+	if drv := be.Driver(); drv == "offscreen" || drv == "dummy" { // a machine with a real display, or a console with KMS
+		t.Fatalf("the backend opened on the %s driver that nobody asked for", drv)
 	}
 }

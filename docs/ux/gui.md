@@ -822,7 +822,7 @@ Agreed with Alicerce on T-51; the contract (PR #58) records each item.
 | G1 (backlog) | Folder choice for unmapped platforms (arcade): list the ROM root's subfolders minus launcher folders, and download into `<RomRoot>/<folder>` under the same root | backlog; v1 shows the `unmapped_platform` error with the GUI hint (§6) |
 | G2 | Config keys `gui.confirm_button` (`south`\|`east`, default `south`), `gui.text_size` (`normal`\|`large`, default `normal`), `gui.safe_area` (`auto`\|`0`–`10`, default `auto`) | Forja adds them to the config schema; needed by PR 1. The GUI re-reads them after `ConfigSet` |
 | G3 | `Wait` with an idle queue returns at once and still runs the refresh when a job ended `Done` since the last `Wait` | confirmed in `downloads.go`; exit budget 2 s |
-| G4 | Exit codes for the launcher | `0` normal quit or SIGTERM, `1` SDL or display, `2` config, `3` internal; always written to the log |
+| G4 | Exit codes for the launcher | `0` normal quit or SIGTERM, `1` internal, `2` config, `8` SDL or display ([`cli-output.md`](../contracts/cli/cli-output.md) §4.1); always written to the log |
 | F1 (from ui.md) | Config schema metadata (ranges, enums) | static table for the curated keys, as in the TUI |
 | F3 (from ui.md) | Live reload after `ConfigSet` | the GUI re-reads the keys it consumes; the rest say `Applies on next start` |
 

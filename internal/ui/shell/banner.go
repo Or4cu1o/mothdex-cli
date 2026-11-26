@@ -41,6 +41,13 @@ func (s *Shell) help(ctx context.Context, args []string) int {
 		return 0
 	}
 	name := args[0]
+	if source, ok := s.o.Runner.(interface{ HelpTopics() []string }); ok {
+		for _, topic := range source.HelpTopics() {
+			if topic == name {
+				return s.exec(ctx, func(c context.Context) int { return s.o.Runner.Run(c, append([]string{"help"}, args...)) })
+			}
+		}
+	}
 	if _, ok := findCommand(s.o.Runner.Commands(), name); ok {
 		return s.exec(ctx, func(c context.Context) int { return s.o.Runner.Run(c, []string{name, "--help"}) })
 	}
@@ -58,7 +65,9 @@ func (s *Shell) helpList() {
 	cmds := s.o.Runner.Commands()
 	sort.Slice(cmds, func(i, j int) bool { return cmds[i].Name < cmds[j].Name })
 	for _, c := range cmds {
-		rows = append(rows, helpRow{c.Name, c.Short})
+		if c.Name != "help" {
+			rows = append(rows, helpRow{c.Name, c.Short})
+		}
 	}
 	for _, m := range metaHelp {
 		rows = append(rows, helpRow{m.shown, s.t("ui.shell.help."+m.key, nil)})
