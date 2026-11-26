@@ -5,9 +5,9 @@ before it lands, and code that deviates from one is a bug in either the code or 
 
 | Folder | Content |
 |---|---|
-| [`contracts/cli/`](contracts/cli/) | [API client](contracts/cli/api-client.md) (`pkg/mothdex`), [app service](contracts/cli/app-service.md), [downloader](contracts/cli/downloader.md), [cache](contracts/cli/cache.md), [config](contracts/cli/config.md), [system profiles](contracts/cli/profiles.md), [machine output and exit codes](contracts/cli/cli-output.md), [release artifacts](contracts/cli/release-artifacts.md), [Shell and TUI](contracts/cli/ui.md), [GUI](contracts/cli/gui.md), [frontend Ports](contracts/cli/ports.md) |
+| [`contracts/cli/`](contracts/cli/) | [API client](contracts/cli/api-client.md) (`pkg/mothdex`), [app service](contracts/cli/app-service.md), [downloader](contracts/cli/downloader.md), [cache](contracts/cli/cache.md), [config](contracts/cli/config.md), [system profiles](contracts/cli/profiles.md), [machine output and exit codes](contracts/cli/cli-output.md), [release artifacts](contracts/cli/release-artifacts.md), [Shell and TUI](contracts/cli/ui.md), [GUI](contracts/cli/gui.md), [frontend Ports](contracts/cli/ports.md), [install state file](contracts/cli/install-state.md), [session logs and error refs](contracts/cli/logs.md), [self-update](contracts/cli/update.md) |
 | [`adr/`](adr/) | [ADR-0001 stack](adr/ADR-0001-stack.md), [ADR-0002 downloader without `Range`](adr/ADR-0002-downloader-without-range.md) |
-| [`security/`](security/) | [T-16 downloader threat model](security/T-16-threat-model-downloader.md) (Sentinela) |
+| [`security/`](security/) | [T-16 downloader threat model](security/T-16-threat-model-downloader.md) (Sentinela), [T-110 beta adjustments threat model](security/T-110-threat-model-beta-adjustments.md) (Sentinela) |
 | [`ux/`](ux/) | human output conventions, `--prefer` syntax, Shell and TUI flows, [gamepad GUI](ux/gui.md) |
 | [`research/`](research/) | T1a Go libraries, T1b SDL2/purego, T1e emulation systems, T1f GoReleaser, T15b platform folders per frontend |
 
