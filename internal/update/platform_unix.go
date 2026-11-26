@@ -18,7 +18,7 @@ func trustedDir(dir string) (string, error) {
 	if err != nil {
 		return "untrusted_dir", err
 	}
-	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0022 != 0 {
+	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0002 != 0 {
 		return "untrusted_dir", fmt.Errorf("unsafe install directory")
 	}
 	sys, ok := st.Sys().(*syscall.Stat_t)
@@ -30,7 +30,7 @@ func trustedDir(dir string) (string, error) {
 		if err != nil {
 			return "untrusted_dir", err
 		}
-		if p.Mode().Perm()&0022 != 0 && p.Mode()&os.ModeSticky == 0 {
+		if p.Mode().Perm()&0002 != 0 && p.Mode()&os.ModeSticky == 0 {
 			return "untrusted_dir", fmt.Errorf("writable install ancestor")
 		}
 		if parent == filepath.Dir(parent) {

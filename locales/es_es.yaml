@@ -783,3 +783,13 @@ ui:
       history: 'historial'
       settings: 'ajustes'
       help: 'ayuda'
+
+update:
+  notice: 'Nueva versión disponible: {current} → {latest}. Actualiza con: {command} upgrade'
+  confirm: 'Actualizar {current} → {latest} (verificación: {signature}).'
+  confirm_downgrade: 'Volver de {current} a {latest} (verificación: {signature}).'
+  prompt: '¿Aplicar la actualización? [s/N]'
+  current: 'Mothdex {current} está actualizado.'
+  available: 'Nueva versión disponible: {current} → {latest}. Ejecuta mothdex upgrade.'
+  updated: 'Actualizado {current} → {latest} (verificación: {signature}).'
+  restart: 'Cierra y vuelve a abrir Mothdex para usar la nueva versión.'

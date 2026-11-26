@@ -811,3 +811,13 @@ ui:
       history: 'история'
       settings: 'настройки'
       help: 'помощь'
+
+update:
+  notice: 'Доступна новая версия: {current} → {latest}. Обновление: {command} upgrade'
+  confirm: 'Обновить {current} → {latest} (проверка: {signature}).'
+  confirm_downgrade: 'Вернуться с {current} на {latest} (проверка: {signature}).'
+  prompt: 'Применить обновление? [д/Н]'
+  current: 'Установлена актуальная версия Mothdex {current}.'
+  available: 'Доступна новая версия: {current} → {latest}. Выполните mothdex upgrade.'
+  updated: 'Обновлено {current} → {latest} (проверка: {signature}).'
+  restart: 'Закройте и снова откройте Mothdex, чтобы использовать новую версию.'

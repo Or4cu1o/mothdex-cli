@@ -28,11 +28,6 @@ import (
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if exe, err := os.Executable(); err == nil {
-		if exe, err = filepath.EvalSymlinks(exe); err == nil {
-			update.CleanupOld(filepath.Dir(exe), nil)
-		}
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigs := make(chan os.Signal, 4)
@@ -58,6 +53,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func deps(stdin io.Reader, stdout, stderr io.Writer, logs *mlog.Session) cli.Deps {
 	return cli.Deps{
 		Open:       opener(logs),
+		CleanupOld: cleanupOld,
 		Translator: embeddedTranslator,
 		Version:    buildinfo.Get,
 		Stdin:      stdin, Stdout: stdout, Stderr: stderr,
@@ -93,4 +89,12 @@ func terminalWidth() int {
 		return 0
 	}
 	return n
+}
+
+func cleanupOld() {
+	if exe, err := os.Executable(); err == nil {
+		if exe, err = filepath.EvalSymlinks(exe); err == nil {
+			update.CleanupOld(filepath.Dir(exe), nil)
+		}
+	}
 }

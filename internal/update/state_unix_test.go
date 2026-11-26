@@ -11,9 +11,9 @@ import (
 )
 
 func TestManagedUntrustedOwnerAndLinks(t *testing.T) {
-	t.Run("group writable", func(t *testing.T) {
+	t.Run("world writable", func(t *testing.T) {
 		u, s := fixture(t)
-		_ = os.Chmod(s.Dir, 0770) //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
+		_ = os.Chmod(s.Dir, 0777) //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
 		_, err := u.Managed()
 		errorCode(t, err, app.CodeUpdateUnavailable, "untrusted_dir")
 	})
@@ -39,4 +39,14 @@ func TestManagedUntrustedOwnerAndLinks(t *testing.T) {
 		_, err := u.Managed()
 		errorCode(t, err, app.CodeUpdateUnavailable, "bad_state")
 	})
+}
+
+func TestManagedPrivateGroupWritableAccepted(t *testing.T) {
+	u, s := fixture(t)
+	if err := os.Chmod(s.Dir, 0770); err != nil { //nolint:gosec // fixture for installer-approved group write.
+		t.Fatal(err)
+	} //nolint:gosec // installer permits group write, contract #150.
+	if _, err := u.Managed(); err != nil {
+		t.Fatal(err)
+	}
 }
