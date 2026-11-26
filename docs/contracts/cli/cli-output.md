@@ -29,7 +29,9 @@ Human output (tables, colors, progress, wording) belongs to Bússola (T-6). This
 ```
 
 On failure: `"ok": false`, `"data": null` (or partial data for batch downloads), and
-`"error": {"code": "not_found", "message": "…", "retryable": false, "exit_code": 3, "details": {}}`.
+`"error": {"code": "not_found", "message": "…", "retryable": false, "exit_code": 3, "ref": "7F3K2Q", "details": {}}`.
+`ref` (v0.2, T-111) identifies this occurrence in the session log, so `mothdex logs show --ref <ref>` finds it
+([`logs.md`](logs.md) §5). The same ref goes in each failed job's `data.jobs[].error.ref`.
 `message` is always English (stable for logs); localized text appears only in human output.
 
 **Compatibility:** additive changes (new fields, new error codes, new commands) keep `schema_version: 1`.
@@ -85,13 +87,43 @@ The values live in `internal/buildinfo` (set with `-X` ldflags), so every packag
 | 5 | integrity | `size_mismatch`, `integrity` |
 | 6 | local filesystem | `permission_denied`, `disk_full`, `exists`, `path_rejected`, `unsafe_name` |
 | 7 | partial: batch with some jobs failed | the first failure code, plus all of them in `data.jobs[].error` |
+| 9 | self-update not applied (`mothdex upgrade`, [`update.md`](update.md) §6); nothing changed, or the previous version was restored (`details.restored`) | `update_unavailable`, `update_failed` |
 | 130 | interrupted (SIGINT/SIGTERM, `canceled`); wins over 7 when a batch is both interrupted and has failures | `canceled` |
 
 `error.exit_code` in the `--json` envelope is the process exit code (7 for a partial batch, whatever the first failure's own
 code maps to). `warnings[]` carries every warning also printed on stderr. `--json` escapes the C1 controls U+0080 to
 U+009F as `\u00XX` besides what the encoder already escapes.
 
-Error codes are lowercase snake_case, stable, and are also the i18n keys under `errors.<code>`.
+Error codes are lowercase snake_case, stable, and are also the i18n keys under `errors.<code>`. Exit 8 is used only
+by `mothdex-gui` (§4.1). It stays out of the CLI table so that the two keep one meaning per number.
+
+New codes in v0.2 (T-111), each with a message and a hint in `en_us` and `pt_br`:
+
+| Code | Meaning | Hint |
+|---|---|---|
+| `update_unavailable` | this installation is not managed by the installer: built from source, a third-party package, moved, read-only, or installed by 0.1.x. `details.reason` comes from install-state.md §4. | the one-line install command for the OS |
+| `update_failed` | the swap or its check failed. `details.reason` is one of `in_progress`, `gui_missing`, `gui_not_eligible`, `swap_failed` or `check_failed`. `details.restored` says whether the previous version is back. | `true`: run `mothdex upgrade` again later; `false`: the one-line install command |
+
+Integrity failures during an upgrade keep `integrity` / `size_mismatch` (exit 5). Network failures keep `network` /
+`untrusted_redirect` (exit 4). A `--version` that does not exist is `not_found` (exit 3).
+
+### 4.1 `mothdex-gui` exit codes (v0.2)
+
+These replace the old table, where 1 meant SDL, 2 configuration and 3 internal. The low numbers now mean the same as
+in the CLI.
+
+| Exit | Meaning |
+|---|---|
+| 0 | normal exit, SIGTERM or SIGINT (including the end of the 2 s exit budget, gui.md §5) |
+| 1 | internal error, including a recovered panic, which also writes `crash/` ([`logs.md`](logs.md) §5) |
+| 2 | configuration error: bad config file, flag or profile, before the window opens |
+| 8 | SDL2 missing or too old, or no display |
+
+- **`--probe`:** exit 0 means eligible, 8 means not eligible, and anything else is a probe error.
+- **Installers switch on the release version.** For releases before `0.2.0`, which `--version` can still install,
+  exit 1 means not eligible. Owner: Guindaste, in `install.sh`, `install.ps1` and `tests/installer`.
+- **Vitral (T-115)** updates gui.md §5, `cmd/mothdex-gui` (README, constants, tests) and the main comments to this
+  table. `scripts/gui-probe.sh` keeps its own build-script codes.
 
 ## 5. Export (`search`, `history`)
 
