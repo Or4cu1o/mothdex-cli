@@ -19,7 +19,7 @@ Command-line client for the [Mothdex](https://api.mothdex.net) API.
 - Resilient downloader: parallel files, retry with backoff, size validation, atomic move
 - Cache with TTL and size limit, request history
 - Interactive shell, terminal UI and `mothdex gui` to open the installed gamepad interface
-- Grouped help with runnable examples: `mothdex --help`, `mothdex help config`, `mothdex help exit-codes` and [error recovery](docs/errors.md)
+- Grouped help with runnable examples: `mothdex --help`, `mothdex help config`, `mothdex help exit-codes` and [error recovery](docs/errors.md). Help follows `--lang` or `interface.language` in English and Brazilian Portuguese; other locales fall back to English
 - Per-system profiles (Batocera, Recalbox, EmuELEC, Lakka, RetroBat, EmuDeck, RetroDECK, generic)
 - Localization (`en_us`, `pt_br`, `es_es`, `ru_ru`, `hi_in`, `ja_jp`, `zh_cn`)
 - Stable `--json` output and documented exit codes
