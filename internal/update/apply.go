@@ -216,7 +216,9 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 	}
 	signature, err := u.o.Verifier.Verify(ctx, VerifyInput{Tag: "v" + version, Checksums: sums, Bundle: bundle, Archives: archives})
 	if err != nil {
-		return r, failure("integrity", "signature", err)
+		e := failure("integrity", "signature", err)
+		e.Args["hint_key"] = "update.verification_hint"
+		return r, e
 	}
 	r.signature = signature
 	if err = step(ctx, o, "stage"); err != nil {
@@ -286,12 +288,25 @@ func releaseNotes(b []byte, current string) string {
 func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage string, r stagedRelease) error {
 	dir := filepath.Dir(u.o.Exe)
 	var swapped []string
+	original := s
+	aliasChanged := false
 	rollback := func(reason string, cause error) error {
 		restored := true
 		for i := len(swapped) - 1; i >= 0; i-- {
 			if err := restore(filepath.Join(dir, swapped[i])); err != nil {
 				restored = false
 				u.o.Log.Error("update rollback failed", "file", swapped[i])
+			}
+		}
+		if aliasChanged && restored {
+			id, e := relinkAlias(dir, original.Alias)
+			if e != nil {
+				restored = false
+			} else {
+				original.AliasFileID = id
+				if e = atomicJSON(filepath.Join(dir, stateName), original, 0644); e != nil {
+					restored = false
+				}
 			}
 		}
 		err := failure(app.CodeUpdateFailed, reason, cause)
@@ -323,7 +338,8 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 			return rollback("swap_failed", err)
 		}
 		prior, err := regular(cli + ".old")
-		if err != nil || !os.SameFile(old, prior) {
+		recordedID, idErr := aliasFileID(path)
+		if err != nil || (!os.SameFile(old, prior) && (s.AliasFileID == "" || idErr != nil || recordedID != s.AliasFileID)) {
 			return rollback("swap_failed", fmt.Errorf("alias is no longer managed"))
 		}
 		if err = clearBackup(path); err != nil {
@@ -333,6 +349,7 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 			return rollback("swap_failed", err)
 		}
 		swapped = append(swapped, name)
+		aliasChanged = true
 		if err = os.Link(cli, path); err != nil {
 			return rollback("swap_failed", err)
 		}
@@ -340,6 +357,10 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 		main, _ := os.Stat(cli)
 		if now == nil || main == nil || !os.SameFile(now, main) {
 			return rollback("check_failed", fmt.Errorf("alias relink failed"))
+		}
+		s.AliasFileID, err = aliasFileID(path)
+		if err != nil {
+			return rollback("check_failed", err)
 		}
 	}
 	if o.Progress != nil {
@@ -380,15 +401,56 @@ func clearBackup(path string) error {
 	} else if runtime.GOOS != "windows" {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".old-")
+	return retire(old, path)
+}
+func retire(src, base string) error {
+	f, err := os.CreateTemp(filepath.Dir(base), filepath.Base(base)+".old-")
 	if err != nil {
 		return err
 	}
 	name := f.Name()
-	_ = f.Close()
-	_ = os.Remove(name)
-	return os.Rename(old, name)
+	if err = f.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err = os.Remove(name); err != nil {
+		return err
+	}
+	return os.Rename(src, name)
 }
+
+// relinkAlias is used only after the swap established ownership and rollback restored all binaries.
+func relinkAlias(dir, alias string) (string, error) {
+	path, cli := filepath.Join(dir, alias+".exe"), filepath.Join(dir, binaryName(false))
+	target, err := regular(cli)
+	if err != nil {
+		return "", err
+	}
+	old, err := regular(path)
+	if err == nil && os.SameFile(old, target) {
+		return aliasFileID(path)
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	if err == nil {
+		if err = retire(path, path); err != nil {
+			return "", err
+		}
+	}
+	if err = os.Link(cli, path); err != nil {
+		return "", err
+	}
+	linked, err := regular(path)
+	if err != nil {
+		return "", err
+	}
+	if !os.SameFile(linked, target) {
+		return "", fmt.Errorf("alias relink mismatch")
+	}
+	return aliasFileID(path)
+}
+
 func (u *Updater) writeNotices(dir string, notices map[string][]byte) {
 	for name, data := range notices {
 		path := filepath.Join(dir, name)

@@ -1052,3 +1052,4 @@ update:
   available: 'Nova versão disponível: {current} → {latest}. Execute mothdex upgrade.'
   updated: 'Atualizado {current} → {latest} (verificação: {signature}).'
   restart: 'Saia e abra o Mothdex novamente para usar a nova versão.'
+  verification_hint: 'Não foi possível verificar a origem da versão. Se a raiz de assinatura mudou, reinstale com o comando oficial: {install_command}'

@@ -59,9 +59,11 @@ func TestManagedState(t *testing.T) {
 		change       func(*State)
 	}{
 		{"valid", "", func(*State) {}},
+		{"zero schema", "bad_state", func(s *State) { s.SchemaVersion = 0 }},
 		{"newer", "state_newer", func(s *State) { s.SchemaVersion = 2 }},
 		{"package", "not_installer", func(s *State) { s.Source = "package" }},
 		{"moved", "moved", func(s *State) { s.Dir = filepath.Dir(s.Dir) }},
+		{"alias id without alias", "bad_state", func(s *State) { s.AliasFileID = "1:2:3" }},
 		{"alias traversal", "bad_state", func(s *State) { s.Alias = "../../victim"; s.AliasKind = "symlink" }},
 		{"reserved alias", "bad_state", func(s *State) { s.Alias = "nul"; s.AliasKind = "symlink" }},
 		{"wrong target", "bad_state", func(s *State) { s.Target = "other_arch" }},

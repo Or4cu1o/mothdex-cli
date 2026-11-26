@@ -793,3 +793,4 @@ update:
   available: 'Nueva versión disponible: {current} → {latest}. Ejecuta mothdex upgrade.'
   updated: 'Actualizado {current} → {latest} (verificación: {signature}).'
   restart: 'Cierra y vuelve a abrir Mothdex para usar la nueva versión.'
+  verification_hint: 'No se pudo verificar el origen de la versión. Si cambió la raíz de firma, reinstala con el comando oficial: {install_command}'

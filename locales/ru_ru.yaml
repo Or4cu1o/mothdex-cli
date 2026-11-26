@@ -821,3 +821,4 @@ update:
   available: 'Доступна новая версия: {current} → {latest}. Выполните mothdex upgrade.'
   updated: 'Обновлено {current} → {latest} (проверка: {signature}).'
   restart: 'Закройте и снова откройте Mothdex, чтобы использовать новую версию.'
+  verification_hint: 'Не удалось проверить источник версии. Если корень доверия изменился, переустановите официальной командой: {install_command}'
