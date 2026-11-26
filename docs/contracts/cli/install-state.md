@@ -116,7 +116,7 @@ Otherwise the result is `update_unavailable`, with `details.reason` set to the f
 | `schema_version == 1` and `source == "installer"` | `state_newer` / `not_installer` |
 | `dir`, cleaned and with symlinks resolved, equals the folder of the running binary (case-insensitive on Windows) | `moved` |
 | the folder passes the installer trust rules: not a link or reparse point, not writable by others (Unix mode `o+w`; group write is accepted, as in the installer, because a user-private group with umask 002 makes `0775` common), and on Windows no write ACE for Users, Everyone or Authenticated Users | `untrusted_dir` |
-| the effective user owns the folder (so `sudo mdex upgrade` on a user install is refused), and a temporary file can be created and removed in it | `not_owner` / `read_only` |
+| the folder's owner is trusted, and a temporary file can be created and removed in it. **Unix:** the owner is the effective user, so `sudo mdex upgrade` on a user install is refused. **Windows:** the owner is in install.ps1's trusted set: the token user, the token's default owner (Administrators when elevated), SYSTEM (`S-1-5-18`), Administrators (`S-1-5-32-544`) or TrustedInstaller. The broad write-ACE and reparse-point rules of the row above still apply. | `not_owner` / `read_only` |
 | every field passes its §2 rule, `version` is valid SemVer, and `target` is the running binary's `GOOS_GOARCH` | `bad_state` |
 
 The file never redirects a write. Upgrade writes only to the running binary's folder and only the names in update.md
