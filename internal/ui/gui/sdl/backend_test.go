@@ -539,3 +539,25 @@ func TestOpenBackendNeverRunsUnseenByItsOwnChoice(t *testing.T) {
 		t.Fatalf("the backend opened on the %s driver that nobody asked for", drv)
 	}
 }
+
+// The loop asks for Wait(0) when a timer of the model is already due. It must return at once, not sleep until the
+// next event, or a screen that ends by itself stays until a button is pressed.
+func TestWaitWithNoTimeLeftReturnsAtOnce(t *testing.T) {
+	be, _ := headless(t, 320, 240)
+	for _, ok := be.Poll(); ok; _, ok = be.Poll() {
+	}
+	woken := make(chan struct{})
+	rescue := time.AfterFunc(5*time.Second, func() { // only a blocked Wait reaches it
+		close(woken)
+		be.Wake()
+	})
+	defer rescue.Stop()
+	for range 20 {
+		be.Wait(0)
+		select {
+		case <-woken:
+			t.Fatal("Wait(0) blocked until something woke it")
+		default:
+		}
+	}
+}

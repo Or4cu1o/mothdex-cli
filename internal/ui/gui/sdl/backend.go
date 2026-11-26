@@ -615,7 +615,8 @@ func (b *Backend) Wait(timeout time.Duration) (input.Incoming, bool) {
 	for {
 		ms := int32(-1)
 		if timeout >= 0 {
-			ms = waitMillis(time.Until(deadline))
+			// a deadline already past is "do not wait": a negative duration would mean "wait for ever" to SDL
+			ms = waitMillis(max(time.Until(deadline), 0))
 		}
 		if !b.lib.WaitEvent(b.ev, ms) {
 			return input.Incoming{}, false
