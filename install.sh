@@ -17,8 +17,12 @@
 #     that it starts (`mothdex-gui --probe`, run from bin_dir with a scrubbed environment), plus its licence notices.
 # It never runs the downloaded archive's contents before verification and never pipes anything to a shell.
 # docs/contracts/cli/ports.md is the contract; docs/security/T-70-threat-model-ports-installer.md (IC-1 to IC-13)
-# are the coding rules.
+# and docs/security/T-110-threat-model-beta-adjustments.md (TM-1 to TM-15) are the coding rules.
+#
+# The whole script is one brace group (TM-1): a truncated download is a syntax error and runs nothing. main runs with
+# stdin from /dev/null (TM-2): under a pipe stdin is this script, so no command may read it.
 
+{
 set -eu
 umask 022
 
@@ -39,12 +43,16 @@ NOTICE_NAMES="README.md Handjet-OFL-1.1.txt NotoSans-OFL-1.1.txt SDL_GameControl
 PROBE_PATH=/usr/sbin:/usr/bin:/sbin:/bin
 PROBE_SECONDS=20
 REFRESH_URL="http://127.0.0.1:1234/reloadgames"
+STATE_NAME=".mothdex-install.json"
+STATE_MAX=16384
+RC_MARK="# mothdex"
 
 VERSION=""
 PROFILE=""
 BIN_DIR_OPT=""
 DRY_RUN=0
 UNINSTALL=0
+MODIFY_PATH=1
 LAUNCHER_OPT=""   # "" = default (on when the GUI is installed), 1 = --launcher (the same), 0 = --no-launcher
 GUI_OPT=""        # "" = default (on), 1 = --gui, 0 = --no-gui
 FAILED=0          # set when a step reports an error after the CLI install completed: exit status 1 at the end
@@ -60,11 +68,15 @@ die() {
 NEWFILE=""
 NEWGUI=""
 NEWLIC=""
+NEWSTATE=""
+NEWRC=""
 # shellcheck disable=SC2317,SC2329  # runs from the EXIT trap
 cleanup() {
   if [ -n "$NEWFILE" ]; then rm -f "$NEWFILE"; fi
   if [ -n "$NEWGUI" ]; then rm -f "$NEWGUI"; fi
   if [ -n "$NEWLIC" ]; then remove_licenses "$NEWLIC" quiet; fi
+  if [ -n "$NEWSTATE" ]; then rm -f "$NEWSTATE"; fi
+  if [ -n "$NEWRC" ]; then rm -f "$NEWRC"; fi
   if [ -n "$TMP" ] && [ -d "$TMP" ]; then
     rm -rf "$TMP"
   fi
@@ -83,15 +95,17 @@ Usage: sh install.sh [options]
   --no-launcher        do not create or rewrite the launcher
   --gui                install mothdex-gui when the release has one (the default)
   --no-gui             install the CLI only; an installed mothdex-gui is removed (upgrade)
+  --no-modify-path     do not add the install folder to your PATH; print the command to do it yourself
   --dry-run            download and verify, then print what would be installed; leaves nothing changed
                        (the GUI check runs in an existing bin_dir and removes its staging file)
-  --uninstall          remove the binaries, the licence notices and the launcher created by this installer
+  --uninstall          remove the binaries, the licence notices, the launcher and the PATH line created by this installer
   -h, --help           show this help
 
 Paths must be absolute and contain only A-Z a-z 0-9 _ . / + -
 EOF
 }
 
+parse_args() {
 while [ $# -gt 0 ]; do
   case $1 in
     --version | --profile | --bin-dir)
@@ -112,10 +126,12 @@ while [ $# -gt 0 ]; do
     --no-gui) [ "$GUI_OPT" != 1 ] || die "--gui and --no-gui cannot be used together"; GUI_OPT=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
+    --no-modify-path) MODIFY_PATH=0; shift ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
+}
 
 # --- platform ---------------------------------------------------------------------------------------------------
 
@@ -529,7 +545,13 @@ stage_and_probe() {
   run_probe "$stage"
   case $PROBE_RC in
     0) GUI_VERDICT=eligible ;;
-    1) GUI_VERDICT=not-eligible ;;
+    8) GUI_VERDICT=not-eligible ;;
+    1) # up to 0.1.x exit 1 meant "SDL missing"; from 0.2.0 on it is an internal error (8 is "not eligible")
+      case $VERSION in
+        0.0.* | 0.1.*) GUI_VERDICT=not-eligible ;;
+        *) GUI_VERDICT=error ;;
+      esac
+      ;;
     124) GUI_VERDICT=not-eligible; PROBE_MSG="the probe did not finish within $PROBE_SECONDS seconds" ;;
     137 | 143) # killed by the bound (busybox timeout may report the signal instead of 124); otherwise a crash
       if [ "$PROBE_BOUNDED" -eq 1 ]; then
@@ -720,7 +742,315 @@ refresh_frontend() {
   fi
 }
 
+# --- install state (docs/contracts/cli/install-state.md) and PATH (T-110 TM-7 to TM-11, TM-14) -------------------
+
+ST_PRESENT=0 # a valid state file of this folder was read
+ST_INSTALLED_AT=""
+ST_ADDED=false
+ST_KIND=""
+ST_FILE=""
+ST_VALUE="" # raw JSON text of path_value; only ever compared, never evaluated
+
+# The raw text of one string field, or "" ; fails unless the key appears on exactly one line in the canonical layout.
+state_string() {
+  n=$(grep -c "^  \"$2\": " "$1" 2>/dev/null) || return 1
+  [ "$n" -eq 1 ] || return 1
+  grep -Eq "^  \"$2\": \"([^\"\\\\]|\\\\[\"\\\\])*\",?\$" "$1" || return 1
+  sed -n "s/^  \"$2\": \"\\(.*\\)\",\\{0,1\\}\$/\\1/p" "$1"
+}
+
+# The line this installer adds to the rc file of kind $1 for BIN_DIR (TM-9). BIN_DIR passed valid_path.
+rc_line_for() {
+  # shellcheck disable=SC2016  # $PATH must reach the rc file literally
+  case $1 in
+    fish) printf "fish_add_path -g '%s' %s" "$BIN_DIR" "$RC_MARK" ;;
+    *) printf 'export PATH="%s:$PATH" %s' "$BIN_DIR" "$RC_MARK" ;;
+  esac
+}
+
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+known_rc() {
+  [ -n "${HOME:-}" ] || return 1
+  case $1 in
+    "$HOME/.bashrc" | "$HOME/.zshrc" | "$HOME/.profile" | "$HOME/.config/fish/config.fish") return 0 ;;
+  esac
+  return 1
+}
+
+# Every value is checked again on read (TM-14). An invalid file counts as absent: warned about, nothing it names touched.
+read_state() {
+  ST_PRESENT=0
+  f="$BIN_DIR/$STATE_NAME"
+  if [ ! -e "$f" ] && [ ! -L "$f" ]; then return 0; fi
+  if state_valid "$f"; then
+    ST_PRESENT=1
+  else
+    ST_ADDED=false; ST_KIND=""; ST_FILE=""; ST_VALUE=""; ST_INSTALLED_AT=""
+    warn "ignoring $f: it is not a valid install state of this folder"
+  fi
+}
+
+state_valid() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
+  [ "$(wc -c <"$1")" -le "$STATE_MAX" ] || return 1
+  grep -qx '  "schema_version": 1,' "$1" || return 1
+  [ "$(grep -c '"schema_version"' "$1")" -eq 1 ] || return 1
+  v=$(state_string "$1" source) && [ "$v" = installer ] || return 1
+  v=$(state_string "$1" dir) && [ "$v" = "$BIN_DIR" ] || return 1
+  v=$(state_string "$1" version) && valid_version "$v" || return 1
+  ST_INSTALLED_AT=$(state_string "$1" installed_at) || return 1
+  printf '%s\n' "$ST_INSTALLED_AT" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+)$' || return 1
+  ST_KIND=$(state_string "$1" path_kind) || return 1
+  ST_FILE=$(state_string "$1" path_file) || return 1
+  ST_VALUE=$(state_string "$1" path_value) || return 1
+  if grep -qx '  "path_added": true,' "$1"; then ST_ADDED=true
+  elif grep -qx '  "path_added": false,' "$1"; then ST_ADDED=false
+  else return 1; fi
+  [ "$(grep -c '"path_added"' "$1")" -eq 1 ] || return 1
+  case $ST_KIND in
+    '') [ "$ST_ADDED" = false ] && [ -z "$ST_FILE" ] && [ -z "$ST_VALUE" ] ;;
+    rc_line | fish) known_rc "$ST_FILE" && [ "$ST_VALUE" = "$(json_escape "$(rc_line_for "$ST_KIND")")" ] ;;
+    *) return 1 ;;
+  esac
+}
+
+# Atomic (temporary file in the same folder, then rename), 0644, never through a link.
+write_state() {
+  f="$BIN_DIR/$STATE_NAME"
+  if [ -L "$f" ] || { [ -e "$f" ] && [ ! -f "$f" ]; }; then
+    warn "$f is not a regular file: left alone; mothdex upgrade will not be available for this install"
+    return 0
+  fi
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  gui=false
+  if [ "$GUI_INSTALLED" -eq 1 ]; then gui=true; fi
+  launcher=""
+  if [ -n "$LAUNCHER_DIR" ] && has_marker "$LAUNCHER_DIR/$LAUNCHER_NAME"; then launcher="$LAUNCHER_DIR/$LAUNCHER_NAME"; fi
+  tmps=$(mktemp "$BIN_DIR/$STATE_NAME.new.XXXXXX" 2>/dev/null) || {
+    warn "cannot write $f: mothdex upgrade will not be available for this install"
+    return 0
+  }
+  NEWSTATE=$tmps
+  if printf '{
+  "schema_version": 1,
+  "source": "installer",
+  "installer": "install.sh",
+  "dir": "%s",
+  "version": "%s",
+  "target": "%s",
+  "profile": "%s",
+  "gui": %s,
+  "alias": "",
+  "alias_kind": "",
+  "path_added": %s,
+  "path_kind": "%s",
+  "path_file": "%s",
+  "path_value": "%s",
+  "launcher": "%s",
+  "installed_at": "%s",
+  "updated_at": "%s",
+  "updated_by": "installer"
+}\n' "$BIN_DIR" "$VERSION" "$TARGET" "$PROFILE" "$gui" "$ST_ADDED" "$ST_KIND" "$ST_FILE" "$ST_VALUE" "$launcher" \
+    "${ST_INSTALLED_AT:-$now}" "$now" >"$tmps" && chmod 0644 "$tmps" && mv -f "$tmps" "$f"; then
+    NEWSTATE=""
+  else
+    rm -f "$tmps"
+    NEWSTATE=""
+    warn "cannot write $f: mothdex upgrade will not be available for this install"
+  fi
+}
+
+# bash, zsh, fish, sh (anything POSIX, which reads ~/.profile) or other.
+detect_shell() {
+  case ${SHELL:-} in
+    */bash) USER_SHELL=bash ;;
+    */zsh) USER_SHELL=zsh ;;
+    */fish) USER_SHELL=fish ;;
+    '' | */sh | */ash | */dash | */ksh) USER_SHELL='sh' ;;
+    *) USER_SHELL=other ;;
+  esac
+}
+
+# Follows a chain of symbolic links (dotfile managers) and prints the final path.
+resolve_link() {
+  p=$1
+  i=0
+  while [ -L "$p" ]; do
+    i=$((i + 1))
+    [ "$i" -le 20 ] || return 1
+    t=$(readlink "$p") || return 1
+    case $t in
+      /*) p=$t ;;
+      *) p="$(dirname "$p")/$t" ;;
+    esac
+  done
+  printf '%s\n' "$p"
+}
+
+# fish_add_path exists from fish 3.2 on; on an older one the line would fail at every shell start. An unknown version is
+# taken as new enough (fish is only asked for its version).
+fish_too_old() {
+  command -v fish >/dev/null 2>&1 || return 1
+  v=$(fish --version </dev/null 2>/dev/null | sed -n 's/.*version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2/p')
+  [ -n "$v" ] || return 1
+  major=${v% *}
+  minor=${v#* }
+  [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 2 ]; }
+}
+
+# TM-9: sets RC_REAL to the file to write for rc path $1, or RC_WHY to why it is left alone.
+RC_REAL=""
+RC_WHY=""
+rc_writable() {
+  uid=$(id -u)
+  [ -d "$HOME" ] || { RC_WHY="HOME ($HOME) is not a folder"; return 1; }
+  if [ -z "$(find "$HOME/." -maxdepth 0 -user "$uid" 2>/dev/null)" ]; then
+    RC_WHY="HOME ($HOME) is not owned by the installing user (sudo?)"
+    return 1
+  fi
+  RC_REAL=$(resolve_link "$1") || { RC_WHY="$1: too many links"; return 1; }
+  if [ ! -e "$RC_REAL" ]; then
+    [ ! -L "$1" ] || { RC_WHY="$1 is a dangling link"; return 1; }
+    return 0
+  fi
+  [ -f "$RC_REAL" ] || { RC_WHY="$1 is not a regular file"; return 1; }
+  [ -n "$(find "$RC_REAL" -maxdepth 0 -user "$uid" 2>/dev/null)" ] || { RC_WHY="$1 is owned by another user"; return 1; }
+  if [ -n "$(find "$RC_REAL" -maxdepth 0 \( -perm -0020 -o -perm -0002 \) 2>/dev/null)" ]; then
+    RC_WHY="$1 can be written by other users"
+    return 1
+  fi
+  return 0
+}
+
+rc_has_line() { [ -f "$1" ] && grep -qxF -- "$2" "$1" 2>/dev/null; }
+
+rc_append() { # file, line
+  mkdir -p "$(dirname "$1")" 2>/dev/null || return 1
+  if [ -s "$1" ] && [ -n "$(tail -c 1 "$1")" ]; then printf '\n' 2>/dev/null >>"$1" || return 1; fi
+  printf '%s\n' "$2" 2>/dev/null >>"$1"
+}
+
+# The command the user can copy, for the detected shell (spec section 1). BIN_DIR passed valid_path.
+print_path_block() {
+  say ""
+  say "To add mothdex to your PATH, copy and run:"
+  say ""
+  case $USER_SHELL in
+    fish) say "  fish_add_path $BIN_DIR" ;;
+    bash) say "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc" ;;
+    zsh) say "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc" ;;
+    sh) say "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.profile" ;;
+    *) say "  export PATH=\"$BIN_DIR:\$PATH\"    (put it in the startup file of your shell)" ;;
+  esac
+  say ""
+}
+
+PATH_RESULT="" # added, present or manual
+update_path() {
+  detect_shell
+  on_path=0
+  case ":${PATH:-}:" in *":$BIN_DIR:"* | *":$BIN_DIR/:"*) on_path=1 ;; esac
+  rc=""
+  kind=rc_line
+  if [ -n "${HOME:-}" ]; then
+    case $USER_SHELL in
+      bash) rc="$HOME/.bashrc" ;;
+      zsh) if [ "${ZDOTDIR:-$HOME}" = "$HOME" ]; then rc="$HOME/.zshrc"; fi ;;
+      fish) rc="$HOME/.config/fish/config.fish"; kind=fish ;;
+      sh) rc="$HOME/.profile" ;;
+    esac
+  fi
+  if [ "$MODIFY_PATH" -ne 1 ]; then
+    PATH_RESULT=manual
+    print_path_block
+    return 0
+  fi
+  line=$(rc_line_for "$kind")
+  if [ -n "$rc" ] && rc_has_line "$rc" "$line"; then
+    # our own line (it carries the marker) from an earlier install
+    ST_ADDED=true; ST_KIND=$kind; ST_FILE=$rc; ST_VALUE=$(json_escape "$line")
+    if [ "$on_path" -eq 1 ]; then PATH_RESULT=present; else PATH_RESULT=added; fi
+    return 0
+  fi
+  if [ "$on_path" -eq 1 ]; then PATH_RESULT=present; return 0; fi
+  PATH_RESULT=manual
+  if [ "$ST_ADDED" = true ] && rc_has_line "$ST_FILE" "$(rc_line_for "$ST_KIND")"; then
+    say "note: an earlier install already added mothdex to $ST_FILE; only one file is managed."
+  elif [ -z "$rc" ]; then
+    say "note: no startup file is managed for this shell."
+  elif ! valid_path "$rc"; then
+    warn "$rc has characters this installer does not write to: PATH not changed"
+  elif [ "$kind" = fish ] && fish_too_old; then
+    warn "fish older than 3.2 has no fish_add_path: PATH not changed; add $BIN_DIR to fish_user_paths yourself"
+  elif ! dir_safe "$BIN_DIR"; then
+    warn "$BIN_DIR can be written by other users or processes: it is not added to PATH automatically"
+  elif ! rc_writable "$rc"; then
+    warn "PATH not changed: $RC_WHY"
+  elif ! rc_append "$RC_REAL" "$line"; then
+    warn "cannot write $rc: PATH not changed"
+  else
+    ST_ADDED=true; ST_KIND=$kind; ST_FILE=$rc; ST_VALUE=$(json_escape "$line")
+    PATH_RESULT=added
+    return 0
+  fi
+  print_path_block
+}
+
+# TM-10: removes only the lines equal to the recorded one (read_state proved it is our template for BIN_DIR, in one of
+# the known files under HOME); the file is rewritten atomically with its mode and owner.
+remove_path_line() {
+  [ "$ST_ADDED" = true ] || return 0
+  line=$(rc_line_for "$ST_KIND")
+  rc_has_line "$ST_FILE" "$line" || return 0
+  if [ "$MODIFY_PATH" -ne 1 ]; then say "Keeping the PATH line in $ST_FILE (--no-modify-path)"; return 0; fi
+  if [ "$DRY_RUN" -eq 1 ]; then say "Would remove the mothdex PATH line from $ST_FILE"; return 0; fi
+  if ! rc_writable "$ST_FILE"; then
+    warn "PATH line left in place ($RC_WHY): remove this line yourself: $line"
+    return 0
+  fi
+  tmprc=$(mktemp "$RC_REAL.mothdex.XXXXXX" 2>/dev/null) || { warn "cannot rewrite $ST_FILE: remove this line yourself: $line"; return 0; }
+  NEWRC=$tmprc
+  if cp -p "$RC_REAL" "$tmprc" && MOTHDEX_LINE=$line awk '$0 != ENVIRON["MOTHDEX_LINE"]' "$RC_REAL" >"$tmprc" &&
+    mv -f "$tmprc" "$RC_REAL"; then
+    say "Removed the mothdex PATH line from $ST_FILE"
+  else
+    rm -f "$tmprc"
+    warn "cannot rewrite $ST_FILE: remove this line yourself: $line"
+  fi
+  NEWRC=""
+}
+
+# The closing message, in Portuguese when the system language is Portuguese (and the locale is UTF-8), else English.
+final_message() {
+  lc=${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}
+  ok="*"
+  lang=en
+  case $lc in
+    *[Uu][Tt][Ff]8* | *[Uu][Tt][Ff]-8*) ok="✓"; case $lc in pt*) lang=pt ;; esac ;;
+  esac
+  say ""
+  if [ "$lang" = pt ]; then
+    say "mothdex $VERSION instalado em $BIN_DIR"
+    case $PATH_RESULT in
+      added) say "$ok PATH do usuário atualizado. Abra um terminal novo, ou rode neste: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+      present) say "$ok A pasta já está no PATH." ;;
+      *) say "O PATH não foi alterado. Use o comando acima, ou rode $BIN_DIR/mothdex." ;;
+    esac
+    say "Teste: mothdex --version"
+  else
+    say "mothdex $VERSION installed in $BIN_DIR"
+    case $PATH_RESULT in
+      added) say "$ok User PATH updated. Open a new terminal, or run in this one: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+      present) say "$ok The folder is already on your PATH." ;;
+      *) say "PATH was not changed. Use the command above, or run $BIN_DIR/mothdex." ;;
+    esac
+    say "Test: mothdex --version"
+  fi
+}
+
 do_uninstall() {
+  read_state
   for name in mothdex mothdex-gui; do
     bin="$BIN_DIR/$name"
     if [ -f "$bin" ] || [ -L "$bin" ]; then
@@ -747,11 +1077,21 @@ do_uninstall() {
       warn "keeping $launcher: it was not created by this installer"
     fi
   fi
+  if [ "$ST_PRESENT" -eq 1 ]; then
+    remove_path_line
+    state="$BIN_DIR/$STATE_NAME"
+    if [ "$DRY_RUN" -eq 1 ]; then say "Would remove $state"
+    elif [ "$MODIFY_PATH" -eq 1 ]; then rm -f "$state"; say "Removed $state"; fi
+  else
+    say "note: no install state in $BIN_DIR: any PATH entry for it was not added by this installer, or must be removed by hand."
+  fi
   say "Your configuration, data, history, cache and ROMs were not touched."
 }
 
 # --- main -----------------------------------------------------------------------------------------------------------
 
+main() {
+parse_args "$@"
 trap cleanup EXIT
 trap 'exit 1' INT TERM HUP
 
@@ -821,9 +1161,21 @@ install_licenses
 decide_launcher
 if [ "$GUI_INSTALLED" -eq 1 ]; then install_launcher; else remove_launcher "the GUI is not installed: a Port needs it"; fi
 refresh_frontend
-"$BIN_DIR/mothdex" --version || warn "the installed binary did not run; check that this is the right architecture"
-case ":${PATH:-}:" in
-  *":$BIN_DIR:"*) ;;
-  *) say "Add $BIN_DIR to PATH to run 'mothdex' directly." ;;
-esac
+# TM-11: PATH and the install state change only after the binaries are in place and --version passed.
+if ! "$BIN_DIR/mothdex" --version; then
+  warn "the installed binary did not run; check that this is the right architecture. PATH was not changed."
+elif [ "$FAILED" -ne 0 ]; then
+  detect_shell
+  warn "a step failed (see above): PATH was not changed"
+  print_path_block
+else
+  read_state
+  update_path
+  write_state
+  final_message
+fi
 exit "$FAILED"
+}
+
+main "$@" </dev/null
+}

@@ -33,10 +33,12 @@
   Install mothdex-gui when the release has one (the default).
 .PARAMETER NoGui
   Install the CLI only; an installed mothdex-gui.exe and SDL2.dll are removed (upgrade).
+.PARAMETER NoModifyPath
+  Do not add the install folder to your user PATH; print the command to do it yourself. With -Uninstall, keep the entry.
 .PARAMETER DryRun
   Download and verify, print what would be installed, leave nothing changed (the GUI check runs in an existing install folder and removes its staging file).
 .PARAMETER Uninstall
-  Remove the binaries, the licence notices and the launcher created by this installer.
+  Remove the binaries, the licence notices, the launcher and the user PATH entry created by this installer.
 #>
 [CmdletBinding()]
 param(
@@ -47,10 +49,16 @@ param(
   [switch]$NoLauncher,
   [switch]$Gui,
   [switch]$NoGui,
+  [switch]$NoModifyPath,
   [switch]$DryRun,
   [switch]$Uninstall
 )
 
+# Everything runs in a child scope: when the text of this script is evaluated in the user's session, no strict mode,
+# preference, function or variable stays behind, and nothing calls `exit` (T-110 TM-3). A truncated download leaves the
+# block open, which is a parse error, so nothing runs (TM-1). Keep this file ASCII: Windows PowerShell 5.1 reads a file
+# without a byte order mark, and a downloaded text, in a legacy code page.
+& {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -68,7 +76,11 @@ $LicensesName = 'mothdex-licenses'
 $NoticeNames = @('README.md', 'Handjet-OFL-1.1.txt', 'NotoSans-OFL-1.1.txt', 'SDL_GameControllerDB-zlib.txt', 'SDL2-zlib.txt', 'purego-Apache-2.0.txt', 'x-image-BSD-3-Clause.txt', 'go-modules-mothdex.txt', 'go-modules-mothdex-gui.txt')
 $ProbeSeconds = 20
 $RefreshUrl = 'http://127.0.0.1:1234/reloadgames'
-$script:Failed = $false
+$StateName = '.mothdex-install.json'
+$StateMaxBytes = 16384
+$MaxPathLength = 32767
+# shared by the functions below (a hashtable, so a child scope changes it without touching the user's session)
+$State = @{ Failed = $false; LauncherWritten = $false; LauncherRemoved = $false; PathResult = ''; PathAdded = $false; FromCmd = $false }
 
 function Fail([string]$Message) { throw "mothdex install: $Message" }
 
@@ -79,7 +91,10 @@ if ($Launcher -and $NoLauncher) { Fail '-Launcher and -NoLauncher cannot be used
 function Get-Remote([string]$Url, [string]$Dest) {
   if (-not $Url.StartsWith("$Base/", [StringComparison]::Ordinal)) { Fail "refusing to download $Url" }
   try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    # add TLS 1.2 to an explicit list only; 0 means the system chooses, which already includes it (TM-3)
+    if ([int][Net.ServicePointManager]::SecurityProtocol -ne 0) {
+      [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    }
   } catch { }
   $response = Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing -MaximumRedirection 5 -PassThru
   # Windows PowerShell 5.1 can follow an https to http redirect: check where the file really came from.
@@ -428,7 +443,7 @@ function Install-Launcher([string]$LauncherDir, [string]$BinDirPath) {
   $tmp = Join-Path $LauncherDir ".$LauncherName.$PID.tmp"
   [IO.File]::WriteAllText($tmp, $text, (New-Object Text.UTF8Encoding($false)))
   Move-Item -LiteralPath $tmp -Destination $target -Force
-  $script:LauncherWritten = $true
+  $State.LauncherWritten = $true
   Write-Output "Launcher: $target (opt out with -NoLauncher; -Uninstall removes it)"
 }
 
@@ -441,7 +456,7 @@ function Remove-Launcher([string]$LauncherDir, [string]$Why, [bool]$Dry) {
   if (-not (Test-HasMarker $target)) { return }
   if ($Dry) { Write-Output "Would remove $target ($Why)"; return }
   Remove-Item -LiteralPath $target -Force
-  $script:LauncherRemoved = $true
+  $State.LauncherRemoved = $true
   Write-Output "Removed $target ($Why)"
 }
 
@@ -468,10 +483,225 @@ function Invoke-FrontendRefresh {
   }
 }
 
+# --- install state (docs/contracts/cli/install-state.md) and PATH (T-110 TM-7, TM-8, TM-10, TM-11, TM-14) ---------
+
+# A user PATH entry as a folder, for comparison only.
+function ConvertTo-PathKey([string]$Entry) {
+  return [Environment]::ExpandEnvironmentVariables($Entry).Trim().Trim('"').TrimEnd('\')
+}
+
+function Test-PathListHas([string]$List, [string]$Dir) {
+  foreach ($entry in ($List -split ';')) { if ($entry -and ((ConvertTo-PathKey $entry) -ieq $Dir.TrimEnd('\'))) { return $true } }
+  return $false
+}
+
+# The raw user PATH from the registry: nothing expanded, and its value kind. [Environment]::GetEnvironmentVariable
+# would expand %VAR% entries, and writing that back would freeze them (TM-8).
+function Get-UserPath {
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+  if (-not $key) { throw 'the user environment key cannot be opened' }
+  try {
+    $value = $key.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+    if ($null -ne $value) {
+      $kind = $key.GetValueKind('Path')
+      if (($kind -ne [Microsoft.Win32.RegistryValueKind]::String) -and ($kind -ne [Microsoft.Win32.RegistryValueKind]::ExpandString)) {
+        throw "the user PATH has an unexpected registry type ($kind)"
+      }
+    }
+    return [pscustomobject]@{ Value = [string]$value; Kind = $kind }
+  } finally { $key.Dispose() }
+}
+
+function Set-UserPath([string]$Value, $Kind) {
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  if (-not $key) { throw 'the user environment key cannot be written' }
+  try {
+    if ($Value) { $key.SetValue('Path', $Value, $Kind) } else { $key.DeleteValue('Path', $false) }
+  } finally { $key.Dispose() }
+  # deleting a variable that does not exist changes nothing, and tells running programs to reload (WM_SETTINGCHANGE)
+  try { [Environment]::SetEnvironmentVariable('MOTHDEX_PATH_CHANGED', $null, 'User') }
+  catch { Write-Warning 'other programs were not told about the new PATH; sign out and in if a new terminal does not see it' }
+}
+
+# Appends the folder once and returns 'added', or 'present' when the user PATH already names it. Never the machine PATH.
+function Add-UserPathEntry([string]$Dir) {
+  $current = Get-UserPath
+  if (Test-PathListHas $current.Value $Dir) { return 'present' }
+  if ($Dir.IndexOfAny([char[]]';%') -ge 0) { throw "the folder name holds ';' or '%'" }
+  $new = $Dir
+  # the separator is added even after a trailing one, so that removing our entry restores the value exactly
+  if ($current.Value) { $new = "$($current.Value);$Dir" }
+  if ($new.Length -gt $MaxPathLength) { throw "the user PATH would be longer than $MaxPathLength characters" }
+  Set-UserPath $new $current.Kind
+  return 'added'
+}
+
+# Removes the last entry that is exactly the recorded text, once; every other byte stays.
+function Remove-UserPathEntry([string]$Entry) {
+  $current = Get-UserPath
+  $parts = New-Object System.Collections.ArrayList
+  [void]$parts.AddRange(@($current.Value -split ';'))
+  for ($i = $parts.Count - 1; $i -ge 0; $i--) {
+    if ($parts[$i] -ceq $Entry) {
+      $parts.RemoveAt($i)
+      Set-UserPath ($parts -join ';') $current.Kind
+      return $true
+    }
+  }
+  return $false
+}
+
+function Add-SessionPath([string]$Dir) {
+  if (-not (Test-PathListHas $env:Path $Dir)) { $env:Path = "$($env:Path);$Dir" }
+}
+
+function Remove-SessionPath([string]$Dir) {
+  $env:Path = (@($env:Path -split ';') | Where-Object { $_ -cne $Dir }) -join ';'
+}
+
+# True when CMD started this PowerShell to run a command (install.cmd, powershell -File): the copy-paste block is then
+# the CMD one, and the PATH change cannot reach that window.
+function Test-FromCmd {
+  try {
+    if (@([Environment]::GetCommandLineArgs() | Where-Object { $_ -match '^[-/](c|command|f|file)$' }).Count -eq 0) { return $false }
+    $parent = (Get-CimInstance Win32_Process -Filter "ProcessId = $PID").ParentProcessId
+    return (Get-Process -Id $parent).ProcessName -ieq 'cmd'
+  } catch { return $false }
+}
+
+function Test-Elevated {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  return (New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# The command the user can copy (never setx). It is printed only for a folder name that cannot break out of its quotes.
+function Show-PathBlock([string]$Dir) {
+  Write-Output ''
+  if ($Dir -notmatch '^[A-Za-z]:\\[\p{L}\p{M}\p{N} _\\.()+''-]*\z') {
+    Write-Output "To add mothdex to your PATH, add this folder in 'Edit environment variables for your account': $Dir"
+    return
+  }
+  Write-Output 'To add mothdex to your PATH, copy and run:'
+  Write-Output ''
+  if ($State.FromCmd) {
+    Write-Output ('  powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable(''Path'', [Environment]::GetEnvironmentVariable(''Path'',''User'') + '';{0}'', ''User'')"' -f ($Dir -replace "'", "''"))
+  } else {
+    Write-Output ('  [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path","User") + ";{0}", "User")' -f $Dir)
+  }
+  Write-Output ''
+}
+
+# Sets $State.PathResult (added, present or manual) and $State.PathAdded (the entry is ours).
+function Update-UserPath([string]$Dir, $Previous) {
+  $State.PathAdded = ($null -ne $Previous) -and $Previous.Added
+  $State.PathResult = 'manual'
+  if ($NoModifyPath) { Show-PathBlock $Dir; return }
+  try {
+    if ((Test-ReparsePoint $Dir) -or (-not (Test-FolderTrusted $Dir))) {
+      Write-Warning "$Dir is a link, is owned by another user or can be written by other users: it is not added to PATH automatically"
+      Show-PathBlock $Dir
+      return
+    }
+    if (Test-Elevated) { Write-Warning 'running as administrator: only the PATH of this user account is changed' }
+    $result = Add-UserPathEntry $Dir
+    if ($result -eq 'added') { $State.PathAdded = $true }
+    Add-SessionPath $Dir
+    $State.PathResult = $result
+  } catch {
+    Write-Warning "could not change your user PATH: $($_.Exception.Message)"
+    Show-PathBlock $Dir
+  }
+}
+
+# Every value is checked again on read (TM-14). An invalid file counts as absent: warned about, nothing it names touched.
+function Read-InstallState([string]$BinDirPath) {
+  $file = Join-Path $BinDirPath $StateName
+  if (-not (Test-Path -LiteralPath $file) -and -not (Test-ReparsePoint $file)) { return $null }
+  try {
+    if (Test-ReparsePoint $file) { throw 'a link' }
+    $item = Get-Item -LiteralPath $file -Force
+    if ($item.PSIsContainer -or ($item.Length -gt $StateMaxBytes)) { throw 'not a small regular file' }
+    $text = [IO.File]::ReadAllText($file)
+    $data = $text | ConvertFrom-Json
+    foreach ($name in 'schema_version', 'source', 'dir', 'version', 'path_added', 'path_kind', 'path_file', 'path_value', 'installed_at') {
+      if (-not $data.PSObject.Properties[$name]) { throw "no $name" }
+    }
+    if (($data.schema_version -is [string]) -or ($data.schema_version -ne 1)) { throw 'schema' }
+    if (($data.source -cne 'installer') -or ([string]$data.dir -ine $BinDirPath) -or (-not (Test-Version ([string]$data.version)))) { throw 'source, dir or version' }
+    if (($data.path_added -isnot [bool]) -or ([string]$data.path_file -cne '')) { throw 'path_added or path_file' }
+    if ($data.path_added) {
+      if (($data.path_kind -cne 'user_env') -or ([string]$data.path_value -ine $BinDirPath)) { throw 'path_value' }
+    } elseif (([string]$data.path_kind -cne '') -or ([string]$data.path_value -cne '')) { throw 'path_kind' }
+    # read from the text: PowerShell 7 turns a date string into a DateTime
+    if ($text -notmatch '"installed_at"\s*:\s*"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+))"') { throw 'installed_at' }
+    return [pscustomobject]@{ Added = [bool]$data.path_added; Value = [string]$data.path_value; InstalledAt = $Matches[1] }
+  } catch {
+    Write-Warning "ignoring ${file}: it is not a valid install state of this folder"
+    return $null
+  }
+}
+
+function ConvertTo-JsonString([string]$Value) { return '"' + $Value.Replace('\', '\\').Replace('"', '\"') + '"' }
+
+# Canonical layout, no byte order mark, atomic (temporary file in the same folder, then rename), never through a link.
+function Write-InstallState([string]$BinDirPath, $Fields) {
+  $file = Join-Path $BinDirPath $StateName
+  $unavailable = 'mothdex upgrade will not be available for this install'
+  if ((Test-ReparsePoint $file) -or (Test-Path -LiteralPath $file -PathType Container)) {
+    Write-Warning "$file is not a regular file: left alone; $unavailable"
+    return
+  }
+  $lines = @()
+  foreach ($key in $Fields.Keys) {
+    $value = $Fields[$key]
+    if ($value -is [bool]) { $text = $value.ToString().ToLowerInvariant() }
+    elseif ($value -is [int]) { $text = [string]$value }
+    else { $text = ConvertTo-JsonString $value }
+    $lines += "  `"$key`": $text"
+  }
+  $json = "{`n" + ($lines -join ",`n") + "`n}`n"
+  $tmp = Join-Path $BinDirPath "$StateName.new.$PID"
+  try {
+    $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($json)
+    $stream = [IO.File]::Open($tmp, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+    try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+    Move-Item -LiteralPath $tmp -Destination $file -Force
+  } catch {
+    Write-Warning "cannot write ${file}: $unavailable"
+  } finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+  }
+}
+
+# The closing message, in Portuguese when Windows speaks Portuguese, else English.
+function Show-FinalMessage([string]$Dir, [string]$Installed) {
+  $ok = [char]0x2713
+  $a = [char]0x00E1   # a acute
+  $t = [char]0x00E3   # a tilde
+  Write-Output ''
+  if ((Get-UICulture).Name -like 'pt*') {
+    Write-Output "mothdex $Installed instalado em $Dir"
+    if ($State.PathResult -eq 'manual') { Write-Output "O PATH n${t}o foi alterado. Use o comando acima." }
+    elseif ($State.FromCmd) { Write-Output "$ok PATH do usu${a}rio atualizado. Abra um terminal novo." }
+    elseif ($State.PathResult -eq 'present') { Write-Output "$ok A pasta j${a} est${a} no PATH do usu${a}rio. Nesta janela j${a} funciona." }
+    else { Write-Output "$ok PATH do usu${a}rio atualizado. Nesta janela j${a} funciona; em outras, abra um terminal novo." }
+    Write-Output 'Teste: mothdex --version'
+  } else {
+    Write-Output "mothdex $Installed installed in $Dir"
+    if ($State.PathResult -eq 'manual') { Write-Output 'PATH was not changed. Use the command above.' }
+    elseif ($State.FromCmd) { Write-Output "$ok User PATH updated. Open a new terminal." }
+    elseif ($State.PathResult -eq 'present') { Write-Output "$ok The folder is already on your user PATH. It works in this window." }
+    else { Write-Output "$ok User PATH updated. It works in this window; in others, open a new terminal." }
+    Write-Output 'Test: mothdex --version'
+  }
+}
+
 # --- main ----------------------------------------------------------------------------------------------------------
 
-$script:LauncherWritten = $false
-$script:LauncherRemoved = $false
+try {
+& {
+$State.FromCmd = Test-FromCmd
 $arch = Get-TargetArch
 $retrobat = Find-RetroBat
 if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\mothdex' }
@@ -515,6 +745,30 @@ if ($Uninstall) {
         if ($DryRun) { Write-Output "Would remove $launcherFile" } else { Remove-Item -LiteralPath $launcherFile -Force; Write-Output "Removed $launcherFile" }
       } else { Write-Warning "keeping $launcherFile`: it was not created by this installer" }
     }
+  }
+  $previous = Read-InstallState $BinDir
+  if ($previous) {
+    $stateFile = Join-Path $BinDir $StateName
+    if ($NoModifyPath) {
+      if ($previous.Added) { Write-Output "Keeping $BinDir in your user PATH (-NoModifyPath)" }
+    } elseif ($DryRun) {
+      if ($previous.Added) { Write-Output "Would remove $BinDir from your user PATH" }
+      Write-Output "Would remove $stateFile"
+    } else {
+      $keepState = $false
+      if ($previous.Added) {
+        try {
+          if (Remove-UserPathEntry $previous.Value) { Write-Output "Removed $($previous.Value) from your user PATH" }
+          Remove-SessionPath $previous.Value
+        } catch {
+          $keepState = $true
+          Write-Warning "could not change your user PATH: $($_.Exception.Message). Remove this entry yourself: $($previous.Value)"
+        }
+      }
+      if (-not $keepState) { Remove-Item -LiteralPath $stateFile -Force; Write-Output "Removed $stateFile" }
+    }
+  } else {
+    Write-Output "note: no install state in ${BinDir}: any PATH entry for it was not added by this installer, or must be removed by hand."
   }
   Write-Output 'Your configuration, data, history, cache and ROMs were not touched.'
   return
@@ -623,7 +877,7 @@ try {
       # a probe failure of the Windows archive is a packaging bug: reported as an error, the CLI install still completes (IC-9)
       Write-Warning "error: mothdex-gui.exe --probe failed (exit $($result.Code)): $($result.Message)"
       Write-Warning 'error: mothdex-gui.exe and SDL2.dll were not installed; the CLI install is complete.'
-      $script:Failed = $true
+      $State.Failed = $true
     }
   }
   if (-not $guiInstalled) {
@@ -641,14 +895,48 @@ try {
     if ($Launcher) { Write-Output "note: no launcher: it is written only when the GUI is installed (a Port has no terminal for 'mothdex tui')" }
     Remove-Launcher $launcherDir 'the GUI is not installed: a Port needs it' $false
   }
-  if (($script:LauncherWritten -or $script:LauncherRemoved) -and ($profileId -eq 'retrobat')) { Invoke-FrontendRefresh }
+  if (($State.LauncherWritten -or $State.LauncherRemoved) -and ($profileId -eq 'retrobat')) { Invoke-FrontendRefresh }
+  # TM-11: PATH and the install state change only after the binaries are in place and --version passed.
   $check = Invoke-Native $exe @('--version')
-  if ($check.Code -eq 0) { Write-Output $check.Output } else { Write-Warning "$exe --version exited with $($check.Code); the file is installed." }
-  Write-Output "Add $BinDir to your PATH to run 'mothdex' directly."
+  if ($check.Code -ne 0) {
+    Write-Warning "$exe --version exited with $($check.Code); the file is installed. PATH was not changed."
+  } elseif ($State.Failed) {
+    Write-Output $check.Output
+    Write-Warning 'a step failed (see above): PATH was not changed'
+    Show-PathBlock $BinDir
+  } else {
+    Write-Output $check.Output
+    $previous = Read-InstallState $BinDir
+    Update-UserPath $BinDir $previous
+    $now = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    $installedAt = $now
+    if ($previous) { $installedAt = $previous.InstalledAt }
+    $kind = ''
+    $value = ''
+    if ($State.PathAdded) { $kind = 'user_env'; $value = $BinDir }
+    $recordedLauncher = ''
+    if ($launcherDir) {
+      $candidate = Join-Path $launcherDir $LauncherName
+      if ((Test-Path -LiteralPath $candidate) -and (Test-HasMarker $candidate)) { $recordedLauncher = $candidate }
+    }
+    Write-InstallState $BinDir ([ordered]@{
+        schema_version = 1; source = 'installer'; installer = 'install.ps1'; dir = $BinDir; version = $Version
+        target = "windows_$arch"; profile = $profileId; gui = $guiInstalled; alias = ''; alias_kind = ''
+        path_added = $State.PathAdded; path_kind = $kind; path_file = ''; path_value = $value; launcher = $recordedLauncher
+        installed_at = $installedAt; updated_at = $now; updated_by = 'installer'
+      })
+    Show-FinalMessage $BinDir $Version
+  }
 } finally {
   if ($new) { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue }
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
-# the exit status is ours: the last native command above (the installed binary's --version) must not leak into it
-if ($script:Failed) { exit 1 }
-$global:LASTEXITCODE = 0
+}
+# the status is ours: a native command above (the installed binary's --version) must not leak into it. No `exit`: it
+# would close the window of a user who evaluated this script (TM-3).
+$global:LASTEXITCODE = [int]$State.Failed
+} catch {
+  $global:LASTEXITCODE = 1
+  throw
+}
+}
