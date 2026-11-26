@@ -160,7 +160,7 @@ func (s settingsScreen) update(msg tea.Msg, rt *shared) (screen, tea.Cmd) {
 	case cacheClearedMsg:
 		if msg.err != nil {
 			f := rt.failureOf(msg.err)
-			return s, toastCmd(f.msg+" ["+f.code+"]", toastError)
+			return s, toastCmd(f.msg+" "+f.tag(), toastError)
 		}
 		next, cmd := s.load(rt)
 		return next, tea.Batch(cmd, toastCmd(rt.T("ui.cli.cache.cleared", nil), toastInfo))
@@ -176,11 +176,11 @@ func (s settingsScreen) onSet(msg setDoneMsg, rt *shared) (screen, tea.Cmd) {
 		f := rt.failureOf(msg.err)
 		if s.edit != nil {
 			e := *s.edit
-			e.err = f.msg
+			e.err = f.msg + " " + f.tag()
 			s.edit = &e
 			return s, nil
 		}
-		return s, toastCmd(f.msg+" ["+f.code+"]", toastError)
+		return s, toastCmd(f.msg+" "+f.tag(), toastError)
 	}
 	s.edit = nil
 	s.changed = withKey(s.changed, msg.key)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
@@ -54,7 +55,8 @@ type env struct {
 	boxart   bool           // download.boxart at start-up
 	pageSize int
 	dataDir  string
-	logPath  string
+	logPath  string        // mothdex.log, for errors.internal without a session log
+	rep      *cli.Reporter // refs of the errors shown; nil in tests that need none
 	log      *slog.Logger
 	now      func() time.Time
 	// after runs msg once d has passed. Tests replace it, so nothing waits on a real clock.
@@ -92,16 +94,45 @@ var unfilled = regexp.MustCompile(`\{[a-z_]+\}`)
 // failure is an error ready to show: the localized message and hint, and the stable code.
 type failure struct {
 	msg, hint, code string
+	ref, log        string // empty for a past error, which was recorded when it happened
+	sep             string
 }
 
-// failureOf localizes an error from the service the way the CLI does: errors.<code>.message and
-// .hint, falling back to the service text when a placeholder has no value. Server text is cleaned.
+// tag is "[network · 7F3K2Q]", the short form for one line.
+func (f failure) tag() string {
+	if f.ref == "" {
+		return "[" + f.code + "]"
+	}
+	return "[" + f.code + f.sep + f.ref + "]"
+}
+
+// failureOf is describe for an error that happened now: it gets a ref and a log line. The same
+// error value keeps its ref however often the screen is drawn.
 func (e *env) failureOf(err error) failure {
 	var ae *app.Error
 	if !errors.As(err, &ae) {
 		ae = &app.Error{Code: app.CodeInternal, Message: "unexpected error", Cause: err}
 	}
-	args := i18n.Args{"detail": ae.Message, "log_path": e.logPath}
+	if e.rep == nil {
+		return e.describe(ae)
+	}
+	ref := e.rep.Ref("tui", ae) // first: it opens the log whose path is shown
+	f := e.describe(ae)
+	f.ref, f.log, f.sep = ref, e.rep.LogPath(), " - "
+	if e.st.utf8 {
+		f.sep = " \u00b7 "
+	}
+	return f
+}
+
+// describe localizes an error from the service the way the CLI does: errors.<code>.message and
+// .hint, falling back to the service text when a placeholder has no value. Server text is cleaned.
+func (e *env) describe(ae *app.Error) failure {
+	logPath := e.logPath
+	if e.rep != nil && e.rep.LogPath() != "" {
+		logPath = e.rep.LogPath()
+	}
+	args := i18n.Args{"detail": ae.Message, "log_path": logPath}
 	for k, v := range ae.Args {
 		args[k] = v
 	}
