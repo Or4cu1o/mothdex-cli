@@ -3,6 +3,12 @@ locale:
   name: 'Русский'
   iso_code: 'ru-RU'
 errors:
+  update_unavailable:
+    message: 'Эту установку нельзя обновить через mothdex.'
+    hint: 'Установите с помощью команды для вашей системы: {install_command}'
+  update_failed:
+    message: 'Не удалось завершить обновление.'
+    hint: 'Если предыдущая версия восстановлена, повторите mothdex upgrade позже; иначе переустановите: {install_command}'
   usage:
     message: 'Неверное использование: {detail}'
     hint: 'Выполните "mothdex {command} --help".'
