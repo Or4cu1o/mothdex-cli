@@ -273,6 +273,11 @@ only a warning.
     person is reading. The swap, check and commit run under their own 10 s probes and ignore `ctx` (§1 addendum).
 - **`details.restored`** is `true` whenever the previous version is in place: a failure before the first rename, or
   a complete rollback. It is `false` only when a rollback step failed, and only then is the hint the install command.
+  - **Exception: `reason: gui_missing`.** The release has no GUI archive for this machine, so nothing moved
+    (`restored: true`). The hint is still the install command, because only the installer can turn this into a
+    CLI-only install.
+  - **No `swapped` field.** `restored` already tells whether the previous version is in place, so front ends decide
+    from `restored` and `reason` alone (agreed with Vitral and Forja).
 - **`upgrade --json` data:** `{current, latest, available, updated, channel, signature, restart_required, notes,
   downgrade}`.
   - A downgrade, even with `-f`, prints a warning on stderr before the swap (human output). Under `--json` the same
