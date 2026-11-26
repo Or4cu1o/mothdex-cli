@@ -174,7 +174,8 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 
   Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors.
 - Every failure of a normal start is written to the log file, because a Port has no visible terminal, and also to
-  stderr. A command line or configuration error found before the log is open goes to stderr only.
+  stderr. A command line or configuration error found before the log is open goes to stderr only until T-115 PR 2,
+  which sends both to the fallback log in the default `paths.logs` ([`logs.md`](logs.md) §2).
 
 **Command line.** `--config`, `--profile` and `--lang` mean what they mean in the CLI. `--log-level` is the shortcut
 of `MOTHDEX_LOG_LEVEL` (`log.level`, flag over variable over file). `--help` lists the flags, exit codes and variables
