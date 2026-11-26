@@ -191,9 +191,12 @@ func (r *runtime) rootCommand() *cobra.Command {
 		r.cmd = commandName(c)
 		return usageErr(r.cmd, "%s", err.Error())
 	})
-	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error {
+	root.PersistentPreRunE = func(c *cobra.Command, args []string) error {
 		r.cmd = commandName(c)
 		r.g.Command = r.cmd
+		if c.Name() == "__complete" || c.Name() == "__completeNoDesc" {
+			r.localizeCompletion(c, args)
+		}
 		return r.rejectStartupFlags(c)
 	}
 	root.AddCommand(
