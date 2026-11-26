@@ -36,7 +36,7 @@ func (u *Updater) Managed() (State, error)                       // install-stat
 func (u *Updater) Latest(ctx context.Context) (Release, error)   // Release{Version, Tag, Prerelease, PageURL}
 func (u *Updater) Check(ctx context.Context, force bool) (CheckResult, error) // cache-aware, §5
 func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (Result, error)  // §3 and §4
-func CleanupOld(exeDir string, log *slog.Logger)                 // §4 step 8; first thing in both mains
+func CleanupOld(exeDir string, log *slog.Logger)                 // §4 step 8; early in main, only for runs that log (§4)
 ```
 
 `ApplyOptions{Version string; AllowDowngrade bool; Progress func(Progress); Confirm func(Staged) bool}`. `Confirm` is
@@ -164,7 +164,13 @@ notices are replaced after the binaries; a failure there is only a warning.
    - rewrite the state file (install-state.md §3) and delete the staging folder;
    - delete every `f.old` on Unix, and on Windows those not in use;
    - set `RestartRequired: true`. The shell, TUI and GUI tell the user to exit and open again.
-   - **`CleanupOld`** runs at the next start of either binary. It deletes, in the executable's folder only,
+   - **`CleanupOld`** runs at the next start of either binary, only for a run that gets a session log (logs.md
+     §1). It never runs for `mothdex-gui --probe`, `--version`, `--spike` or `--help` (ports.md §5.2: the probe writes
+     nothing), nor for `mothdex version`, `--version`, `completion` or `__complete*`. So neither the staged binary's
+     `--version` of §3 step 4 nor the post-swap check of step 7 cleans up anything.
+   - **It creates no file.** A staging folder's lock is tested by opening an existing lock file without `O_CREATE`;
+     a missing lock means the folder is free.
+   - It deletes, in the executable's folder only,
      `mothdex.exe`, `mothdex-gui.exe`, `SDL2.dll` and `<alias>.exe` followed by `.old`, `.old-*` or `.failed`. It also
      deletes `.mothdex-update-*` folders older than 1 h whose lock is free.
    - **TM-35:** only regular files, never reparse points or links, and only exact names: never a broader glob. A
