@@ -206,13 +206,15 @@ The GUI is dynamic on Linux, so the installer must prove it can start before it 
    "CLI only".
 3. Extract by exact member name only (T-70 IC-4), copy the binary to its staging name in `bin_dir`, and run
    `mothdex-gui --probe` there with a scrubbed environment and a time bound (IC-1, IC-2, IC-10), never from the temp
-   dir. Exit 0 means eligible: rename it into place. Exit 1 means not eligible: delete the staging file. An exec failure
-   (126, 127, `ENOEXEC`) is an installer error that is reported, never a silent "not eligible".
+   dir. Exit 0 means eligible: rename it into place. Exit 8 means not eligible: delete the staging file. Releases 0.0.x
+   and 0.1.x said "not eligible" with exit 1, so for those versions only 1 counts as not eligible; from 0.2.0 on exit 1
+   is an internal error. An exec failure (126, 127, `ENOEXEC`) is an installer error that is reported, never a silent
+   "not eligible".
 4. Not eligible (missing interpreter, missing or too old SDL2, wrong userland arch): warn with the probe's one-line
    reason, do not install the GUI, and keep the CLI install. No launcher is written, and a marked one is removed (D32).
 5. Exit status (PR-88 decision b): not eligible, or no GUI archive in the release, is a normal outcome, exit 0. A
-   probe that cannot run, or any exit code other than 0 and 1, is an installer error: the CLI install and the launcher
-   still complete, and the installer exits 1. On Windows every non-zero probe result is that error (IC-9).
+   probe that cannot run, or any exit code other than those of step 3, is an installer error: the CLI install and the
+   launcher still complete, the installer changes neither the PATH nor its install state (T-110 TM-11), and exits 1. On Windows every non-zero probe result is that error (IC-9).
 
 **`mothdex-gui --probe`** (gap PRT-G3, Vitral):
 - loads SDL2 exactly as at normal start (§3), calls `SDL_GetVersion` and applies the version rule;
