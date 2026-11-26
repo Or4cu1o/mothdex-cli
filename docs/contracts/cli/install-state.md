@@ -48,6 +48,7 @@ UTF-8 JSON, one **flat** object, **no BOM**, at most 16 KiB.
   "gui": true,
   "alias": "mdex",
   "alias_kind": "hardlink",
+  "alias_file_id": "2861457364:65536:183745",
   "path_added": true,
   "path_kind": "user_env",
   "path_file": "",
@@ -71,6 +72,7 @@ UTF-8 JSON, one **flat** object, **no BOM**, at most 16 KiB.
 | `gui` | `true` when `mothdex-gui` (with `SDL2.dll` and the licence notices on Windows) was installed |
 | `alias` | `""` when no alias was created. Otherwise it matches `^[a-z][a-z0-9-]{1,15}$` and is not on the TM-12 deny-list (`mothdex`, `mothdex-gui`, `con`, `prn`, `aux`, `nul`, `com0`-`com9`, `lpt0`-`lpt9`). |
 | `alias_kind` | `"symlink"` (Unix, relative target `mothdex`), `"hardlink"` (Windows), or `""` when there is no alias |
+| `alias_file_id` | Windows hard link only: the file ID the link had when it was last created, written `<volume serial>:<index high>:<index low>` in decimal from `GetFileInformationByHandle`, and matching `^[0-9]{1,10}:[0-9]{1,10}:[0-9]{1,10}$`. `""` for a symlink or no alias. It identifies a stale link of ours: one that still names an older `mothdex.exe` because a relink failed. |
 | `path_added` | `false` when the PATH already held `dir`, with `--no-modify-path`, or when the write failed |
 | `path_kind` | `"user_env"` (Windows user `Path`), `"rc_line"` (a line in `path_file`), `"fish"` (`fish_add_path`, with `path_file` the `config.fish` that was written), or `""` |
 | `path_file` | absolute rc file path, or `""` |
@@ -90,7 +92,8 @@ Removing a field or changing its meaning bumps the version.
 - **Installs from 0.1.x** have no file. Running the one-line installer again creates it; until then `mothdex upgrade`
   reports `update_unavailable` (update.md §6).
 - **`internal/update`, after a successful swap and its check (update.md §4).** It sets `version`, `target`, `gui`,
-  `updated_at` and `updated_by: "upgrade"`. It never changes `dir`, `alias*`, `path_*`, `profile` or `launcher`.
+  `updated_at` and `updated_by: "upgrade"`. After relinking a Windows alias it also sets `alias_file_id` to the new
+  link's ID. It never changes `dir`, `alias`, `alias_kind`, `path_*`, `profile` or `launcher`.
 - **Writing is atomic.** The writer creates a temporary file in the same folder with `O_EXCL`, then renames it over
   the old one (`os.Rename`; `[IO.File]::Replace` or `Move-Item -Force` on Windows). It refuses when
   `.mothdex-install.json` is a link or a reparse point. The file mode is `0644`, and on Windows it inherits the folder
@@ -121,8 +124,9 @@ The file never redirects a write. Upgrade writes only to the running binary's fo
 
 **Installer `--uninstall`.** It removes only what the file names, and only after checking it on disk:
 
-- **Alias:** removed only when it is a symlink to `mothdex`, or on Windows a hardlink with the same file ID as
-  `mothdex.exe` (TM-12, TM-13). Otherwise it stays, with a warning.
+- **Alias:** removed only when it is a symlink to `mothdex`, or on Windows a hardlink whose file ID equals that of
+  `mothdex.exe` or the recorded `alias_file_id` (TM-12, TM-13). Otherwise it stays, with a warning. The same test
+  decides whether a reinstall may relink it.
 - **PATH** (TM-8, TM-10): on Windows, removes exactly the `path_value` entry from the raw user `Path` and leaves the
   rest byte for byte. On Unix, removes only lines equal to `path_value`, and only when `path_value` is the TM-9 line
   for `dir` and `path_file` is one of `~/.bashrc`, `~/.bash_profile` (bash login file on macOS), `~/.zshrc`, `~/.profile` or `~/.config/fish/config.fish` under the

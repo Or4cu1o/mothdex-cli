@@ -149,8 +149,11 @@ notices are replaced after the binaries; a failure there is only a warning.
 6. **Swap, Windows:** for each file, `rename(f, f.old)` (the running `.exe` and a loaded DLL can be renamed, not
    overwritten), then `rename(staged, f)`. A stale `f.old` that cannot be deleted is moved aside to
    `f.old-<random>` first.
-   - **Hardlink alias:** `rename(<alias>.exe, <alias>.exe.old)`, then `CreateHardLink(<alias>.exe, mothdex.exe)`.
-     The user may be running `mdex upgrade` itself.
+   - **Hardlink alias:** relinked only when it is ours, meaning its file ID equals the current `mothdex.exe` or the
+     state's `alias_file_id` (install-state.md §4). The steps are `rename(<alias>.exe, <alias>.exe.old)`, then
+     `CreateHardLink(<alias>.exe, mothdex.exe)`. The user may be running `mdex upgrade` itself.
+   - The commit (step 8) writes the new link's file ID to `alias_file_id`. A rollback relinks the alias to the
+     restored file and writes that file's ID.
    - **Unix symlink alias:** needs nothing.
 7. **Post-swap check:** the installed `<dir>/mothdex --version --json`, run with the same scrubbed environment and
    10 s limit, must report exactly the target version. On Windows, `<alias>.exe` must have the same file ID as
