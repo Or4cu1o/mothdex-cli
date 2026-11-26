@@ -42,6 +42,12 @@ Exit codes ([`cli-output.md`](../../docs/contracts/cli/cli-output.md) §4.1):
 Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors. A failure of a start is written
 to the session log and to stderr.
 
+### Updates
+
+In an installation made by the installer, the GUI checks once, after Home, for a newer version (`update.check`,
+`MOTHDEX_NO_UPDATE_CHECK` and `CI` turn it off). Settings › About then offers **Update**: it downloads and verifies,
+asks you to confirm, installs, and offers to restart.
+
 ### Logs and errors
 
 Every run that opens the GUI writes a session log under `paths.logs` (`latest.log` is the newest;

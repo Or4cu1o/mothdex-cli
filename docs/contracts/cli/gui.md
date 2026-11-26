@@ -205,6 +205,19 @@ line error (exit 2).
 - **Testing a crash:** `go build -tags 'gui crashtest'` makes a binary that panics on its second frame. No release is
   built with the tag.
 
+**Version notice and Update** ([`update.md`](update.md) §5). The composition root gives the model an updater only
+when `SkipReason` is empty (`update.check`, `MOTHDEX_NO_UPDATE_CHECK`, `CI`, a development build and an unmanaged
+installation turn it off: no notice, no action, no request). The model sees a narrow `Updates` interface; every rule
+stays in `internal/update`.
+- One check per run, started once Home is up, within 3 s. A newer version gives a notice (recorded with
+  `MarkNotified` when shown) and, in Settings › About, the version, the release page and `Update`.
+- `Update` downloads and verifies (B or a signal cancels, changing nothing), then asks with `Cancel` focused,
+  showing the signature result and the notes of the verified archive. Only that yes installs. While it installs
+  the screen takes no action, and a program told to leave waits for it (up to 1 minute).
+- After it, `Later` or `Restart`; Restart goes through the quit questions, closes SDL and the service, and runs the
+  new `mothdex-gui` by its absolute path with the same arguments (TM-40).
+- `main` calls `update.CleanupOld` for a run that opens the GUI.
+
 **Console window on Windows.** The release build does not pass `-H=windowsgui`, so Windows opens a console window
 along with the GUI. Kept on purpose during the beta (it shows start-up errors to a tester); to review for 1.0.
 

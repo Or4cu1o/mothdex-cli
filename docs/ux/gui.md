@@ -664,6 +664,11 @@ Rows come from `ConfigList` (value and source). Keys:
 | System | — | read-only: `ActiveProfile()` name, ROM root, `Verified` and each warning |
 | About | — | read-only: version, catalog entries, controller name and GUID, log file path; one action, `Export logs` (A) |
 
+- **Update** (About, only with a newer version): About lists `New version: <v>`, the release page and `[Update]`
+  before `[Export logs]` (Left/Right choose). A progress panel (`Downloading…`, `Checking…`, with `(B) Cancel`), then
+  `Update <from> to <to>?` with the signature result, up to 6 lines of notes, `[Cancel]` focused and `[Update]`;
+  while installing, `Keep the device on until it ends.` and no action; then `[Later]` `[Restart]`. A notice
+  `Version <v> is available: Settings > About.` shows once a day.
 - **Export logs** (About, and the crash screen of §6) opens `Export the logs?` with `[Cancel]` focused and
   `[Export logs]`, then `Logs saved` with the folder and the file name, or `The logs were not saved` with the code and
   the ref, and `[OK]`. The dialog says the zip holds search terms and file names and that nothing is sent.

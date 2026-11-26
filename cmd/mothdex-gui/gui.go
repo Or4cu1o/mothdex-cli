@@ -34,7 +34,8 @@ const userMappingsFile = "gamecontrollerdb.txt" // in paths.data (docs/contracts
 
 // runGUI is the normal mode: build the service, open SDL, run the loop. Every failure gets a ref and goes to
 // the session log as well as to stderr, because a Port has no visible terminal.
-func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
+// again is set when the person asked to restart into a new version.
+func runGUI(o options, logs *mlog.Session, again *bool, stderr io.Writer) (code int) {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	defer recoverInternal(&code, o, logs, stderr) // a panic before there is a service
@@ -104,7 +105,10 @@ func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 	}.attrs()...)
 	log.Info("gui: started", "driver", be.Driver(), "width", w, "height", h, "version", buildinfo.Get().Version)
 
+	updates := newUpdates(sess.Updater, sess.UpdateCheck, os.Getenv)
+	defer updates.wait() // runs before the closes above: an installation ends before the program does
 	opts := gui.Options{
+		Updates: updates.model(),
 		Service: sess.Svc, T: tr, Font: font, Display: display, Clock: gui.SystemClock(), Log: log, DataDir: sess.DataDir,
 		MappingsPath: filepath.Join(sess.DataDir, userMappingsFile),
 		Version:      buildinfo.Get().Version, LocaleFallback: fallback, Width: w, Height: h, Safe: gui.AutoSafeArea,
@@ -129,13 +133,16 @@ func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 		_, _ = fmt.Fprintln(stderr, "mothdex-gui: internal error")
 		support(stderr, sess.T, app.CodeInternal, ref, logs.LogPath())
 		showCrash(ctx, gui.NewCrash(opts, settings, ref, time.Now()), run)
+		updates.wait()
 		leaveCrashed(be.Close, sess.Close, logs, exitProcess)
 		return exitInternal // only reached by a test: os.Exit does not return
 	}
 	if err != nil {
 		return fail(sdlExitCode(err), err)
 	}
+	*again = final.RestartRequested()
 	closeAll := func() {
+		updates.wait()
 		be.Close()
 		_ = logs.Close()
 	}

@@ -176,7 +176,8 @@ func (m Model) onUpdateStaged(msg updateStagedMsg, now time.Time) (Model, []Cmd)
 	m.upd.staged = s
 	var lines []string
 	for _, line := range strings.Split(s.Notes, "\n") {
-		if line = strings.TrimSpace(app.SanitizeText(line)); line != "" && len(lines) < notesLines {
+		line = strings.TrimSpace(strings.TrimLeft(app.SanitizeText(line), "# ")) // a heading reads as its words
+		if line != "" && len(lines) < notesLines {
 			lines = append(lines, line)
 		}
 	}

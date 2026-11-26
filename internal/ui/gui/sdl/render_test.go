@@ -420,6 +420,21 @@ var renderScenes = []scene{
 	{name: "crash", what: "T-115: the crash screen", expect: []string{"Something went wrong", "code: internal · ref: 7F3K2Q", "latest.log", "Export logs", "Quit"}, steps: crashed},
 	{name: "crash-pt", lang: "pt_br", what: "T-115: the crash screen in pt_br", expect: []string{"Algo deu errado", "7F3K2Q", "Exportar logs"}, steps: crashed},
 	{name: "crash-ru", lang: "ru_ru", what: "T-115: the crash screen in ru_ru, the longest texts", expect: []string{"Что-то пошло не так", "7F3K2Q"}, steps: crashed},
+	{name: "update-about", what: "T-117: Settings, About with a newer version: Update and Export logs", expect: []string{"New version: 0.4.0", "Update", "Export logs"}, steps: updateAbout},
+	{name: "update-confirm", what: "T-117: the confirmation after the download is verified, Cancel as the default", expect: []string{"Update 0.3.0 to 0.4.0?", "SHA-256", "Cancel", "Update"}, steps: func(p *player) {
+		updateAbout(p)
+		p.press(input.Confirm)
+	}},
+	{name: "update-confirm-ru", lang: "ru_ru", what: "T-117: the confirmation in ru_ru", expect: []string{"0.4.0"}, steps: func(p *player) {
+		updateAbout(p)
+		p.press(input.Confirm)
+	}},
+	{name: "update-done", what: "T-117: installed, restart now or later", expect: []string{"Updated to 0.4.0", "Later", "Restart"}, steps: func(p *player) {
+		updateAbout(p)
+		p.press(input.Confirm)
+		p.advance(200 * time.Millisecond)
+		p.press(input.Right, input.Confirm)
+	}},
 	{name: "exit", what: "T-83: the exit screen after Quit with nothing running", expect: []string{"Returning to"}, steps: func(p *player) { p.send(gui.QuitRequestMsg{}) }},
 	{name: "quit-busy", what: "Quit with downloads running", expect: []string{"Keep downloading"}, steps: func(p *player) {
 		p.job(app.JobSnapshot{ID: "1", Slug: "mario-world", Title: "Super Mario World (USA)", State: app.StateTransferring, Bytes: 1 << 19, Expected: 1 << 20})
@@ -436,6 +451,32 @@ func aboutExport(p *player) {
 }
 
 func crashed(p *player) { p.m = gui.NewCrash(p.o, nil, "7F3K2Q", p.now) }
+
+// renderUpdates is an update that goes straight to its question and installs when told to.
+type renderUpdates struct{}
+
+func (renderUpdates) Check(context.Context) (gui.Release, error) {
+	return gui.Release{Version: "0.4.0", PageURL: "https://github.com/Or4cu1o/mothdex-cli/releases/tag/v0.4.0", Notify: true}, nil
+}
+
+func (renderUpdates) MarkNotified(string) error { return nil }
+
+func (renderUpdates) Apply(_ context.Context, _ func(gui.UpdateProgress), confirm func(gui.Staged) bool) error {
+	confirm(gui.Staged{From: "0.3.0", To: "0.4.0", Signature: "none", Notes: "## [0.4.0] - 2026-12-01\n### Added\n- T-117: the GUI tells you about a new version and updates itself when you ask.\n- Session logs and crash files.\n### Fixed\n- With no display the GUI exits with code 8."})
+	return nil
+}
+
+// updateAbout starts over with an updater, reaches Home so that the check runs, and opens About.
+func updateAbout(p *player) {
+	p.o.Updates = renderUpdates{}
+	m, cmds := gui.New(p.o, p.now)
+	p.m = m
+	p.run(cmds)
+	p.openFromMenu(3)
+	p.repeat(input.Down, 12)
+	p.press(input.Confirm)
+	p.advance(7 * time.Second) // past the notice
+}
 
 func failingCatalog() *guitest.Fake {
 	s := renderCatalog()

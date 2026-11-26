@@ -36,6 +36,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 )
 
 const (
@@ -133,5 +134,18 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 	}
 	logs := startLog(argv[1:]) // before the configuration, so that its errors are logged too
 	defer func() { _ = logs.Close() }()
-	return runGUI(o, logs, stderr)
+	exe := executable(logs.Logger())
+	if exe != "" {
+		update.CleanupOld(filepath.Dir(exe), logs.Logger()) // what an earlier update left behind (update.md section 4)
+	}
+	again := false
+	code = runGUI(o, logs, &again, stderr)
+	if again && code == exitOK { // after runGUI: the window and the service are closed
+		_ = logs.Close() // the new run starts its own log
+		if err := restartProcess(exe, argv[1:]); err != nil {
+			_, _ = fmt.Fprintf(stderr, "mothdex-gui: cannot restart: %v\n", err)
+			return exitInternal
+		}
+	}
+	return code
 }
