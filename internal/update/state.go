@@ -10,8 +10,10 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 )
@@ -30,6 +32,7 @@ type State struct {
 	GUI           bool   `json:"gui"`
 	Alias         string `json:"alias"`
 	AliasKind     string `json:"alias_kind"`
+	AliasFileID   string `json:"alias_file_id"`
 	PathAdded     bool   `json:"path_added"`
 	PathKind      string `json:"path_kind"`
 	PathFile      string `json:"path_file"`
@@ -98,6 +101,9 @@ func readBounded(path string, limit int64) ([]byte, error) {
 	return b, err
 }
 func decode(b []byte, v any, strict bool) error {
+	if !utf8.Valid(b) {
+		return fmt.Errorf("invalid UTF-8 JSON")
+	}
 	d := json.NewDecoder(bytes.NewReader(bytes.TrimPrefix(b, []byte{0xef, 0xbb, 0xbf})))
 	if strict {
 		d.DisallowUnknownFields()
@@ -129,8 +135,11 @@ func (u *Updater) Managed() (State, error) {
 	if err = decode(b, &s, false); err != nil {
 		return s, unavailable("bad_state", err)
 	}
-	if s.SchemaVersion != 1 {
+	if s.SchemaVersion > 1 {
 		return s, unavailable("state_newer", nil)
+	}
+	if s.SchemaVersion != 1 {
+		return s, unavailable("bad_state", nil)
 	}
 	if s.Source != "installer" {
 		return s, unavailable("not_installer", nil)
@@ -201,7 +210,7 @@ func validState(s State) bool {
 		return false
 	}
 	if s.Alias == "" {
-		if s.AliasKind != "" {
+		if s.AliasKind != "" || s.AliasFileID != "" {
 			return false
 		}
 	} else {
@@ -212,7 +221,7 @@ func validState(s State) bool {
 		if runtime.GOOS == "windows" {
 			kind = "hardlink"
 		}
-		if s.AliasKind != kind {
+		if s.AliasKind != kind || (kind != "hardlink" && s.AliasFileID != "") || (s.AliasFileID != "" && !validFileID(s.AliasFileID)) {
 			return false
 		}
 	}
@@ -266,4 +275,20 @@ func atomicJSON(path string, v any, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(f.Name(), path)
+}
+
+func validFileID(id string) bool {
+	parts := strings.Split(id, ":")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if len(part) < 1 || len(part) > 10 || !numeric(part) {
+			return false
+		}
+		if _, err := strconv.ParseUint(part, 10, 32); err != nil {
+			return false
+		}
+	}
+	return true
 }

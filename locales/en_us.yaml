@@ -1020,3 +1020,4 @@ update:
   available: 'New version available: {current} → {latest}. Run mothdex upgrade.'
   updated: 'Updated {current} → {latest} (verification: {signature}).'
   restart: 'Exit and open Mothdex again to use the new version.'
+  verification_hint: 'Release origin could not be verified. If the signing root rotated, reinstall with the official command: {install_command}'

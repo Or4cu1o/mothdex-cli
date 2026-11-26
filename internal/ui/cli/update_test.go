@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/update"
 )
 
@@ -238,5 +239,17 @@ func TestCleanupSkipsBinaryOnlyModes(t *testing.T) {
 				t.Fatalf("exit %d: %s", code, out)
 			}
 		})
+	}
+}
+
+func TestVerificationFailureHintIncludesReinstallCommand(t *testing.T) {
+	d, out := helpDeps(t)
+	r := &runtime{d: d}
+	err := &app.Error{Code: "integrity", Message: "release signature failed", Args: map[string]any{"hint_key": "update.verification_hint", "install_command": update.InstallCommand()}}
+	if code := r.fail(err); code != 5 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(out.String(), update.InstallCommand()) || strings.Contains(out.String(), "{install_command}") {
+		t.Fatalf("reinstall hint missing: %s", out.String())
 	}
 }

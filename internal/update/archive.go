@@ -163,6 +163,18 @@ func extract(b []byte, dir string, gui bool) (map[string][]byte, error) {
 				return nil, err
 			}
 		}
+
+		// Drain through gzip EOF so CRC/truncation and concatenated streams cannot be hidden after tar's end marker.
+		tail, err := io.ReadAll(io.LimitReader(gz, archiveLimit-total+1))
+		if err != nil {
+			return nil, failure("integrity", "gzip_trailer", err)
+		}
+		if int64(len(tail)) > archiveLimit-total {
+			return nil, failure("size_mismatch", "expanded_limit", nil)
+		}
+		if len(bytes.Trim(tail, "\x00")) != 0 {
+			return nil, failure("integrity", "archive_trailing_data", nil)
+		}
 	}
 	if len(seen) != len(allowed) {
 		return nil, failure("integrity", "missing_member", nil)
@@ -174,7 +186,7 @@ func extract(b []byte, dir string, gui bool) (map[string][]byte, error) {
 				mode = 0644
 			}
 			if err := writeExclusive(filepath.Join(dir, name), data, mode); err != nil {
-				return nil, failure(app.CodeUpdateFailed, "stage_write", err)
+				return nil, failure(app.CodeUpdateFailed, "swap_failed", err)
 			}
 		}
 	}

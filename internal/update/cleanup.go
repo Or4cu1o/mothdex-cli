@@ -65,23 +65,47 @@ func cleanupOld(exeDir string, log *slog.Logger, now time.Time) {
 		}
 		// No recursive deletion of arbitrary trees: staging cleanup accepts only known regular members.
 		if stagingName.MatchString(entry.Name()) && st.IsDir() && now.Sub(st.ModTime()) > time.Hour {
-			files, e := os.ReadDir(path)
-			if e != nil {
-				continue
-			}
-			safe := true
-			for _, f := range files {
-				if _, e = regular(filepath.Join(path, f.Name())); e != nil || !stagingMember.MatchString(f.Name()) {
-					safe = false
-					break
-				}
-			}
-			if safe {
-				for _, f := range files {
-					_ = os.Remove(filepath.Join(path, f.Name()))
-				}
-				_ = os.Remove(path)
+			cleanupStage(path, log)
+		}
+	}
+}
+
+func cleanupStage(path string, log *slog.Logger) {
+	unlock, err := acquireExistingLock(path)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	if unlock == nil {
+		unlock = func() {}
+	}
+	files, err := os.ReadDir(path)
+	if err != nil {
+		unlock()
+		return
+	}
+	for _, f := range files {
+		if _, err = regular(filepath.Join(path, f.Name())); err != nil || (f.Name() != ".mothdex-update.lock" && !stagingMember.MatchString(f.Name())) {
+			unlock()
+			return
+		}
+	}
+	safe := true
+	for _, f := range files {
+		if f.Name() == ".mothdex-update.lock" {
+			continue
+		}
+		if err = os.Remove(filepath.Join(path, f.Name())); err != nil {
+			safe = false
+			if log != nil {
+				log.Debug("update staging cleanup retained file", "file", f.Name())
 			}
 		}
+	}
+	unlock()
+	if safe {
+		if err = os.Remove(filepath.Join(path, ".mothdex-update.lock")); err != nil && !os.IsNotExist(err) {
+			return
+		}
+		_ = os.Remove(path)
 	}
 }
