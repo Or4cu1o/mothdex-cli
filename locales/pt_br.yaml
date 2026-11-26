@@ -82,6 +82,51 @@ errors:
     message: 'Erro inesperado.'
     hint: 'Os detalhes estão em {log_path}. Por favor, relate o problema.'
 ui:
+  logs:
+    code: 'código'
+    log: 'log'
+    bad_tail: '--tail deve estar entre 0 e {max}.'
+    bad_ref: 'O ref são os 6 caracteres mostrados junto do erro, por exemplo 7F3K2Q.'
+    bad_session: 'Sessão inexistente. Use um id de mothdex logs list.'
+    bad_sessions: '--sessions deve estar entre 1 e {max}.'
+    bad_folder: '-o precisa ser uma pasta existente, não um link.'
+    need_target: 'Informe o id de uma sessão ou --ref <ref>.'
+    no_previous: 'Não há sessão anterior.'
+    no_ref: 'Nenhuma sessão tem o ref {ref}.'
+    no_permissions: 'A pasta de logs não tem permissões de arquivo (FAT, exFAT ou NTFS): outros usuários desta máquina podem ler os logs.'
+    list_hint: 'Rode mothdex logs list para ver as sessões.'
+    match: 'Sessão {session}, linha {line}'
+    cannot_open: 'Não é possível abrir um gerenciador de arquivos aqui. Os logs estão em {path}'
+    bundle_next: 'Pacote gravado ({size}). Revise e anexe a um relato de erro; veja mothdex help logs.'
+    clear_ask: 'Apagar as sessões, os arquivos de crash e os pacotes em {path}? [s/N]'
+    cleared: 'Apagados: {sessions} sessões, {crashes} arquivos de crash, {bundles} pacotes.'
+    column:
+      session: 'Sessão'
+      started: 'Início'
+      binary: 'Programa'
+      mode: 'Modo'
+      duration: 'Duração'
+      errors: 'Erros'
+    topic: |-
+      Cada execução grava o próprio log.
+
+        logs/latest.log        a execução mais recente
+        logs/sessions/         um arquivo por execução
+        logs/crash/            stack traces, só depois de uma falha grave
+        logs/mothdex.log       histórico geral
+
+      mothdex logs path mostra a pasta: %LocalAppData%\mothdex\logs no Windows,
+      ~/.local/state/mothdex/logs no Linux e ~/Library/Logs/mothdex no macOS.
+
+      Para relatar um erro:
+        1. Anote o ref mostrado junto dele (6 caracteres).
+        2. mothdex logs show --ref <ref>   mostra o que aconteceu em volta
+        3. mothdex logs bundle             gera um zip para anexar
+        4. Revise o zip (a issue é pública) e abra
+           https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug.yml
+
+      Tokens, o endereço da API e a sua pasta de usuário são removidos do que vai no pacote.
+      Configurações: log.session_level (debug durante o beta) e log.sessions_keep (20).
   storage:
     rom_root_in_ram: 'A pasta de jogos está em um disco de RAM. Os jogos baixados serão perdidos ao reiniciar.'
     data_dir_in_ram: 'A pasta de dados está em um disco de RAM. O histórico, o cache e as configurações serão perdidos ao reiniciar.'
@@ -161,6 +206,45 @@ ui:
           check: 'verifica se há versão nova sem baixar os arquivos'
           version: 'instala esta versão exata (permite voltar uma versão)'
           channel: 'canal de versões: stable | beta'
+      logs:
+        example: 'mothdex logs list'
+        long: 'Cada execução grava o próprio log. Estes comandos encontram os logs e geram o zip para anexar a um relato de erro. Rode mothdex help logs para ver o passo a passo.'
+        short: 'Encontre e envie logs'
+      logs_path:
+        example: 'mothdex logs path'
+        long: 'Mostra a pasta de logs e o caminho do latest.log.'
+        short: 'Mostra onde ficam os logs'
+      logs_last:
+        flags:
+          tail: 'só as últimas linhas (0 = todas)'
+        example: 'mothdex logs last --tail 20'
+        long: 'Mostra o log da sessão anterior a esta.'
+        short: 'Mostra o log da sessão anterior'
+      logs_list:
+        example: 'mothdex logs list'
+        long: 'Lista as sessões com data, programa, modo, duração e número de erros.'
+        short: 'Lista as sessões'
+      logs_show:
+        flags:
+          ref: 'mostra o erro com este ref'
+        example: 'mothdex logs show --ref 7F3K2Q'
+        long: 'Mostra uma sessão pelo id ou, com --ref, as linhas em volta do erro com esse ref, em qualquer sessão.'
+        short: 'Mostra uma sessão ou um erro'
+      logs_open:
+        example: 'mothdex logs open'
+        long: 'Abre a pasta de logs no gerenciador de arquivos.'
+        short: 'Abre a pasta de logs'
+      logs_bundle:
+        flags:
+          sessions: 'sessões mais recentes a incluir (1..20)'
+          output: 'pasta existente para o zip (padrão: a pasta de logs)'
+        example: 'mothdex logs bundle'
+        long: 'Gera um zip com as sessões mais recentes, os arquivos de crash e o final do log geral, sem tokens, sem o endereço da API e sem a sua pasta de usuário. -o escolhe a pasta.'
+        short: 'Gera um zip para anexar numa issue'
+      logs_clear:
+        example: 'mothdex logs clear -f'
+        long: 'Apaga sessões, arquivos de crash e pacotes após confirmação (-f pula). O log geral permanece.'
+        short: 'Apaga sessões, crashes e pacotes'
       boxart:
         flags:
           output: 'pasta de destino'

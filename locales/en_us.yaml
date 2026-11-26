@@ -82,6 +82,51 @@ errors:
     message: 'Unexpected error.'
     hint: 'Details are in {log_path}. Please report it.'
 ui:
+  logs:
+    code: 'code'
+    log: 'log'
+    bad_tail: '--tail must be from 0 to {max}.'
+    bad_ref: 'A ref is the 6 characters shown with the error, for example 7F3K2Q.'
+    bad_session: 'No such session. Use an id from mothdex logs list.'
+    bad_sessions: '--sessions must be from 1 to {max}.'
+    bad_folder: '-o must be an existing folder, not a link.'
+    need_target: 'Give a session id or --ref <ref>.'
+    no_previous: 'There is no earlier session.'
+    no_ref: 'No session has the ref {ref}.'
+    no_permissions: 'The log folder has no file permissions (FAT, exFAT or NTFS): other users of this machine may read the logs.'
+    list_hint: 'Run mothdex logs list to see the sessions.'
+    match: 'Session {session}, line {line}'
+    cannot_open: 'Cannot open a file manager here. The logs are in {path}'
+    bundle_next: 'Bundle written ({size}). Review it, then attach it to a bug report; see mothdex help logs.'
+    clear_ask: 'Delete the sessions, crash files and bundles in {path}? [y/N]'
+    cleared: 'Deleted: {sessions} sessions, {crashes} crash files, {bundles} bundles.'
+    column:
+      session: 'Session'
+      started: 'Started'
+      binary: 'Program'
+      mode: 'Mode'
+      duration: 'Duration'
+      errors: 'Errors'
+    topic: |-
+      Every run writes its own log.
+
+        logs/latest.log        the newest run
+        logs/sessions/         one file per run
+        logs/crash/            stack traces, only after a crash
+        logs/mothdex.log       general history
+
+      mothdex logs path shows the folder: %LocalAppData%\mothdex\logs on Windows,
+      ~/.local/state/mothdex/logs on Linux and ~/Library/Logs/mothdex on macOS.
+
+      To report an error:
+        1. Note the ref shown with it (6 characters).
+        2. mothdex logs show --ref <ref>   shows what happened around it
+        3. mothdex logs bundle             makes a zip to attach
+        4. Review the zip (an issue is public), then open
+           https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug.yml
+
+      Tokens, the API address and your home folder are removed from what is written to the bundle.
+      Settings: log.session_level (debug during the beta) and log.sessions_keep (20).
   storage:
     rom_root_in_ram: 'Games folder is on a RAM disk: downloaded games are lost at reboot.'
     data_dir_in_ram: 'Data folder is on a RAM disk: history, cache and settings are lost at reboot.'
@@ -162,6 +207,45 @@ ui:
           check: 'check for a newer version without downloading archives'
           version: 'install this exact version (allows downgrade)'
           channel: 'release channel: stable | beta'
+      logs:
+        example: 'mothdex logs list'
+        long: 'Every run writes its own log. These commands find them and make the zip to attach to a bug report. Run mothdex help logs for the steps.'
+        short: 'Find and send logs'
+      logs_path:
+        example: 'mothdex logs path'
+        long: 'Show the log folder and the path of latest.log.'
+        short: 'Show where the logs are'
+      logs_last:
+        flags:
+          tail: 'only the last lines (0 = all)'
+        example: 'mothdex logs last --tail 20'
+        long: 'Show the log of the session before this one.'
+        short: 'Show the log of the previous session'
+      logs_list:
+        example: 'mothdex logs list'
+        long: 'List the sessions with their date, program, mode, duration and number of errors.'
+        short: 'List the sessions'
+      logs_show:
+        flags:
+          ref: 'show the error with this ref'
+        example: 'mothdex logs show --ref 7F3K2Q'
+        long: 'Show a session by its id, or with --ref the lines around the error with that ref, in any session.'
+        short: 'Show a session or an error'
+      logs_open:
+        example: 'mothdex logs open'
+        long: 'Open the log folder in the file manager.'
+        short: 'Open the log folder'
+      logs_bundle:
+        flags:
+          sessions: 'newest sessions to include (1..20)'
+          output: 'existing folder for the zip (default: the log folder)'
+        example: 'mothdex logs bundle'
+        long: 'Make a zip with the newest sessions, the crash files and the end of the general log, without tokens, the API address or your home folder. -o chooses the folder.'
+        short: 'Make a zip to attach to an issue'
+      logs_clear:
+        example: 'mothdex logs clear -f'
+        long: 'Delete the sessions, crash files and bundles after a confirmation (-f skips it). The general log stays.'
+        short: 'Delete sessions, crash files and bundles'
       boxart:
         flags:
           output: 'destination folder'

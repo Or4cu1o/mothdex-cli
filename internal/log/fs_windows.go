@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -99,11 +100,18 @@ func ownedByUser(path string, sd *windows.SECURITY_DESCRIPTOR, readErr error) er
 		return fmt.Errorf("%w: cannot read the owner of %s: %w", errUnsafeDir, path, readErr)
 	}
 	owner, _, err := sd.Owner()
-	if err != nil || owner == nil || !isOwn(owner) {
+	if err != nil || owner == nil || !isOwn(owner) && !isSystem(owner) {
 		return fmt.Errorf("%w: %s belongs to another user", errUnsafeDir, path)
 	}
 	return nil
 }
+
+// systemOwners are the accounts more privileged than the user, so none of them can be the other
+// unprivileged user this check is against: Administrators, SYSTEM and TrustedInstaller, as in
+// Test-FolderTrusted of install.ps1. An elevated run leaves its folders to Administrators.
+var systemOwners = []string{"S-1-5-32-544", "S-1-5-18", "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"}
+
+func isSystem(sid *windows.SID) bool { return slices.Contains(systemOwners, sid.String()) }
 
 // isOwn reports whether sid is the user of this process, or the owner Windows gives to what the
 // process creates (the Administrators group when it runs elevated). Tests replace it.

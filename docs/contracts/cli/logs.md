@@ -33,11 +33,21 @@ bundles/mothdex-logs-<yyyymmdd-hhmmss>.zip
   - **Exception:** FAT, exFAT and NTFS mounts have no permission bits; this is proven with `statfs`, never by
     reading the mode. On those, the mode check is skipped, and the session header plus `logs path` carry a WARN line
     `log folder has no file permissions`.
-  - Windows has no owner check on folders; the profile's ACL protects the default folders.
+  - **Windows:** a folder, or a file this process did not create, must have one of these owners: the current user,
+    the token's default owner (Administrators when the process runs elevated), SYSTEM (`S-1-5-18`), Administrators
+    (`S-1-5-32-544`) or TrustedInstaller. This is the same trusted set as install.ps1 and the managed gate
+    (install-state.md §4). Volumes without access lists (FAT,
+    exFAT, which have no `FILE_PERSISTENT_ACLS`) skip this check, with the same WARN line as above.
 - **Size caps (TM-23).** A session file stops at 20 MiB, after one `log truncated` line. A crash file stops at 1 MiB.
-- **No session for:** the cobra `__complete` and `__completeNoDesc` commands, `completion`, `version` and `--version`,
-  and `mothdex-gui --probe`, `--version` and `-spike`. Tab completion and the upgrade check of the new binary
-  (update.md §4) must not rotate sessions away.
+- **No session file for:** the cobra `__complete` and `__completeNoDesc` commands, `completion`, `version`, `--version`
+  and every `logs` subcommand, plus `mothdex-gui --probe`, `--version`, `--spike` and `--help`. Tab completion, the
+  upgrade check of the new binary (update.md §4) and looking at the logs must not rotate sessions away or take
+  `latest.log`.
+  - The CLI ones run as a **general-only session** (`SessionOptions.GeneralOnly`). It creates no session file and
+    never takes `latest.log`.
+  - It writes only its ERROR lines, refs included, to `mothdex.log`, opened at the first error. So every ref it shows
+    can still be found (§5).
+  - The GUI ones write nothing at all.
 - **Windows:** every log file is opened through `x/sys/windows.CreateFile` with
   `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`. A tester can copy the file while the program runs, and
   another process can rotate or delete it.
@@ -116,6 +126,13 @@ reads the last `session info` line.
   source.
 - **Retention runs in `Attach`.** It keeps the newest `log.sessions_keep` files in `sessions/`, the newest 10 in
   `crash/` and the newest 5 in `bundles/`, by name. It never deletes the session's own file. Deletes are best effort.
+- **Retention never deletes a live session (backlog Crivo 142-6).** While a session runs, it holds an exclusive OS
+  lock on its own session file: `flock`, or `LockFileEx` on one byte at offset 2^30, which sits beyond the data, so
+  readers are not blocked.
+  - Retention and `logs clear` try a non-blocking lock on each candidate, and skip a file whose lock is held.
+  - So `sessions/` may hold more than `log.sessions_keep` files while several processes run. The excess goes at a
+    later `Attach`.
+  - The OS releases the lock of a crashed process, so its file becomes deletable.
 - **Deletion is pattern-bound (TM-22).** Retention and `logs clear` delete only regular files whose names match the
   exact session, crash or bundle pattern, inside `sessions/`, `crash/` and `bundles/`. They never recurse, never
   follow links and never touch `paths.logs` itself.
@@ -138,7 +155,10 @@ reads the last `session info` line.
   - A ref is a lookup key, never an authorization.
 - **Parsing.** `ParseRef` uppercases its input, maps `O` to `0` and `I`/`L` to `1`, drops spaces and `-`, and returns
   `usage` for anything that is not then 6 valid characters. A ref is unique only in practice: `logs show --ref`
-  without a session searches every session and shows every match.
+  without a session searches every session and then `mothdex.log`, where the errors of general-only sessions are,
+  and shows every match.
+  - Unreadable session files are skipped.
+  - Only the matching lines and their context are redacted for display.
 - **One ref per error occurrence shown**, assigned where the error is rendered: CLI `output.go`, the shell, the TUI and
   the GUI error screen. Each job of a batch download that fails gets its own ref.
 - **`RecordError` runs before the error is printed.** It writes
@@ -194,8 +214,12 @@ reads the last `session info` line.
   - Configuration keys are shown in clear only when they are on an allowlist. Every other key is masked, including
     keys added later; a test fails on any schema key that is not classified.
 - **What goes in:** the tail of `mothdex.log` is the last 1 MiB, and each session file is capped at its last 2 MiB.
-  Files are added newest first. The 10 MiB limit is enforced while writing: the oldest sessions go first, then the
-  `mothdex.log` tail is shortened.
+  Files are added newest first. The 10 MiB limit is enforced while writing, in this drop order:
+  1. crash files, oldest first;
+  2. sessions, oldest first;
+  3. the `mothdex.log` tail is shortened.
+
+  The newest session is kept, and so is a non-empty tail.
 - **No network.** `README.txt` says the issue will be public and asks the tester to review the zip first.
 - **`-o`** must be an existing folder that is not a link.
 - **How it is written:** to a temporary name, then renamed, with `O_EXCL` on the final name and mode `0600`. It never

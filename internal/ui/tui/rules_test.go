@@ -11,6 +11,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -523,5 +524,22 @@ func TestFailureOfLocalizesAndCleans(t *testing.T) {
 	// something that is not an app error is an internal error
 	if f = e.failureOf(errBoom); f.code != app.CodeInternal || !strings.Contains(f.hint, "/tmp/mothdex.log") {
 		t.Fatalf("%+v", f)
+	}
+}
+
+// A screen redraws its error on every frame: one ref, one log line.
+func TestARedrawnErrorKeepsItsRef(t *testing.T) {
+	bundle, err := i18n.Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &env{t: bundle.New("en_us"), rep: &cli.Reporter{}}
+	failure := &app.Error{Code: app.CodeNetwork, Message: "down"}
+	first, again := e.failureOf(failure), e.failureOf(failure)
+	if first.ref == "" || first.ref != again.ref || first.tag() != "[network - "+first.ref+"]" {
+		t.Fatalf("%+v %+v", first, again)
+	}
+	if past := e.describe(failure); past.ref != "" || past.tag() != "[network]" {
+		t.Fatalf("a past error got a ref: %+v", past)
 	}
 }

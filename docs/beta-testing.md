@@ -50,6 +50,35 @@ The installer picks the profile for your system. To force one, add `--profile ba
 `lakka`, `emudeck`, `retrodeck`, `generic`), and `--no-gui` to install the command-line client only. To remove
 everything it installed, run it again with `--uninstall`. Details: [docs/release.md](release.md#installing).
 
+## How to send an error
+
+Every error shows a code and a 6-character **ref**, and names the log file:
+
+```text
+error: Cannot reach the Mothdex server.
+  Check your connection.
+  code: network · ref: 7F3K2Q
+  log: ~/.local/state/mothdex/logs/latest.log
+```
+
+1. Note the ref, and what you were doing.
+2. Make the bundle. `mdex` is the short name of `mothdex`; use either.
+
+   ```sh
+   mdex logs bundle              # prints the path of a zip under the log folder
+   mdex logs bundle -o .         # or write it to the current folder
+   ```
+
+   In the graphical frontend, use **Export logs** on the crash screen or in **Settings › About** (it can be
+   reached with the gamepad). It says where the zip is.
+3. Review the zip before sharing it, because an issue is public. It holds your search terms and file names.
+   Tokens, the API address and your home folder are removed.
+4. Open a [bug report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug.yml), paste the **ref**,
+   fill in the version (`mothdex --version`) and your system, and attach the zip.
+
+To look yourself first: `mdex logs show --ref 7F3K2Q` prints the lines around that error, `mdex logs last` the
+previous run, `mdex logs list` every run, and `mdex logs open` opens the folder. `mdex help logs` lists the files.
+
 ## How to report
 
 Pick the form by what you tested:
@@ -66,7 +95,7 @@ One report per system and device. Then:
 3. **Replace your user name** in every path before pasting (`/home/USER`, `C:\Users\USER`).
 
 Found a bug that is not about a device? Use the
-[bug report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug_report.yml). Questions go to
+[bug report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug.yml). Questions go to
 [Discussions](https://github.com/Or4cu1o/mothdex-cli/discussions/categories/q-a). The MCP server has its own
 [issue forms](https://github.com/Or4cu1o/mothdex-mcp/issues/new/choose).
 

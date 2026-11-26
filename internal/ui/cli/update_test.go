@@ -177,6 +177,45 @@ func testUpgradeExamples(t *testing.T, example string) {
 			d.Open = func(context.Context, Globals) (*Session, error) {
 				return &Session{T: d.Translator("en_us"), Updater: u, NewUpdater: makeUpdater, UpdateChannel: "stable"}, nil
 			}
+			if line == "cancel_prompt" {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				rd, wr := io.Pipe()
+				defer func() { _ = rd.Close() }()
+				defer func() { _ = wr.Close() }()
+				readerDone := make(chan struct{})
+				d.Stdin = cancelPromptReader{rd, cancel, readerDone}
+				if code := Execute(ctx, d, []string{"upgrade"}); code != 130 {
+					t.Fatalf("exit %d: %s", code, out)
+				}
+				_ = wr.Close()
+				<-readerDone
+				stages, e := filepath.Glob(filepath.Join(dir, ".mothdex-update-*"))
+				if e != nil || len(stages) != 0 {
+					t.Fatalf("staging retained: %v %v", stages, e)
+				}
+				old, e := os.ReadFile(exe) //nolint:gosec // private fixture path.
+				if e != nil || string(old) != "old" {
+					t.Fatalf("install changed: %q %v", old, e)
+				}
+				return
+			}
+			if line == "shell_abort" {
+				session, e := d.Open(context.Background(), Globals{})
+				if e != nil {
+					t.Fatal(e)
+				}
+				runner := NewRunner(d, session, true)
+				calls := 0
+				runner.SetPrompt(func(string) (string, error) { calls++; return "", ErrPromptAborted })
+				if code := runner.Run(context.Background(), []string{"upgrade"}); code != 130 {
+					t.Fatalf("abort exit %d: %s", code, out)
+				}
+				if code := runner.Run(context.Background(), []string{"version"}); code != 0 || calls != 1 {
+					t.Fatalf("next command exit=%d prompts=%d", code, calls)
+				}
+				return
+			}
 			fields := strings.Fields(line)
 			if code := Execute(context.Background(), d, fields[1:]); code != 0 {
 				t.Fatalf("exit %d: %s", code, out)
@@ -252,4 +291,20 @@ func TestVerificationFailureHintIncludesReinstallCommand(t *testing.T) {
 	if !strings.Contains(out.String(), update.InstallCommand()) || strings.Contains(out.String(), "{install_command}") {
 		t.Fatalf("reinstall hint missing: %s", out.String())
 	}
+}
+
+// Cancels only once the command is actually waiting on stdin; Close releases its reader.
+type cancelPromptReader struct {
+	reader io.Reader
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+func (r cancelPromptReader) Read(b []byte) (int, error) {
+	r.cancel()
+	defer close(r.done)
+	return r.reader.Read(b)
+}
+func TestUpgradePromptCancellation(t *testing.T) {
+	testUpgradeExamples(t, "cancel_prompt\nshell_abort")
 }

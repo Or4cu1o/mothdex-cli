@@ -11,6 +11,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
 	"github.com/Or4cu1o/mothdex-cli/internal/update"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
@@ -78,10 +79,11 @@ type Session struct {
 	Close         func() // releases the service; may be nil
 
 	// What the interactive UIs need (ui.md section 1).
-	DataDir string       // resolved paths.data, home of the UI-owned files
-	NoColor bool         // the final color decision of cli-conventions section 4
-	UTF8    bool         // glyphs, or their ASCII fallbacks
-	Log     *slog.Logger // may be nil
+	DataDir string        // resolved paths.data, home of the UI-owned files
+	NoColor bool          // the final color decision of cli-conventions section 4
+	UTF8    bool          // glyphs, or their ASCII fallbacks
+	Log     *slog.Logger  // may be nil
+	Logs    *mlog.Session // the process log; may be nil
 }
 
 // Deps are the things the commands need from the outside: tests replace all of them.
@@ -102,6 +104,13 @@ type Deps struct {
 	// Translator returns an en_us-capable translator for errors that happen before Open.
 	Translator func(lang string) *i18n.Translator
 	Version    func() buildinfo.Info
+	// Logs is the log of the process; nil gives refs without writing them.
+	Logs *mlog.Session
+	// Diagnostics opens the log files without opening the service and returns what a bundle needs,
+	// with the error of a configuration that does not load.
+	Diagnostics func(g Globals) (mlog.BundleOptions, error)
+	// OpenFolder shows a folder in the file manager; nil uses the system's.
+	OpenFolder func(dir string) error
 	Stdin      io.Reader
 	Stdout     io.Writer
 	Stderr     io.Writer

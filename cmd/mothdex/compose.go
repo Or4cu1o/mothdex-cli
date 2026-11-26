@@ -36,6 +36,6 @@ func open(ctx context.Context, g cli.Globals, logs *mlog.Session) (*cli.Session,
 		},
 		Svc: s.Svc, T: s.T, Prefer: s.Prefer, Boxart: s.Boxart, Confirm: s.Confirm, PageSize: s.PageSize, Color: s.Color,
 		Warnings: s.Warnings, LogPath: s.LogPath, Close: s.Close,
-		DataDir: s.DataDir, NoColor: s.NoColor, UTF8: cli.IsUTF8(os.Getenv), Log: s.Log,
+		DataDir: s.DataDir, NoColor: s.NoColor, UTF8: cli.IsUTF8(os.Getenv), Log: s.Log, Logs: s.Logs,
 	}, nil
 }

@@ -251,3 +251,11 @@ func TestGUIIsVerifiedBeforeAnySwapAndRollsBackTogether(t *testing.T) {
 		})
 	}
 }
+
+func TestReleaseNotesOnlyNewerVersionSections(t *testing.T) {
+	input := "# Changelog\nIntroduction\n## [Unreleased]\nUnshipped\n## [3.0.0] - date\nNew\n### Fixed\nFix\n## [1.0.0]\nOld\n## [4.0.0]\nNewer section later\n"
+	want := "## [3.0.0] - date\nNew\n### Fixed\nFix\n## [4.0.0]\nNewer section later\n"
+	if got := releaseNotes([]byte(input), "2.0.0"); got != want {
+		t.Fatalf("notes = %q, want %q", got, want)
+	}
+}
