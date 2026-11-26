@@ -19,8 +19,8 @@ func Errors(b *i18n.Bundle, lang string) string {
 	}
 	sort.Strings(codes)
 	var out strings.Builder
-	out.WriteString("# Error reference\n\n<!-- Generated from errors.<code> locale keys. Run go run ./scripts/gen-errors. -->\n\n| Code | Meaning | How to fix |\n| --- | --- | --- |\n")
 	t := b.New(lang)
+	out.WriteString("# " + t.T("ui.cli.template.error_reference", nil) + "\n\n<!-- Generated from errors.<code> locale keys. Run go run ./scripts/gen-errors. -->\n\n" + t.T("ui.cli.template.error_columns", nil) + "\n| --- | --- | --- |\n")
 	escape := func(s string) string {
 		return strings.NewReplacer("|", "\\|", "\n", " ", "{", "[", "}", "]").Replace(s)
 	}
@@ -33,7 +33,7 @@ func Errors(b *i18n.Bundle, lang string) string {
 func referenceHint(t *i18n.Translator, code string) string {
 	hint := t.T("errors."+code+".hint", nil)
 	if hint == "" {
-		return "No action required; run the command again to retry."
+		return t.T("ui.cli.template.no_error_action", nil)
 	}
 	return hint
 }
