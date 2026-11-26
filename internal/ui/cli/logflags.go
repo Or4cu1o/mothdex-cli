@@ -54,16 +54,16 @@ func LogFlagRules() map[string]mlog.FlagRule {
 	return rules
 }
 
-// unlogged are the commands that start no session: they run on every Tab or as the check of an
-// upgrade, and would push real sessions out of the retention (logs.md section 1).
-var unlogged = []string{cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd, "completion", "version"}
+// unlogged are the commands that keep no session: they run on every Tab, as the check of an
+// upgrade or to read the logs, and would push real sessions out of the retention (logs.md
+// section 1). Their errors still reach mothdex.log.
+var unlogged = []string{cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd, "completion", "version", "logs"}
 
 // Logged says whether a command line gets a session log.
-func Logged(args []string) bool {
+func Logged(args []string, rules map[string]mlog.FlagRule) bool {
 	if slices.Contains(args, "--version") {
 		return false
 	}
-	rules := LogFlagRules()
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "" || a[0] != '-' {

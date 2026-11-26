@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -71,9 +72,13 @@ func RecordError(l *slog.Logger, r ErrorRecord) {
 // ref and writes nothing, so a screen that redraws an error does not log it again. The zero value
 // is ready to use.
 type Refs struct {
-	mu   sync.Mutex
-	seen map[error]string
+	mu    sync.Mutex
+	seen  map[error]string
+	order []error // oldest first
 }
+
+// maxRefs bounds what a long Shell or TUI run remembers; the oldest errors are off the screen.
+const maxRefs = 1000
 
 // Of returns the ref of key, recording rec on the first call. key must be comparable (a pointer
 // error type).
@@ -86,8 +91,13 @@ func (r *Refs) Of(l *slog.Logger, key error, rec ErrorRecord) string {
 	if r.seen == nil {
 		r.seen = map[error]string{}
 	}
+	if len(r.order) == maxRefs {
+		delete(r.seen, r.order[0])
+		r.order = slices.Delete(r.order, 0, 1)
+	}
 	rec.Ref = NewRef()
 	r.seen[key] = rec.Ref
+	r.order = append(r.order, key)
 	RecordError(l, rec)
 	return rec.Ref
 }

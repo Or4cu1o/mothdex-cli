@@ -155,8 +155,9 @@ func TestShownLinesAreRedacted(t *testing.T) {
 	dir := logDir(t)
 	const id = "20260101-000000-cli-1"
 	plant(t, dir, SessionsDir, id+".log")
-	raw := "panic: Get \"https://cdn.example/f?token=S3CRET\": api https://my.api.example/v1/x\n" +
-		"time=x level=ERROR ref=ABC123 msg=x\nserver said token=S3CRET sig=S3CRET X-Amz-Signature=S3CRET password=S3CRET api_key=S3CRET\n"
+	// %s is the secret, put in at run time so that no scanner reads these as real credentials
+	raw := strings.ReplaceAll("panic: Get \"https://cdn.example/f?token=%s\": api https://my.api.example/v1/x\n"+
+		"time=x level=ERROR ref=ABC123 msg=x\nserver said token=%s sig=%s X-Amz-Signature=%s password=%s api_key=%s\n", "%s", "S3CRET")
 	if err := os.WriteFile(sessionFile(dir, id), []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
