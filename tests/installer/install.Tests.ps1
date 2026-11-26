@@ -663,6 +663,7 @@ try {
 function Invoke-WebRequest { param([string]`$Uri, [string]`$OutFile, [switch]`$UseBasicParsing, [int]`$MaximumRedirection, [switch]`$PassThru)
   Copy-Item -LiteralPath (Join-Path '$release' ((`$Uri.Substring('$base'.Length) -replace '^download/', '') -replace '/', '\')) -Destination `$OutFile
   return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = [uri]`$Uri } } }
+`$env:PROCESSOR_ARCHITECTURE = 'AMD64'
 & '$installer' -Version v1.5.0 -BinDir "$p4" -NoModifyPath
 exit `$LASTEXITCODE
 "@
@@ -725,7 +726,8 @@ exit `$LASTEXITCODE
   $ProgressPreference = 'Continue'
   $global:LASTEXITCODE = 0
   $threw = $false
-  try { Invoke-Expression $text *> $null } catch { $threw = $true }
+  $script:message = ''
+  try { Invoke-Expression $text *> $null } catch { $threw = $true; $script:message = "$($_.Exception.Message) @ $($_.InvocationInfo.PositionMessage)" }
   $afterOk = @{ threw = $threw; code = $LASTEXITCODE; eap = $ErrorActionPreference; progress = $ProgressPreference }
   $strictOk = $true
   try { $null = $variableNeverSet } catch { $strictOk = $false }
@@ -736,8 +738,8 @@ exit `$LASTEXITCODE
   $global:fakeRelease = $release
   $ErrorActionPreference = 'Stop'
   Set-StrictMode -Version 2.0
-  Check 'iex success: session alive, exit status 0' ((-not $afterOk.threw) -and ($afterOk.code -eq 0))
-  Check 'iex failure: session alive, LASTEXITCODE not 0' ($afterFail.threw -and ($afterFail.code -ne 0))
+  Check "iex success: session alive, exit status 0 (threw=$($afterOk.threw) code=$($afterOk.code))" ((-not $afterOk.threw) -and ($afterOk.code -eq 0))
+  Check "iex failure: session alive, LASTEXITCODE not 0 (threw=$($afterFail.threw) code=$($afterFail.code))" ($afterFail.threw -and ($afterFail.code -ne 0))
   Check 'iex leaks no preference or strict mode' ($strictOk -and ($afterOk.eap -eq 'Continue') -and ($afterFail.eap -eq 'Continue') -and ($afterFail.progress -eq 'Continue'))
   Check 'iex leaks no function or variable' ((-not (Get-Command Fail, Get-Remote, Add-UserPathEntry -ErrorAction SilentlyContinue)) -and
     (-not (Get-Variable Repo, State, NoModifyPath, SignerIdentity -ErrorAction SilentlyContinue)) -and ($base -ceq $baseBefore))
