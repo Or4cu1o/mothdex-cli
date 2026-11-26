@@ -178,15 +178,32 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
   does not check for a display.
 
   Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors.
-- Every failure of a normal start is written to the log file, because a Port has no visible terminal, and also to
-  stderr. A command line or configuration error found before the log is open goes to stderr only until T-115 PR 2,
-  which sends both to the fallback log in the default `paths.logs` ([`logs.md`](logs.md) §2).
+- Every failure of a run that opens the GUI, or tries to, is written to the session log, because a Port has no
+  visible terminal, and also to stderr with its code, ref and log path.
 
 **Command line.** `--config`, `--profile` and `--lang` mean what they mean in the CLI. `--log-level` is the shortcut
 of `MOTHDEX_LOG_LEVEL` (`log.level`, flag over variable over file). `--help` lists the flags, exit codes and variables
 in the language of `--lang`, else `interface.language`, else the system's (en_us fills what a locale lacks); it loads
 no SDL2 and writes nothing. Flags take one dash or two. The program takes no positional argument: one is a command
 line error (exit 2).
+
+**Logs and errors** ([`logs.md`](logs.md)). `main` starts the session before the configuration is read, with mode
+`gui`; `--probe`, `--version`, `--spike` and `--help` write no file. The header shows the value of `--profile`,
+`--lang`, `--log-level`, `--window` and `--driver` only.
+- **Before the service exists** (bad command line, configuration that does not load), the lines go to the session
+  file and `latest.log` in the default `paths.logs`, never in a folder the rejected file names.
+- **On screen**, every error gets a ref when it happens (`Update`, never while drawing) and one `ERROR` line in the
+  log. An error in place shows the message, the hint, `code · ref` and the log path; a toast or a row line puts the
+  code and the ref where a cut cannot take them. Each failed download gets its own ref, shown in Details.
+- **Panic.** `recover` writes the `ERROR` line with ref, value and stack, and `crash/<session>.txt`, both through the
+  redactor; stderr shows the ref and the path, never the value. When the panic is in the run loop, the same window
+  shows the **crash screen**: what happened, `code · ref`, the log, and `Export logs` and `Quit`. It calls no
+  service. Leaving it exits 1, after giving the service 2 s to close. A panic before the window, or on another
+  goroutine (G-LOG-1), has no screen.
+- **Export logs** (Settings › About, and the crash screen) asks first, with `Cancel` focused, writes the bundle of
+  `mothdex logs bundle` (local files only) off the render thread, and says where the zip is.
+- **Testing a crash:** `go build -tags 'gui crashtest'` makes a binary that panics on its second frame. No release is
+  built with the tag.
 
 **Console window on Windows.** The release build does not pass `-H=windowsgui`, so Windows opens a console window
 along with the GUI. Kept on purpose during the beta (it shows start-up errors to a tester); to review for 1.0.

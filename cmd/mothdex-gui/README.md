@@ -39,8 +39,16 @@ Exit codes ([`cli-output.md`](../../docs/contracts/cli/cli-output.md) §4.1):
 | 2 | configuration error: configuration, flags or profile |
 | 8 | SDL2 missing or too old, or no display (also when SDL would fall back to `offscreen` or `dummy` without being asked to) |
 
-Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors. A failure of a normal start is
-written to the log file and to stderr.
+Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors. A failure of a start is written
+to the session log and to stderr.
+
+### Logs and errors
+
+Every run that opens the GUI writes a session log under `paths.logs` (`latest.log` is the newest;
+[`logs.md`](../../docs/contracts/cli/logs.md)). Each error shown has a `code` and a 6 character `ref` that is also in
+the log. After a panic, `crash/` holds the stack and the window shows a screen with the ref, the log path,
+**Export logs** and **Quit**. Settings › About has **Export logs** too: it writes the zip to attach to a report and
+says where it is. `--probe`, `--version`, `--spike` and `--help` write no file.
 
 On Windows a console window opens along with the GUI (the build does not use `-H=windowsgui`); this stays for the beta.
 
@@ -54,6 +62,7 @@ Build and test:
 CGO_ENABLED=0 go build -tags gui -o mothdex-gui ./cmd/mothdex-gui
 scripts/gui-probe.sh                  # build the probe, inspect the ELF, run it
 go test ./internal/ui/gui/...         # model, input, text, loop: no SDL needed
-go test -tags gui ./cmd/mothdex-gui   # flags, help, exit codes, --probe
+go test -tags gui ./cmd/mothdex-gui   # flags, help, exit codes, --probe, logs
+go test -tags 'gui crashtest' -run ForcedPanic ./cmd/mothdex-gui   # a forced panic end to end (Linux, SDL2)
 go test -tags gui ./internal/ui/gui/sdl   # binding and headless render; skips without SDL2 (GUI_REQUIRE_SDL=1 fails instead)
 ```

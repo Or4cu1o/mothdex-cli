@@ -69,7 +69,7 @@ func (m Model) onEntry(msg entryMsg) Model {
 		return m
 	}
 	if msg.err != nil {
-		s.phase, s.fail = loadFailed, m.failureOf(msg.err)
+		s.phase, s.fail = loadFailed, m.reportOr(msg.err, "entry")
 		m.entry = s
 		return m
 	}

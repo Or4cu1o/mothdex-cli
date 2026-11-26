@@ -24,8 +24,8 @@ func (m Model) settingItemHeight(it settingItem) int {
 		return LineHeight(met.Secondary) + met.Unit
 	}
 	h := m.settingRowBase(it.row)
-	if m.settings.errs[it.row.id] != "" {
-		h += LineHeight(met.Secondary)
+	if msg := m.settings.errs[it.row.id]; msg != "" {
+		h += (1 + strings.Count(msg, "\n")) * LineHeight(met.Secondary)
 	}
 	if m.settings.changed[it.row.id] && it.row.nextRun {
 		h += LineHeight(met.Secondary)
@@ -139,6 +139,9 @@ func (m Model) settingsFrame() frameSpec {
 			spec.hints = []hint{{role: input.Left, role2: input.Right, label: m.tr("ui.gui.hint.change", nil)}, {role: input.Confirm, label: m.tr("ui.gui.hint.save", nil)}, {role: input.Back, label: m.tr("ui.gui.hint.cancel", nil)}}
 		case edInfo:
 			spec.hints = []hint{{role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
+			if m.canExport(e.row) {
+				spec.hints = append([]hint{{role: input.Confirm, label: m.tr("ui.gui.logs.export", nil)}}, spec.hints...)
+			}
 			if m.infoScrolls(e.row) {
 				spec.hints = append([]hint{{role: input.Up, role2: input.Down, label: m.tr("ui.gui.buttons.move", nil)}}, spec.hints...)
 			}
@@ -308,8 +311,10 @@ func (m Model) drawSettingRow(p painter, r draw.Rect, row *settingRow, labelW, v
 	p.text(valueX, top, met.Body, color, p.fit(met.Body, value, valueW))
 	y := r.Y + base
 	if msg := m.settings.errs[row.id]; msg != "" {
-		p.text(r.X+met.Unit*2, y, met.Secondary, colError, p.fit(met.Secondary, msg, r.W-4*met.Unit))
-		y += LineHeight(met.Secondary)
+		for _, line := range strings.Split(msg, "\n") {
+			p.text(r.X+met.Unit*2, y, met.Secondary, colError, p.fit(met.Secondary, line, r.W-4*met.Unit))
+			y += LineHeight(met.Secondary)
+		}
 	}
 	if m.settings.changed[row.id] && row.nextRun {
 		p.text(r.X+met.Unit*2, y, met.Secondary, colDim, m.tr("ui.gui.settings.next_start", nil))
@@ -421,8 +426,8 @@ func (m Model) infoLines(p painter, row string) []infoLine {
 			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_entries", nil) + ": " + m.entriesText})
 		}
 		lines = append(lines, m.controllerLines()...)
-		if m.o.LogPath != "" {
-			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_log", nil) + ": " + app.SanitizeText(m.o.LogPath), gap: true})
+		if m.logFile != "" {
+			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_log", nil) + ": " + m.logFile, gap: true})
 		}
 	}
 	return lines
@@ -448,7 +453,7 @@ func (m Model) infoGeometry(p painter, row string, offset int) (panel draw.Rect,
 		}
 	}
 	lh := LineHeight(met.Secondary)
-	fixed := LineHeight(met.Body) + 5*u
+	fixed := LineHeight(met.Body) + 5*u + m.infoButtonSpace(row)
 	room := met.Safe.H - 4*u - fixed
 	fits := func(from int) (n, h int) {
 		for i := from; i < len(all); i++ {
@@ -490,14 +495,28 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 		p.text(panel.X+2*u+l.x, y, met.Secondary, l.c, l.text)
 		y += LineHeight(met.Secondary)
 	}
+	if m.canExport(e.row) { // the one action of the panel: it has the focus, so A is plainly what runs it
+		label := m.tr("ui.gui.logs.export", nil)
+		btn := draw.Rect{X: panel.X + 2*u, Y: panel.Bottom() - 2*u - met.Row1, W: min(p.width(met.Body, label)+4*u, panel.W-4*u), H: met.Row1}
+		p.box(btn, m.overlay == overlayNone)
+		p.centered(btn, met.Body, colText, p.fit(met.Body, label, btn.W-u))
+	}
 	off := min(max(e.focus, 0), maxOff)
 	tri := LineHeight(met.Secondary) / 2
 	if off > 0 {
 		drawTriangle(p.l, p.m.Pixel, panel.Right()-2*u-tri, panel.Y+u, tri, 'u', colDim)
 	}
 	if off < maxOff {
-		drawTriangle(p.l, p.m.Pixel, panel.Right()-2*u-tri, panel.Bottom()-u-tri, tri, 'd', colDim)
+		drawTriangle(p.l, p.m.Pixel, panel.Right()-2*u-tri, panel.Bottom()-u-tri-m.infoButtonSpace(e.row), tri, 'd', colDim)
 	}
+}
+
+// infoButtonSpace is the height the action button of an info panel takes, zero for a panel without one.
+func (m Model) infoButtonSpace(row string) int {
+	if !m.canExport(row) {
+		return 0
+	}
+	return m.metrics.Row1 + m.metrics.Unit
 }
 
 // infoScrolls reports whether the open info panel has more lines than fit.

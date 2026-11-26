@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"strings"
 	"time"
 
@@ -45,6 +46,7 @@ const (
 	screenQueue
 	screenHistory
 	screenSettings
+	screenCrash
 )
 
 type overlayKind int
@@ -150,6 +152,10 @@ type Model struct {
 	coverSlug    string    // the slug the settle timer is for
 	coverSince   time.Time // when focus reached coverSlug
 	downloaded   map[string]bool
+	jobRefs      map[app.JobID]string // the error ref of each job that failed
+	logFile      string               // the log About names, read when it opens
+	exporting    bool                 // a log bundle is being written
+	crash        failure              // what the crash screen shows
 	picker       pickerState
 	platforms    catalogLoad[mothdex.Platform]
 	regions      catalogLoad[mothdex.Region]
@@ -226,6 +232,9 @@ func (m Model) OverlayEpoch() int { return m.epoch }
 
 // Update applies one message at time now and returns the new model and the service calls to start.
 func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
+	if m.screen == screenCrash {
+		return m.updateCrash(msg, now)
+	}
 	switch msg := msg.(type) {
 	case InputMsg:
 		return m.onAction(msg.Action, msg.Repeat, now)
@@ -245,7 +254,8 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 		return m.onEnqueued(msg, now), nil
 	case boxartMsg:
 		if msg.err != nil {
-			return m.withToast(m.tr("ui.gui.toast.boxart_failed", nil), toastWarn, now), nil
+			f := m.report(msg.err, "boxart")
+			return m.withToast(f.tagged(m.tr("ui.gui.toast.boxart_failed", nil)), toastWarn, now), nil
 		}
 		return m, nil
 	case platformsMsg:
@@ -289,6 +299,8 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 		return m.onCacheClear(msg, now)
 	case exitDoneMsg:
 		return m.onExitDone(msg, now)
+	case exportDoneMsg:
+		return m.onExportDone(msg, now), nil
 	}
 	return m, nil
 }
@@ -443,11 +455,18 @@ func (m Model) onJob(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
 	if j.Terminal() && (!known || prev.State != j.State) { // the History is read again after each terminal event (docs/ux/gui.md section 5.9)
 		cmds = append(cmds, historyCmd(m.o.Service))
 	}
-	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) && m.screen != screenQueue {
-		if consent.Needed(j) { // nothing failed: the job waits for a person; the title comes last, so a cut falls on it
+	if j.State == app.StateFailed && (!known || prev.State != app.StateFailed) {
+		var f failure // each job that fails is an occurrence of its own, shown here or in the Queue
+		if !consent.Needed(j) && j.Err != nil {
+			f = m.report(j.Err, "download")
+			m = m.withJobRef(j.ID, f.ref)
+		}
+		switch {
+		case m.screen == screenQueue:
+		case consent.Needed(j): // nothing failed: the job waits for a person; the title comes last, so a cut falls on it
 			m = m.withToast(m.tr("ui.gui.toast.needs_ok", map[string]any{"title": app.SanitizeText(j.Title)}), toastWarn, now)
-		} else {
-			m = m.withToast(m.tr("ui.gui.toast.download_failed", map[string]any{"title": app.SanitizeText(j.Title)}), toastError, now)
+		default:
+			m = m.withToast(f.tagged(m.tr("ui.gui.toast.download_failed", map[string]any{"title": app.SanitizeText(j.Title)})), toastError, now)
 		}
 	}
 	if j.State == app.StateDone && (!known || prev.State != app.StateDone) && m.o.Boxart {
@@ -466,6 +485,16 @@ func (m Model) onJob(j app.JobSnapshot, now time.Time) (Model, []Cmd) {
 		return m, append(cmds, more...)
 	}
 	return m, cmds
+}
+
+func (m Model) withJobRef(id app.JobID, ref string) Model {
+	refs := maps.Clone(m.jobRefs)
+	if refs == nil {
+		refs = map[app.JobID]string{}
+	}
+	refs[id] = ref
+	m.jobRefs = refs
+	return m
 }
 
 func btoi(b bool) int {

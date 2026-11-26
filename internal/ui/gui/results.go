@@ -155,10 +155,10 @@ func (m Model) onSearchPage(msg searchPageMsg, now time.Time) (Model, []Cmd) {
 	}
 	if msg.err != nil {
 		if msg.dir == 0 {
-			s.phase, s.fail = loadFailed, m.failureOf(msg.err)
+			s.phase, s.fail = loadFailed, m.reportOr(msg.err, "search")
 		} else if !canceled(msg.err) {
 			m.results = s
-			return m.withToast(m.failureOf(msg.err).msg, toastError, now), nil
+			return m.withToast(m.report(msg.err, "search").short(), toastError, now), nil
 		}
 		m.results = s
 		return m, nil
@@ -213,7 +213,7 @@ func (m Model) onRandom(msg randomMsg, now time.Time) Model {
 		return m
 	}
 	if msg.err != nil {
-		s.phase, s.fail = loadFailed, m.failureOf(msg.err)
+		s.phase, s.fail = loadFailed, m.reportOr(msg.err, "random")
 		m.results = s
 		return m
 	}
@@ -536,8 +536,26 @@ func (m Model) drawLoading(p painter, r draw.Rect, text string, since, now time.
 	}
 }
 
-// drawFailure draws an error in place (docs/ux/gui.md section 6): the icon, the message, the hint, the code
-// for support, and the Retry button when the call can be retried.
+// supportLines are what a person reads out or sends: the code and the ref, then the log that holds them, unless
+// the hint above already names it.
+func (m Model) supportLines(p painter, f failure, w int) []string {
+	met := m.metrics
+	args := map[string]any{"code": f.code, "ref": f.ref}
+	key := "ui.gui.error.code_ref"
+	if f.ref == "" {
+		key = "ui.gui.error.code"
+	}
+	lines := []string{p.fit(met.Secondary, m.tr(key, args), w)}
+	if f.log != "" && !strings.Contains(f.hint, f.log) {
+		label := m.tr("ui.gui.error.log", map[string]any{"path": ""})
+		path := shortenPath(p, met.Secondary, f.log, max(w-p.width(met.Secondary, label), 1))
+		lines = append(lines, m.tr("ui.gui.error.log", map[string]any{"path": path}))
+	}
+	return lines
+}
+
+// drawFailure draws an error in place (docs/ux/gui.md section 6): the icon, the message, the hint, the code,
+// the ref and the log for support, and the Retry button when the call can be retried.
 func (m Model) drawFailure(p painter, r draw.Rect, f failure, retry bool) {
 	met := m.metrics
 	y := r.Y + met.Unit
@@ -555,8 +573,11 @@ func (m Model) drawFailure(p painter, r draw.Rect, f failure, retry bool) {
 			y += LineHeight(met.Secondary)
 		}
 	}
-	p.text(x, y, met.Secondary, colDim, "code: "+f.code)
-	y += LineHeight(met.Secondary) + met.Unit
+	for _, line := range m.supportLines(p, f, w) {
+		p.text(x, y, met.Secondary, colDim, line)
+		y += LineHeight(met.Secondary)
+	}
+	y += met.Unit
 	if retry && f.retryable {
 		label := m.tr("ui.gui.hint.retry", nil)
 		btn := draw.Rect{X: x, Y: y, W: p.width(met.Body, label) + 4*met.Unit, H: met.Row1}

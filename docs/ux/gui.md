@@ -662,7 +662,11 @@ Rows come from `ConfigList` (value and source). Keys:
 | Confirm large downloads | `interface.confirm_downloads` | toggle, applies now |
 | Cache | — | `CacheStats` total; A opens `Clear cache (84 MB)?` with `[Keep]` as default and `[Clear]`, then `CacheClear()` |
 | System | — | read-only: `ActiveProfile()` name, ROM root, `Verified` and each warning |
-| About | — | read-only: version, catalog entries, controller name and GUID, log file path |
+| About | — | read-only: version, catalog entries, controller name and GUID, log file path; one action, `Export logs` (A) |
+
+- **Export logs** (About, and the crash screen of §6) opens `Export the logs?` with `[Cancel]` focused and
+  `[Export logs]`, then `Logs saved` with the folder and the file name, or `The logs were not saved` with the code and
+  the ref, and `[OK]`. The dialog says the zip holds search terms and file names and that nothing is sent.
 
 - The list scrolls like the other lists. Section headers (`Downloads`, `Screen`, `Storage and system`) are not
   focusable, stay with their first row and never sit alone at the bottom of the screen.
@@ -766,7 +770,12 @@ test) does the same.
 
 - Every service error renders **in place** on the screen that asked: never a crash, never a modal for a read. It shows
   the icon `!` in `error` color, `errors.<code>.message`, the GUI hint, and `(A) Retry` when the call can be retried.
-  `code: <code>` follows in `text.dim`, for support.
+  `code: <code> · ref: <ref>` and `log: <path>` follow in `text.dim`, for support (the path is left out when the hint
+  already names it). A toast starts with `<code> · <ref>`; a Settings row shows them on a second line; the Details of a
+  failed download show `[<code> · <ref>]`.
+- **Crash screen** (after a panic of the run loop): `Something went wrong` in `error` color, one sentence that asks for
+  the logs and the ref, `code · ref`, the log path, then `[Export logs]` (focused) and `[Quit]`. Hints: `(A) Choose`,
+  `(B) Quit`; Start does nothing and is not shown.
 - Messages come from `errors.<code>.message`. **Hints** come from `errors.<code>.hint`, except where the CLI hint names
   a flag or command the couch user cannot type; those codes use GUI hints `ui.gui.hints.<code>`:
 
