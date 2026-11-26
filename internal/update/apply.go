@@ -59,7 +59,11 @@ func step(ctx context.Context, o ApplyOptions, name string) error {
 // Apply verifies all components before confirmation, then commits or rolls back as one transaction.
 func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err error) {
 	result.From = u.o.Current
+	committing := false
 	defer func() {
+		if err != nil && ctx.Err() != nil && !committing {
+			err = failure(app.CodeCanceled, "canceled", ctx.Err())
+		}
 		status := "updated"
 		reason := ""
 		restored := false
@@ -115,7 +119,7 @@ func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err
 	if err != nil {
 		return result, failure(app.CodeUpdateFailed, "swap_failed", err)
 	}
-	defer os.RemoveAll(stageDir)
+	defer func() { _ = os.RemoveAll(stageDir) }()
 	release, err := u.stage(ctx, o, s, stageDir, version)
 	if err != nil {
 		return result, err
@@ -139,6 +143,7 @@ func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err
 		return result, err
 	}
 	// Once swapping begins, cancellation cannot leave a partially updated installation.
+	committing = true
 	if err = u.swap(context.WithoutCancel(ctx), o, s, stageDir, release); err != nil {
 		return result, err
 	}
@@ -180,7 +185,11 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 			}
 			return r, err
 		}
-		body, _, err := u.request(ctx, prefix+name, archiveLimit, false)
+		body, _, err := u.request(ctx, prefix+name, archiveLimit, false, func(done, total int64) {
+			if o.Progress != nil {
+				o.Progress(Progress{Step: "download", Done: done, Total: total})
+			}
+		})
 		if err != nil {
 			return r, err
 		}
@@ -336,7 +345,7 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 	if o.Progress != nil {
 		o.Progress(Progress{Step: "check"})
 	}
-	if err := u.probe(ctx, filepath.Join(dir, binaryName(false)), rVersion(r, s), false, false); err != nil {
+	if err := u.probe(ctx, filepath.Join(dir, binaryName(false)), r.version, false, false); err != nil {
 		return rollback("check_failed", err)
 	}
 	if s.GUI {
@@ -345,7 +354,7 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 		}
 	}
 	// State is committed only after every binary passes. Preserve installer-owned fields.
-	s.Version = rVersion(r, s)
+	s.Version = r.version
 	s.UpdatedAt = u.o.Now().UTC().Format("2006-01-02T15:04:05Z")
 	s.UpdatedBy = "upgrade"
 	if err := atomicJSON(filepath.Join(dir, stateName), s, 0644); err != nil {
@@ -359,7 +368,6 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 	}
 	return nil
 }
-func rVersion(r stagedRelease, _ State) string { return r.version }
 func clearBackup(path string) error {
 	old := path + ".old"
 	if _, err := regular(old); os.IsNotExist(err) {
@@ -388,7 +396,7 @@ func (u *Updater) writeNotices(dir string, notices map[string][]byte) {
 		if parent != dir {
 			st, err := os.Lstat(parent)
 			if os.IsNotExist(err) {
-				err = os.Mkdir(parent, 0755)
+				err = os.Mkdir(parent, 0700)
 				st, _ = os.Lstat(parent)
 			}
 			if err != nil || st == nil || !st.IsDir() || isReparse(st) || st.Mode()&os.ModeSymlink != 0 {

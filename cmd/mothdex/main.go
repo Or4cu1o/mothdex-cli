@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -19,12 +20,18 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/shell"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/tui"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if exe, err := os.Executable(); err == nil {
+		if exe, err = filepath.EvalSymlinks(exe); err == nil {
+			update.CleanupOld(filepath.Dir(exe), nil)
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigs := make(chan os.Signal, 4)

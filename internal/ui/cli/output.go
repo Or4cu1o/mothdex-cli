@@ -15,6 +15,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 )
 
 const (
@@ -187,7 +188,7 @@ func (p *printer) envelope(command string, data any, err error) envelope {
 		if errors.As(err, &ee) {
 			code = ee.code // the process exit code, not the one of the inner error
 		}
-		e.Error = &errorBody{Code: ae.Code, Message: englishMessage(ae), Retryable: ae.Retryable, ExitCode: code, Details: map[string]any{}}
+		e.Error = &errorBody{Code: ae.Code, Message: englishMessage(ae), Retryable: ae.Retryable, ExitCode: code, Details: errorDetails(ae)}
 	}
 	return e
 }
@@ -276,6 +277,9 @@ var placeholder = regexp.MustCompile(`\{[a-z_]+\}`)
 // written in the text, which is visible rather than silently wrong.
 func errorArgs(e *app.Error) i18n.Args {
 	a := i18n.Args{"detail": e.Message}
+	if e.Code == app.CodeUpdateUnavailable || e.Code == app.CodeUpdateFailed {
+		a["install_command"] = update.InstallCommand()
+	}
 	for k, v := range e.Args {
 		a[k] = v
 	}
@@ -448,4 +452,16 @@ func humanSize(n int64) string {
 		return fmt.Sprintf("%.1f MB", f/(k*k))
 	}
 	return fmt.Sprintf("%.1f GB", f/(k*k*k))
+}
+
+func errorDetails(e *app.Error) map[string]any {
+	d := map[string]any{}
+	if e.Code == app.CodeUpdateFailed || e.Code == app.CodeUpdateUnavailable {
+		for _, key := range []string{"reason", "restored"} {
+			if v, ok := e.Args[key]; ok {
+				d[key] = v
+			}
+		}
+	}
+	return d
 }

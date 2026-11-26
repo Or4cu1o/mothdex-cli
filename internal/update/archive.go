@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -63,7 +64,7 @@ func binaryName(gui bool) string {
 	return name
 }
 func writeExclusive(path string, b []byte, mode os.FileMode) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode) //nolint:gosec // path is a fixed validated member under private staging; O_EXCL refuses existing files.
 	if err != nil {
 		return err
 	}
@@ -145,11 +146,11 @@ func extract(b []byte, dir string, gui bool) (map[string][]byte, error) {
 		if err != nil {
 			return nil, failure("integrity", "gzip", err)
 		}
-		defer gz.Close()
+		defer func() { _ = gz.Close() }()
 		t := tar.NewReader(gz)
 		for {
 			h, err := t.Next()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {

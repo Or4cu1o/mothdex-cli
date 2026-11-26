@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 )
 
 const (
@@ -70,6 +71,11 @@ type options struct {
 
 // run takes os.Args: the name the program was started under, then its flags.
 func run(argv []string, stdout, stderr io.Writer) int {
+	if exe, err := os.Executable(); err == nil {
+		if exe, err = filepath.EvalSymlinks(exe); err == nil {
+			update.CleanupOld(filepath.Dir(exe), nil)
+		}
+	}
 	args := argv[1:]
 	fs := flag.NewFlagSet("mothdex-gui", flag.ContinueOnError)
 	fs.SetOutput(stderr)

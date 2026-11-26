@@ -134,3 +134,37 @@ These are repository settings, not files, and need the owner's approval:
 
 The ordered owner steps for the first release (gates, tag, approval, verification of the published assets, rollback) are in
 [release-v0.1.0-checklist.md](release-v0.1.0-checklist.md).
+
+## Update
+
+`mdex upgrade` updates installations created by the official installer and recorded in `.mothdex-install.json`.
+Existing installations without that state file should run the installer again. Third-party packages and source builds
+should use their own installation method; an unmanaged upgrade exits 9 and prints the installer command.
+
+- `mdex upgrade --check`: discover the latest version without downloading archives.
+- `mdex upgrade --channel beta`: include prereleases for this invocation.
+- `mdex upgrade --version X.Y.Z`: select an exact release, including a downgrade, with a confirmation.
+- `mdex upgrade -f`: skip confirmation, retaining every verification.
+- `mdex upgrade --json -f`: use the standard JSON envelope, including the signature result and restart hint.
+
+The updater uses the fixed official GitHub release origin. It verifies SHA-256 for every archive, then verifies origin
+with cosign when installed or otherwise `gh attestation` when available. This first implementation reports `none`
+(SHA-256 only) when neither is available. A present verifier that fails aborts; `-f` never skips a verification.
+The following native Sigstore change (D35) removes SHA-256-only updates.
+
+All components are staged and probed before confirmation. After replacement, the CLI and GUI are checked again.
+Failure restores the previous files in reverse order. The Windows alias hardlink is recreated for the new CLI;
+locked backup files remain until a later start can remove them. Successful updates require persistent interfaces to restart.
+A failure whose `details.restored` is false needs a reinstall using the command in the error hint.
+
+Automatic checks request only public release metadata, sending a fixed `mothdex` User-Agent with no version, identifier,
+cookie or authentication token. GitHub sees the connection's IP and timing. Checks are cached under
+`paths.data/update-check.json`, limited to once per 24 hours and canceled after 3 seconds. The CLI never waits for a
+pending check on exit. A notice appears on interactive stderr only, once per day for each new version. Shell and TUI
+show the validated cache hint. No update is installed automatically.
+
+Set `update.check=false`, or `MOTHDEX_NO_UPDATE_CHECK=1`, to make no automatic request. CI, unmanaged installations,
+dev builds, non-terminal stderr, `--json`, `-q`, completion, version, logs and upgrade commands also skip automatic
+checks. `upgrade --check` is an explicit request and ignores configuration, environment and CI opt-outs. The channel
+is `update.channel=stable` by default; `beta` includes prereleases. These settings also have the environment overrides
+`MOTHDEX_UPDATE_CHECK` and `MOTHDEX_UPDATE_CHANNEL`.

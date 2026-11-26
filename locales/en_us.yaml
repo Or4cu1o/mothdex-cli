@@ -150,6 +150,18 @@ ui:
       other: '{count} files'
   cli:
     help:
+      upgrade:
+        short: 'Update a managed installation'
+        long: 'Verify and update all installed Mothdex components. Verification always runs before confirmation. Use --version to select an exact version, including a downgrade.'
+        example: |
+          mdex upgrade
+          mdex upgrade --check
+          mdex upgrade --channel beta
+          mdex upgrade --version 0.2.0 -f
+        flags:
+          check: 'check for a newer version without downloading archives'
+          version: 'install this exact version (allows downgrade)'
+          channel: 'release channel: stable | beta'
       boxart:
         flags:
           output: 'destination folder'
@@ -371,6 +383,7 @@ ui:
         Use mothdex config set <key> <value> to save an override.
       config_columns: 'Key | Accepted values | Default | Environment'
       config_footer: |-
+        Automatic update checks send no version or identifier. Disable with update.check=false or MOTHDEX_NO_UPDATE_CHECK=1.
         profile.folders.<platform> | relative folder name | profile default | —
         Empty paths use platform-specific directories. interface.language accepts auto or a locale such as en_us/pt_br.
       error_reference: 'Error reference'
@@ -955,3 +968,13 @@ ui:
       history: 'history'
       settings: 'settings'
       help: 'help'
+
+update:
+  notice: 'New version available: {current} → {latest}. Update with: {command} upgrade'
+  confirm: 'Update {current} → {latest} (verification: {signature}).'
+  confirm_downgrade: 'Downgrade {current} → {latest} (verification: {signature}).'
+  prompt: 'Apply this update? [y/N]'
+  current: 'Mothdex {current} is current.'
+  available: 'New version available: {current} → {latest}. Run mothdex upgrade.'
+  updated: 'Updated {current} → {latest} (verification: {signature}).'
+  restart: 'Exit and open Mothdex again to use the new version.'

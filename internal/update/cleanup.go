@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+var stagingName = regexp.MustCompile(`^\.mothdex-update-[0-9]+$`)
+var stagingMember = regexp.MustCompile(`^(?:mothdex(?:-gui)?(?:\.exe)?|SDL2\.dll|mothdex(?:-gui)?_[0-9A-Za-z.+_-]+\.(?:tar\.gz|zip))$`)
 var oldSuffix = regexp.MustCompile(`^(?:\.old(?:-[a-zA-Z0-9]+)?|\.failed)$`)
 
 // CleanupOld touches only known regular backup files and old unlocked staging directories.
@@ -20,18 +22,21 @@ func CleanupOld(exeDir string, log *slog.Logger) {
 	if _, err := trustedDir(exeDir); err != nil {
 		return
 	}
-	unlock, err := acquireLock(exeDir)
-	if err != nil {
-		return
-	}
-	defer unlock()
 	names := []string{"mothdex", "mothdex-gui"}
 	if runtime.GOOS == "windows" {
 		names = []string{"mothdex.exe", "mothdex-gui.exe", "SDL2.dll"}
 	}
 	b, err := readBounded(filepath.Join(exeDir, stateName), 16<<10)
 	var s State
-	if err == nil && decode(b, &s, false) == nil && validState(s) && samePath(s.Dir, exeDir) && s.Source == "installer" && s.SchemaVersion == 1 && s.Alias != "" && runtime.GOOS == "windows" {
+	if err != nil || decode(b, &s, false) != nil || !validState(s) || !samePath(s.Dir, exeDir) || s.Source != "installer" || s.SchemaVersion != 1 {
+		return
+	}
+	unlock, err := acquireLock(exeDir)
+	if err != nil {
+		return
+	}
+	defer unlock()
+	if s.Alias != "" && runtime.GOOS == "windows" {
 		names = append(names, s.Alias+".exe")
 	}
 	entries, err := os.ReadDir(exeDir)
@@ -58,14 +63,14 @@ func CleanupOld(exeDir string, log *slog.Logger) {
 			continue
 		}
 		// No recursive deletion of arbitrary trees: staging cleanup accepts only known regular members.
-		if strings.HasPrefix(entry.Name(), ".mothdex-update-") && st.IsDir() && time.Since(st.ModTime()) > time.Hour {
+		if stagingName.MatchString(entry.Name()) && st.IsDir() && time.Since(st.ModTime()) > time.Hour {
 			files, e := os.ReadDir(path)
 			if e != nil {
 				continue
 			}
 			safe := true
 			for _, f := range files {
-				if _, e = regular(filepath.Join(path, f.Name())); e != nil {
+				if _, e = regular(filepath.Join(path, f.Name())); e != nil || !stagingMember.MatchString(f.Name()) {
 					safe = false
 					break
 				}
