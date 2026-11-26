@@ -76,6 +76,9 @@ errors:
     message: 'Erro inesperado.'
     hint: 'Os detalhes estão em {log_path}. Por favor, relate o problema.'
 ui:
+  logs:
+    code: 'código'
+    log: 'log'
   storage:
     rom_root_in_ram: 'A pasta de jogos está em um disco de RAM. Os jogos baixados serão perdidos ao reiniciar.'
     data_dir_in_ram: 'A pasta de dados está em um disco de RAM. O histórico, o cache e as configurações serão perdidos ao reiniciar.'

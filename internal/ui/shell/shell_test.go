@@ -63,6 +63,10 @@ func (f *fakeRunner) Commands() []cli.CommandInfo {
 
 func (f *fakeRunner) SetPrompt(fn func(string) (string, error)) { f.prompt = fn }
 
+func (f *fakeRunner) Report(code, _ string) []string {
+	return []string{"code: " + code + " - ref: TEST00"}
+}
+
 // step is one answer of the fake editor: a line, or an error; advance moves the fake clock first.
 type step struct {
 	line    string

@@ -36,14 +36,15 @@ type printer struct {
 	tty     bool // stdout is a terminal
 	width   int
 	meta    *app.ResultMeta
-	logPath string // shown by errors.internal
+	logPath string // shown by errors.internal without a session log
+	rep     *Reporter
 	warns   []string
 }
 
 func newPrinter(d Deps, g *Globals, t *i18n.Translator) *printer {
 	tty := d.IsTerminal != nil && d.IsTerminal(d.Stdout)
 	errTTY := d.IsTerminal != nil && d.IsTerminal(d.Stderr)
-	p := &printer{d: d, g: g, t: t, out: d.Stdout, err: d.Stderr, tty: tty, width: defaultWidth}
+	p := &printer{d: d, g: g, t: t, out: d.Stdout, err: d.Stderr, tty: tty, width: defaultWidth, rep: newReporter(d, g)}
 	if tty && d.Width != nil {
 		if w := d.Width(); w > 0 {
 			p.width = w
@@ -157,6 +158,7 @@ type errorBody struct {
 	Message   string         `json:"message"`
 	Retryable bool           `json:"retryable"`
 	ExitCode  int            `json:"exit_code"`
+	Ref       string         `json:"ref"`
 	Details   map[string]any `json:"details"`
 }
 
@@ -187,7 +189,7 @@ func (p *printer) envelope(command string, data any, err error) envelope {
 		if errors.As(err, &ee) {
 			code = ee.code // the process exit code, not the one of the inner error
 		}
-		e.Error = &errorBody{Code: ae.Code, Message: englishMessage(ae), Retryable: ae.Retryable, ExitCode: code, Details: map[string]any{}}
+		e.Error = &errorBody{Code: ae.Code, Message: englishMessage(ae), Retryable: ae.Retryable, ExitCode: code, Ref: p.ref(ae), Details: map[string]any{}}
 	}
 	return e
 }
@@ -224,9 +226,11 @@ func clean(s string) string { return app.SanitizeText(s) }
 // from the i18n keys errors.<code>.message and .hint; the code is always shown.
 func (p *printer) renderError(err error) {
 	ae := asAppError(err)
+	ref := p.ref(ae) // first: it opens the log whose path is shown
+	logPath := p.rep.LogPath()
 	args := errorArgs(ae)
-	if p.logPath != "" {
-		args["log_path"] = p.logPath
+	if path := firstNonEmpty(logPath, p.logPath); path != "" {
+		args["log_path"] = path
 	}
 	_, _ = fmt.Fprintf(p.err, "%s %s\n", p.bad(p.T("ui.messages.error", nil)+":"), clean(p.localizedMessage(ae, args)))
 	hintKey := "errors." + ae.Code + ".hint"
@@ -244,7 +248,8 @@ func (p *printer) renderError(err error) {
 			_, _ = fmt.Fprintf(p.err, "  %s\n", clean(hint))
 		}
 	}
-	_, _ = fmt.Fprintf(p.err, "  %s\n", p.dim("code: "+ae.Code))
+	_, _ = fmt.Fprintf(p.err, "  %s\n", p.dim(CodeLine(p.t, IsUTF8(p.d.Getenv), ae.Code, ref)))
+	p.printLogLine()
 	if p.g.Verbose && ae.Cause != nil {
 		_, _ = fmt.Fprintf(p.err, "  %s\n", p.dim("cause: "+clean(ae.Cause.Error())))
 	}

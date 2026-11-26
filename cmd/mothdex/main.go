@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
+	"github.com/Or4cu1o/mothdex-cli/internal/compose"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
@@ -25,7 +27,7 @@ import (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigs := make(chan os.Signal, 4)
@@ -46,6 +48,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	d := deps(stdin, stdout, stderr, logs)
 	d.Interrupts = router.interrupts
+	// Deferred after the session's Close, so it runs while the log is still open.
+	defer func() {
+		if v := recover(); v != nil {
+			code = cli.ReportPanic(d, args, v, debug.Stack())
+		}
+	}()
 	return cli.Execute(ctx, d, args)
 }
 
@@ -54,7 +62,11 @@ func deps(stdin io.Reader, stdout, stderr io.Writer, logs *mlog.Session) cli.Dep
 		Open:       opener(logs),
 		Translator: embeddedTranslator,
 		Version:    buildinfo.Get,
-		Stdin:      stdin, Stdout: stdout, Stderr: stderr,
+		Logs:       logs,
+		Diagnostics: func(g cli.Globals) (mlog.BundleOptions, error) {
+			return compose.Diagnostics(logs, g.Config, g.Profile, g.Lang)
+		},
+		Stdin: stdin, Stdout: stdout, Stderr: stderr,
 		IsTerminal: isTerminal,
 		Width:      terminalWidth,
 		Getenv:     os.Getenv,

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"maps"
 	"reflect"
 	"slices"
@@ -395,8 +396,15 @@ func (m model) saveCover(j app.JobSnapshot) tea.Cmd {
 	e := m.env
 	return func() tea.Msg {
 		if _, err := e.svc.SaveJobBoxart(e.ctx, j, ""); err != nil && !isNotFound(err) {
-			f := e.failureOf(err)
-			return toastMsg{text: e.T("ui.cli.boxart.failed", i18n.Args{"title": clean(j.Title), "code": f.code}), kind: toastWarn}
+			if e.log != nil {
+				e.log.Warn("cannot save the cover", "err", err)
+			}
+			var ae *app.Error
+			code := app.CodeInternal
+			if errors.As(err, &ae) {
+				code = ae.Code
+			}
+			return toastMsg{text: e.T("ui.cli.boxart.failed", i18n.Args{"title": clean(j.Title), "code": code}), kind: toastWarn}
 		}
 		return nil
 	}
@@ -415,7 +423,7 @@ func (m model) summaryText(done, skipped, failed, waiting int) string {
 func (m model) onEnqueued(msg enqueuedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		f := m.env.failureOf(msg.err)
-		return m.showToast(f.msg+" ["+f.code+"]", toastError)
+		return m.showToast(f.msg+" "+f.tag(), toastError)
 	}
 	m.book = m.book.withRequests(msg.ids, msg.reqs)
 	for _, j := range msg.jobs {
