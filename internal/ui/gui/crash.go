@@ -63,9 +63,9 @@ func (m Model) updateCrash(msg Msg, now time.Time) (Model, []Cmd) {
 			if m.focus == crashExport {
 				return m.askExport(now), nil
 			}
-			m.done = true
+			return m.quitCrash(now), nil
 		case input.Back:
-			m.done = true
+			return m.quitCrash(now), nil
 		}
 	case exportDoneMsg:
 		return m.onExportDone(msg, now), nil
@@ -77,6 +77,16 @@ func (m Model) updateCrash(msg Msg, now time.Time) (Model, []Cmd) {
 		m.done = true
 	}
 	return m, nil
+}
+
+// quitCrash leaves the crash screen, unless the bundle is still being written: leaving then would lose it without
+// a word. The export is bounded (exportTimeout), and a signal from the frontend still leaves at once.
+func (m Model) quitCrash(now time.Time) Model {
+	if m.exporting {
+		return m.withToastFor(m.tr("ui.gui.logs.exporting", nil), toastInfo, exportTimeout, now)
+	}
+	m.done = true
+	return m
 }
 
 func (m Model) crashFrame() frameSpec {

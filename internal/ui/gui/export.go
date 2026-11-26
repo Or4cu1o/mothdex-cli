@@ -11,8 +11,9 @@ import (
 // "Export logs" (docs/contracts/cli/logs.md section 7, T-110 TM-27), from Settings › About and from the crash
 // screen: a confirmation, the bundle off the render thread, then a dialog that says where it is.
 
-// exportTimeout bounds the bundle: a few megabytes of local files.
-const exportTimeout = time.Minute
+// exportTimeout bounds the bundle. It is a few megabytes of local files, but redacting long debug sessions takes
+// most of a minute on a small board.
+const exportTimeout = 3 * time.Minute
 
 // exportDoneLines is how many lines the place of the bundle may take: a long path on a small screen.
 const exportDoneLines = 6
@@ -27,7 +28,7 @@ func (m Model) canExport(row string) bool { return row == "about" && m.o.ExportL
 
 func (m Model) askExport(now time.Time) Model {
 	if m.exporting {
-		return m.withToast(m.tr("ui.gui.logs.exporting", nil), toastInfo, now)
+		return m.withToastFor(m.tr("ui.gui.logs.exporting", nil), toastInfo, exportTimeout, now)
 	}
 	return m.openDialog(dialogState{
 		kind: dialogExportLogs, title: m.tr("ui.gui.logs.ask", nil), detail: m.tr("ui.gui.logs.ask_detail", nil), lines: exportDoneLines,
@@ -40,7 +41,7 @@ func (m Model) askExport(now time.Time) Model {
 
 func (m Model) startExport(now time.Time) (Model, []Cmd) {
 	m.exporting = true
-	m = m.withToast(m.tr("ui.gui.logs.exporting", nil), toastInfo, now)
+	m = m.withToastFor(m.tr("ui.gui.logs.exporting", nil), toastInfo, exportTimeout, now) // until the answer clears it
 	export := m.o.ExportLogs
 	return m, []Cmd{func() Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
@@ -65,7 +66,7 @@ func (m Model) onExportDone(msg exportDoneMsg, now time.Time) Model {
 		detail = folderThenFile(app.SanitizeText(msg.path))
 	}
 	if m.overlay != overlayNone {
-		return m.withToastFor(detail, kind, noticeFor, now)
+		return m.withToastFor(title+": "+strings.ReplaceAll(detail, "\n", ""), kind, noticeFor, now)
 	}
 	return m.openDialog(dialogState{
 		kind: dialogExported, title: title, detail: detail, lines: exportDoneLines,
