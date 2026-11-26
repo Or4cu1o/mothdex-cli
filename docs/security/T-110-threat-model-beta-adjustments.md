@@ -176,8 +176,8 @@ inside the script protect the binaries, not the script. Everything below limits 
 - TM-32 [Suggestion, owner/Alicerce decision] Verify the cosign bundle natively in Go (sigstore-go) so the upgrade path
   is always signature-checked instead of SHA-256-only when cosign/gh are absent. Check licence (Apache-2.0) and size.
   Without it: residual R6.
-  Status 2026-11-26: done by D35 (owner), cli#152, once its root-hash test, SCT check and trust-material-only
-  reinstall hint land (open on cli#152; Sentinela re-checks them). `mothdex upgrade` verifies natively with an embedded Public Good
+  Status 2026-11-26: done by D35 (owner), cli#152 at d75e60a (Sentinela re-checked the root-hash test, the SCT
+  requirement and the trust-material-only reinstall hint). `mothdex upgrade` verifies natively with an embedded Public Good
   trusted root, pinned by hash in a test. The checks are the exact workflow SAN for the tag, the exact issuer, the
   artifact digest of checksums.txt, a tlog entry, an SCT and an observer timestamp, with no SHA-256-only fallback
   (update.md §3 step 3). The reinstall hint is shown only for trust-material errors. Installers keep cosign or
@@ -237,6 +237,9 @@ inside the script protect the binaries, not the script. Everything below limits 
   A rotation of the Sigstore root, Fulcio CA or Rekor shard that this root lacks makes that binary fail closed, and the
   user must reinstall. A revocation reaches users only with a Mothdex release: until a binary updates, it keeps trusting key material that
   Sigstore has since revoked. Refreshed by
-  scripts/update-trusted-root.go; the reinstall hint is limited to trust-material errors (TM-32 status).
+  scripts/update-trusted-root.go; the reinstall hint is limited to trust-material errors (TM-32 status). An
+  attacker who controls the release assets and signs with a private CA also gets that hint: offline, it cannot be
+  told apart from a real rotation. The hint only gives the constant one-line install command, so it adds nothing
+  beyond R1.
 
 Verdict: design-stage model, no code to audit. Controls marked Major block the corresponding PR at audit if missing.

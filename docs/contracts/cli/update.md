@@ -133,7 +133,8 @@ from §6.
    - **Hints.** The reinstall hint is shown only for trust-material errors: an unknown CA, an unknown log key, or a
      time outside the root's validity. Identity or digest mismatches and a missing bundle show a neutral "possible
      tampering, do not reinstall, report it" hint. Otherwise a tampered release would steer users to the SHA-256-only
-     installers (R6).
+     installers (R6). A bundle signed by a private CA also looks like a trust-material gap, and still gets the
+     reinstall hint. That is accepted under R1/R12 (T-110), because the hint names only the constant install command.
 4. **Archives.**
    - Download into `<dir>/.mothdex-update-<random>/` (mode `0700`) and check each SHA-256 against its line. A mismatch
      is `integrity`; a body longer than its limit is `size_mismatch`.
