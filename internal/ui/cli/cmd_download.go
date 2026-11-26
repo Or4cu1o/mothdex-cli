@@ -48,6 +48,7 @@ func (r *runtime) downloadCmd() *cobra.Command {
 	fl.StringVarP(&r.g.Output, "output", "o", "", "destination folder (becomes the root; files go straight into it)")
 	fl.IntVarP(&r.g.Jobs, "jobs", "j", 0, "downloads at the same time")
 	fl.BoolVar(&r.g.AllowExecutable, "allow-executable", false, "allow file types that can run code")
+	logValues(fl, "search", "link", "prefer", "slug", "boxart", "no-boxart", "jobs", "allow-executable")
 	return c
 }
 
@@ -605,5 +606,6 @@ func (r *runtime) boxartCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&slug, "slug", false, "read the argument as a slug")
 	c.Flags().StringVarP(&r.g.Output, "output", "o", "", "destination folder")
+	logValues(c.Flags(), "slug")
 	return c
 }

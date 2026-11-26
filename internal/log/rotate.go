@@ -35,7 +35,7 @@ func newRotator(path string, maxBytes int64, maxFiles int) (*rotator, error) {
 		return nil, errors.New("maximum size must be positive")
 	}
 	r := &rotator{path: path, maxBytes: maxBytes, maxFiles: maxFiles}
-	if err := os.MkdirAll(filepath.Dir(path), dirMode); err != nil {
+	if err := safeDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
 	if err := r.open(); err != nil {
@@ -45,7 +45,7 @@ func newRotator(path string, maxBytes int64, maxFiles int) (*rotator, error) {
 }
 
 func (r *rotator) open() error {
-	f, err := os.OpenFile(r.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, fileMode) // #nosec G304 -- path is paths.logs + a constant name
+	f, err := openFile(r.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY)
 	if err != nil {
 		return err
 	}

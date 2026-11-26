@@ -55,6 +55,7 @@ func (r *runtime) historyCmd() *cobra.Command {
 	fl.IntVar(&limit, "limit", 50, "newest records to show (0 = all)")
 	fl.StringVarP(&export, "export", "e", "", "write the records to a file or directory")
 	fl.StringVar(&format, "format", "", "export format: txt | json | csv")
+	logValues(fl, "failed", "limit", "format")
 	return c
 }
 
