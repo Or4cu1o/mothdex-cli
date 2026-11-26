@@ -139,8 +139,8 @@ func (m Model) settingsFrame() frameSpec {
 			spec.hints = []hint{{role: input.Left, role2: input.Right, label: m.tr("ui.gui.hint.change", nil)}, {role: input.Confirm, label: m.tr("ui.gui.hint.save", nil)}, {role: input.Back, label: m.tr("ui.gui.hint.cancel", nil)}}
 		case edInfo:
 			spec.hints = []hint{{role: input.Back, label: m.tr("ui.gui.queue.close", nil)}}
-			if m.canExport(e.row) {
-				spec.hints = append([]hint{{role: input.Confirm, label: m.tr("ui.gui.logs.export", nil)}}, spec.hints...)
+			if buttons := m.infoButtons(e.row); len(buttons) > 0 {
+				spec.hints = append([]hint{{role: input.Confirm, label: buttons[min(e.button, len(buttons)-1)].label}}, spec.hints...)
 			}
 			if m.infoScrolls(e.row) {
 				spec.hints = append([]hint{{role: input.Up, role2: input.Down, label: m.tr("ui.gui.buttons.move", nil)}}, spec.hints...)
@@ -425,6 +425,10 @@ func (m Model) infoLines(p painter, row string) []infoLine {
 		if m.entriesText != "" {
 			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_entries", nil) + ": " + m.entriesText})
 		}
+		if r := m.upd.release; r.Version != "" { // first, so that a long list of controllers never hides it
+			lines = append(lines, infoLine{text: m.tr("ui.gui.update.new_version", map[string]any{"version": r.Version}), warn: true},
+				infoLine{text: r.PageURL, indent: 1})
+		}
 		lines = append(lines, m.controllerLines()...)
 		if m.logFile != "" {
 			lines = append(lines, infoLine{text: m.tr("ui.gui.settings.about_log", nil) + ": " + m.logFile, gap: true})
@@ -495,11 +499,14 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 		p.text(panel.X+2*u+l.x, y, met.Secondary, l.c, l.text)
 		y += LineHeight(met.Secondary)
 	}
-	if m.canExport(e.row) { // the one action of the panel: it has the focus, so A is plainly what runs it
-		label := m.tr("ui.gui.logs.export", nil)
-		btn := draw.Rect{X: panel.X + 2*u, Y: panel.Bottom() - 2*u - met.Row1, W: min(p.width(met.Body, label)+4*u, panel.W-4*u), H: met.Row1}
-		p.box(btn, m.overlay == overlayNone)
-		p.centered(btn, met.Body, colText, p.fit(met.Body, label, btn.W-u))
+	buttons := m.infoButtons(e.row) // one of them has the focus, so A is plainly what runs it
+	x := panel.X + 2*u
+	for i, b := range buttons {
+		room := (panel.W - 4*u - (len(buttons)-1)*2*u) / len(buttons)
+		btn := draw.Rect{X: x, Y: panel.Bottom() - 2*u - met.Row1, W: min(p.width(met.Body, b.label)+4*u, room), H: met.Row1}
+		p.box(btn, m.overlay == overlayNone && i == min(e.button, len(buttons)-1))
+		p.centered(btn, met.Body, colText, p.fit(met.Body, b.label, btn.W-u))
+		x += btn.W + 2*u
 	}
 	off := min(max(e.focus, 0), maxOff)
 	tri := LineHeight(met.Secondary) / 2
@@ -513,7 +520,7 @@ func (m Model) drawInfoPanel(p painter, e *settingsEditor) {
 
 // infoButtonSpace is the height the action button of an info panel takes, zero for a panel without one.
 func (m Model) infoButtonSpace(row string) int {
-	if !m.canExport(row) {
+	if len(m.infoButtons(row)) == 0 {
 		return 0
 	}
 	return m.metrics.Row1 + m.metrics.Unit

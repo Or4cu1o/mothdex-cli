@@ -93,6 +93,7 @@ type settingsEditor struct {
 	focus  int
 	langs  []string // the working copy of the language list while its editor is open
 	idx    int      // the language the item menu is about
+	button int      // the focused action of an info panel
 	pct    int      // the margin being tried
 	opened int      // the margin when the view opened
 }
@@ -532,8 +533,23 @@ func (m Model) onEditorAction(a input.Action, now time.Time) (Model, []Cmd) {
 		m.settings.ed = &e
 		return m, nil
 	case edInfo:
-		if a == input.Confirm && m.canExport(e.row) {
-			return m.askExport(now), nil
+		if buttons := m.infoButtons(e.row); len(buttons) > 0 {
+			at := min(e.button, len(buttons)-1)
+			switch a {
+			case input.Confirm:
+				if buttons[at].id == btnUpdate {
+					return m.startUpdate()
+				}
+				return m.askExport(now), nil
+			case input.Left, input.Right:
+				if a == input.Left {
+					e.button = max(at-1, 0)
+				} else {
+					e.button = min(at+1, len(buttons)-1)
+				}
+				m.settings.ed = &e
+				return m, nil
+			}
 		}
 		switch a {
 		case input.Back, input.Confirm:

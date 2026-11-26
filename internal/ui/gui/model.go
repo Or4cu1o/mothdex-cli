@@ -56,6 +56,7 @@ const (
 	overlayMenu
 	overlayDialog
 	overlayButtons
+	overlayUpdate // an update is downloading or installing
 )
 
 type toastKind int
@@ -156,6 +157,7 @@ type Model struct {
 	logFile      string               // the log About names, read when it opens
 	exporting    bool                 // a log bundle is being written
 	crash        failure              // what the crash screen shows
+	upd          updateState
 	picker       pickerState
 	platforms    catalogLoad[mothdex.Platform]
 	regions      catalogLoad[mothdex.Region]
@@ -232,6 +234,12 @@ func (m Model) OverlayEpoch() int { return m.epoch }
 
 // Update applies one message at time now and returns the new model and the service calls to start.
 func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
+	next, cmds := m.dispatch(msg, now)
+	next, check := next.checkUpdate()
+	return next, append(cmds, check...)
+}
+
+func (m Model) dispatch(msg Msg, now time.Time) (Model, []Cmd) {
 	if m.screen == screenCrash {
 		return m.updateCrash(msg, now)
 	}
@@ -283,6 +291,10 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 		if m.screen == screenExit || m.screen == screenSplash {
 			return m, nil
 		}
+		if m.upd.run != nil { // closing the window stops a download, and waits for an installation
+			m.cancelUpdate()
+			return m, nil
+		}
 		m = m.closeOverlay()
 		return m.askQuit(QuitFromMenu, now)
 	case RedrawMsg:
@@ -301,6 +313,14 @@ func (m Model) Update(msg Msg, now time.Time) (Model, []Cmd) {
 		return m.onExitDone(msg, now)
 	case exportDoneMsg:
 		return m.onExportDone(msg, now), nil
+	case releaseMsg:
+		return m.onRelease(msg, now), nil
+	case updateProgressMsg:
+		return m.onUpdateProgress(msg)
+	case updateStagedMsg:
+		return m.onUpdateStaged(msg, now)
+	case updateDoneMsg:
+		return m.onUpdateDone(msg, now)
 	}
 	return m, nil
 }
@@ -328,6 +348,8 @@ func (m Model) onAction(a input.Action, repeat bool, now time.Time) (Model, []Cm
 		return m, nil
 	case m.screen == screenSplash:
 		return m, nil
+	case m.overlay == overlayUpdate:
+		return m.onUpdateAction(a)
 	case m.overlay == overlayDialog:
 		if now.Before(m.ignoreUntil) {
 			return m, nil
@@ -508,6 +530,7 @@ type boxartMsg struct{ err error }
 
 // startExit begins the exit sequence off the render thread and shows the exit screen.
 func (m Model) startExit(signal, cancel bool, now time.Time) (Model, []Cmd) {
+	m.cancelUpdate() // a download not yet confirmed stops here; the composition root waits for an installation
 	m.screen, m.overlay, m.dlg = screenExit, overlayNone, nil
 	m.epoch++
 	m.exit = &exitState{signal: signal, cancel: cancel, started: now}

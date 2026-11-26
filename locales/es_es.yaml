@@ -266,6 +266,23 @@ ui:
       number: 'Muestra la entrada con ese número (igual que info)'
       d: 'Descarga entradas por número: d 1 3, o d 2-4'
   gui:
+    update:
+      available: 'La versión {version} está disponible: Ajustes > Acerca de.'
+      new_version: 'Nueva versión: {version}'
+      action: 'Actualizar'
+      downloading: 'Descargando la actualización…'
+      progress: '{done} de {total}'
+      confirm: '¿Actualizar de {from} a {to}?'
+      signature: 'Firma comprobada: {method}'
+      signature_none: 'Integridad comprobada solo por SHA-256'
+      installing: 'Instalando…'
+      keep_on: 'No apagues el dispositivo hasta que termine.'
+      done: 'Actualizado a {version}'
+      restart_ask: 'Reinicia mothdex para usarla.'
+      later: 'Más tarde'
+      restart: 'Reiniciar'
+      canceled: 'Actualización cancelada. No ha cambiado nada.'
+      failed: 'No se actualizó'
     error:
       code: 'código: {code}'
       code_ref: 'código: {code} · ref: {ref}'
