@@ -39,13 +39,24 @@ func trustedDir(dir string) (string, error) {
 	}
 	return "", nil
 }
-func acquireLock(dir string) (func(), error) {
+func acquireLock(dir string) (func(), error)         { return lockFile(dir, true) }
+func acquireExistingLock(dir string) (func(), error) { return lockFile(dir, false) }
+func lockFile(dir string, create bool) (func(), error) {
 	path := dir + "/.mothdex-update.lock"
-	fd, err := unix.Open(path, unix.O_CREAT|unix.O_RDWR|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
+	flags := unix.O_RDWR | unix.O_NOFOLLOW | unix.O_CLOEXEC
+	if create {
+		flags |= unix.O_CREAT
+	}
+	fd, err := unix.Open(path, flags, 0600)
 	if err != nil {
 		return nil, err
 	}
 	f := os.NewFile(uintptr(fd), path)
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, fmt.Errorf("unsafe lock file")
+	}
 	if err = unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = f.Close()
 		return nil, err
@@ -84,3 +95,5 @@ func backup(path string) error {
 }
 func replaceFile(staged, path string) error { return os.Rename(staged, path) }
 func restore(path string) error             { return os.Rename(path+".old", path) }
+
+func aliasFileID(_ string) (string, error) { return "", nil }
