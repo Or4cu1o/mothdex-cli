@@ -209,7 +209,8 @@ inside the script protect the binaries, not the script. Everything below limits 
 - TM-39 [Minor] Untrusted display text. CHANGELOG summary shown before confirmation comes from the verified archive (or
   is labelled unverified), control chars stripped, length capped; same for shell banner, TUI footer and GUI About.
 - TM-40 [Minor] GUI update (T-117) uses the same internal/update with explicit gamepad confirmation, never automatic;
-  restart execs the new mothdex-gui by absolute path with argv only.
+  restart execs the new mothdex-gui by absolute path with argv only. Status: the GUI no longer restarts itself
+  (Regente, cli#149). It asks the person to close it and reopen it from the frontend, so the restart clause is moot.
 
 ## Residual risks (for the ADR)
 

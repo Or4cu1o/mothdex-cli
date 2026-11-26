@@ -243,7 +243,10 @@ only a warning.
   and rules, and shows the notice and the Settings › About item.
   - "Update" needs an explicit confirmation on the gamepad and never starts on its own. It runs the same `Apply`,
     and the confirmation comes after staging, so it can show the verified notes.
-  - The restart runs the new `mothdex-gui` by its absolute path, with argv only (TM-40).
+  - **No self-restart (Regente, cli#149).** A frontend waits for this process, and a second one would open behind it.
+    After a successful update the GUI says to close it and open it again from the frontend, then exits 0.
+  - **A failed update** shows the updater's hint, then whether the previous version is back (`details.restored`),
+    and, only when it is not, the install command on its own line.
 - **Off switches** (no connection at all, TM-36): `update.check: false`; `MOTHDEX_NO_UPDATE_CHECK` set to anything but `""`,
   `0` or `false`; `CI` not empty; an unmanaged installation or a dev build. `upgrade --check` is an explicit request
   and ignores the first three, but it never applies anything.
