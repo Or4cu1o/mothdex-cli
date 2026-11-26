@@ -54,6 +54,8 @@ type Options struct {
 	Session bool
 	// Repair tolerates a broken configuration file (config set and config reset must be able to fix it).
 	Repair bool
+	// Logs is the log of the process, started in main; Open attaches it to paths.logs.
+	Logs *mlog.Session
 }
 
 // Session is what Open returns: the service plus the settings the front end reads. It carries no
@@ -67,11 +69,15 @@ type Session struct {
 	PageSize int            // interface.page_size
 	Color    string         // interface.color: auto | always | never
 	Warnings []string
-	LogPath  string       // the log file
-	DataDir  string       // resolved paths.data
-	NoColor  bool         // the final color decision of cli-conventions section 4
-	Log      *slog.Logger // never nil
-	Close    func()       // releases the service and the log
+	LogPath  string        // mothdex.log
+	Logs     *mlog.Session // the process log; nil when main started none
+	LogsDir  string        // resolved paths.logs
+	DataDir  string        // resolved paths.data
+	NoColor  bool          // the final color decision of cli-conventions section 4
+	Log      *slog.Logger  // never nil
+	Close    func()        // releases the service and mothdex.log; main closes Logs
+
+	configFile, profile string // the --config and --profile of Open, for BundleOptions
 }
 
 // Open builds config, logger, i18n, cache, API client, cover fetcher, history, profile and the app
@@ -112,7 +118,18 @@ func Open(_ context.Context, o Options) (*Session, error) {
 		return nil, &app.Error{Code: app.CodeInvalidConfig, Message: "cannot resolve the data folders", Cause: err}
 	}
 
-	logger, closeLog, lerr := mlog.New(mlog.FromConfig(cfg.Log, paths, os.Stderr))
+	if o.Logs != nil {
+		if aerr := o.Logs.Attach(attachOptions(cfg, paths, plat)); aerr != nil {
+			warnings = append(warnings, "session log: "+aerr.Error())
+		}
+	}
+	logOpts := mlog.FromConfig(cfg.Log, paths, os.Stderr)
+	logOpts.Session, logOpts.Secrets = o.Logs, []string{cfg.API.BaseURL}
+	logger, closeLog, lerr := mlog.New(logOpts)
+	logsDir := paths.Logs
+	if o.Logs != nil && o.Logs.Dir() != "" {
+		logsDir = o.Logs.Dir()
+	}
 	if lerr != nil {
 		warnings = append(warnings, "the log file cannot be written: "+lerr.Error())
 	}
@@ -163,6 +180,9 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	}
 
 	info, detect := detectProfile(o, cfg, paths, file, &warnings)
+	if o.Logs != nil {
+		o.Logs.Update(mlog.Info{Profile: info.Profile.ID, Lang: tr.Locale(), ConfigSource: configSource(file)})
+	}
 	// RAM disk (PRT-G11): said at every start in the selected interface language.
 	for _, w := range info.StorageWarnings {
 		warnings = append(warnings, tr.T(library.StorageWarningKey(w), nil))
@@ -193,8 +213,9 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	}
 	return &Session{
 		Svc: svc, T: tr, Prefer: preference(cfg.Download.Prefer), Boxart: cfg.Download.Boxart, Confirm: cfg.Interface.ConfirmDownloads,
-		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings, LogPath: filepath.Join(paths.Logs, mlog.FileName),
-		Close:   func() { _ = svc.Close(); _ = closeLog.Close() },
+		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings, LogPath: filepath.Join(logsDir, mlog.FileName),
+		Close: func() { _ = svc.Close(); _ = closeLog.Close() },
+		Logs:  o.Logs, LogsDir: logsDir, configFile: o.ConfigFile, profile: o.Profile,
 		DataDir: paths.Data, Log: logger,
 		NoColor: o.NoColor || cfg.Interface.Color == "never" || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 	}, nil

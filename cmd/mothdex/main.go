@@ -16,6 +16,7 @@ import (
 
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/shell"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/tui"
@@ -36,14 +37,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			router.handle(sig)
 		}
 	}()
-	d := deps(stdin, stdout, stderr)
+	// The session starts before cobra and compose, so that their errors are logged too.
+	rules := cli.LogFlagRules()
+	logs := mlog.StartSession(mlog.SessionOptions{Binary: "cli", Args: args, Flags: rules, Build: buildinfo.Get(),
+		GeneralOnly: !cli.Logged(args, rules)})
+	logs.Update(mlog.Info{Mode: "command"})
+	defer func() { _ = logs.Close() }() // nothing is left to tell it to
+	d := deps(stdin, stdout, stderr, logs)
 	d.Interrupts = router.interrupts
 	return cli.Execute(ctx, d, args)
 }
 
-func deps(stdin io.Reader, stdout, stderr io.Writer) cli.Deps {
+func deps(stdin io.Reader, stdout, stderr io.Writer, logs *mlog.Session) cli.Deps {
 	return cli.Deps{
-		Open:       open,
+		Open:       opener(logs),
 		Translator: embeddedTranslator,
 		Version:    buildinfo.Get,
 		Stdin:      stdin, Stdout: stdout, Stderr: stderr,
