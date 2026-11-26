@@ -157,11 +157,14 @@ The swap set (TM-34) is `mothdex[.exe]`, plus the Windows hardlink alias `<alias
 Windows `SDL2.dll` when `gui` is true. The licence notices are replaced after the binaries, and a failure there is
 only a warning.
 - **Where they go.** Into `<dir>/mothdex-licenses/`, under the flat names the installers use (their `NOTICE_NAMES`
-  list, T-70 IC-5): `THIRD_PARTY/<name>` becomes `mothdex-licenses/<name>`.
+  list, T-70 IC-5), and only from the GUI archive's `THIRD_PARTY/`. A CLI-only install has no notices folder.
 - **Nothing else.** `LICENSE` and the files of `THIRD_PARTY/` are never written at the root of `dir`, which may be a
   shared `~/.local/bin`.
-- **How.** Only those names, each through a temporary file and a rename. A `mothdex-licenses` that is a link or a
-  reparse point, or that holds a file of the same name that is not a regular file, is left alone, with a warning.
+- **How, the installers' rule (agreed with Guindaste).**
+  1. Build the complete set in a private folder, `<dir>/.mothdex-licenses.new.<id>`.
+  2. Check the existing `mothdex-licenses` before removing anything. If it is a link or a reparse point, or holds any
+     file outside the known names, leave the whole folder untouched, with a warning.
+  3. Otherwise replace it with a rename.
 
 5. **Swap, Linux and macOS:** for each file, first `link(f, f.old)`, or a copy that keeps the mode when the file system
    has no hardlinks. Then `rename(staged, f)`, which is atomic in the same folder.
@@ -199,7 +202,9 @@ only a warning.
      only for a run that opens the GUI.
    - It deletes, in the executable's folder only,
      `mothdex.exe`, `mothdex-gui.exe`, `SDL2.dll` and `<alias>.exe` followed by `.old`, `.old-*` or `.failed`. It also
-     deletes `.mothdex-update-*` folders older than 1 h whose lock is free.
+     deletes `.mothdex-update-*` folders older than 1 h whose lock is free. It also deletes regular files matching
+     `^\.mothdex-(write-probe|json)-[0-9]+$` that are older than 1 h, while holding the update lock: the leftovers of
+     an `Apply` that crashed.
    - **TM-35:** only regular files, never reparse points or links, and only exact names: never a broader glob. A
      locked file stays and is retried at the next start. Failures go to the log.
 
