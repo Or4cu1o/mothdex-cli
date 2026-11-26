@@ -1509,5 +1509,26 @@ mac --no-modify-path
 check "block names ~/.bash_profile" out_has ">> ~/.bash_profile"
 INST_LAUNCHER=1
 
+# --- the published installer carries its release (T-110 TM-5) --------------------------------------------------------
+INST_LAUNCHER=0
+reset stamped-installer
+check "stamping succeeds" sh -c "cd '$REPO' && sh scripts/stamp-installers.sh 1.0.6 /tmp/stamped >'$OUT' 2>&1"
+check "only the version line differs" sh -c "sed 's/^STAMPED_VERSION=.*/STAMPED_VERSION=\"\"/' /tmp/stamped/install.sh | cmp -s - '$REPO/install.sh'"
+check "install.cmd fetches the same release" file_has /tmp/stamped/install.cmd "releases/download/v1.0.6/install.ps1"
+check "install.cmd never fetches latest" file_lacks /tmp/stamped/install.cmd "releases/latest/"
+check "install.cmd has CRLF line ends" text_is "$(grep -c "$(printf '\r')\$" /tmp/stamped/install.cmd)" "$(wc -l </tmp/stamped/install.cmd)"
+check "install.ps1 stamped" file_has /tmp/stamped/install.ps1 "\$StampedVersion = '1.0.6'"
+cat /tmp/stamped/install.sh | sh -s -- --no-gui >"$OUT" 2>&1
+RC=$?
+check "installs" rc_is 0
+check "its own release, not the latest" out_has "mothdex 1.0.6 installed in"
+check "the latest release is never asked for" log_lacks "latest/download"
+sh /tmp/stamped/install.sh --version v1.2.3 --no-gui >"$OUT" 2>&1
+check "--version still wins" out_has "mothdex 1.2.3 installed in"
+reset stamp-bad-version
+check "a version with a quote is refused" sh -c "cd '$REPO' && ! sh scripts/stamp-installers.sh '1\";x' /tmp/stamped-bad >'$OUT' 2>&1"
+rm -rf /tmp/stamped /tmp/stamped-bad
+INST_LAUNCHER=1
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

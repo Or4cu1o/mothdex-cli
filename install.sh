@@ -2,9 +2,8 @@
 # Mothdex installer for Linux and macOS: Batocera, EmuELEC, Recalbox, Lakka, EmuDeck, RetroDECK and generic Linux.
 # Windows and RetroBat use install.ps1.
 #
-# Download this file, read it, then run it. Do not pipe it into a shell:
-#   curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
-#   less install.sh && sh install.sh --dry-run
+# Run it in one line, or download it, read it and run it (README "Install"; docs/adr/ADR-0003-pipe-install.md says what
+# the checks below cover and what they cannot). Options after a pipe: ... | sh -s -- --no-gui
 #
 # What it does (docs/contracts/cli/release-artifacts.md, docs/release.md):
 #   - downloads only from https://github.com/Or4cu1o/mothdex-cli/releases (the base URL is fixed in this file);
@@ -15,7 +14,7 @@
 #     one, a launcher (a Port, which runs mothdex-gui and nothing else) into the profile's launcher dir;
 #   - when the release lists a `mothdex-gui_` archive for this machine, also installs `mothdex-gui` after proving
 #     that it starts (`mothdex-gui --probe`, run from bin_dir with a scrubbed environment), plus its licence notices.
-# It never runs the downloaded archive's contents before verification and never pipes anything to a shell.
+# It never runs the downloaded archive's contents before verification and never pipes a download to a shell.
 # docs/contracts/cli/ports.md is the contract; docs/security/T-70-threat-model-ports-installer.md (IC-1 to IC-13)
 # and docs/security/T-110-threat-model-beta-adjustments.md (TM-1 to TM-15) are the coding rules.
 #
@@ -27,6 +26,8 @@ set -eu
 umask 022
 
 REPO="Or4cu1o/mothdex-cli"
+# The release this copy installs by default; empty in the repository, set in the published asset (stamp-installers.sh).
+STAMPED_VERSION=""
 BASE="https://github.com/$REPO/releases"
 SIGNER_IDENTITY="https://github.com/$REPO/.github/workflows/release.yml@refs/tags/"
 OIDC_ISSUER="https://token.actions.githubusercontent.com"
@@ -90,7 +91,8 @@ usage() {
   cat <<'EOF'
 Usage: sh install.sh [options]
 
-  --version <vX.Y.Z>   install this release (default: the latest non-pre-release)
+  --version <vX.Y.Z>   install this release (default: the release this installer came with, else the latest
+                       non-pre-release)
   --profile <id>       batocera | emuelec | recalbox | lakka | emudeck | retrodeck | generic
                        (default: detected from the system)
   --bin-dir <dir>      install the binary here instead of the profile's bin_dir
@@ -1209,6 +1211,7 @@ do_uninstall() {
 
 main() {
 parse_args "$@"
+VERSION=${VERSION:-$STAMPED_VERSION}
 trap cleanup EXIT
 trap 'exit 1' INT TERM HUP
 

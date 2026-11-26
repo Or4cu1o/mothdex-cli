@@ -27,10 +27,44 @@ Command-line client for the [Mothdex](https://api.mothdex.net) API.
 
 ## Install
 
-Download `install.sh` (or `install.ps1` on Windows) from this repository, read it, and run it; it
-verifies checksums and signatures before installing, creates the short name `mdex`, and adds the install folder to your PATH (`--no-modify-path` /
-`-NoModifyPath` to do it yourself). Details and options:
-[docs/release.md](docs/release.md#installing).
+One line, no administrator rights:
+
+| System | Command |
+|---|---|
+| macOS, Linux, WSL | `curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh \| sh` |
+| Linux, with options | `curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh \| sh -s -- --no-gui` |
+| Windows PowerShell | `irm https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1 \| iex` |
+| PowerShell, with options | `& ([scriptblock]::Create((irm https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1))) -NoGui` |
+| Windows CMD | `curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.cmd -o "%TEMP%\mothdex-install.cmd" && "%TEMP%\mothdex-install.cmd" && del "%TEMP%\mothdex-install.cmd"` |
+
+On Windows, look at the prompt: `PS C:\>` is PowerShell; `C:\>` without `PS` is CMD.
+
+These addresses serve the installers from release 0.2.0 on. For an older release, see
+[docs/beta-testing.md](docs/beta-testing.md).
+
+The installer checks the SHA-256 of what it downloads (and the signature when `cosign` or `gh` is available), creates
+the short name `mdex`, and adds the install folder to your PATH (`--no-modify-path` / `-NoModifyPath` to do it
+yourself). Piping a script runs it before anything has checked the script itself:
+[ADR-0003](docs/adr/ADR-0003-pipe-install.md).
+
+To read it first, download it, verify it, then run it:
+
+```sh
+curl -fsSLO https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh
+gh attestation verify install.sh --repo Or4cu1o/mothdex-cli   # optional, needs a logged-in gh
+less install.sh
+sh install.sh --dry-run          # downloads and verifies, installs nothing
+sh install.sh
+```
+
+```powershell
+irm https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1 -OutFile install.ps1
+Get-Content install.ps1          # read it first
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -DryRun
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Options and details: [docs/release.md](docs/release.md#installing).
 
 ## Test it and report
 
