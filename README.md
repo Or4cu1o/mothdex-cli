@@ -72,9 +72,12 @@ Testing on a handheld or a retro-gaming system? Read the [beta testing guide](do
 [Ports beta report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=ports-beta.yml) for the GUI or the Port
 on a frontend, or an [install report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=device_report.yml)
 for everything else. Other forms:
-[bug report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug_report.yml) and
+[bug report](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug.yml) and
 [feature request](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=feature_request.yml) here, and the
 [MCP server's forms](https://github.com/Or4cu1o/mothdex-mcp/issues/new/choose).
+
+Found an error? Run `mothdex logs bundle`, review the zip and attach it with the error's `ref`
+([how to send an error](docs/beta-testing.md#how-to-send-an-error)).
 
 ## Build
 

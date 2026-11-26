@@ -82,6 +82,36 @@ errors:
     message: 'Error inesperado.'
     hint: 'Los detalles están en {log_path}. Por favor, infórmalo.'
 ui:
+  logs:
+    code: 'código'
+    log: 'registro'
+    bad_tail: '--tail debe estar entre 0 y {max}.'
+    bad_ref: 'El ref son los 6 caracteres que acompañan al error, por ejemplo 7F3K2Q.'
+    bad_session: 'No existe esa sesión. Usa un id de mothdex logs list.'
+    bad_sessions: '--sessions debe estar entre 1 y {max}.'
+    bad_folder: '-o debe ser una carpeta existente, no un enlace.'
+    need_target: 'Indica el id de una sesión o --ref <ref>.'
+    no_previous: 'No hay ninguna sesión anterior.'
+    no_ref: 'Ninguna sesión tiene el ref {ref}.'
+    no_permissions: 'La carpeta de registros no tiene permisos de archivo (FAT, exFAT o NTFS): otros usuarios de este equipo pueden leerlos.'
+    list_hint: 'Ejecuta mothdex logs list para ver las sesiones.'
+    match: 'Sesión {session}, línea {line}'
+    cannot_open: 'Aquí no se puede abrir un gestor de archivos. Los registros están en {path}'
+    bundle_next: 'Paquete creado ({size}). Revísalo y adjúntalo a un informe de error; consulta mothdex help logs.'
+    clear_ask: '¿Borrar las sesiones, los archivos de fallo y los paquetes de {path}? [s/N]'
+    cleared: 'Borrados: {sessions} sesiones, {crashes} archivos de fallo, {bundles} paquetes.'
+    column:
+      session: 'Sesión'
+      started: 'Inicio'
+      binary: 'Programa'
+      mode: 'Modo'
+      duration: 'Duración'
+      errors: 'Errores'
+    topic: |-
+      Cada ejecución escribe su propio registro en logs/ (mothdex logs path muestra la carpeta).
+
+      Para informar de un error: anota el ref, ejecuta mothdex logs bundle, revisa el zip y adjúntalo en
+      https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug.yml
   storage:
     rom_root_in_ram: 'La carpeta de juegos está en un disco RAM: los juegos descargados se pierden al reiniciar.'
     data_dir_in_ram: 'La carpeta de datos está en un disco RAM: el historial, la caché y los ajustes se pierden al reiniciar.'

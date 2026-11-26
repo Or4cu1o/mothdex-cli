@@ -319,7 +319,7 @@ func (s queueScreen) finishedLine(rt *shared, j app.JobSnapshot) string {
 		return render(st.warn, st.g.warn+" "+label+": "+consentRow(rt, j))
 	}
 	f := rt.failureOf(j.Err)
-	return render(st.bad, st.g.fail+" "+label+": "+f.msg+" ["+f.code+"]")
+	return render(st.bad, st.g.fail+" "+label+": "+f.msg+" "+f.tag())
 }
 
 func (s queueScreen) view(rt *shared, w, h int) screenView {
@@ -385,7 +385,10 @@ func (s queueScreen) detailView(rt *shared, j app.JobSnapshot) screenView {
 		lines = append(lines, row("status", consentRow(rt, j))) // the code stays out: the line is a sentence, and the frame would cut its end
 	case j.Err != nil:
 		f := rt.failureOf(j.Err)
-		lines = append(lines, row("error", f.msg+" ["+f.code+"]"))
+		lines = append(lines, row("error", f.msg+" "+f.tag()))
+		if f.log != "" {
+			lines = append(lines, row("log", f.log))
+		}
 	}
 	return screenView{body: lines, status: rt.T("ui.tui.queue.detail_help", nil)}
 }

@@ -50,6 +50,7 @@ type ErrorRecord struct {
 	Cmd     string
 	Message string // English
 	Cause   error
+	Attrs   []slog.Attr // more of the same line, a panic's stack
 }
 
 // RecordError writes the line that `logs show --ref` finds. Call it before printing the error.
@@ -65,6 +66,7 @@ func RecordError(l *slog.Logger, r ErrorRecord) {
 	if r.Cause != nil {
 		attrs = append(attrs, slog.String("cause", r.Cause.Error()))
 	}
+	attrs = append(attrs, r.Attrs...)
 	l.LogAttrs(context.Background(), slog.LevelError, msg, attrs...)
 }
 

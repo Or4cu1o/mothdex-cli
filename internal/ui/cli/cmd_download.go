@@ -271,7 +271,15 @@ func (r *runtime) transfer(ctx context.Context, s *Session, reqs []app.DownloadR
 		p.warning(res.RefreshWarning)
 	}
 	recs := r.recordsFor(ctx, s, res.Jobs)
-	out := outcome{data: map[string]any{"jobs": jobsJSON(res.Jobs, recs)}, human: func(p *printer) { r.downloadHuman(p, res, time.Since(started)) },
+	// A ref is given to an error that is shown: here only --json shows these, the human output
+	// asks for the ref of each line it prints.
+	jobRef := func(e *app.Error) string {
+		if !r.g.JSON {
+			return ""
+		}
+		return p.ref(e)
+	}
+	out := outcome{data: map[string]any{"jobs": jobsJSON(res.Jobs, recs, jobRef)}, human: func(p *printer) { r.downloadHuman(p, res, time.Since(started)) },
 		warn: func(p *printer) { // the size drift notes (3.2 step 7), in both modes
 			for _, j := range res.Jobs {
 				if j.SizeDrift {
@@ -427,13 +435,13 @@ func checkState(v string) string {
 	return "skipped"
 }
 
-func jobsJSON(jobs []app.JobSnapshot, recs map[string]app.HistoryRecord) []map[string]any {
+func jobsJSON(jobs []app.JobSnapshot, recs map[string]app.HistoryRecord, ref func(*app.Error) string) []map[string]any {
 	out := make([]map[string]any, 0, len(jobs))
 	for _, j := range jobs {
 		rec := recs[string(j.ID)]
 		var e any
 		if j.Err != nil {
-			e = map[string]string{"code": j.Err.Code, "message": j.Err.Message}
+			e = map[string]string{"code": j.Err.Code, "message": j.Err.Message, "ref": ref(j.Err)}
 		}
 		out = append(out, map[string]any{
 			"slug": j.Slug, "link_index": j.LinkIndex, "filename": j.Name, "raw_filename": rec.RawName, "path": j.Path,
@@ -467,6 +475,7 @@ func batchError(res app.BatchResult) error {
 }
 
 func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Duration) {
+	lines := 0 // failed jobs printed one by one: their log is named once, after them
 	for _, j := range res.Jobs {
 		title := clean(firstNonEmpty(j.Title, j.Slug))
 		switch j.State {
@@ -486,10 +495,15 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 			switch {
 			case consent.Needed(j) && len(res.Jobs) > 1:
 				p.consentLine(title, j)
+				lines++
 			case len(res.Jobs) > 1:
 				p.failedLine(title, j.Err)
+				lines++
 			}
 		}
+	}
+	if lines > 0 {
+		p.printLogLine()
 	}
 	if p.g.Quiet && res.Failed == 0 {
 		return
@@ -510,7 +524,7 @@ func (r *runtime) downloadHuman(p *printer, res app.BatchResult, elapsed time.Du
 // with the way out (-f) under it; the code stays visible for scripts.
 func (p *printer) consentLine(title string, j app.JobSnapshot) {
 	suffix, args := consentArgs(j)
-	line := fmt.Sprintf("%s %s: %s [%s]", p.sym("warn"), title, clean(p.T("ui.consent.row"+suffix, args)), j.Err.Code)
+	line := fmt.Sprintf("%s %s: %s [%s] ref: %s", p.sym("warn"), title, clean(p.T("ui.consent.row"+suffix, args)), j.Err.Code, p.ref(j.Err))
 	_, _ = fmt.Fprintln(p.err, p.warn(line))
 	if suffix == "" {
 		_, _ = fmt.Fprintln(p.err, "  "+p.dim(clean(p.T("errors.confirmation_required.size_hint_cli", i18n.Args{"size": args["size"], "estimate": args["estimate"]}))))
@@ -522,7 +536,7 @@ func (p *printer) failedLine(title string, e *app.Error) {
 	if e == nil {
 		e = &app.Error{Code: app.CodeInternal}
 	}
-	line := fmt.Sprintf("%s %s: %s [%s]", p.sym("fail"), title, clean(p.localizedMessage(e, nil)), e.Code)
+	line := fmt.Sprintf("%s %s: %s [%s] ref: %s", p.sym("fail"), title, clean(p.localizedMessage(e, nil)), e.Code, p.ref(e))
 	_, _ = fmt.Fprintln(p.err, p.bad(line))
 }
 
