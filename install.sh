@@ -846,7 +846,8 @@ state_valid() {
   esac
 }
 
-# Atomic (temporary file in the same folder, then rename), 0644, never through a link.
+# Atomic (temporary file in the same folder, then rename), 0644, never through a link. Every string is JSON-escaped
+# (path_value already is: ST_VALUE holds its JSON text).
 write_state() {
   f="$BIN_DIR/$STATE_NAME"
   if [ -L "$f" ] || { [ -e "$f" ] && [ ! -f "$f" ]; }; then
@@ -884,8 +885,10 @@ write_state() {
   "installed_at": "%s",
   "updated_at": "%s",
   "updated_by": "installer"
-}\n' "$BIN_DIR" "$VERSION" "$TARGET" "$PROFILE" "$gui" "$ALIAS" "$alias_kind" "$ST_ADDED" "$ST_KIND" "$ST_FILE" "$ST_VALUE" "$launcher" \
-    "${ST_INSTALLED_AT:-$now}" "$now" >"$tmps" && chmod 0644 "$tmps" && mv -f "$tmps" "$f"; then
+}\n' "$(json_escape "$BIN_DIR")" "$(json_escape "$VERSION")" "$(json_escape "$TARGET")" "$(json_escape "$PROFILE")" "$gui" \
+    "$(json_escape "$ALIAS")" "$(json_escape "$alias_kind")" \
+    "$ST_ADDED" "$(json_escape "$ST_KIND")" "$(json_escape "$ST_FILE")" "$ST_VALUE" "$(json_escape "$launcher")" \
+    "$(json_escape "${ST_INSTALLED_AT:-$now}")" "$now" >"$tmps" && chmod 0644 "$tmps" && mv -f "$tmps" "$f"; then
     NEWSTATE=""
   else
     rm -f "$tmps"
