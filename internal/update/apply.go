@@ -192,6 +192,8 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 	}
 	archives := map[string]string{}
 	bodies := map[bool][]byte{}
+	// Missing-GUI advice can invoke the installer; authenticate the manifest before surfacing it.
+	var missingGUI error
 	for _, gui := range []bool{false, true} {
 		if gui && !s.GUI {
 			continue
@@ -201,7 +203,8 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 		if err != nil {
 			var checksumError *app.Error
 			if gui && errors.As(err, &checksumError) && checksumError.Args["reason"] == "missing_checksum" {
-				return r, failure(app.CodeUpdateFailed, "gui_missing", err)
+				missingGUI = err
+				break
 			}
 			return r, err
 		}
@@ -244,6 +247,9 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 		return r, e
 	}
 	r.signature = signature
+	if missingGUI != nil {
+		return r, failure(app.CodeUpdateFailed, "gui_missing", missingGUI)
+	}
 	if err = step(ctx, o, "stage"); err != nil {
 		return r, err
 	}

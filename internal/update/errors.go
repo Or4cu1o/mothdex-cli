@@ -8,6 +8,12 @@ func failure(code, reason string, cause error) *app.Error {
 	family, message := errorMessage(code, reason)
 	hint := "update.unchanged_hint"
 	switch {
+	case code == app.CodeConfirmationNeeded:
+		hint = "errors.confirmation_required.hint"
+	case code == app.CodeUsage:
+		hint = "errors.usage.hint"
+	case code == app.CodeNetwork:
+		hint = "update.network_hint"
 	case family == "signature":
 		hint = "update.tamper_hint"
 	case code == app.CodeUpdateUnavailable:
@@ -15,11 +21,19 @@ func failure(code, reason string, cause error) *app.Error {
 	case code == app.CodeUpdateFailed && reason == "gui_missing":
 		hint = "errors.update_failed.hint"
 	}
-	return &app.Error{Code: code, Message: message, Cause: cause, Args: map[string]any{
+	e := &app.Error{Code: code, Message: message, Cause: cause, Args: map[string]any{
 		"reason": reason, "restored": true, "install_command": InstallCommand(),
 		"message_key": "update.errors." + family + ".message", "hint_key": hint,
 	}}
+	if code == app.CodeUsage {
+		e.Args["command"] = "upgrade"
+	}
+	return e
 }
+
+// Unavailable constructs the shared error for an installation that cannot use the updater.
+func Unavailable(reason string) error { return unavailable(reason, nil) }
+
 func unavailable(reason string, cause error) error {
 	return failure(app.CodeUpdateUnavailable, reason, cause)
 }

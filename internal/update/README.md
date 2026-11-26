@@ -29,3 +29,7 @@ Every error carries a stable English Message and `message_key: update.errors.<fa
 plus `hint_key`. Technical reasons remain in Args. Errors before replacement default to `restored: true` and the unchanged
 hint. Signature verification selects its tampering/trusted-root hint; unmanaged installations, a missing GUI archive
 and incomplete rollback retain explicit installer hints. Rollback success selects the neutral restored hint.
+
+`Unavailable(reason)` constructs the same producer error for front-end composition failures. Usage and confirmation
+errors retain their actionable code hints; network failures include connection/retry guidance. A missing GUI asset
+is reported only after verifying the checksums manifest signature, so an altered manifest cannot select installer advice.

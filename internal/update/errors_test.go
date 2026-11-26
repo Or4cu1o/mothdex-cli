@@ -20,13 +20,13 @@ func TestUpdaterErrorsUseLocalizedUpdateMessagesAndHints(t *testing.T) {
 		{"size_mismatch", "expanded_limit", "size_mismatch", "update.unchanged_hint"},
 		{app.CodeNotFound, "asset_missing", "not_found", "update.unchanged_hint"},
 		{app.CodeUntrustedRedirect, "redirect", "untrusted_redirect", "update.unchanged_hint"},
-		{app.CodeNetwork, "timeout", "network", "update.unchanged_hint"},
+		{app.CodeNetwork, "timeout", "network", "update.network_hint"},
 		{"integrity", "signature", "signature", "update.tamper_hint"},
 		{app.CodeUpdateFailed, "check_failed", "update_failed", "update.unchanged_hint"},
 		{app.CodeUpdateUnavailable, "no_state", "update_unavailable", "errors.update_unavailable.hint"},
-		{app.CodeUsage, "channel", "usage", "update.unchanged_hint"},
+		{app.CodeUsage, "channel", "usage", "errors.usage.hint"},
 		{app.CodeCanceled, "canceled", "canceled", "update.unchanged_hint"},
-		{app.CodeConfirmationNeeded, "confirmation", "confirmation_required", "update.unchanged_hint"},
+		{app.CodeConfirmationNeeded, "confirmation", "confirmation_required", "errors.confirmation_required.hint"},
 	} {
 		t.Run(tc.family, func(t *testing.T) {
 			cause := errors.New("private technical cause")

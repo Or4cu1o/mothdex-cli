@@ -1143,6 +1143,7 @@ update:
   updated: 'Updated {current} → {latest} (verification: {signature}).'
   restart: 'Exit and open Mothdex again to use the new version.'
   restored_hint: 'Your previous version was restored. Try again later.'
-  unchanged_hint: 'Nothing in your installation changed. Your previous version is still in place.'
+  network_hint: 'Your previous version is still installed. Check your connection and try again.'
+  unchanged_hint: 'Nothing in your installation changed. Your previous version is still in place. Run mothdex upgrade again later.'
   verification_hint: 'Your previous version is still installed. Release origin could not be verified. If the signing root rotated, reinstall with the official command: {install_command}'
   tamper_hint: 'Your previous version is still installed. The release signature did not verify: it may have been tampered with. Do not reinstall; report it privately: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'
