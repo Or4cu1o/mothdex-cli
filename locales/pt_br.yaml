@@ -150,6 +150,9 @@ ui:
   cli:
     help:
       boxart:
+        flags:
+          output: 'pasta de destino'
+          slug: 'interprete o argumento como um slug'
         example: |-
           mothdex search mario
           mothdex boxart 1 -o ./games
@@ -212,6 +215,16 @@ ui:
         long: 'Mostre os totais do catálogo e os metadados do banco fornecidos pelo servidor.'
         short: 'Mostre estatísticas do catálogo'
       download:
+        flags:
+          allow_executable: 'permita tipos de arquivo que podem executar código'
+          boxart: 'salve também a capa'
+          jobs: 'downloads simultâneos'
+          link: 'número do link a usar (tem prioridade sobre --prefer)'
+          no_boxart: 'não salve a capa'
+          output: 'pasta de destino (vira a raiz; arquivos vão diretamente para ela)'
+          prefer: 'ordene links: chave=valor[,valor...] (pode repetir)'
+          search: 'pesquise e baixe o primeiro resultado'
+          slug: 'interprete os argumentos como slugs'
         example: |-
           mothdex search mario
           mothdex download 1
@@ -236,18 +249,29 @@ ui:
         long: 'Mostre a ajuda de um comando ou tópico de referência: exit-codes, config ou errors.'
         short: 'Ajuda dos comandos e tópicos de referência'
       history:
+        flags:
+          export: 'grave os registros em um arquivo ou pasta'
+          failed: 'somente downloads com falha'
+          format: 'formato de exportação: txt | json | csv'
+          limit: 'registros mais recentes a mostrar (0 = todos)'
         example: |-
           mothdex history
           mothdex history --failed
         long: 'Liste downloads anteriores, incluindo falhas. Exporte registros com --export e --format.'
         short: 'Mostre downloads anteriores'
       info:
+        flags:
+          prefer: 'ordene links: chave=valor[,valor...] (pode repetir)'
+          slug: 'interprete o argumento como um slug'
         example: |-
           mothdex search mario
           mothdex info 1
         long: 'Mostre um item e seus links de download. Use um número da última busca ou um slug explícito com --slug.'
         short: 'Mostre um item e seus links'
       platforms:
+        flags:
+          brand: 'somente esta marca'
+          class: 'somente esta classe'
         example: 'mothdex platforms'
         long: 'Liste os identificadores de plataforma aceitos por --platform.'
         short: 'Liste as plataformas'
@@ -264,6 +288,11 @@ ui:
         long: 'Mostre o frontend ativo, a pasta de jogos, a origem da detecção e os avisos de armazenamento.'
         short: 'Mostre o perfil ativo'
       random:
+        flags:
+          count: 'quantidade de itens (1..20)'
+          platform: 'identificador de plataforma (pode repetir)'
+          region: 'identificador de região (pode repetir)'
+          serial: 'serial exato'
         example: 'mothdex random'
         long: 'Escolha itens aleatórios do catálogo, com filtros opcionais de plataforma e região.'
         short: 'Mostre itens aleatórios'
@@ -280,6 +309,15 @@ ui:
           Consulte mothdex help config, mothdex help exit-codes ou mothdex help errors para referência.
         short: 'Pesquise e baixe do catálogo Mothdex'
       search:
+        flags:
+          export: 'grave os resultados em um arquivo ou pasta'
+          format: 'formato de exportação: txt | json | csv'
+          page: 'número da página'
+          page_size: 'resultados por página (1..100; padrão interface.page_size)'
+          platform: 'identificador de plataforma (pode repetir)'
+          region: 'identificador de região (pode repetir)'
+          serial: 'serial exato'
+          sort: 'relevance | title | size (somente a página atual)'
         example: |-
           mothdex search mario
           mothdex search mario --platform snes --page-size 10
@@ -298,40 +336,22 @@ ui:
         long: 'Mostre a versão, o commit e a data do build. --json retorna o envelope padrão de saída.'
         short: 'Mostre a versão'
     flags:
-      allow_executable: 'permita tipos de arquivo que podem executar código'
-      boxart: 'salve também a capa'
-      brand: 'somente esta marca'
-      class: 'somente esta classe'
       config: 'arquivo de configuração'
-      count: 'quantidade de itens (1..20)'
-      export: 'grave os resultados ou registros em um arquivo ou pasta'
-      failed: 'somente downloads com falha'
       force: 'pule confirmações; permita sobrescrever arquivos'
-      format: 'formato de exportação: txt | json | csv'
       help: 'mostre a ajuda deste comando'
-      jobs: 'downloads simultâneos'
       json: 'imprima um documento JSON na saída padrão'
       lang: 'idioma da interface, por exemplo pt_br'
-      limit: 'registros mais recentes a mostrar (0 = todos)'
-      link: 'número do link a usar (tem prioridade sobre --prefer)'
-      no_boxart: 'não salve a capa'
       no_color: 'desative as cores'
-      output: 'pasta de destino (vira a raiz; arquivos vão diretamente para ela)'
-      page: 'número da página'
-      page_size: 'resultados por página (1..100; padrão interface.page_size)'
-      platform: 'identificador de plataforma (pode repetir)'
-      prefer: 'ordene links: chave=valor[,valor...] (pode repetir)'
       profile: 'identificador do perfil do frontend'
       quiet: 'imprima somente o resultado e erros'
       refresh: 'ignore leituras do cache, mas continue gravando'
-      region: 'identificador de região (pode repetir)'
-      search: 'pesquise e baixe o primeiro resultado'
-      serial: 'serial exato'
-      slug: 'interprete os argumentos como slugs'
-      sort: 'relevance | title | size (somente a página atual)'
       verbose: 'mostre a causa dos erros'
       version: 'mostre a versão e saia'
     template:
+      command_or_topic: 'comando ou tópico'
+      text_token: 'texto'
+      key_token: 'chave'
+      value_token: 'valor'
       default: 'padrão'
       exit_codes: |-
         Saída Significado                     error.code
@@ -367,7 +387,7 @@ ui:
       interfaces: 'Interfaces'
       system: 'Sistema'
       command_token: 'comando'
-      flags_token: 'flags'
+      flags_token: 'opções'
       modes_table: |-
         Modo    Como abrir                   Para quê
         CLI     mdex <comando>               Scripts e uso rápido; aceita --json

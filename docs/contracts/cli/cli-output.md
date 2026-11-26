@@ -119,9 +119,15 @@ in the CLI.
 | 2 | configuration error: bad config file, flag or profile, before the window opens |
 | 8 | SDL2 missing or too old, or no display |
 
+- **Exit 2 from a runtime crash.** The Go runtime itself exits 2 when a panic escapes in a goroutine other than the main
+  one, so an exit 2 can also be a crash. The session log tells which: with a crash, the trace is in the session file
+  (logs.md §5).
 - **`--probe`:** exit 0 means eligible, 8 means not eligible, and anything else is a probe error.
-- **Installers switch on the release version.** For releases before `0.2.0`, which `--version` can still install,
-  exit 1 means not eligible. Owner: Guindaste, in `install.sh`, `install.ps1` and `tests/installer`.
+- **`install.sh` switches on the release version.** For releases before `0.2.0`, which `--version` can still
+  install, exit 1 means not eligible; from `0.2.0` on, exit 8 does. Owner: Guindaste, in `install.sh` and
+  `tests/installer`.
+- **`install.ps1` keeps T-70 IC-9 unchanged:** on Windows every non-zero probe result, 8 included, is an installer
+  error. The zip ships its own `SDL2.dll`, so "not eligible" there means broken packaging (ports.md §5.2).
 - **Vitral (T-115)** updates gui.md §5, `cmd/mothdex-gui` (README, constants, tests) and the main comments to this
   table. `scripts/gui-probe.sh` keeps its own build-script codes.
 

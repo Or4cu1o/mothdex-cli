@@ -179,6 +179,12 @@ func TestErrorReferenceCoversContractCodes(t *testing.T) {
 			continue
 		}
 		for _, code := range regexp.MustCompile("`([a-z_]+)`").FindAllStringSubmatch(cells[3], -1) {
+			for _, lang := range []string{"en_us", "pt_br"} {
+				pattern := `(?m)^` + regexp.QuoteMeta(strings.TrimSpace(cells[1])) + `\s+.*\b` + regexp.QuoteMeta(code[1]) + `\b`
+				if !regexp.MustCompile(pattern).MatchString(b.New(lang).T("ui.cli.template.exit_codes", nil)) {
+					t.Errorf("%s exit table misses %s at exit %s", lang, code[1], strings.TrimSpace(cells[1]))
+				}
+			}
 			if !strings.Contains(string(doc), "`"+code[1]+"`") || !b.New("en_us").Has("errors."+code[1]+".message") || !strings.Contains(b.New("en_us").T("ui.cli.template.exit_codes", nil), code[1]) {
 				t.Errorf("missing documented error %s", code[1])
 			}
@@ -281,6 +287,7 @@ func TestEveryExampleAgainstFakeServer(t *testing.T) {
 	d.Shell = func(context.Context, ShellEnv) int { return 0 }
 	d.TUI = func(context.Context, TUIEnv) int { return 0 }
 	root := (&runtime{d: d}).rootCommand()
+	localizeHelp(root, d.Translator("en_us"))
 	walkCommands(root, func(c *cobra.Command) {
 		if c.Hidden {
 			return

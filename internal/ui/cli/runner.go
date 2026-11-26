@@ -137,7 +137,9 @@ func (r *Runner) newRuntime(ctx context.Context) *runtime { return &runtime{d: r
 // Commands lists the commands the Shell can run, sorted by name, with their flags.
 func (r *Runner) Commands() []CommandInfo {
 	r.cmdsOnce.Do(func() {
-		root := r.newRuntime(context.Background()).rootCommand()
+		rt := r.newRuntime(context.Background())
+		root := rt.rootCommand()
+		localizeHelp(root, rt.helpTranslator())
 		for _, c := range root.Commands() {
 			if !c.Hidden {
 				r.cmds = append(r.cmds, describe(c))
