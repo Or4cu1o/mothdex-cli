@@ -93,6 +93,7 @@ ui:
     need_target: 'Укажите id сессии или --ref <ref>.'
     no_previous: 'Предыдущей сессии нет.'
     no_ref: 'Ни в одной сессии нет ref {ref}.'
+    no_permissions: 'В папке журналов нет прав доступа (FAT, exFAT или NTFS): другие пользователи этого компьютера могут читать журналы.'
     list_hint: 'Список сессий: mothdex logs list.'
     match: 'Сессия {session}, строка {line}'
     cannot_open: 'Здесь нельзя открыть файловый менеджер. Журналы находятся в {path}'

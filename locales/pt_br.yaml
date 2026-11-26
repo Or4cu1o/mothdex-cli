@@ -93,6 +93,7 @@ ui:
     need_target: 'Informe o id de uma sessão ou --ref <ref>.'
     no_previous: 'Não há sessão anterior.'
     no_ref: 'Nenhuma sessão tem o ref {ref}.'
+    no_permissions: 'A pasta de logs não tem permissões de arquivo (FAT, exFAT ou NTFS): outros usuários desta máquina podem ler os logs.'
     list_hint: 'Rode mothdex logs list para ver as sessões.'
     match: 'Sessão {session}, linha {line}'
     cannot_open: 'Não é possível abrir um gerenciador de arquivos aqui. Os logs estão em {path}'
@@ -202,6 +203,8 @@ ui:
         long: 'Mostra a pasta de logs e o caminho do latest.log.'
         short: 'Mostra onde ficam os logs'
       logs_last:
+        flags:
+          tail: 'só as últimas linhas (0 = todas)'
         example: 'mothdex logs last --tail 20'
         long: 'Mostra o log da sessão anterior a esta.'
         short: 'Mostra o log da sessão anterior'
@@ -210,6 +213,8 @@ ui:
         long: 'Lista as sessões com data, programa, modo, duração e número de erros.'
         short: 'Lista as sessões'
       logs_show:
+        flags:
+          ref: 'mostra o erro com este ref'
         example: 'mothdex logs show --ref 7F3K2Q'
         long: 'Mostra uma sessão pelo id ou, com --ref, as linhas em volta do erro com esse ref, em qualquer sessão.'
         short: 'Mostra uma sessão ou um erro'
@@ -218,6 +223,9 @@ ui:
         long: 'Abre a pasta de logs no gerenciador de arquivos.'
         short: 'Abre a pasta de logs'
       logs_bundle:
+        flags:
+          sessions: 'sessões mais recentes a incluir (1..20)'
+          output: 'pasta existente para o zip (padrão: a pasta de logs)'
         example: 'mothdex logs bundle'
         long: 'Gera um zip com as sessões mais recentes, os arquivos de crash e o final do log geral, sem tokens, sem o endereço da API e sem a sua pasta de usuário. -o escolhe a pasta.'
         short: 'Gera um zip para anexar numa issue'
@@ -226,6 +234,9 @@ ui:
         long: 'Apaga sessões, arquivos de crash e pacotes após confirmação (-f pula). O log geral permanece.'
         short: 'Apaga sessões, crashes e pacotes'
       boxart:
+        flags:
+          output: 'pasta de destino'
+          slug: 'interprete o argumento como um slug'
         example: |-
           mothdex search mario
           mothdex boxart 1 -o ./games
@@ -288,6 +299,16 @@ ui:
         long: 'Mostre os totais do catálogo e os metadados do banco fornecidos pelo servidor.'
         short: 'Mostre estatísticas do catálogo'
       download:
+        flags:
+          allow_executable: 'permita tipos de arquivo que podem executar código'
+          boxart: 'salve também a capa'
+          jobs: 'downloads simultâneos'
+          link: 'número do link a usar (tem prioridade sobre --prefer)'
+          no_boxart: 'não salve a capa'
+          output: 'pasta de destino (vira a raiz; arquivos vão diretamente para ela)'
+          prefer: 'ordene links: chave=valor[,valor...] (pode repetir)'
+          search: 'pesquise e baixe o primeiro resultado'
+          slug: 'interprete os argumentos como slugs'
         example: |-
           mothdex search mario
           mothdex download 1
@@ -312,18 +333,29 @@ ui:
         long: 'Mostre a ajuda de um comando ou tópico de referência: exit-codes, config ou errors.'
         short: 'Ajuda dos comandos e tópicos de referência'
       history:
+        flags:
+          export: 'grave os registros em um arquivo ou pasta'
+          failed: 'somente downloads com falha'
+          format: 'formato de exportação: txt | json | csv'
+          limit: 'registros mais recentes a mostrar (0 = todos)'
         example: |-
           mothdex history
           mothdex history --failed
         long: 'Liste downloads anteriores, incluindo falhas. Exporte registros com --export e --format.'
         short: 'Mostre downloads anteriores'
       info:
+        flags:
+          prefer: 'ordene links: chave=valor[,valor...] (pode repetir)'
+          slug: 'interprete o argumento como um slug'
         example: |-
           mothdex search mario
           mothdex info 1
         long: 'Mostre um item e seus links de download. Use um número da última busca ou um slug explícito com --slug.'
         short: 'Mostre um item e seus links'
       platforms:
+        flags:
+          brand: 'somente esta marca'
+          class: 'somente esta classe'
         example: 'mothdex platforms'
         long: 'Liste os identificadores de plataforma aceitos por --platform.'
         short: 'Liste as plataformas'
@@ -340,6 +372,11 @@ ui:
         long: 'Mostre o frontend ativo, a pasta de jogos, a origem da detecção e os avisos de armazenamento.'
         short: 'Mostre o perfil ativo'
       random:
+        flags:
+          count: 'quantidade de itens (1..20)'
+          platform: 'identificador de plataforma (pode repetir)'
+          region: 'identificador de região (pode repetir)'
+          serial: 'serial exato'
         example: 'mothdex random'
         long: 'Escolha itens aleatórios do catálogo, com filtros opcionais de plataforma e região.'
         short: 'Mostre itens aleatórios'
@@ -356,6 +393,15 @@ ui:
           Consulte mothdex help config, mothdex help exit-codes ou mothdex help errors para referência.
         short: 'Pesquise e baixe do catálogo Mothdex'
       search:
+        flags:
+          export: 'grave os resultados em um arquivo ou pasta'
+          format: 'formato de exportação: txt | json | csv'
+          page: 'número da página'
+          page_size: 'resultados por página (1..100; padrão interface.page_size)'
+          platform: 'identificador de plataforma (pode repetir)'
+          region: 'identificador de região (pode repetir)'
+          serial: 'serial exato'
+          sort: 'relevance | title | size (somente a página atual)'
         example: |-
           mothdex search mario
           mothdex search mario --platform snes --page-size 10
@@ -374,43 +420,22 @@ ui:
         long: 'Mostre a versão, o commit e a data do build. --json retorna o envelope padrão de saída.'
         short: 'Mostre a versão'
     flags:
-      ref: 'mostra o erro com este ref'
-      sessions: 'sessões mais recentes a incluir (1..20)'
-      tail: 'só as últimas linhas (0 = todas)'
-      allow_executable: 'permita tipos de arquivo que podem executar código'
-      boxart: 'salve também a capa'
-      brand: 'somente esta marca'
-      class: 'somente esta classe'
       config: 'arquivo de configuração'
-      count: 'quantidade de itens (1..20)'
-      export: 'grave os resultados ou registros em um arquivo ou pasta'
-      failed: 'somente downloads com falha'
       force: 'pule confirmações; permita sobrescrever arquivos'
-      format: 'formato de exportação: txt | json | csv'
       help: 'mostre a ajuda deste comando'
-      jobs: 'downloads simultâneos'
       json: 'imprima um documento JSON na saída padrão'
       lang: 'idioma da interface, por exemplo pt_br'
-      limit: 'registros mais recentes a mostrar (0 = todos)'
-      link: 'número do link a usar (tem prioridade sobre --prefer)'
-      no_boxart: 'não salve a capa'
       no_color: 'desative as cores'
-      output: 'pasta de destino (vira a raiz; arquivos vão diretamente para ela)'
-      page: 'número da página'
-      page_size: 'resultados por página (1..100; padrão interface.page_size)'
-      platform: 'identificador de plataforma (pode repetir)'
-      prefer: 'ordene links: chave=valor[,valor...] (pode repetir)'
       profile: 'identificador do perfil do frontend'
       quiet: 'imprima somente o resultado e erros'
       refresh: 'ignore leituras do cache, mas continue gravando'
-      region: 'identificador de região (pode repetir)'
-      search: 'pesquise e baixe o primeiro resultado'
-      serial: 'serial exato'
-      slug: 'interprete os argumentos como slugs'
-      sort: 'relevance | title | size (somente a página atual)'
       verbose: 'mostre a causa dos erros'
       version: 'mostre a versão e saia'
     template:
+      command_or_topic: 'comando ou tópico'
+      text_token: 'texto'
+      key_token: 'chave'
+      value_token: 'valor'
       default: 'padrão'
       exit_codes: |-
         Saída Significado                     error.code
@@ -446,7 +471,7 @@ ui:
       interfaces: 'Interfaces'
       system: 'Sistema'
       command_token: 'comando'
-      flags_token: 'flags'
+      flags_token: 'opções'
       modes_table: |-
         Modo    Como abrir                   Para quê
         CLI     mdex <comando>               Scripts e uso rápido; aceita --json

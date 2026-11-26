@@ -56,7 +56,6 @@ func (r *runtime) configureHelp(root *cobra.Command) {
 	walkCommands(root, func(c *cobra.Command) {
 		c.InitDefaultHelpFlag()
 	})
-	localizeHelp(root, r.helpTranslator())
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) { r.printHelp(c) })
 	root.SetUsageFunc(func(c *cobra.Command) error { r.printHelp(c); return nil })
 }
@@ -117,7 +116,7 @@ func (r *runtime) printHelp(c *cobra.Command) {
 	out := c.OutOrStdout()
 	_, _ = fmt.Fprintln(out, c.Long+"\n")
 	_, _ = fmt.Fprintln(out, label("usage")+":")
-	_, _ = fmt.Fprintln(out, "  "+strings.ReplaceAll(c.UseLine(), "[command]", "["+label("command_token")+"]"))
+	_, _ = fmt.Fprintln(out, "  "+strings.NewReplacer("[command]", "["+label("command_token")+"]", "[flags]", "["+label("flags_token")+"]", "[command or topic]", "["+label("command_or_topic")+"]", "[text...]", "["+label("text_token")+"...]", "<key>", "<"+label("key_token")+">", "<value>", "<"+label("value_token")+">", "<key|all>", "<"+label("key_token")+"|all>").Replace(c.UseLine()))
 	if c == c.Root() {
 		_, _ = fmt.Fprintln(out, "\n"+label("modes")+":\n"+label("modes_table"))
 		if r.run != nil {

@@ -93,6 +93,7 @@ ui:
     need_target: 'Give a session id or --ref <ref>.'
     no_previous: 'There is no earlier session.'
     no_ref: 'No session has the ref {ref}.'
+    no_permissions: 'The log folder has no file permissions (FAT, exFAT or NTFS): other users of this machine may read the logs.'
     list_hint: 'Run mothdex logs list to see the sessions.'
     match: 'Session {session}, line {line}'
     cannot_open: 'Cannot open a file manager here. The logs are in {path}'
@@ -203,6 +204,8 @@ ui:
         long: 'Show the log folder and the path of latest.log.'
         short: 'Show where the logs are'
       logs_last:
+        flags:
+          tail: 'only the last lines (0 = all)'
         example: 'mothdex logs last --tail 20'
         long: 'Show the log of the session before this one.'
         short: 'Show the log of the previous session'
@@ -211,6 +214,8 @@ ui:
         long: 'List the sessions with their date, program, mode, duration and number of errors.'
         short: 'List the sessions'
       logs_show:
+        flags:
+          ref: 'show the error with this ref'
         example: 'mothdex logs show --ref 7F3K2Q'
         long: 'Show a session by its id, or with --ref the lines around the error with that ref, in any session.'
         short: 'Show a session or an error'
@@ -219,6 +224,9 @@ ui:
         long: 'Open the log folder in the file manager.'
         short: 'Open the log folder'
       logs_bundle:
+        flags:
+          sessions: 'newest sessions to include (1..20)'
+          output: 'existing folder for the zip (default: the log folder)'
         example: 'mothdex logs bundle'
         long: 'Make a zip with the newest sessions, the crash files and the end of the general log, without tokens, the API address or your home folder. -o chooses the folder.'
         short: 'Make a zip to attach to an issue'
@@ -227,6 +235,9 @@ ui:
         long: 'Delete the sessions, crash files and bundles after a confirmation (-f skips it). The general log stays.'
         short: 'Delete sessions, crash files and bundles'
       boxart:
+        flags:
+          output: 'destination folder'
+          slug: 'read the argument as a slug'
         example: |-
           mothdex search mario
           mothdex boxart 1 -o ./games
@@ -289,6 +300,16 @@ ui:
         long: 'Show catalog totals and database metadata from the server.'
         short: 'Show catalog statistics'
       download:
+        flags:
+          allow_executable: 'allow file types that can run code'
+          boxart: 'also save the cover'
+          jobs: 'downloads at the same time'
+          link: 'link number to use (wins over --prefer)'
+          no_boxart: 'do not save the cover'
+          output: 'destination folder (becomes the root; files go straight into it)'
+          prefer: 'rank links: key=value[,value...] (repeatable)'
+          search: 'search and download the first result'
+          slug: 'read the arguments as slugs'
         example: |-
           mothdex search mario
           mothdex download 1
@@ -313,18 +334,29 @@ ui:
         long: 'Show help for a command or a reference topic: exit-codes, config or errors.'
         short: 'Help for commands and reference topics'
       history:
+        flags:
+          export: 'write the records to a file or directory'
+          failed: 'only failed downloads'
+          format: 'export format: txt | json | csv'
+          limit: 'newest records to show (0 = all)'
         example: |-
           mothdex history
           mothdex history --failed
         long: 'List previous downloads, including failures. Export records using --export and --format.'
         short: 'Show past downloads'
       info:
+        flags:
+          prefer: 'rank links: key=value[,value...] (repeatable)'
+          slug: 'read the argument as a slug'
         example: |-
           mothdex search mario
           mothdex info 1
         long: 'Show an entry and its download links. Use a number from the last search or an explicit slug with --slug.'
         short: 'Show one entry and its links'
       platforms:
+        flags:
+          brand: 'only this brand'
+          class: 'only this class'
         example: 'mothdex platforms'
         long: 'List platform identifiers accepted by --platform.'
         short: 'List platforms'
@@ -341,6 +373,11 @@ ui:
         long: 'Show the active frontend, game root, detection source and storage warnings.'
         short: 'Show the active profile'
       random:
+        flags:
+          count: 'how many entries (1..20)'
+          platform: 'platform id (repeatable)'
+          region: 'region id (repeatable)'
+          serial: 'exact serial'
         example: 'mothdex random'
         long: 'Pick random catalog entries, optionally filtered by platform and region.'
         short: 'Show random entries'
@@ -357,6 +394,15 @@ ui:
           Run mothdex help config, mothdex help exit-codes or mothdex help errors for reference.
         short: 'Search and download from the Mothdex catalog'
       search:
+        flags:
+          export: 'write the results to a file or directory'
+          format: 'export format: txt | json | csv'
+          page: 'page number'
+          page_size: 'results per page (1..100; default interface.page_size)'
+          platform: 'platform id (repeatable)'
+          region: 'region id (repeatable)'
+          serial: 'exact serial'
+          sort: 'relevance | title | size (current page only)'
         example: |-
           mothdex search mario
           mothdex search mario --platform snes --page-size 10
@@ -375,43 +421,22 @@ ui:
         long: 'Print version, commit and build date. --json returns the standard output envelope.'
         short: 'Print the version'
     flags:
-      ref: 'show the error with this ref'
-      sessions: 'newest sessions to include (1..20)'
-      tail: 'only the last lines (0 = all)'
-      allow_executable: 'allow file types that can run code'
-      boxart: 'also save the cover'
-      brand: 'only this brand'
-      class: 'only this class'
       config: 'configuration file'
-      count: 'how many entries (1..20)'
-      export: 'write the results or records to a file or directory'
-      failed: 'only failed downloads'
       force: 'skip prompts; allow overwriting files'
-      format: 'export format: txt | json | csv'
       help: 'show help for this command'
-      jobs: 'downloads at the same time'
       json: 'print one JSON document on stdout'
       lang: 'interface language, for example pt_br'
-      limit: 'newest records to show (0 = all)'
-      link: 'link number to use (wins over --prefer)'
-      no_boxart: 'do not save the cover'
       no_color: 'turn colors off'
-      output: 'destination folder (becomes the root; files go straight into it)'
-      page: 'page number'
-      page_size: 'results per page (1..100; default interface.page_size)'
-      platform: 'platform id (repeatable)'
-      prefer: 'rank links: key=value[,value...] (repeatable)'
       profile: 'frontend profile id'
       quiet: 'print only the result and errors'
       refresh: 'skip cache reads, still write'
-      region: 'region id (repeatable)'
-      search: 'search and download the first result'
-      serial: 'exact serial'
-      slug: 'read the argument as a slug'
-      sort: 'relevance | title | size (current page only)'
       verbose: 'show the cause of errors'
       version: 'print the version and exit'
     template:
+      command_or_topic: 'command or topic'
+      text_token: 'text'
+      key_token: 'key'
+      value_token: 'value'
       default: 'default'
       exit_codes: |-
         Exit  Meaning                         error.code

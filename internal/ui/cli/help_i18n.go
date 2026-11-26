@@ -50,7 +50,11 @@ func localizeHelp(root *cobra.Command, t *i18n.Translator) {
 			c.Example = t.T(prefix+"example", nil)
 		}
 		translate := func(f *pflag.Flag) {
-			key := "ui.cli.flags." + strings.ReplaceAll(f.Name, "-", "_")
+			name := strings.ReplaceAll(f.Name, "-", "_")
+			key := prefix + "flags." + name
+			if !t.Has(key) {
+				key = "ui.cli.flags." + name
+			}
 			if t.Has(key) {
 				f.Usage = t.T(key, nil)
 			}
@@ -61,4 +65,17 @@ func localizeHelp(root *cobra.Command, t *i18n.Translator) {
 	for _, group := range root.Groups() {
 		group.Title = t.T("ui.cli.template."+group.ID, nil)
 	}
+}
+
+// Cobra delays flag parsing for __complete until its own Run. Read just the locale
+// inputs here, excluding the unfinished last word, before descriptions are collected.
+func (r *runtime) localizeCompletion(c *cobra.Command, args []string) {
+	flags := pflag.NewFlagSet("completion-language", pflag.ContinueOnError)
+	flags.ParseErrorsWhitelist.UnknownFlags = true
+	flags.StringVar(&r.g.Lang, "lang", r.g.Lang, "")
+	flags.StringVar(&r.g.Config, "config", r.g.Config, "")
+	if len(args) > 0 {
+		_ = flags.Parse(args[:len(args)-1])
+	}
+	localizeHelp(c.Root(), r.helpTranslator())
 }

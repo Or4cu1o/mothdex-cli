@@ -82,6 +82,9 @@ func (r *runtime) logsPathCmd() *cobra.Command {
 				return map[string]any{"dir": e.options.Dir, "latest": latest, "session": session}, func(p *printer) {
 					_, _ = fmt.Fprintln(p.out, clean(e.options.Dir))
 					_, _ = fmt.Fprintln(p.out, clean(latest))
+					if mlog.NoPermissions(e.options.Dir) {
+						p.warning(p.T("ui.logs.no_permissions", nil))
+					}
 				}, nil
 			})
 		},
@@ -101,7 +104,7 @@ func (r *runtime) logsLastCmd() *cobra.Command {
 				if !ok {
 					return nil, nil, logsNotFound("there is no earlier session", "ui.logs.no_previous", nil)
 				}
-				lines, err := mlog.Lines(e.options.Dir, id, tail)
+				lines, err := mlog.Lines(e.options.Dir, id, tail, e.options.Secrets...)
 				if err != nil {
 					return nil, nil, logsFailure(e, err)
 				}
@@ -156,7 +159,7 @@ func (r *runtime) logsShowCmd() *cobra.Command {
 				if id == "" {
 					return nil, nil, usageErr("logs", "%s", e.p.T("ui.logs.need_target", nil))
 				}
-				lines, err := mlog.Lines(e.options.Dir, id, 0)
+				lines, err := mlog.Lines(e.options.Dir, id, 0, e.options.Secrets...)
 				if err != nil {
 					return nil, nil, logsFailure(e, err)
 				}
@@ -174,7 +177,7 @@ func showRef(e logsEnv, id, typed string) (any, func(*printer), error) {
 	if err != nil {
 		return nil, nil, usageErr("logs", "%s", e.p.T("ui.logs.bad_ref", nil))
 	}
-	matches, err := mlog.Find(e.options.Dir, id, ref)
+	matches, err := mlog.Find(e.options.Dir, id, ref, e.options.Secrets...)
 	if err != nil {
 		return nil, nil, logsFailure(e, err)
 	}

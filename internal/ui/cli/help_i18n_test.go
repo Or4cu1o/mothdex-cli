@@ -37,7 +37,11 @@ func TestEveryCommandAndFlagHasEnglishHelp(t *testing.T) {
 				if f.Hidden {
 					return
 				}
-				key := "ui.cli.flags." + strings.ReplaceAll(f.Name, "-", "_")
+				name := strings.ReplaceAll(f.Name, "-", "_")
+				key := "ui.cli.help." + helpID(c) + ".flags." + name
+				if _, ok := source[key]; !ok {
+					key = "ui.cli.flags." + name
+				}
 				if strings.TrimSpace(source[key]) == "" {
 					t.Errorf("%s --%s lacks %s", c.CommandPath(), f.Name, key)
 				}
@@ -100,5 +104,42 @@ func TestShellCommandDescriptionsFollowSessionLanguage(t *testing.T) {
 		if c.Name == "search" && c.Short != "Pesquise no catálogo" {
 			t.Fatalf("shell search description: %s", c.Short)
 		}
+	}
+}
+
+func TestCommandSpecificFlagDescriptions(t *testing.T) {
+	for _, tc := range []struct{ command, lang, expected string }{
+		{"download", "en_us", "read the arguments as slugs"},
+		{"info", "en_us", "read the argument as a slug"},
+		{"boxart", "en_us", "destination folder"},
+		{"search", "en_us", "write the results to a file or directory"},
+		{"history", "en_us", "write the records to a file or directory"},
+		{"download", "pt_br", "interprete os argumentos como slugs"}, //nolint:misspell // Portuguese user-facing text.
+		{"info", "pt_br", "interprete o argumento como um slug"},
+	} {
+		d, out := helpDeps(t)
+		if code := Execute(context.Background(), d, []string{"--lang", tc.lang, tc.command, "--help"}); code != 0 {
+			t.Fatal(code)
+		}
+		if !strings.Contains(out.String(), tc.expected) {
+			t.Errorf("%s %s lacks %q", tc.command, tc.lang, tc.expected)
+		}
+		if tc.command == "boxart" && strings.Contains(out.String(), "becomes the root") {
+			t.Error("boxart inherited download output description")
+		}
+	}
+}
+
+//nolint:misspell // Portuguese display text is intentional.
+func TestCompletionDescriptionsAndUsageTokensAreLocalized(t *testing.T) {
+	for _, args := range [][]string{{"__complete", "--lang", "pt_br", ""}, {"--lang", "pt_br", "__complete", ""}} {
+		d, out := helpDeps(t)
+		if code := Execute(context.Background(), d, args); code != 0 || !strings.Contains(out.String(), "search\tPesquise no catálogo") {
+			t.Fatalf("localized completion %v: exit %d %s", args, code, out)
+		}
+	}
+	d, out := helpDeps(t)
+	if code := Execute(context.Background(), d, []string{"help", "--lang", "pt_br", "--help"}); code != 0 || !strings.Contains(out.String(), "[comando ou tópico] [opções]") {
+		t.Fatalf("localized usage: %d %s", code, out)
 	}
 }
