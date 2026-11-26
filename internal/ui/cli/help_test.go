@@ -179,7 +179,7 @@ func TestErrorReferenceCoversContractCodes(t *testing.T) {
 			continue
 		}
 		for _, code := range regexp.MustCompile("`([a-z_]+)`").FindAllStringSubmatch(cells[3], -1) {
-			if !strings.Contains(string(doc), "`"+code[1]+"`") || !b.New("en_us").Has("errors."+code[1]+".message") || !strings.Contains(exitCodesHelp, code[1]) {
+			if !strings.Contains(string(doc), "`"+code[1]+"`") || !b.New("en_us").Has("errors."+code[1]+".message") || !strings.Contains(b.New("en_us").T("ui.cli.template.exit_codes", nil), code[1]) {
 				t.Errorf("missing documented error %s", code[1])
 			}
 		}

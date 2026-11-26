@@ -54,11 +54,9 @@ func (r *runtime) configureHelp(root *cobra.Command) {
 		}
 	}
 	walkCommands(root, func(c *cobra.Command) {
-		if h, ok := commandHelp[helpID(c)]; ok {
-			c.Long, c.Example = h.long, h.example
-		}
 		c.InitDefaultHelpFlag()
 	})
+	localizeHelp(root, r.helpTranslator())
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) { r.printHelp(c) })
 	root.SetUsageFunc(func(c *cobra.Command) error { r.printHelp(c); return nil })
 }
@@ -90,14 +88,14 @@ func (r *runtime) helpCmd(root *cobra.Command) *cobra.Command {
 			}
 		}
 		if len(args) == 0 {
-			for _, topic := range append(referenceTopics(), r.d.HelpTopics...) {
+			for _, topic := range append(referenceTopics(r.helpTranslator()), r.d.HelpTopics...) {
 				add(topic.Name)
 			}
 		}
 		return values, cobra.ShellCompDirectiveNoFileComp
 	}, RunE: func(c *cobra.Command, args []string) error {
 		if len(args) == 1 {
-			for _, topic := range append(referenceTopics(), r.d.HelpTopics...) {
+			for _, topic := range append(referenceTopics(r.helpTranslator()), r.d.HelpTopics...) {
 				if topic.Name == args[0] {
 					_, err := fmt.Fprintln(c.OutOrStdout(), topic.Text())
 					return err
@@ -113,14 +111,17 @@ func (r *runtime) helpCmd(root *cobra.Command) *cobra.Command {
 }
 
 func (r *runtime) printHelp(c *cobra.Command) {
+	t := r.helpTranslator()
+	localizeHelp(c.Root(), t)
+	label := func(name string) string { return t.T("ui.cli.template."+name, nil) }
 	out := c.OutOrStdout()
 	_, _ = fmt.Fprintln(out, c.Long+"\n")
-	_, _ = fmt.Fprintln(out, "Usage:")
-	_, _ = fmt.Fprintln(out, "  "+c.UseLine())
+	_, _ = fmt.Fprintln(out, label("usage")+":")
+	_, _ = fmt.Fprintln(out, "  "+strings.ReplaceAll(c.UseLine(), "[command]", "["+label("command_token")+"]"))
 	if c == c.Root() {
-		_, _ = fmt.Fprintln(out, "\nModes:\n"+modesHelp)
+		_, _ = fmt.Fprintln(out, "\n"+label("modes")+":\n"+label("modes_table"))
 		if r.run != nil {
-			_, _ = fmt.Fprintln(out, "\nShell commands: n, p, page <n>, sort <key>, last, clear, exit, quit")
+			_, _ = fmt.Fprintln(out, "\n"+label("shell_commands"))
 		}
 	}
 	printCommands := func(title, group string) {
@@ -141,18 +142,18 @@ func (r *runtime) printHelp(c *cobra.Command) {
 			printCommands(g.Title, g.ID)
 		}
 	} else {
-		printCommands("Available Commands", "")
+		printCommands(label("commands"), "")
 	}
 	if c.Example != "" {
-		_, _ = fmt.Fprintln(out, "\nExamples:\n  "+strings.ReplaceAll(c.Example, "\n", "\n  "))
+		_, _ = fmt.Fprintln(out, "\n"+label("examples")+":\n  "+strings.ReplaceAll(c.Example, "\n", "\n  "))
 	}
 	local := pflag.NewFlagSet("local", pflag.ContinueOnError)
 	c.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) { local.AddFlag(f) })
 	if local.HasAvailableFlags() {
-		_, _ = fmt.Fprintln(out, "\nFlags:\n"+local.FlagUsages())
+		_, _ = fmt.Fprintln(out, "\n"+label("flags")+":\n"+strings.ReplaceAll(local.FlagUsages(), "(default ", "("+label("default")+" "))
 	}
 	global := c.Root().PersistentFlags()
 	if global.HasAvailableFlags() {
-		_, _ = fmt.Fprintln(out, "Global Flags:\n"+global.FlagUsages())
+		_, _ = fmt.Fprintln(out, label("global_flags")+":\n"+strings.ReplaceAll(global.FlagUsages(), "(default ", "("+label("default")+" "))
 	}
 }
