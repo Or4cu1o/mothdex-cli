@@ -153,9 +153,18 @@ should use their own installation method; an unmanaged upgrade exits 9 and print
 - `mdex upgrade --json -f`: use the standard JSON envelope, including the signature result and restart hint.
 
 The updater uses the fixed official GitHub release origin. It verifies SHA-256 for every archive, then verifies origin
-with cosign when installed or otherwise `gh attestation` when available. This first implementation reports `none`
-(SHA-256 only) when neither is available. A present verifier that fails aborts; `-f` never skips a verification.
-The following native Sigstore change (D35) removes SHA-256-only updates.
+natively with sigstore-go. The signed manifest must match its SHA-256, chain to the embedded Sigstore Public Good
+Fulcio roots, have verified Rekor transparency evidence and an authenticated observer timestamp, and have the exact
+certificate identity of `Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version>` with the GitHub Actions
+OIDC issuer. A failure aborts before extraction or installation. `-f` never skips verification. No external tool or
+SHA-256-only fallback is selected.
+
+The Public Good trusted root is **embedded**, refreshed through verified TUF metadata by
+`go run scripts/update-trusted-root.go` during release preparation and committed for review. Upgrades do not fetch
+TUF, Fulcio, Rekor or certificate URLs at runtime. Root rotations require a new Mothdex release with refreshed trust
+material; a release signed only with an unknown new key fails closed and requires the current installer. Revocations
+and other trust changes are likewise learned through a Mothdex update, rather than a runtime TUF refresh. Root changes
+must be reviewed with the release code; the bundle itself can never supply a trust anchor.
 
 All components are staged and probed before confirmation. After replacement, the CLI and GUI are checked again.
 Failure restores the previous files in reverse order. The Windows alias hardlink is recreated for the new CLI;
