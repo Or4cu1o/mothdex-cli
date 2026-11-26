@@ -26,6 +26,8 @@ var (
 	userinfoPattern = regexp.MustCompile(`[^\s/\\"'=@:(\[]+:[^\s/\\"'@]+@([A-Za-z0-9.\-]+)`)
 	// "Name: value" and "Name=value" forms of the headers that carry credentials; the value runs to
 	// the end of the line, quote or bracket.
+	// A secret written as key=value outside a URL, as in a raw server message.
+	pairPattern   = regexp.MustCompile(`(?i)\b([a-z0-9_\-]*(?:token|signature|password|passwd|secret|api_?key|x-amz-credential)|sig)=[^\s&"'\\<]+`)
 	headerPattern = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization|set-cookie|cookie|x-[a-z0-9-]*(?:token|key|secret|auth)[a-z0-9-]*)(\s*[:=]\s*\[?)[^\r\n"\]\\]+`)
 )
 
@@ -69,6 +71,7 @@ func (r *redactor) text(s string) string {
 	s = headerPattern.ReplaceAllString(s, "${1}${2}"+redacted)
 	s = urlPattern.ReplaceAllStringFunc(s, r.url)
 	s = userinfoPattern.ReplaceAllString(s, redacted+"@${1}")
+	s = pairPattern.ReplaceAllString(s, "${1}="+redacted)
 	for _, re := range r.secrets {
 		s = re.ReplaceAllLiteralString(s, apiMarker)
 	}

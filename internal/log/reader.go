@@ -96,15 +96,18 @@ func Last(dir, current string) (string, bool) {
 	return "", false
 }
 
-// Lines reads a session, safe to print. tail > 0 keeps only the last tail lines. id must name a
-// file in sessions/ (TM-24).
-func Lines(dir, id string, tail int) ([]string, error) {
+// Lines reads a session, safe to show: redacted again, because the runtime writes crash traces
+// to the file as they are and older logs were never redacted, and without control characters.
+// secrets are the configured values to hide besides the default API. tail > 0 keeps only the last
+// tail lines. id must name a file in sessions/ (TM-24).
+func Lines(dir, id string, tail int, secrets ...string) ([]string, error) {
 	if !sessionIDPattern.MatchString(id) {
 		return nil, ErrSession
 	}
+	redact := newRedactor(append([]string{defaultAPI}, secrets...)...)
 	out := []string{}
 	err := eachLine(sessionFile(dir, id), func(line string) {
-		out = append(out, printable(line))
+		out = append(out, redact.text(printable(line)))
 		if tail > 0 && len(out) > tail {
 			out = out[1:]
 		}
@@ -117,7 +120,7 @@ func Lines(dir, id string, tail int) ([]string, error) {
 
 // Find returns every error line carrying ref, in one session or, with id empty, in all of them,
 // newest first.
-func Find(dir, id, ref string) ([]Match, error) {
+func Find(dir, id, ref string, secrets ...string) ([]Match, error) {
 	ids := []string{id}
 	if id == "" {
 		ids = ids[:0]
@@ -127,7 +130,7 @@ func Find(dir, id, ref string) ([]Match, error) {
 	}
 	out := []Match{}
 	for _, session := range ids {
-		lines, err := Lines(dir, session, 0)
+		lines, err := Lines(dir, session, 0, secrets...)
 		if err != nil {
 			return nil, err
 		}

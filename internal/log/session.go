@@ -34,6 +34,7 @@ const (
 	msgEnd       = "session end"
 	msgDropped   = "lines dropped"
 	msgTruncated = "log truncated"
+	msgNoModes   = "log folder has no file permissions"
 )
 
 // SessionOptions describe the process before anything is configured.
@@ -143,7 +144,8 @@ func (s *Session) Attached() bool {
 }
 
 // Attach opens the files in a.Dir, writes the lines kept so far and applies retention. Only the
-// first call counts. An error is a warning for the person: the program goes on and lines are
+// first call counts. A folder that is not safe is replaced by the default one when that one is.
+// An error is a warning for the person: the program goes on, and without a safe folder lines are
 // discarded.
 func (s *Session) Attach(a AttachOptions) error {
 	s.redact.add(a.Secrets...)
@@ -165,18 +167,60 @@ func (s *Session) Attach(a AttachOptions) error {
 	}
 	s.level.Set(level)
 	head := s.drain(level)
-	if err := s.openFiles(head); err != nil {
+	err := s.openFiles(head)
+	if err != nil && s.id == "" && errors.Is(err, errUnsafeDir) {
+		err = s.fallBack(head, err)
+	}
+	if s.id == "" {
 		return errors.Join(levelErr, err)
+	}
+	if permissionless(s.dir) {
+		s.append(fmt.Appendf(nil, "time=%s level=WARN msg=%q\n", s.opts.Now().Format(time.RFC3339Nano), msgNoModes))
 	}
 	keep := a.Keep
 	if keep < 1 {
 		keep = defaultKeep
 	}
-	prune(filepath.Join(a.Dir, SessionsDir), sessionFilePattern, keep, s.id+".log")
-	prune(filepath.Join(a.Dir, CrashDir), crashFilePattern, keepCrashes, "")
-	prune(filepath.Join(a.Dir, BundlesDir), bundleFilePattern, keepBundles, "")
-	return levelErr
+	prune(filepath.Join(s.dir, SessionsDir), sessionFilePattern, keep, s.id+".log")
+	prune(filepath.Join(s.dir, CrashDir), crashFilePattern, keepCrashes, "")
+	prune(filepath.Join(s.dir, BundlesDir), bundleFilePattern, keepBundles, "")
+	return errors.Join(levelErr, err)
 }
+
+// fallBack moves the session to the default folder when the configured one is refused; the caller
+// holds the lock. The error returned is the warning to show, also when the move worked.
+func (s *Session) fallBack(head []byte, refused error) error {
+	locate := s.opts.DefaultDir
+	if locate == nil {
+		locate = defaultDir
+	}
+	configured := s.dir
+	dir, _, err := locate()
+	if err != nil || filepath.Clean(dir) == filepath.Clean(configured) {
+		return refused
+	}
+	s.dir = dir
+	if err := s.openFiles(head); s.id == "" {
+		s.dir = configured
+		return errors.Join(refused, err)
+	}
+	return fmt.Errorf("logging to %s instead of %s: %w", dir, configured, refused)
+}
+
+// Dir is the log folder in use, which is not the configured one after a fall back. It is empty
+// while nothing is written.
+func (s *Session) Dir() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.id == "" {
+		return ""
+	}
+	return s.dir
+}
+
+// NoPermissions reports a folder on a file system without file permissions (FAT, exFAT, NTFS), to
+// warn the person that other users of the machine may read the logs.
+func NoPermissions(dir string) bool { return permissionless(dir) }
 
 // openFiles creates the session file and claims latest.log; the caller holds the lock.
 func (s *Session) openFiles(head []byte) error {

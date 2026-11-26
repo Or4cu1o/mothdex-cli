@@ -47,8 +47,15 @@ func openFile(path string, flags int) (*os.File, error) {
 		_ = windows.CloseHandle(h)
 		return nil, fmt.Errorf("%s: not a regular file", path)
 	}
+	if disposition != windows.CREATE_NEW && info.NumberOfLinks > 1 {
+		_ = windows.CloseHandle(h)
+		return nil, fmt.Errorf("%w: %s has another name", errUnsafeDir, path)
+	}
 	return os.NewFile(uintptr(h), path), nil
 }
+
+// permissionless is a Unix concern: Windows folders are not judged by modes.
+var permissionless = func(string) bool { return false }
 
 // checkOwner: the default folders are inside the user profile, whose access list protects them.
 func checkOwner(string, fs.FileInfo) error { return nil }
