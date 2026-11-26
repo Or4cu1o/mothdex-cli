@@ -52,6 +52,13 @@ from §6.
   `stage`, `swap`, `check` or `done`. `Total` is 0 when the size is unknown.
   - Both `Progress` and `Confirm` are called on `Apply`'s own goroutine, one at a time. A front end that draws on
     another thread must copy the value it receives and must not block for long.
+- **CheckResult.** `CheckResult{Current, Latest, Channel, PageURL string; Available, Notify, FromCache bool;
+  CheckedAt time.Time; Skipped string}`.
+  - `Latest` has passed the SemVer check (TM-38), or is `""` when none is known.
+  - `Available` means `Latest > Current`.
+  - `Notify` applies the notice-once rule of §5. The caller that shows the notice calls `MarkNotified(latest)`,
+    which rewrites `notified_*`.
+  - `Skipped` carries the off-switch reason, and then no request was made.
 - **Cancellation.** `Apply` checks `ctx` before every step and again right after `Confirm` returns.
   - Up to step 4 (§3), a cancelled `ctx` deletes the staging folder and returns `canceled`.
   - A `Confirm` that waits on a dialog must also watch `ctx.Done()` and return false when it fires.
