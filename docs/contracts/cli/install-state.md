@@ -81,7 +81,11 @@ UTF-8 JSON, one **flat** object, **no BOM**, at most 16 KiB.
 | `installed_at`, `updated_at` | RFC 3339 UTC |
 | `updated_by` | `"installer"` or `"upgrade"` |
 
-Readers ignore unknown fields, and writers write only the v1 fields: adding a field keeps `schema_version: 1`.
+Readers ignore unknown fields. Adding a field keeps `schema_version: 1`.
+- **`internal/update` keeps unknown top-level fields** when it rewrites the state, for example fields written by a
+  newer installer. It decodes them as raw JSON and writes the known fields on top. Unknown fields go after the v1
+  fields, one line each, in compact JSON and in their original order. It never acts on an unknown field. Unknown fields still count toward the 16 KiB cap: a file over the cap is `bad_state`.
+- **The installers write the fields they know.** A newer installer is the one that knows the newer fields.
 Removing a field or changing its meaning bumps the version.
 
 ## 3. Who writes it, and when
@@ -123,7 +127,7 @@ Otherwise the result is `update_unavailable`, with `details.reason` set to the f
 | `schema_version == 1` and `source == "installer"` | `state_newer` / `not_installer` |
 | `dir`, cleaned and with symlinks resolved, equals the folder of the running binary (case-insensitive on Windows) | `moved` |
 | the folder passes the installer trust rules: not a link or reparse point, not writable by others (Unix mode `o+w`; group write is accepted, as in the installer, because a user-private group with umask 002 makes `0775` common), and on Windows no write ACE for Users, Everyone or Authenticated Users | `untrusted_dir` |
-| the folder's owner is trusted, and a temporary file can be created and removed in it. **Unix:** the owner is the effective user, so `sudo mdex upgrade` on a user install is refused. **Windows:** the owner is in install.ps1's trusted set: the token user, the token's default owner (Administrators when elevated), SYSTEM (`S-1-5-18`), Administrators (`S-1-5-32-544`) or TrustedInstaller. The broad write-ACE and reparse-point rules of the row above still apply. | `not_owner` / `read_only` |
+| the folder's owner is trusted, and a temporary file can be created and removed in it. The write probe runs only inside `Apply`, after the update lock is taken. `Check`, `SkipReason`, the notices and `CleanupOld` use the read-only part of this gate (state, folder and owner rules), so a check never writes in `dir`. **Unix:** the owner is the effective user, so `sudo mdex upgrade` on a user install is refused. **Windows:** the owner is in install.ps1's trusted set: the token user, the token's default owner (Administrators when elevated), SYSTEM (`S-1-5-18`), Administrators (`S-1-5-32-544`) or TrustedInstaller. The broad write-ACE and reparse-point rules of the row above still apply. | `not_owner` / `read_only` |
 | every field passes its §2 rule, `version` is valid SemVer, and `target` is the running binary's `GOOS_GOARCH` | `bad_state` |
 
 The file never redirects a write. Upgrade writes only to the running binary's folder and only the names in update.md
