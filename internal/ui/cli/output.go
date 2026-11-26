@@ -262,6 +262,9 @@ func (p *printer) localizedMessage(ae *app.Error, args i18n.Args) string {
 		args = errorArgs(ae)
 	}
 	key := "errors." + ae.Code + ".message"
+	if k, ok := ae.Args["message_key"].(string); ok {
+		key = k // a message more precise than the one of the code
+	}
 	if !p.t.Has(key) {
 		return englishMessage(ae)
 	}

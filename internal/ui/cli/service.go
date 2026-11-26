@@ -102,9 +102,11 @@ type Deps struct {
 	// Diagnostics opens the log files without opening the service and returns what a bundle needs,
 	// with the error of a configuration that does not load.
 	Diagnostics func(g Globals) (mlog.BundleOptions, error)
-	Stdin       io.Reader
-	Stdout      io.Writer
-	Stderr      io.Writer
+	// OpenFolder shows a folder in the file manager; nil uses the system's.
+	OpenFolder func(dir string) error
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
 	// IsTerminal reports whether a stream is a terminal; Width is the terminal width in columns.
 	IsTerminal func(any) bool
 	Width      func() int

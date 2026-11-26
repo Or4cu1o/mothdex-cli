@@ -200,7 +200,7 @@ func (r *runtime) rootCommand() *cobra.Command {
 	root.AddCommand(
 		r.searchCmd(), r.infoCmd(), r.randomCmd(), r.downloadCmd(), r.boxartCmd(),
 		r.platformsCmd(), r.regionsCmd(), r.dbInfoCmd(), r.historyCmd(), r.cacheCmd(),
-		r.configCmd(), r.profileCmd(), r.versionCmd(),
+		r.configCmd(), r.profileCmd(), r.versionCmd(), r.logsCmd(),
 	)
 	if r.run == nil { // the Shell never runs shell, tui or gui
 		root.AddCommand(r.shellCmd(), r.tuiCmd(), r.guiCmd())

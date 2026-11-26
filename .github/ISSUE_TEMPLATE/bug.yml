@@ -34,6 +34,12 @@ body:
         - Other
     validations:
       required: true
+  - type: input
+    id: ref
+    attributes:
+      label: Error ref
+      description: The 6 characters shown after `ref:` with the error. Leave empty if no error was shown.
+      placeholder: 7F3K2Q
   - type: textarea
     id: what
     attributes:
@@ -63,6 +69,11 @@ body:
       placeholder: Batocera 41, Raspberry Pi 4 (arm64)
     validations:
       required: true
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Log bundle
+      description: Run `mothdex logs bundle` (or **Export logs** in the GUI), review the zip, and drag it here. The issue is public.
   - type: textarea
     id: probe
     attributes:

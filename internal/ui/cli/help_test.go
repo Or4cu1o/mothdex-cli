@@ -87,7 +87,7 @@ func helpDeps(t *testing.T) (Deps, *bytes.Buffer) {
 func TestHelpAliasGroupsAndTopics(t *testing.T) {
 	d, out := helpDeps(t)
 	d.ProgramName = filepath.Join("bin", "mdex.exe")
-	d.HelpTopics = []HelpTopic{{Name: "logs", Text: func() string { return "session logs reference" }}}
+	d.HelpTopics = []HelpTopic{{Name: "extra", Text: func() string { return "an added reference" }}}
 	for _, tc := range []struct {
 		args []string
 		want []string
@@ -97,7 +97,8 @@ func TestHelpAliasGroupsAndTopics(t *testing.T) {
 		{[]string{"help", "config"}, []string{"interface.page_size", "MOTHDEX_", "Default"}},
 		{[]string{"help", "exit-codes"}, []string{"130", "partial", "canceled"}},
 		{[]string{"help", "errors"}, []string{"network", "Check your connection"}},
-		{[]string{"help", "logs"}, []string{"session logs reference"}},
+		{[]string{"help", "extra"}, []string{"an added reference"}},
+		{[]string{"help", "logs"}, []string{"logs bundle", "ref"}},
 	} {
 		out.Reset()
 		if code := Execute(context.Background(), d, tc.args); code != 0 {
@@ -277,6 +278,7 @@ func TestEveryExampleAgainstFakeServer(t *testing.T) {
 	}
 	d, out := helpDeps(t)
 	guiFixture(t, &d)
+	logFixture(t, &d)
 	d.IsTerminal = func(any) bool { return true }
 	d.Shell = func(context.Context, ShellEnv) int { return 0 }
 	d.TUI = func(context.Context, TUIEnv) int { return 0 }
