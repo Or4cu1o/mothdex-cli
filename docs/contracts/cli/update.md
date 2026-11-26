@@ -146,7 +146,7 @@ from §6.
      `size_mismatch`. Forward compatibility (Crivo M3, agreed with Regente):
      - **Executables and DLLs keep exact names**, and an extra member at the archive root is still `integrity`.
      - **Extra regular files under `THIRD_PARTY/` are accepted**, at most 64 of them, each at most 1 MiB, within the
-       128 MiB total. The name must match `^THIRD_PARTY/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`: a base name only, with no
+       128 MiB total. The name must match `^THIRD_PARTY/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`: a base name of at most 64 characters, with no
        path and no leading dot.
      - **Accepted extras are never executed**, and are written to `mothdex-licenses` only when they are on the known
        notice list.
