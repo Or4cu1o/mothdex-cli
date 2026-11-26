@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"flag"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,26 +182,6 @@ func TestAnUnknownLogLevelIsAConfigurationError(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := run([]string{"mothdex-gui", "--log-level", "loud"}, &out, &errOut); code != exitConfig || !strings.Contains(errOut.String(), "log.level") {
 		t.Fatalf("exit %d, stderr %q", code, errOut.String())
-	}
-}
-
-func panicForTheTest() { panic("boom") }
-
-// A Port has no visible terminal: the log line is what a tester can send, so it carries the stack.
-func TestAPanicIsLoggedWithItsStackAndExitsOne(t *testing.T) {
-	var logged, errOut bytes.Buffer
-	log := slog.New(slog.NewTextHandler(&logged, nil))
-	code := func() (code int) {
-		defer recoverInternal(&code, log, "mothdex.log", &errOut)
-		panicForTheTest()
-		return exitOK
-	}()
-	line := logged.String()
-	if code != exitInternal || strings.Count(line, "\n") != 1 || !strings.Contains(line, "panic=boom") || !strings.Contains(line, "panicForTheTest") {
-		t.Fatalf("exit %d, log %q", code, line)
-	}
-	if !strings.Contains(errOut.String(), "mothdex.log") {
-		t.Errorf("stderr does not point at the log: %q", errOut.String())
 	}
 }
 

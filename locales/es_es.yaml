@@ -296,6 +296,21 @@ ui:
       number: 'Muestra la entrada con ese número (igual que info)'
       d: 'Descarga entradas por número: d 1 3, o d 2-4'
   gui:
+    error:
+      code: 'código: {code}'
+      code_ref: 'código: {code} · ref: {ref}'
+      log: 'registro: {path}'
+    logs:
+      export: 'Exportar registros'
+      ask: '¿Exportar los registros?'
+      ask_detail: 'Se guarda en este dispositivo un zip con los registros recientes. Contiene tus búsquedas y nombres de archivos. No se envía nada.'
+      exporting: 'Exportando los registros…'
+      done: 'Registros guardados'
+      failed: 'No se guardaron los registros'
+      ok: 'Aceptar'
+    crash:
+      title: 'Algo ha fallado'
+      body: 'mothdex no puede continuar. Exporta los registros y adjúntalos a tu informe, con la ref de abajo.'
     cmdline:
       summary: "mothdex-gui es la interfaz para mando de mothdex en frontends de emulación.\nSin opciones, se abre a pantalla completa."
       usage: 'Uso:'
@@ -311,7 +326,7 @@ ui:
         config: 'Archivo de configuración (por defecto: el estándar)'
         profile: "Perfil del frontend, como batocera\n(por defecto: detectado)"
         lang: "Idioma de la interfaz, como es_es\n(por defecto: interface.language)"
-        log_level: "Detalle del registro: debug, info, warn o error.\nAtajo de MOTHDEX_LOG_LEVEL (por defecto: log.level)"
+        log_level: "Detalle de mothdex.log: debug, info, warn o error.\nAtajo de MOTHDEX_LOG_LEVEL (por defecto: log.level)"
         window: 'Abre una ventana de ese tamaño, no a pantalla completa'
         driver: "Fuerza un controlador de vídeo de SDL, como dummy\n(por defecto: SDL_VIDEODRIVER o el que elija SDL)"
         probe: "Comprueba que SDL2 se puede usar, sin ventana:\nmuestra su versión y sale"
@@ -331,7 +346,7 @@ ui:
         log_level: 'Igual que --log-level'
         key: 'Cualquier clave: mayúsculas, puntos como _'
       examples_title: 'Ejemplos:'
-      log_note: 'Los fallos se guardan en mothdex.log, en la carpeta de registros (paths.logs).'
+      log_note: "Cada ejecución guarda un registro; latest.log, en la carpeta de registros\n(paths.logs), es el último. Para enviarlo: Ajustes > Acerca de > Exportar registros."
       see_help: 'Ejecuta mothdex-gui --help para ver las opciones.'
       unexpected_argument: 'Argumento inesperado: {argument}'
       unknown_flag: 'Opción desconocida: {flag}'

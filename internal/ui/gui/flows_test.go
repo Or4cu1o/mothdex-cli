@@ -236,7 +236,8 @@ func TestPickerLoadFailureOffersRetry(t *testing.T) {
 	h.press(input.Up)
 	h.press(input.Up)
 	h.press(input.Confirm)
-	h.mustHave("Cannot reach the Mothdex server.", "code: network", "Retry")
+	h.mustHave("Cannot reach the Mothdex server.", "Retry")
+	h.mustMatch(`^code: network · ref: [0-9A-Z]{6}$`)
 	svc.PlatformErr = nil
 	h.press(input.Confirm) // A retries
 	h.mustHave("Super Nintendo")
@@ -298,7 +299,8 @@ func TestResultsStatesEmptyErrorAndStale(t *testing.T) {
 
 	svc.SearchErr = &app.Error{Code: app.CodeNetwork, Message: "down"}
 	h.press(input.Menu)
-	h.mustHave("Cannot reach the Mothdex server.", "Check your connection.", "code: network", "Retry")
+	h.mustHave("Cannot reach the Mothdex server.", "Check your connection.", "Retry")
+	h.mustMatch(`^code: network · ref: [0-9A-Z]{6}$`)
 	svc.SearchErr = nil
 	h.send(TextMsg{})      // nothing
 	h.press(input.Confirm) // A retries
@@ -546,7 +548,7 @@ func TestEntryLoadFailureShowsTheErrorInPlaceWithRetry(t *testing.T) {
 	searchFor(t, h, "zelda")
 	svc.Catalog = nil // the entry vanished
 	h.press(input.Confirm)
-	h.mustHave("code: not_found")
+	h.mustMatch(`^code: not_found · ref: [0-9A-Z]{6}$`)
 	svc.Catalog = zeldaService(1).Catalog
 	h.press(input.Confirm) // A retries
 	h.mustHave("Zelda 001", "Links")
@@ -788,11 +790,11 @@ func TestToastsForTheBatchSummaryAndForFailuresOffTheQueue(t *testing.T) {
 	h.advance(4 * time.Second)
 
 	h.send(JobMsg{Job: app.JobSnapshot{ID: "3", Title: "C", State: app.StateFailed, Err: &app.Error{Code: app.CodeNetwork, Message: "x"}}})
-	h.mustHave("Download failed: C")
+	h.mustMatch(`^network · [0-9A-Z]{6} · Download failed: C$`)
 	h.advance(4 * time.Second)
 	h.press(input.Queue)
 	h.send(JobMsg{Job: app.JobSnapshot{ID: "4", Title: "D", State: app.StateFailed, Err: &app.Error{Code: app.CodeNetwork, Message: "x"}}})
-	h.mustNotHave("Download failed: D") // the person is on the Queue and sees the row
+	h.mustNotMatch(`Download failed: D`) // the person is on the Queue and sees the row
 }
 
 func TestBoxartIsSavedAfterADoneJobWhenTheOptionIsOn(t *testing.T) {
@@ -936,7 +938,7 @@ func TestDownloadAnywayAsksAndConsentsToExactlyTheSizeShown(t *testing.T) {
 	h.send(JobMsg{Job: app.JobSnapshot{ID: "1", Slug: "zelda-001", Title: "Zelda 001", LinkIndex: 2, State: app.StateFailed, Expected: real, CatalogSize: catalog,
 		Err: &app.Error{Code: "confirmation_required", Message: "needs confirmation", Args: map[string]any{"size": real, "path": "/roms/gbc"}}}})
 	h.mustHave("Needs your OK: Zelda 001") // the toast, from the Home screen: the title comes last, so a cut falls on it
-	h.mustNotHave("Download failed")
+	h.mustNotMatch(`Download failed`)
 	h.press(input.Queue)
 	h.mustHave("Needs your OK: the file is 700.0 MB, listed as 40.0 MB.")
 
