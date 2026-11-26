@@ -14,7 +14,7 @@ import (
 func attachOptions(cfg config.Config, paths config.ResolvedPaths, plat config.Platform) mlog.AttachOptions {
 	return mlog.AttachOptions{
 		Dir: paths.Logs, Level: cfg.Log.SessionLevel, Keep: cfg.Log.SessionsKeep,
-		Secrets: []string{cfg.API.BaseURL}, Home: plat.HomeDir,
+		Secrets: []string{cfg.API.BaseURL}, Home: plat.HomeDir, MaxSizeMB: cfg.Log.MaxSizeMB, MaxFiles: cfg.Log.MaxFiles,
 	}
 }
 
@@ -52,6 +52,7 @@ func Diagnostics(logs *mlog.Session, configFile, profile, lang string) (mlog.Bun
 		return mlog.BundleOptions{}, errors.Join(loadErr, err)
 	}
 	var attachErr error
+	first := logs != nil && !logs.Attached() // else compose.Open already described the session
 	if logs != nil {
 		// A folder that cannot be written can still hold old sessions to read.
 		attachErr = logs.Attach(attachOptions(res.Config, paths, plat))
@@ -62,14 +63,21 @@ func Diagnostics(logs *mlog.Session, configFile, profile, lang string) (mlog.Bun
 	if profile == "" {
 		profile = res.Config.Profile.ID
 	}
+	if first {
+		logs.Update(mlog.Info{Profile: profile, Lang: lang, ConfigSource: configSource(file)})
+	}
 	settings := res.Settings()
 	entries := make([]mlog.ConfigEntry, len(settings))
 	for i, s := range settings {
 		entries[i] = mlog.ConfigEntry{Key: s.Key, Value: s.Value, Source: string(s.Source)}
 	}
+	dir := paths.Logs
+	if logs != nil && logs.Dir() != "" {
+		dir = logs.Dir() // the default folder, when the configured one was refused
+	}
 	b := buildinfo.Get()
 	return mlog.BundleOptions{
-		Dir: paths.Logs, Home: plat.HomeDir, Secrets: []string{res.Config.API.BaseURL},
+		Dir: dir, Home: plat.HomeDir, Secrets: []string{res.Config.API.BaseURL},
 		Manifest: mlog.Manifest{Version: b.Version, Commit: b.Commit, Profile: profile, Lang: lang, Config: entries},
 	}, errors.Join(loadErr, attachErr)
 }

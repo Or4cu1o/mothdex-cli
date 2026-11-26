@@ -45,7 +45,7 @@ text_is() { [ "$1" = "$2" ]; }
 file_lacks() { ! grep -qF -- "$2" "$1"; }
 out_lacks() { ! grep -qF -- "$1" "$OUT"; }
 absent_all() { for f in "$@"; do absent "$f" || return 1; done; }
-no_stage() { [ -z "$(find "$1" -maxdepth 1 -name '.mothdex*' 2>/dev/null)" ]; }
+no_stage() { [ -z "$(find "$1" -maxdepth 1 -name '.mothdex*' ! -name .mothdex-install.json 2>/dev/null)" ]; }
 env_scrubbed() { [ -s /tmp/probe.env ] && ! grep -Eq '^(LD_|SDL_|MOTHDEX_|HOME=)' /tmp/probe.env; }
 probe_ran_in_bin() { case $(cat /tmp/probe.where 2>/dev/null) in /userdata/system/bin/.mothdex-gui.new.*) return 0 ;; esac; return 1; }
 out_has_no_esc() { ! grep -q "$(printf '')" "$OUT"; }
@@ -93,6 +93,9 @@ replace_amd64() {
 gui_stub() {
   case $1 in
     notelig)
+      printf '#!/bin/sh\nif [ "${1:-}" = "--probe" ]; then echo "libSDL2-2.0.so.0 not found" >&2; exit 8; fi\necho "gui $*"\n'
+      ;;
+    exit1) # "SDL missing" up to 0.1.x, an internal error from 0.2.0 on
       printf '#!/bin/sh\nif [ "${1:-}" = "--probe" ]; then echo "libSDL2-2.0.so.0 not found" >&2; exit 1; fi\necho "gui $*"\n'
       ;;
     execfail)
@@ -102,7 +105,7 @@ gui_stub() {
       printf '#!/bin/sh\nif [ "${1:-}" = "--probe" ]; then echo "panic: boom" >&2; exit 2; fi\n'
       ;;
     longmsg)
-      printf '#!/bin/sh\nif [ "${1:-}" = "--probe" ]; then printf "\\033[31m%%0300d\\n" 0 >&2; exit 1; fi\n'
+      printf '#!/bin/sh\nif [ "${1:-}" = "--probe" ]; then printf "\\033[31m%%0300d\\n" 0 >&2; exit 8; fi\n'
       ;;
     *)
       printf '#!/bin/sh\nif [ "${1:-}" = "--probe" ]; then\n  env >/tmp/probe.env\n  echo "$0" >/tmp/probe.where\n  echo "sdl 2.32.10"\n  exit 0\nfi\necho "gui $*"\n'
@@ -213,6 +216,20 @@ setup_release() {
   make_gui_tag v1.4.4 badspace
   make_gui_tag v1.4.5 badstar
   make_gui_tag v1.4.6 unknownnotice
+  # the probe's exit 1: not eligible for releases up to 0.1.x, a probe error from 0.2.0 on
+  make_gui_tag v0.1.5 exit1
+  make_gui_tag v1.4.7 exit1
+  # v1.0.6: valid release whose binary reads its stdin; v1.0.5: whose binary fails --version
+  make_tag v1.0.6
+  clean_build
+  printf '#!/bin/sh\ncat >>/tmp/stdin.seen\necho "mothdex 1.0.6"\n' >/tmp/build/mothdex
+  chmod 0755 /tmp/build/mothdex
+  replace_amd64 v1.0.6
+  make_tag v1.0.5
+  clean_build
+  printf '#!/bin/sh\nexit 1\n' >/tmp/build/mothdex
+  chmod 0755 /tmp/build/mothdex
+  replace_amd64 v1.0.5
 }
 
 # --- simulated systems ------------------------------------------------------------------------------------------
@@ -223,6 +240,8 @@ reset() {
     /tmp/pwn /tmp/pwn-abs /tmp/victim /tmp/victimdir /tmp/nocurl /tmp/nocurl2 /tmp/ghonly /tmp/probe.env /tmp/probe.where "$FAKE_LOG.refresh" "$FAKE_LOG.timeout" "$FAKE_LOG.curlfirst" "$FAKE_LOG" "$FAKE_LOG.cosign" "$FAKE_LOG.gh" 2>/dev/null
   : >"$FAKE_LOG"
   mkdir -p /home/u /opt
+  rm -rf /tmp/stdin.seen /tmp/readers /tmp/fishbin /tmp/cut.sh
+  unset SHELL ZDOTDIR LANG LC_ALL LC_MESSAGES
   HOME=/home/u
   FAKE_UNAME_S=Linux
   FAKE_UNAME_M=x86_64
@@ -320,11 +339,12 @@ check "lakka profile" out_has "profile: lakka"
 check "lakka binary" test -x /storage/.local/bin/mothdex
 check "lakka has no launcher" test -z "$(find /storage -name Mothdex.sh)"
 
+LINE="export PATH=\"/home/u/.local/bin:\$PATH\" # mothdex"
 reset generic-install
 inst --version v1.2.3
 check "generic profile" out_has "profile: generic"
 check "binary in HOME/.local/bin" mode_is /home/u/.local/bin/mothdex 755
-check "PATH hint printed" out_has "Add /home/u/.local/bin to PATH"
+check "PATH line added to ~/.profile when SHELL is unset" text_is "$(cat /home/u/.profile)" "$LINE"
 
 reset detection-falls-back-to-generic
 mkdir -p /usr/share/batocera
@@ -1130,6 +1150,214 @@ check "linux 386 has no GUI archive: CLI only" out_has "no GUI archive for linux
 reset gui-darwin
 FAKE_UNAME_S=Darwin FAKE_UNAME_M=arm64 inst --dry-run --version v1.3.0
 check "darwin: no GUI part at all" out_lacks "GUI"
+INST_LAUNCHER=1
+
+# --- PATH, pipe safety and install state (T-110 TM-1, TM-2, TM-7 to TM-11, TM-14) -------------------------------
+
+GB=/home/u/.local/bin
+ST=$GB/.mothdex-install.json
+LINE="export PATH=\"/home/u/.local/bin:\$PATH\" # mothdex"
+FISH_LINE="fish_add_path -g '/home/u/.local/bin' # mothdex"
+INST_LAUNCHER=0
+count_is() { [ "$(grep -cxF -- "$2" "$1" 2>/dev/null)" -eq "$3" ]; }
+piped() { # arguments of the install, run as `curl ... | sh -s -- <args>`
+  # shellcheck disable=SC2002  # the pipe is the point: stdin of sh is the script
+  cat "$REPO/install.sh" | sh -s -- "$@" >"$OUT" 2>&1
+  RC=$?
+}
+
+for sh_name in bash zsh; do
+  reset "path-$sh_name"
+  printf 'alias ll="ls -l"' >"/home/u/.${sh_name}rc" # no trailing newline
+  chmod 0600 "/home/u/.${sh_name}rc"
+  SHELL=/bin/$sh_name inst --version v1.2.3
+  check "exit 0" rc_is 0
+  check "our line, once" count_is "/home/u/.${sh_name}rc" "$LINE" 1
+  check "the user's line is intact" count_is "/home/u/.${sh_name}rc" 'alias ll="ls -l"' 1
+  check "mode kept" mode_is "/home/u/.${sh_name}rc" 600
+  check "no other startup file written" absent /home/u/.profile
+  check "state records the file" file_has "$ST" "\"path_file\": \"/home/u/.${sh_name}rc\""
+  check "state records path_added" file_has "$ST" '"path_added": true'
+  check "state mode 0644" mode_is "$ST" 644
+  check "final message" out_has "mothdex 1.2.3 installed in $GB"
+  check "tells how to use it now" out_has "run in this one: export PATH="
+  installed_at=$(grep installed_at "$ST")
+  SHELL=/bin/$sh_name inst --version v1.2.3
+  check "reinstall does not duplicate" count_is "/home/u/.${sh_name}rc" "$LINE" 1
+  check "reinstall keeps path_added" file_has "$ST" '"path_added": true'
+  check "reinstall keeps installed_at" file_has "$ST" "$installed_at"
+  # shellcheck disable=SC2016  # literal $ on purpose
+  printf '%s\n' 'alias m=mothdex # mothdex' 'export PATH="/opt/x:$PATH" # mothdex' >>"/home/u/.${sh_name}rc"
+  SHELL=/bin/$sh_name inst --uninstall
+  check "uninstall ok" rc_is 0
+  check "our line removed" count_is "/home/u/.${sh_name}rc" "$LINE" 0
+  check "a user line with the marker survives" count_is "/home/u/.${sh_name}rc" 'alias m=mothdex # mothdex' 1
+  # shellcheck disable=SC2016  # literal $ on purpose
+  check "another PATH line with the marker survives" count_is "/home/u/.${sh_name}rc" 'export PATH="/opt/x:$PATH" # mothdex' 1
+  check "mode kept after uninstall" mode_is "/home/u/.${sh_name}rc" 600
+  check "state removed" absent "$ST"
+done
+
+reset path-fish
+SHELL=/usr/bin/fish inst --version v1.2.3
+check "fish line in config.fish" count_is /home/u/.config/fish/config.fish "$FISH_LINE" 1
+check "fish folder 0755" mode_is /home/u/.config/fish 755
+check "state kind fish" file_has "$ST" '"path_kind": "fish"'
+SHELL=/usr/bin/fish inst --uninstall
+check "fish line removed" count_is /home/u/.config/fish/config.fish "$FISH_LINE" 0
+reset path-old-fish
+mkdir -p /tmp/fishbin
+printf '#!/bin/sh\necho "fish, version 3.1.2"\n' >/tmp/fishbin/fish
+chmod 0755 /tmp/fishbin/fish
+SHELL=/usr/bin/fish PATH=/tmp/fishbin:$PATH inst --version v1.2.3
+check "old fish: nothing written" absent /home/u/.config/fish/config.fish
+check "old fish: command printed" out_has "fish_add_path $GB"
+
+reset path-already-present
+printf 'x\n' >/home/u/.bashrc
+SHELL=/bin/bash PATH=$PATH:$GB inst --version v1.2.3
+check "exit 0" rc_is 0
+check "rc untouched" text_is "$(cat /home/u/.bashrc)" x
+check "state says nothing added" file_has "$ST" '"path_added": false'
+check "says it is there" out_has "already on your PATH"
+SHELL=/bin/bash inst --uninstall
+check "uninstall leaves the rc" text_is "$(cat /home/u/.bashrc)" x
+
+for pair in 'bash|>> ~/.bashrc' 'zsh|>> ~/.zshrc' 'fish|fish_add_path /home/u/.local/bin' 'dash|>> ~/.profile' 'tcsh|startup file of your shell'; do
+  reset "no-modify-path-${pair%%|*}"
+  SHELL=/bin/${pair%%|*} inst --version v1.2.3 --no-modify-path
+  check "exit 0" rc_is 0
+  check "command for the shell" out_has "${pair#*|}"
+  check "never setx" out_lacks setx
+  check "no startup file touched" absent_all /home/u/.bashrc /home/u/.zshrc /home/u/.profile /home/u/.config
+  check "state says nothing added" file_has "$ST" '"path_added": false'
+done
+reset no-modify-path-exact-bash
+SHELL=/bin/bash inst --version v1.2.3 --no-modify-path
+check "exact bash command" out_has "echo 'export PATH=\"$GB:\$PATH\"' >> ~/.bashrc"
+
+reset no-modify-path-uninstall
+SHELL=/bin/bash inst --version v1.2.3
+SHELL=/bin/bash inst --uninstall --no-modify-path
+check "line kept on request" count_is /home/u/.bashrc "$LINE" 1
+
+reset path-dry-run
+SHELL=/bin/bash inst --version v1.2.3 --dry-run
+check "dry run writes no rc and no state" absent_all /home/u/.bashrc "$ST"
+
+reset path-rc-world-writable
+printf 'x\n' >/home/u/.bashrc
+chmod 0666 /home/u/.bashrc
+SHELL=/bin/bash inst --version v1.2.3
+check "exit 0" rc_is 0
+check "rc untouched" text_is "$(cat /home/u/.bashrc)" x
+check "command printed instead" out_has ">> ~/.bashrc"
+reset path-rc-foreign-owner
+printf 'x\n' >/home/u/.bashrc
+chown 1000 /home/u/.bashrc
+SHELL=/bin/bash inst --version v1.2.3
+check "a file of another user is untouched" text_is "$(cat /home/u/.bashrc)" x
+reset path-sudo
+printf 'x\n' >/home/u/.bashrc
+chown 1000 /home/u /home/u/.bashrc
+SHELL=/bin/bash inst --version v1.2.3 --bin-dir /opt/m
+check "sudo: the user's rc is untouched" text_is "$(cat /home/u/.bashrc)" x
+check "sudo: says why" out_has "sudo"
+reset path-rc-symlink
+mkdir -p /home/u/dotfiles
+printf 'x\n' >/home/u/dotfiles/bashrc
+ln -s dotfiles/bashrc /home/u/.bashrc
+SHELL=/bin/bash inst --version v1.2.3
+check "written through the link" count_is /home/u/dotfiles/bashrc "$LINE" 1
+SHELL=/bin/bash inst --uninstall
+check "link kept" test -L /home/u/.bashrc
+check "line removed from the target" count_is /home/u/dotfiles/bashrc "$LINE" 0
+
+for tag in v1.1.0 v1.0.5; do
+  reset "path-untouched-on-failure-$tag"
+  SHELL=/bin/bash inst --version "$tag"
+  check "no rc and no state" absent_all /home/u/.bashrc "$ST"
+done
+reset path-untouched-on-probe-error
+SHELL=/bin/bash inst --version v1.4.7
+check "exit 1" rc_is 1
+check "no rc and no state" absent_all /home/u/.bashrc "$ST"
+
+reset state-hostile
+SHELL=/bin/bash inst --version v1.2.3
+printf 'keep\n' >/etc/profile.mothdex-test
+cp "$ST" /tmp/good.json
+# shellcheck disable=SC2016  # literal $ on purpose
+for bad in 's|"path_file": ".*"|"path_file": "/etc/profile.mothdex-test"|' 's|"path_value": ".*",|"path_value": "keep$(touch /tmp/pwn)",|' \
+  's|"path_value": ".*",|"path_value": "keep",|' 's|"dir": ".*"|"dir": "/opt"|' 's|"schema_version": 1|"schema_version": 2|' 's|"path_kind": ".*"|"path_kind": "../x"|'; do
+  sed "$bad" /tmp/good.json >"$ST"
+  mkdir -p "$GB" && : >"$GB/mothdex"
+  SHELL=/bin/bash inst --uninstall
+  check "hostile state: uninstall ok ($bad)" rc_is 0
+  check "hostile state: warned" out_has "not a valid install state"
+  check "hostile state: our rc line left alone" count_is /home/u/.bashrc "$LINE" 1
+  check "hostile state: foreign file untouched" text_is "$(cat /etc/profile.mothdex-test)" keep
+  check "hostile state: nothing ran" absent /tmp/pwn
+done
+rm -f /etc/profile.mothdex-test /tmp/good.json
+
+reset state-link-refused
+mkdir -p $GB
+echo victim >/tmp/victim
+ln -s /tmp/victim $ST
+inst --version v1.2.3
+check "state link not written through" text_is "$(cat /tmp/victim)" victim
+
+reset uninstall-without-state
+mkdir -p $GB
+: >$GB/mothdex
+printf '%s\n' "$LINE" >/home/u/.bashrc
+inst --uninstall
+check "uninstall ok" rc_is 0
+check "says it cannot know the PATH entry" out_has "no install state"
+check "rc untouched" count_is /home/u/.bashrc "$LINE" 1
+
+reset message-portuguese
+SHELL=/bin/bash LANG=pt_BR.UTF-8 inst --version v1.2.3
+check "portuguese message" out_has "mothdex 1.2.3 instalado em $GB"
+check "portuguese PATH line" out_has "✓ PATH do usuário atualizado."
+
+reset piped-install
+SHELL=/bin/bash piped --version v1.2.3 --no-gui
+check "curl | sh installs" rc_is 0
+check "binary installed" test -x $GB/mothdex
+check "PATH line added" count_is /home/u/.bashrc "$LINE" 1
+reset piped-stdin-is-not-the-script
+mkdir -p /tmp/readers
+printf '#!/bin/sh\ncat >>/tmp/stdin.seen\nexit 0\n' >/tmp/readers/cosign
+chmod 0755 /tmp/readers/cosign
+PATH=$SHIMS:/tmp/readers:$BASE_PATH piped --version v1.0.6
+check "install completes" out_has "Test: mothdex --version"
+check "the readers ran and saw an empty stdin (TM-2)" test -f /tmp/stdin.seen -a ! -s /tmp/stdin.seen
+
+reset truncated-download
+total=$(wc -c <"$REPO/install.sh")
+bad=""
+for pct in 5 10 20 30 40 50 60 70 80 90 99 end; do
+  if [ "$pct" = end ]; then n=$((total - 2)); else n=$((total * pct / 100)); fi
+  head -c "$n" "$REPO/install.sh" >/tmp/cut.sh
+  # a cut inside the leading comments is an empty script; from the opening brace on, the cut must be a syntax error
+  if sh -s -- --version v1.2.3 </tmp/cut.sh >"$OUT" 2>&1 && grep -qx '{' /tmp/cut.sh; then bad="$bad $pct(exit 0)"; fi
+  if [ -e $GB ] || [ -e /home/u/.profile ] || [ -s "$FAKE_LOG" ]; then bad="$bad $pct(side effect)"; fi
+done
+check "every truncation fails and does nothing (TM-1):$bad" text_is "$bad" ""
+
+# --- the probe's exit codes (cli-output.md 4.1) -------------------------------------------------------------------
+reset probe-exit1-legacy
+fs_batocera
+inst --version v0.1.5
+check "0.1.x: exit 1 is not eligible" rc_is 0
+check "0.1.x: says not installed" out_has "mothdex-gui was not installed"
+reset probe-exit1-new
+fs_batocera
+inst --version v1.4.7
+check "from 0.2.0: exit 1 is an error" rc_is 1
+check "from 0.2.0: reported as a probe error" out_has "mothdex-gui --probe (exit 1)"
 INST_LAUNCHER=1
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"

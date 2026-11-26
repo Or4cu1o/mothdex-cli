@@ -23,8 +23,17 @@ bundles/mothdex-logs-<yyyymmdd-hhmmss>.zip
   - Session and crash files are created with `O_CREATE|O_EXCL`.
   - `latest.log` and `latest.lock` are opened without following links: `O_NOFOLLOW` on POSIX, and a reparse point is
     refused on Windows.
-  - If `paths.logs` or one of its subfolders is a link, is not owned by the user, or is writable by others without the
-    sticky bit, file logging is disabled with one warning, and the command still runs.
+  - A log file that this process did not create with `O_EXCL` is used only when it belongs to the user and has a
+    single link (one name). Otherwise it is refused.
+  - **Unsafe folder.** A `paths.logs`, or one of its subfolders, that is a link, is not owned by the user, or is
+    writable by group or others (the sticky bit is no exception) is refused.
+    - The session then falls back to the default `paths.logs` (config.md §3), and the warning names both folders.
+    - If the default folder is refused too, file logging is disabled with that one warning, and the command still
+      runs.
+  - **Exception:** FAT, exFAT and NTFS mounts have no permission bits; this is proven with `statfs`, never by
+    reading the mode. On those, the mode check is skipped, and the session header plus `logs path` carry a WARN line
+    `log folder has no file permissions`.
+  - Windows has no owner check on folders; the profile's ACL protects the default folders.
 - **Size caps (TM-23).** A session file stops at 20 MiB, after one `log truncated` line. A crash file stops at 1 MiB.
 - **No session for:** the cobra `__complete` and `__completeNoDesc` commands, `completion`, `version` and `--version`,
   and `mothdex-gui --probe`, `--version` and `-spike`. Tab completion and the upgrade check of the new binary
@@ -53,10 +62,12 @@ func NewRef() string; func ParseRef(in string) (string, error)
 func RecordError(l *slog.Logger, r ErrorRecord)               // Ref, Code, Cmd, Message (English), Cause
 ```
 
-- **`compose.Options` gets a `Session *log.Session`.** `compose.Open` resolves the configuration and calls `Attach`
+- **`compose.Options` gets a `Logs *log.Session` field.** It is not called `Session`, because `Options.Session` is
+  already a bool. `compose.Open` resolves the configuration and calls `Attach`
   with `paths.logs`, `log.session_level` and `log.sessions_keep`. It then builds the process logger: the session
   handler plus the `mothdex.log` handler at `log.level`, plus the console handler when `log.console` is set.
-  `Session.LogPath` replaces `compose.Session.LogPath`.
+  `compose.Session.Logs` carries the session. `compose.Session.LogPath` stays and still names `mothdex.log`, which
+  the GUI uses; the path shown with an error is `Logs.LogPath()`.
 - **`Attach` failures** (folder not writable, bad level) are returned once as a warning. The handler then discards
   lines, so nothing ever stops the program.
 - **`Attach` without a configuration** (it failed to load): `Close` attaches to the default `paths.logs`, from
@@ -116,6 +127,9 @@ reads the last `session info` line.
   writes `crash/<id>.txt` with the header, the panic value, the ref and the stack, then `fsync`s it.
 - **Panics in other goroutines** are caught through `debug.SetCrashOutput(<session file>)`, so the trace ends up in the
   session file. They get no `crash/` file in v0.2 (gap G-LOG-1).
+  - The runtime writes that trace as it is, so it is **not redacted** inside the local session file, which has mode
+    `0600` (residual risk, Sentinela).
+  - Every way out of that file is redacted again: `logs show`, `logs last` and the bundle.
 - **Refs.** A ref is 6 characters of Crockford base32 (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`, no `I`, `L`, `O` or `U`),
   uppercase, from `crypto/rand`, with no PID, time or user in it (TM-26).
   - The regex is `^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{6}$`. This replaces the 30-symbol alphabet in TM-24 (agreed with
@@ -146,6 +160,8 @@ reads the last `session info` line.
   console copy. It is needed because `url.Error` text embeds the API URL.
   - The `api.base_url` value, any URL under it, its host and every `Secrets` value become `<api>`.
   - Every other URL loses its userinfo, query and fragment.
+  - `key=value` secrets outside a URL lose their value: a key ending in `token`, `signature`, `password`, `passwd`,
+    `secret` or `api_key`, plus `sig` and `x-amz-credential`.
   - Values are dropped for `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and any
     header whose name contains `token`, `key`, `secret` or `auth`.
   - The values of `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` and any other environment value are never
@@ -165,7 +181,7 @@ reads the last `session info` line.
 | `path` | `{dir, latest, session}` |
 | `last [--tail N]` | `{session, lines: [string]}`: the newest session other than the running one |
 | `list` | `{sessions: [{id, binary, mode, started_at, duration_ms, errors, current}]}`, newest first |
-| `show <id> [--ref R]` | `{session, matches: [{ref, line, context: [string]}]}`, with 10 lines of context on each side. `<id>` must match the session pattern and exist in `sessions/`; `/`, `\` and `..` are `usage` (TM-24). |
+| `show <id> [--ref R]` | Without `--ref`: `{session, lines: [string]}`. With `--ref`: `{session, matches: [{ref, line, context: [string]}]}`, with 10 lines of context on each side. `<id>` must match the session pattern and exist in `sessions/`; `/`, `\` and `..` are `usage` (TM-24). |
 | `bundle [-o dir] [--sessions N]` | `{path, bytes, sessions: [id]}`. N runs from 1 to 20, default 5. |
 | `clear [-f]` | `{removed: {sessions, crashes, bundles}}`. Without `-f` it asks for confirmation (`confirmation_required` under `--json`). |
 | `open` | `{dir}`. It opens the folder with argv only (`explorer.exe <dir>`, `open <dir>`, `xdg-open <dir>`), never through a shell (TM-28), and fails with `usage` when there is no GUI session. |
@@ -173,7 +189,7 @@ reads the last `session info` line.
 **Bundle.** The zip holds `manifest.json`, `README.txt`, `sessions/`, `crash/` and `mothdex.log.tail`.
 
 - **The content is an allowlist (TM-19).** Entry names are fixed, or a base name that has been validated.
-- **Manifest:** `schema_version: 1`, `version`, `commit`, `os`, `arch`, `profile`, `lang`, the configuration from
+- **Manifest:** `schema_version: 1`, `version`, `commit`, `os`, `arch`, `profile` (as configured, so it may be `auto`), `lang`, the configuration from
   `config list`, and the names (never the values) of the `MOTHDEX_*` variables that are set.
   - Configuration keys are shown in clear only when they are on an allowlist. Every other key is masked, including
     keys added later; a test fails on any schema key that is not classified.

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -16,7 +18,8 @@ import (
 const lockOffset = 1 << 30
 
 // openFile opens a log file sharing read, write and delete, so a tester can copy it while the
-// program runs and another process can rotate or delete it, and refuses a reparse point.
+// program runs and another process can rotate or delete it. It refuses a reparse point and, for a
+// file this call did not create, one with a second name or another user's.
 func openFile(path string, flags int) (*os.File, error) {
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
@@ -25,7 +28,7 @@ func openFile(path string, flags int) (*os.File, error) {
 	var access uint32 = windows.GENERIC_READ
 	switch {
 	case flags&os.O_APPEND != 0:
-		access = windows.FILE_APPEND_DATA | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE
+		access = windows.FILE_APPEND_DATA | windows.FILE_READ_ATTRIBUTES | windows.READ_CONTROL | windows.SYNCHRONIZE
 	case flags&(os.O_WRONLY|os.O_RDWR) != 0:
 		access |= windows.GENERIC_WRITE
 	}
@@ -47,11 +50,81 @@ func openFile(path string, flags int) (*os.File, error) {
 		_ = windows.CloseHandle(h)
 		return nil, fmt.Errorf("%s: not a regular file", path)
 	}
+	if disposition != windows.CREATE_NEW && info.NumberOfLinks > 1 {
+		_ = windows.CloseHandle(h)
+		return nil, fmt.Errorf("%w: %s has another name", errUnsafeDir, path)
+	}
+	if disposition != windows.CREATE_NEW && !permissionless(filepath.Dir(path)) {
+		sd, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+		if err := ownedByUser(path, sd, err); err != nil {
+			_ = windows.CloseHandle(h)
+			return nil, err
+		}
+	}
 	return os.NewFile(uintptr(h), path), nil
 }
 
-// checkOwner: the default folders are inside the user profile, whose access list protects them.
-func checkOwner(string, fs.FileInfo) error { return nil }
+// permissionless says whether dir is on a volume that keeps no access lists, so no owners
+// either (FAT, exFAT). Tests replace it.
+var permissionless = func(dir string) bool {
+	path, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		return false
+	}
+	root := make([]uint16, windows.MAX_PATH+1)
+	if windows.GetVolumePathName(path, &root[0], uint32(len(root))) != nil { //nolint:gosec // a fixed small length
+		return false
+	}
+	var flags uint32
+	if windows.GetVolumeInformation(&root[0], nil, 0, nil, nil, &flags, nil, 0) != nil {
+		return false
+	}
+	return flags&windows.FILE_PERSISTENT_ACLS == 0
+}
+
+// checkOwner refuses a folder another user owns: in a portable install under a shared folder,
+// anyone could have created it to receive the logs (TM-20).
+func checkOwner(dir string, _ fs.FileInfo) error {
+	if permissionless(dir) {
+		return nil
+	}
+	sd, err := windows.GetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	return ownedByUser(dir, sd, err)
+}
+
+// ownedByUser is the outcome of reading the owner of path: an owner that cannot be read is not
+// trusted.
+func ownedByUser(path string, sd *windows.SECURITY_DESCRIPTOR, readErr error) error {
+	if readErr != nil {
+		return fmt.Errorf("%w: cannot read the owner of %s: %w", errUnsafeDir, path, readErr)
+	}
+	owner, _, err := sd.Owner()
+	if err != nil || owner == nil || !isOwn(owner) {
+		return fmt.Errorf("%w: %s belongs to another user", errUnsafeDir, path)
+	}
+	return nil
+}
+
+// isOwn reports whether sid is the user of this process, or the owner Windows gives to what the
+// process creates (the Administrators group when it runs elevated). Tests replace it.
+var isOwn = func(sid *windows.SID) bool {
+	token := windows.GetCurrentProcessToken()
+	if user, err := token.GetTokenUser(); err == nil && user.User.Sid.Equals(sid) {
+		return true
+	}
+	var size uint32
+	_ = windows.GetTokenInformation(token, windows.TokenOwner, nil, 0, &size) // asks for the size
+	if size < uint32(unsafe.Sizeof(uintptr(0))) {
+		return false
+	}
+	buf := make([]byte, size)
+	if windows.GetTokenInformation(token, windows.TokenOwner, &buf[0], size, &size) != nil {
+		return false
+	}
+	// TOKEN_OWNER is one pointer to a SID stored in the same buffer.
+	owner := *(**windows.SID)(unsafe.Pointer(&buf[0])) // #nosec G103 -- the layout the Windows API documents
+	return owner.Equals(sid)
+}
 
 // tryLock takes the exclusive OS lock of f without waiting; false means someone else holds it.
 func tryLock(f *os.File) (bool, error) {

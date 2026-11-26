@@ -15,7 +15,10 @@ func (r *runtime) completionCmd() *cobra.Command {
 		sub := &cobra.Command{Use: shell, Short: "Generate " + shell + " completion", Args: cobra.NoArgs}
 		sub.Long = "Generate " + shell + " completion for mothdex and mdex. Load the script in your shell startup file."
 		sub.Example = "mothdex completion " + shell
-		sub.RunE = func(cmd *cobra.Command, _ []string) error { return writeCompletion(cmd, shell) }
+		sub.RunE = func(cmd *cobra.Command, _ []string) error {
+			localizeHelp(cmd.Root(), r.helpTranslator())
+			return writeCompletion(cmd, shell)
+		}
 		c.AddCommand(sub)
 	}
 	return c

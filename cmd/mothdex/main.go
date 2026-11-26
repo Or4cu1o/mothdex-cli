@@ -38,12 +38,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}()
 	// The session starts before cobra and compose, so that their errors are logged too.
-	var logs *mlog.Session
-	if cli.Logged(args) {
-		logs = mlog.StartSession(mlog.SessionOptions{Binary: "cli", Args: args, Flags: cli.LogFlagRules(), Build: buildinfo.Get()})
-		logs.Update(mlog.Info{Mode: "command"})
-		defer func() { _ = logs.Close() }() // nothing is left to tell it to
-	}
+	rules := cli.LogFlagRules()
+	logs := mlog.StartSession(mlog.SessionOptions{Binary: "cli", Args: args, Flags: rules, Build: buildinfo.Get(),
+		GeneralOnly: !cli.Logged(args, rules)})
+	logs.Update(mlog.Info{Mode: "command"})
+	defer func() { _ = logs.Close() }() // nothing is left to tell it to
 	d := deps(stdin, stdout, stderr, logs)
 	d.Interrupts = router.interrupts
 	return cli.Execute(ctx, d, args)

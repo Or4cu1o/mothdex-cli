@@ -76,6 +76,9 @@ func New(opts Options) (*slog.Logger, io.Closer, error) {
 	// Every destination is redacted (TM-16); the session's handler redacts for itself.
 	redact := newRedactor(opts.Secrets...)
 	if opts.Session != nil {
+		if dir := opts.Session.Dir(); dir != "" {
+			opts.Dir = dir // mothdex.log follows a session that fell back to the default folder
+		}
 		redact = opts.Session.redact
 		redact.add(opts.Secrets...)
 		handlers = append(handlers, opts.Session.Handler())

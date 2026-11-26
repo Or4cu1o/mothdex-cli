@@ -26,15 +26,59 @@ var (
 	userinfoPattern = regexp.MustCompile(`[^\s/\\"'=@:(\[]+:[^\s/\\"'@]+@([A-Za-z0-9.\-]+)`)
 	// "Name: value" and "Name=value" forms of the headers that carry credentials; the value runs to
 	// the end of the line, quote or bracket.
-	headerPattern = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization|set-cookie|cookie|x-[a-z0-9-]*(?:token|key|secret|auth)[a-z0-9-]*)(\s*[:=]\s*\[?)[^\r\n"\]\\]+`)
+	// A secret written as a pair outside a URL: key=value, key: value or "key":"value", with the
+	// quotes escaped or not, as in a raw server message or a log of an earlier version.
+	pairPattern = regexp.MustCompile(`(?i)((?:[a-z0-9_\-]*(?:token|signature|password|passwd|secret|api[_\-]?key|x-amz-credential)|\bsig)(?:\\*["'])?\s*[:=]\s*)` +
+		`(?:(\\*["'])[^"'\\\r\n<]+|[^\s&"'\\<,;{}\[\]]+)`)
+	// "Name: value", "Name=value" and their quoted forms for the headers that carry credentials;
+	// the value runs to the end of the line, quote or bracket.
+	headerPattern = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization|set-cookie|cookie|x-[a-z0-9-]*(?:token|key|secret|auth)[a-z0-9-]*)` +
+		`((?:\\*["'])?\s*[:=]\s*\[?(?:\\*["'])?)[^\s"'\]\\<][^\r\n"'\]\\<]*`)
 )
+
+// Words a line must hold for a pattern to be worth running: the patterns cost far more than a
+// substring search, and a bundle goes through megabytes on a handheld.
+var (
+	headerWords = []string{"authorization", "cookie", "x-"}
+	pairWords   = []string{"token", "sig", "password", "passwd", "secret", "apikey", "api_key", "api-key", "x-amz-credential"}
+)
+
+// asciiLower lowers ASCII letters only, so that offsets stay those of the original text.
+func asciiLower(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
+func containsAny(s string, words []string) bool {
+	return slices.ContainsFunc(words, func(w string) bool { return strings.Contains(s, w) })
+}
+
+// replaceFold replaces every occurrence of secret, which is lower case, in any case. lower is
+// asciiLower(s).
+func replaceFold(s, lower, secret, with string) string {
+	var out strings.Builder
+	for {
+		i := strings.Index(lower, secret)
+		if i < 0 {
+			out.WriteString(s)
+			return out.String()
+		}
+		out.WriteString(s[:i] + with)
+		s, lower = s[i+len(secret):], lower[i+len(secret):]
+	}
+}
 
 // redactor is the single redaction point in front of every sink (TM-16). Secrets can be added at
 // any time: the API URL is only known once the configuration is read.
 type redactor struct {
 	mu      sync.RWMutex
 	hosts   []string // lower case; a URL on one of these hosts becomes <api>
-	secrets []*regexp.Regexp
+	secrets []string // lower case
 }
 
 func newRedactor(secrets ...string) *redactor {
@@ -56,21 +100,45 @@ func (r *redactor) add(secrets ...string) {
 		}
 		for _, v := range values {
 			if len(v) >= minSecretLen {
-				r.secrets = append(r.secrets, regexp.MustCompile(`(?i)`+regexp.QuoteMeta(v)))
+				r.secrets = append(r.secrets, asciiLower(v))
 			}
 		}
 	}
 }
 
-// text returns s with every credential, API address and URL secret removed.
+// text returns s with every credential, API address and URL secret removed. It works line by
+// line: no pattern crosses a line.
 func (r *redactor) text(s string) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	s = headerPattern.ReplaceAllString(s, "${1}${2}"+redacted)
-	s = urlPattern.ReplaceAllStringFunc(s, r.url)
-	s = userinfoPattern.ReplaceAllString(s, redacted+"@${1}")
-	for _, re := range r.secrets {
-		s = re.ReplaceAllLiteralString(s, apiMarker)
+	var out strings.Builder
+	out.Grow(len(s))
+	for line := range strings.Lines(s) {
+		out.WriteString(r.line(line))
+	}
+	return out.String()
+}
+
+// line redacts one line; the caller holds the lock.
+func (r *redactor) line(s string) string {
+	lower := asciiLower(s)
+	pairs := strings.ContainsAny(s, ":=")
+	if pairs && containsAny(lower, headerWords) {
+		s = headerPattern.ReplaceAllString(s, "${1}${2}"+redacted)
+	}
+	if strings.Contains(s, "://") {
+		s = urlPattern.ReplaceAllStringFunc(s, r.url)
+	}
+	if strings.Contains(s, "@") {
+		s = userinfoPattern.ReplaceAllString(s, redacted+"@${1}")
+	}
+	if pairs && containsAny(lower, pairWords) {
+		s = pairPattern.ReplaceAllString(s, "${1}${2}"+redacted)
+	}
+	for _, secret := range r.secrets {
+		if lower = asciiLower(s); strings.Contains(lower, secret) {
+			s = replaceFold(s, lower, secret, apiMarker)
+		}
 	}
 	return s
 }

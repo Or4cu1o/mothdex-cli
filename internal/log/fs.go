@@ -32,6 +32,7 @@ var (
 	sessionFilePattern = regexp.MustCompile(`^` + sessionIDExpr + `\.log$`)
 	crashFilePattern   = regexp.MustCompile(`^` + sessionIDExpr + `\.txt$`)
 	bundleFilePattern  = regexp.MustCompile(`^mothdex-logs-\d{8}-\d{6}(?:-\d+)?\.zip$`)
+	generalFilePattern = regexp.MustCompile(`^mothdex\.log(?:\.\d{1,3})?$`)
 )
 
 var errUnsafeDir = errors.New("the log folder is not safe to write to")

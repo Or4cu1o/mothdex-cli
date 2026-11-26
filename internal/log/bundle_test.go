@@ -110,33 +110,49 @@ func TestBundleHidesThePersonAndTheAPI(t *testing.T) {
 	}
 }
 
-func TestBundleStaysUnderTheLimit(t *testing.T) {
-	dir := logDir(t)
-	noise := make([]byte, 3<<20) // does not compress below the limit
-	if _, err := rand.Read(noise); err != nil {
+// noise is about n bytes of text that does not compress much.
+func noise(t *testing.T, n int) string {
+	t.Helper()
+	raw := make([]byte, n*3/4)
+	if _, err := rand.Read(raw); err != nil {
 		t.Fatal(err)
 	}
-	line := base64.StdEncoding.EncodeToString(noise) // no "://" or "@" for the redactor to find
-	var big strings.Builder
-	for i := 0; i+1000 <= len(line); i += 1000 {
-		big.WriteString(line[i:i+1000] + "\n")
+	line := base64.StdEncoding.EncodeToString(raw) // no "://" or "@" for the redactor to find
+	var out strings.Builder
+	for ; len(line) > 100; line = line[100:] {
+		out.WriteString(line[:100] + "\n")
 	}
+	return out.String() + line + "\n"
+}
+
+func TestBundleStaysUnderTheLimit(t *testing.T) {
+	const limit = 60 << 10
+	dir := logDir(t)
 	for _, d := range []string{"01", "02", "03", "04", "05", "06", "07"} {
-		write(t, filepath.Join(dir, SessionsDir, "202601"+d+"-000000-cli-1.log"), big.String())
+		write(t, filepath.Join(dir, SessionsDir, "202601"+d+"-000000-cli-1.log"), noise(t, 20<<10))
 	}
 	write(t, filepath.Join(dir, FileName), "tail line\n")
-	res, err := Bundle(context.Background(), BundleOptions{Dir: dir, Sessions: 7})
+	res, err := Bundle(context.Background(), BundleOptions{Dir: dir, Sessions: 7, limit: limit})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Bytes > MaxBundleBytes || len(res.Sessions) == 0 || len(res.Sessions) >= 7 {
+	if res.Bytes > limit || len(res.Sessions) < 2 || len(res.Sessions) >= 7 || res.Sessions[0] != "20260107-000000-cli-1" {
 		t.Fatalf("%d bytes, sessions %v", res.Bytes, res.Sessions)
-	}
-	if res.Sessions[0] != "20260107-000000-cli-1" {
-		t.Errorf("the newest session was given up first: %v", res.Sessions)
 	}
 	if unzip(t, res.Path)["mothdex.log.tail"] == "" {
 		t.Error("the tail went before the old sessions")
+	}
+
+	for _, d := range []string{"01", "02", "03", "04", "05"} {
+		write(t, filepath.Join(dir, CrashDir, "202601"+d+"-000000-cli-1.txt"), noise(t, 30<<10))
+	}
+	res, err = Bundle(context.Background(), BundleOptions{Dir: dir, Sessions: 7, limit: limit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := unzip(t, res.Path)
+	if res.Bytes > limit || len(res.Sessions) != 1 || files["mothdex.log.tail"] == "" || files["crash/20260105-000000-cli-1.txt"] == "" {
+		t.Errorf("crash files must go before the newest session and the tail: %d bytes, %v", res.Bytes, res.Sessions)
 	}
 }
 
@@ -156,6 +172,31 @@ func TestBundleRefusesBadOptions(t *testing.T) {
 		if _, err := Bundle(context.Background(), c.o); !errors.Is(err, c.want) {
 			t.Errorf("%+v => %v, want %v", c.o, err, c.want)
 		}
+	}
+}
+
+// Logs of an earlier version were never redacted: the bundle catches the ways a secret was written.
+func TestBundleRedactsSecretsHoweverTheyWereWritten(t *testing.T) {
+	dir := logDir(t)
+	// %s is the secret, put in at run time so that no scanner reads these as real credentials
+	forms := []string{
+		`Authorization="Bearer %s"`, `err="Authorization=\"Bearer %s\""`, `Authorization: Bearer %s`,
+		`{"authorization":"Bearer %s"}`, `Cookie="id=%s; s=2"`, `X-Api-Key: "%s"`,
+		`{"token":"%s"}`, `msg="{\"access_token\":\"%s\"}"`, `{"password": "two words %s"}`,
+		`api_key: %s`, `api-key=%s`, `secret='%s'`, `client_secret="%s"`, `sig=%s&x=1`,
+	}
+	text := strings.ReplaceAll(strings.Join(forms, "\n"), "%s", "S3CRET")
+	write(t, filepath.Join(dir, FileName), text+"\nkept=value\n")
+	res, err := Bundle(context.Background(), BundleOptions{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail := unzip(t, res.Path)["mothdex.log.tail"]
+	if strings.Contains(tail, "S3CRET") || !strings.Contains(tail, "kept=value") {
+		t.Errorf("tail:\n%s", tail)
+	}
+	if again := newRedactor().text(tail); again != tail {
+		t.Errorf("a second pass changed the text:\n%s", again)
 	}
 }
 
