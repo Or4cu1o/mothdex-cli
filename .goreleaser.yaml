@@ -13,6 +13,9 @@ before:
     # The Windows GUI archive ships the pinned SDL2.dll (scripts/sdl2-windows.pin): exact URL, SHA-256 checked before
     # extraction, never cached. Linux archives never ship SDL2.
     - scripts/fetch-sdl2-windows.sh dist-sdl2
+    # The installers published as release assets, stamped with this version (T-110 TM-5, ADR-0003). The workflow copies
+    # them into dist after the build.
+    - scripts/stamp-installers.sh {{ .Version }} dist-installers
 
 builds:
   - id: mothdex
@@ -156,6 +159,9 @@ archives:
 checksum:
   name_template: checksums.txt
   algorithm: sha256
+  # listed with the archives, so the installers are signed and attested too
+  extra_files:
+    - glob: dist-installers/install.*
 
 sboms:
   - id: archive-sboms

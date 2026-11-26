@@ -7,3 +7,7 @@
   Failed upgrades report exit 9 with a reinstall hint; all interfaces share progress, confirmation and restart semantics.
 - T-116: reject malformed state and trailing archive payloads; keep installer probes read-only. Windows updates
   accept the installer's trusted owners and record alias file IDs after both commit and rollback.
+- T-116 review: keep checks read-only; accept installer-trusted FAT/exFAT mounts; bound staging and stalled downloads;
+  preserve unknown state fields; retain the previous version status on staging errors. Refresh GUI notices only in
+  mothdex-licenses, preserve foreign entries, and accept bounded future notices without writing or executing them.
+  Forced downgrades warn before replacement, and automatic notices follow command errors.

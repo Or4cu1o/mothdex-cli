@@ -54,6 +54,9 @@ jobs:
         if: steps.scope.outputs.run == 'true'
       - run: goreleaser release --snapshot --clean --skip=sign
         if: steps.scope.outputs.run == 'true'
+      - name: Add the stamped installers to dist
+        run: cp dist-installers/install.sh dist-installers/install.ps1 dist-installers/install.cmd dist/
+        if: steps.scope.outputs.run == 'true'
       - name: Verify the build output (9 CLI targets, 5 GUI archives)
         run: scripts/verify-dist.sh dist
         if: steps.scope.outputs.run == 'true'

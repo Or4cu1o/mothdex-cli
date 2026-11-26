@@ -87,6 +87,7 @@ func archiveFixture(t *testing.T, binary []byte, extra string, gui ...bool) []by
 func TestApplyRiskPaths(t *testing.T) {
 	working := probeFixture(t, "")
 	badInstalled := probeFixture(t, "installed")
+	badStage := probeFixture(t, "all")
 	for _, tc := range []struct {
 		name, mode, code, reason string
 		restored                 bool
@@ -96,12 +97,16 @@ func TestApplyRiskPaths(t *testing.T) {
 		{"tampered archive", "archive", "integrity", "checksum_mismatch", false},
 		{"signature failure", "signature", "integrity", "signature", false},
 		{"extra member", "extra", "integrity", "archive_member", false},
+		{"staged probe", "staged", "update_failed", "check_failed", true},
 		{"probe rollback", "installed", "update_failed", "check_failed", true},
 		{"cancel before swap", "cancel", "canceled", "canceled", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, s := fixture(t)
 			binary := working
+			if tc.mode == "staged" {
+				binary = badStage
+			}
 			if tc.mode == "installed" {
 				binary = badInstalled
 			}
@@ -170,6 +175,11 @@ func TestApplyRiskPaths(t *testing.T) {
 				}
 				if !bytes.Equal(installed, working) || !result.RestartRequired {
 					t.Fatal("new binary missing")
+				}
+				for _, n := range []string{"LICENSE", "THIRD_PARTY", "mothdex-licenses"} {
+					if _, e := os.Lstat(filepath.Join(s.Dir, n)); !os.IsNotExist(e) {
+						t.Fatalf("CLI-only wrote licence path %s: %v", n, e)
+					}
 				}
 				state, e := u.Managed()
 				if e != nil || state.Version != "2.0.0" || state.UpdatedBy != "upgrade" {
@@ -257,5 +267,99 @@ func TestReleaseNotesOnlyNewerVersionSections(t *testing.T) {
 	want := "## [3.0.0] - date\nNew\n### Fixed\nFix\n## [4.0.0]\nNewer section later\n"
 	if got := releaseNotes([]byte(input), "2.0.0"); got != want {
 		t.Fatalf("notes = %q, want %q", got, want)
+	}
+}
+
+func TestStagedGUIFailureReasonsAndRestoredState(t *testing.T) {
+	working := probeFixture(t, "")
+	for _, tc := range []struct{ mode, reason string }{{"version", "check_failed"}, {"probe1", "check_failed"}, {"probe8", "gui_not_eligible"}, {"missing", "gui_missing"}} {
+		t.Run(tc.mode, func(t *testing.T) {
+			u, s := fixture(t)
+			s.GUI = true
+			writeStateFixture(t, s)
+			//nolint:gosec // Executable GUI installation fixture.
+			if err := os.WriteFile(filepath.Join(s.Dir, binaryName(true)), []byte("old-gui"), 0700); err != nil {
+				t.Fatal(err)
+			} //nolint:gosec // executable installation fixture.
+			cliName, guiName := archiveName("2.0.0", s.Target, false), archiveName("2.0.0", s.Target, true)
+			cli := archiveFixture(t, working, "")
+			gui := archiveFixture(t, probeFixture(t, tc.mode), "", true)
+			cliSum, guiSum := sha256.Sum256(cli), sha256.Sum256(gui)
+			sums := fmt.Sprintf("%x  %s\n", cliSum, cliName)
+			if tc.mode != "missing" {
+				sums += fmt.Sprintf("%x  %s\n", guiSum, guiName)
+			}
+			u.o.Verifier = verifierFunc(func(context.Context, VerifyInput) (string, error) { return "cosign", nil })
+			serve(t, u, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/latest"):
+					w.Header().Set("Location", origin+"/tag/v2.0.0")
+					w.WriteHeader(302)
+				case strings.HasSuffix(r.URL.Path, "checksums.txt"):
+					_, _ = w.Write([]byte(sums))
+				case strings.HasSuffix(r.URL.Path, ".sigstore.json"):
+					_, _ = w.Write([]byte("fixture"))
+				case strings.HasSuffix(r.URL.Path, guiName):
+					_, _ = w.Write(gui)
+				default:
+					_, _ = w.Write(cli)
+				}
+			})
+			_, err := u.Apply(context.Background(), ApplyOptions{Confirm: func(Staged) bool { t.Fatal("prompt after failed staging"); return true }})
+			errorCode(t, err, "update_failed", tc.reason)
+			var ae *app.Error
+			if !errors.As(err, &ae) || ae.Args["restored"] != true {
+				t.Fatalf("intact installation not reported: %v", err)
+			}
+			if tc.mode == "missing" && ae.Args["hint_key"] != nil {
+				t.Fatal("missing GUI lost installer hint")
+			}
+			if tc.mode != "missing" && ae.Args["hint_key"] != "update.unchanged_hint" {
+				t.Fatal("staging error advises reinstall")
+			}
+			for name, want := range map[string]string{binaryName(false): "old", binaryName(true): "old-gui"} {
+				//nolint:gosec // Component names come from the fixed test table.
+				got, e := os.ReadFile(filepath.Join(s.Dir, name))
+				if e != nil || string(got) != want {
+					t.Fatalf("staging changed %s: %q %v", name, got, e)
+				} //nolint:gosec // known fixture paths.
+			}
+		})
+	}
+}
+func TestInProgressKeepsPreviousVersion(t *testing.T) {
+	u, s := fixture(t)
+	unlock, err := acquireLock(s.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	_, err = u.Apply(context.Background(), ApplyOptions{})
+	errorCode(t, err, "update_failed", "in_progress")
+	var ae *app.Error
+	if !errors.As(err, &ae) || ae.Args["restored"] != true {
+		t.Fatal("held lock implies broken installation")
+	}
+}
+
+func TestIncompleteRollbackRequiresReinstall(t *testing.T) {
+	u, s := fixture(t)
+	stage := t.TempDir()
+	path := filepath.Join(stage, binaryName(false))
+	//nolint:gosec // Executable probe fixture, never a downloaded or user-controlled program.
+	if err := os.WriteFile(path, probeFixture(t, "all"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	err := u.swap(context.Background(), ApplyOptions{Progress: func(p Progress) {
+		if p.Step == "check" {
+			if err := os.Remove(u.o.Exe + ".old"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}}, s, stage, stagedRelease{version: "2.0.0", files: []string{binaryName(false)}})
+	errorCode(t, err, "update_failed", "check_failed")
+	var ae *app.Error
+	if !errors.As(err, &ae) || ae.Args["restored"] != false || ae.Args["hint_key"] != nil || ae.Args["install_command"] != InstallCommand() {
+		t.Fatalf("incomplete rollback hint: %v", err)
 	}
 }

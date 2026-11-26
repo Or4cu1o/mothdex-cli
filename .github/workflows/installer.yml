@@ -25,7 +25,7 @@ jobs:
         with:
           persist-credentials: false
       - name: shellcheck
-        run: shellcheck -x -s sh install.sh tests/installer/cases.sh tests/installer/run.sh tests/installer/shims/* tests/installer/optional/*
+        run: shellcheck -x -s sh install.sh scripts/stamp-installers.sh tests/installer/cases.sh tests/installer/run.sh tests/installer/shims/* tests/installer/optional/*
       - name: container tests (no network)
         run: sh tests/installer/run.sh
 

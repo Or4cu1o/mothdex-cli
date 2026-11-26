@@ -98,3 +98,32 @@ func TestCleanupChecksExistingStageLockWithoutCreatingOne(t *testing.T) {
 		t.Fatal("existing-lock check wrote a file")
 	}
 }
+
+func TestCleanupOnlyStaleNumericTemporaryFiles(t *testing.T) {
+	_, s := fixture(t)
+	now := time.Date(2026, 11, 26, 15, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name    string
+		age     time.Duration
+		removed bool
+	}{
+		{".mothdex-write-probe-1234", 2 * time.Hour, true},
+		{".mothdex-json-1234", 2 * time.Hour, true},
+		{".mothdex-json-4321", time.Minute, false},
+		{".mothdex-json-personal", 2 * time.Hour, false},
+	} {
+		p := filepath.Join(s.Dir, tc.name)
+		if err := os.WriteFile(p, []byte("fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		then := now.Add(-tc.age)
+		if err := os.Chtimes(p, then, then); err != nil {
+			t.Fatal(err)
+		}
+		cleanupOld(s.Dir, nil, now)
+		_, err := os.Lstat(p)
+		if os.IsNotExist(err) != tc.removed {
+			t.Fatalf("cleanup %s err=%v", tc.name, err)
+		}
+	}
+}

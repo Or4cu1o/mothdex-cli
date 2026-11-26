@@ -53,6 +53,8 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Build, checksum, SBOM and sign
         run: goreleaser release --clean
+      - name: Add the stamped installers to dist
+        run: cp dist-installers/install.sh dist-installers/install.ps1 dist-installers/install.cmd dist/
       - name: Verify the signature and its signer identity
         env:
           TAG: ${{ github.ref_name }}
@@ -78,6 +80,9 @@ jobs:
             dist/*.sbom.json
             dist/checksums.txt
             dist/checksums.txt.sigstore.json
+            dist/install.sh
+            dist/install.ps1
+            dist/install.cmd
           if-no-files-found: error
           retention-days: 7
 
@@ -163,4 +168,5 @@ jobs:
           flags=""
           case "$TAG" in *-*) flags="--prerelease" ;; esac
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes $flags \
-            ./*.tar.gz ./*.zip ./*.sbom.json checksums.txt checksums.txt.sigstore.json
+            ./*.tar.gz ./*.zip ./*.sbom.json checksums.txt checksums.txt.sigstore.json \
+            install.sh install.ps1 install.cmd

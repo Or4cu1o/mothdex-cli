@@ -15,7 +15,7 @@ archive, `checksums.txt` and `checksums.txt.sigstore.json`. The GUI has its own 
 SHA-256 checked, never cached). Every archive carries the licence notices of the Go modules linked into its binary
 (`THIRD_PARTY/go-modules-mothdex.txt` in the CLI archives; the GUI archives carry the whole `THIRD_PARTY/` folder, with `go-modules-mothdex-gui.txt` too).
 `scripts/gen-go-notices.sh` writes those files from the module list of each binary, and the `Release check` job fails when a file is not current;
-`scripts/verify-dist.sh` checks each built binary's `go version -m` against the file in its archive. `checksums.txt` lists all 28 archives and SBOMs, and the cosign
+`scripts/verify-dist.sh` checks each built binary's `go version -m` against the file in its archive. `checksums.txt` lists all 28 archives and SBOMs and the 3 installers, and the cosign
 bundle signs it; the attestation covers every listed file. `scripts/verify-dist.sh` checks the
 members, the loader and the build flags of every archive, and the snapshot check runs the
 installers' own member rules against the GUI archives (`scripts/check-gui-archives.sh`). The
@@ -33,15 +33,23 @@ time, so builds are reproducible. Format and JSON fields:
 
 ## Installing
 
-Download, read, then run. The installer is never piped to a shell, and it
-downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https.
+The one-line commands, and how to download, verify and read an installer before running it, are in the
+[README](../README.md#install); that is the only place that spells their address. Why a pipe is allowed and what it
+does not protect: [ADR-0003](adr/ADR-0003-pipe-install.md). The installers download only from the GitHub release of
+`Or4cu1o/mothdex-cli` over https.
 
-```sh
-curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
-less install.sh
-sh install.sh --dry-run          # downloads and verifies in a temp dir, installs nothing
-sh install.sh                    # or: --version, --profile, --bin-dir, --launcher, --no-launcher, --gui, --no-gui, --alias, --no-alias, --no-modify-path, --uninstall
-```
+`install.sh`, `install.ps1` and `install.cmd` are assets of every release. Each published copy carries the version of
+its release and installs it unless `--version` / `-Version` names another, so installer and release match
+(`scripts/stamp-installers.sh`; the copies in the repository have no version and install the latest non-pre-release).
+
+`install.sh` options (after a pipe, `sh -s -- <options>`): `--version`, `--profile`, `--bin-dir`, `--launcher`,
+`--no-launcher`, `--gui`, `--no-gui`, `--alias`, `--no-alias`, `--no-modify-path`, `--dry-run`, `--uninstall`.
+
+`install.ps1` and `install.cmd` options: `-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-NoLauncher`, `-Gui`,
+`-NoGui`, `-Alias`, `-NoAlias`, `-NoModifyPath`, `-DryRun`, `-Uninstall`. In CMD, quote values that hold spaces, `=`,
+`,` or `;`. `install.ps1` does not call `exit`: it sets `$LASTEXITCODE`. Run with `powershell -File`, a failure of the
+GUI step after the CLI was installed leaves the process exit status at 0, so check the output; `install.cmd` returns
+it.
 
 The installer adds the install folder to your PATH without administrator rights: the user `Path` and the current
 session on Windows, one line marked `# mothdex` in your shell's startup file elsewhere (only when the folder and that
@@ -54,10 +62,6 @@ Windows, a relative symbolic link elsewhere. `-Alias <name>` / `--alias <name>` 
 a-z 0-9 and -), `-NoAlias` / `--no-alias` creates none. The installer cannot see aliases or functions defined only in
 your interactive shell's startup files.
 
-To install a specific version, fetch the installer from that tag (`.../mothdex-cli/vX.Y.Z/install.sh`) so installer and release match.
-
-On Windows, download `install.ps1`, read it, then run `.\install.ps1` (options
-`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-NoLauncher`, `-Gui`, `-NoGui`, `-Alias`, `-NoAlias`, `-NoModifyPath`, `-DryRun`, `-Uninstall`).
 Both installers always check the SHA-256 of the archive against `checksums.txt`
 and, when `cosign` (or an authenticated `gh`) is on the machine, the signature
 and provenance with the identity below; a failing check aborts before anything
@@ -179,3 +183,10 @@ dev builds, non-terminal stderr, `--json`, `-q`, completion, version, logs and u
 checks. `upgrade --check` is an explicit request and ignores configuration, environment and CI opt-outs. The channel
 is `update.channel=stable` by default; `beta` includes prereleases. These settings also have the environment overrides
 `MOTHDEX_UPDATE_CHECK` and `MOTHDEX_UPDATE_CHANNEL`.
+
+The upgrade's preparation phase has a ten-minute budget, with fifteen seconds for response headers and thirty seconds
+of body inactivity; explicit checks have a thirty-second limit. Reading the confirmation has no preparation deadline.
+Even `-f` prints a downgrade warning (or records it in JSON warnings). A failure before replacement says that the
+previous installation remains intact; only an incomplete rollback, or a missing GUI asset, advises reinstalling.
+Known GUI notices refresh `mothdex-licenses/` beside the executable, preserving folders containing foreign entries.
+Future regular notices under `THIRD_PARTY/` are accepted within the archive limits and discarded; they are never run.

@@ -2,12 +2,14 @@ package update
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type routeTransport struct {
@@ -82,8 +84,48 @@ func TestRedirectAndBounds(t *testing.T) {
 	}
 	t.Run("oversize", func(t *testing.T) {
 		u, _ := fixture(t)
-		serve(t, u, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(make([]byte, 65<<10)) })
+		serve(t, u, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", "66560")
+			_, _ = w.Write(make([]byte, 65<<10))
+		})
 		_, _, err := u.request(context.Background(), "/download/v2.0.0/checksums.txt", 64<<10, false)
 		errorCode(t, err, "size_mismatch", "")
 	})
+}
+
+type fakeIdleTimer struct{ resets int }
+
+func (t *fakeIdleTimer) Reset(time.Duration) bool { t.resets++; return true }
+func (*fakeIdleTimer) Stop() bool                 { return true }
+
+type updateTransportFunc func(*http.Request) (*http.Response, error)
+
+func (f updateTransportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type stalledUpdateBody struct{ ctx context.Context }
+
+func (r stalledUpdateBody) Read([]byte) (int, error) { <-r.ctx.Done(); return 0, r.ctx.Err() }
+func (stalledUpdateBody) Close() error               { return nil }
+
+// Fire the idle timer deterministically: no clock wait and no external server.
+func TestRequestIdleTimeoutAndReset(t *testing.T) {
+	u, _ := fixture(t)
+	callbacks := make(chan func(), 1)
+	timer := &fakeIdleTimer{}
+	u.startTimer = func(_ time.Duration, fire func()) idleTimer { callbacks <- fire; return timer }
+	reading := make(chan struct{})
+	u.o.Client = newClient(&http.Client{Transport: updateTransportFunc(func(r *http.Request) (*http.Response, error) {
+		close(reading)
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: stalledUpdateBody{r.Context()}, ContentLength: -1, Request: r}, nil
+	})})
+	finished := make(chan error, 1)
+	go func() { _, _, err := u.request(context.Background(), "/fixture", 1024, false); finished <- err }()
+	fire := <-callbacks
+	<-reading
+	fire()
+	errorCode(t, <-finished, "network", "")
+	r := idleReader{r: strings.NewReader("chunk"), timer: timer}
+	if _, err := io.ReadAll(&r); err != nil || timer.resets != 1 {
+		t.Fatalf("idle timer not reset: %d %v", timer.resets, err)
+	}
 }

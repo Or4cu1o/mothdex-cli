@@ -8,7 +8,7 @@ errors:
     hint: 'Instale con el comando de una línea para su sistema: {install_command}'
   update_failed:
     message: 'No se pudo completar la actualización.'
-    hint: 'Si se restauró la versión anterior, intente mothdex upgrade más tarde; de lo contrario, reinstale: {install_command}'
+    hint: 'Reinstala con el comando oficial: {install_command}'
   usage:
     message: 'Uso no válido: {detail}'
     hint: 'Ejecuta "mothdex {command} --help".'
@@ -57,7 +57,7 @@ errors:
     message: 'El archivo descargado tiene un tamaño incorrecto ({got} de {expected}).'
     hint: 'Inténtalo de nuevo, o elige otro enlace con --link.'
   integrity:
-    message: 'El archivo descargado está dañado (falló la verificación del archivo).'
+    message: 'El contenido descargado falló la verificación de integridad u origen.'
     hint: 'Inténtalo de nuevo, o elige otro enlace con --link.'
   permission_denied:
     message: 'No se puede escribir en {path}.'
@@ -826,4 +826,7 @@ update:
   available: 'Nueva versión disponible: {current} → {latest}. Ejecuta mothdex upgrade.'
   updated: 'Actualizado {current} → {latest} (verificación: {signature}).'
   restart: 'Cierra y vuelve a abrir Mothdex para usar la nueva versión.'
+  restored_hint: 'Se restauró la versión anterior. Inténtalo más tarde.'
+  unchanged_hint: 'No se cambió nada en la instalación. La versión anterior sigue instalada.'
+  tamper_hint: 'Posible manipulación: no reinstales desde esta versión. Informa del fallo de verificación.'
   verification_hint: 'No se pudo verificar el origen de la versión. Si cambió la raíz de firma, reinstala con el comando oficial: {install_command}'

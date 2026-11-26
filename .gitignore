@@ -3,6 +3,7 @@
 /dist/
 /dist-gui/
 /dist-sdl2/
+dist-installers/
 /.bin/
 /mothdex
 /mothdex-gui
