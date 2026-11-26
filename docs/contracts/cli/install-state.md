@@ -81,7 +81,11 @@ UTF-8 JSON, one **flat** object, **no BOM**, at most 16 KiB.
 | `installed_at`, `updated_at` | RFC 3339 UTC |
 | `updated_by` | `"installer"` or `"upgrade"` |
 
-Readers ignore unknown fields, and writers write only the v1 fields: adding a field keeps `schema_version: 1`.
+Readers ignore unknown fields. Adding a field keeps `schema_version: 1`.
+- **`internal/update` keeps unknown top-level fields** when it rewrites the state, for example fields written by a
+  newer installer. It decodes them as raw JSON and writes the known fields on top. Unknown fields go after the v1
+  fields, one line each, in compact JSON and in their original order. It never acts on an unknown field.
+- **The installers write the fields they know.** A newer installer is the one that knows the newer fields.
 Removing a field or changing its meaning bumps the version.
 
 ## 3. Who writes it, and when

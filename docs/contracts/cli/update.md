@@ -141,8 +141,15 @@ from §6.
    - Staged files are created with `O_EXCL` under unique names and `fsync`ed.
    - Extract only the exact root members of release-artifacts.md §1 that the install needs (IC-4). Regular files only:
      a link, a path, an extra member or a duplicate name is `integrity`. A member that decompresses past 128 MiB is
-     `size_mismatch`. One exception: an empty directory entry named exactly `THIRD_PARTY/` is ignored (GoReleaser may
-     write it). Any other directory entry is `integrity`.
+     `size_mismatch`. Forward compatibility (Crivo M3, agreed with Regente):
+     - **Executables and DLLs keep exact names**, and an extra member at the archive root is still `integrity`.
+     - **Extra regular files under `THIRD_PARTY/` are accepted**, at most 64 of them, each at most 1 MiB, within the
+       128 MiB total. The name must match `^THIRD_PARTY/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`: a base name only, with no
+       path and no leading dot.
+     - **Accepted extras are never executed**, and are written to `mothdex-licenses` only when they are on the known
+       notice list.
+     - **Directory entries:** an empty directory entry named exactly `THIRD_PARTY/` is ignored; any other is
+       `integrity`.
    - Run the staged `mothdex --version --json` in the staging folder with a scrubbed environment (IC-1 style) and a
      10 s limit; `data.version` must equal the target version exactly.
    - With the GUI: the staged `mothdex-gui --version` must succeed, and `mothdex-gui --probe` must exit 0. Exit 8 is
@@ -251,6 +258,13 @@ only a warning.
   `swap_failed` or `check_failed`, and `details.restored` is a bool.
 - **Reused codes:** `integrity`, `size_mismatch`, `network`, `untrusted_redirect`, `not_found`, and
   `confirmation_required` (`--json` without `-f`).
+- **Time limits (Crivo M1).**
+  - Network: `ResponseHeaderTimeout` 15 s, and a 30 s idle limit on each body.
+  - An interactive `Check` or `upgrade --check` gets 30 s; the background check keeps 3 s.
+  - `Apply` gives discover, download, verify and stage 10 min together. The `Confirm` wait has no limit, because a
+    person is reading. The swap, check and commit run under their own 10 s probes and ignore `ctx` (§1 addendum).
+- **`details.restored`** is `true` whenever the previous version is in place: a failure before the first rename, or
+  a complete rollback. It is `false` only when a rollback step failed, and only then is the hint the install command.
 - **`upgrade --json` data:** `{current, latest, available, updated, channel, signature, restart_required, notes,
   downgrade}`.
   - A downgrade, even with `-f`, prints a warning on stderr before the swap (human output). Under `--json` the same
