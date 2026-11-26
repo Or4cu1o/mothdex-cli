@@ -25,5 +25,7 @@
 | `unsafe_name` | Refusing to save [name]: its file type can run code. | Nothing was written. Choose another link with --link, or pass --allow-executable if you trust it. |
 | `untrusted_redirect` | The server redirected to [host], which is not trusted. | Nothing was sent there. Try again later; if it persists, report it. |
 | `untrusted_url` | Refusing to download from [host]. | Only [allowed] is trusted. |
+| `update_failed` | The update could not be completed. | If the previous version was restored, try mothdex upgrade again later; otherwise reinstall: [install_command] |
+| `update_unavailable` | This installation cannot be updated by mothdex. | Install using the one-line command for your OS: [install_command] |
 | `upstream` | The server had a problem (HTTP [status]). | Try again in a few minutes. |
 | `usage` | Invalid usage: [detail] | Run "mothdex [command] --help". |

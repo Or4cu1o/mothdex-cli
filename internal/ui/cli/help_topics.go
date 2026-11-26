@@ -35,6 +35,7 @@ const exitCodesHelp = `Exit  Meaning                         error.code
 5     Integrity                       size_mismatch, integrity
 6     Local filesystem                permission_denied, disk_full, exists, path_rejected, unsafe_name
 7     Partial batch                   First failure; all failures in data.jobs[].error
+9     Self-update not applied         update_unavailable, update_failed
 130   Interrupted (wins over 7)        canceled`
 
 func configHelp() string {

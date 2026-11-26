@@ -164,14 +164,27 @@ func TestErrorReferenceCoversContractCodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, code := range regexp.MustCompile("`([a-z_]+)`").FindAllStringSubmatch(section, -1) {
-		if code[1] == "error" {
+
+	tableStarted := false
+	for _, line := range strings.Split(section, "\n") {
+		if !strings.HasPrefix(line, "|") {
+			if tableStarted {
+				break
+			}
 			continue
 		}
-		if !strings.Contains(string(doc), "`"+code[1]+"`") || !b.New("en_us").Has("errors."+code[1]+".message") {
-			t.Errorf("missing documented error %s", code[1])
+		tableStarted = true
+		cells := strings.Split(line, "|")
+		if len(cells) < 5 {
+			continue
+		}
+		for _, code := range regexp.MustCompile("`([a-z_]+)`").FindAllStringSubmatch(cells[3], -1) {
+			if !strings.Contains(string(doc), "`"+code[1]+"`") || !b.New("en_us").Has("errors."+code[1]+".message") || !strings.Contains(exitCodesHelp, code[1]) {
+				t.Errorf("missing documented error %s", code[1])
+			}
 		}
 	}
+
 }
 
 type exampleClock struct{}
