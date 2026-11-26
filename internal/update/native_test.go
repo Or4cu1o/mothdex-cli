@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,7 +13,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/root"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/app"
 )
 
 func nativeFixture(t *testing.T, name string) []byte {
@@ -23,35 +27,147 @@ func nativeFixture(t *testing.T, name string) []byte {
 	}
 	return b
 }
-func TestNativeVerifierIdentityAndArtifactBinding(t *testing.T) {
-	tr, err := root.NewTrustedRootFromJSON(nativeFixture(t, "root.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	verifier := nativeVerifier{trusted: tr}
+
+// The synthetic bundles come from a test authority with no SCT, so the identity rule is tested alone.
+func TestNativeIdentityBinding(t *testing.T) {
 	checksums := nativeFixture(t, "checksums.txt")
 	for _, tc := range []struct {
 		name, file, tag string
 		tamper, ok      bool
-	}{{"official", "official.json", "v2.0.0", false, true}, {"different repo", "wrong-repo.json", "v2.0.0", false, false}, {"branch identity", "branch.json", "v2.0.0", false, false}, {"wrong issuer", "issuer.json", "v2.0.0", false, false}, {"other tag", "official.json", "v2.0.1", false, false}, {"changed manifest", "official.json", "v2.0.0", true, false}} {
+	}{{"official", "official.json", "v2.0.0", false, true}, {"different repo", "wrong-repo.json", "v2.0.0", false, false}, {"branch identity", "branch.json", "v2.0.0", false, false}, {"wrong issuer", "issuer.json", "v2.0.0", false, false}, {"other workflow", "workflow.json", "v2.0.0", false, false}, {"other tag", "official.json", "v2.0.1", false, false}, {"changed manifest", "official.json", "v2.0.0", true, false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			sums := bytes.Clone(checksums)
 			if tc.tamper {
 				sums = append(sums, 'x')
 			}
-			sig, err := verifier.Verify(context.Background(), VerifyInput{Tag: tc.tag, Checksums: sums, Bundle: nativeFixture(t, tc.file)})
-			if tc.ok {
-				if err != nil || sig != "native" {
-					t.Fatalf("verification: %s %v", sig, err)
-				}
-			} else if err == nil {
-				t.Fatalf("accepted %s", tc.name)
+			var entity bundle.Bundle
+			if err := entity.UnmarshalJSON(nativeFixture(t, tc.file)); err != nil {
+				t.Fatal(err)
+			}
+			identity, err := releaseIdentity(tc.tag)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := signedByRelease(&entity, identity, sha256.Sum256(sums)); ok != tc.ok {
+				t.Fatalf("signedByRelease = %v, want %v", ok, tc.ok)
 			}
 		})
 	}
 }
+
+func TestNativeRequiresSCT(t *testing.T) {
+	tr, err := root.NewTrustedRootFromJSON(nativeFixture(t, "root.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = (nativeVerifier{trusted: tr}).Verify(context.Background(), VerifyInput{Tag: "v2.0.0", Checksums: nativeFixture(t, "checksums.txt"), Bundle: nativeFixture(t, "official.json")})
+	if err == nil || !strings.Contains(err.Error(), "SCT") {
+		t.Fatalf("bundle without SCT: %v", err)
+	}
+	if hint := signatureHint(err); hint != "update.tamper_hint" {
+		t.Fatalf("hint = %s", hint)
+	}
+}
+
+func releaseFixture(t *testing.T, tag string) VerifyInput {
+	t.Helper()
+	return VerifyInput{Tag: tag, Checksums: nativeFixture(t, "release/"+tag+"/checksums.txt"), Bundle: nativeFixture(t, "release/"+tag+"/checksums.txt.sigstore.json")}
+}
+
+func TestNativeVerifiesPublishedReleases(t *testing.T) {
+	for _, tag := range []string{"v0.1.0", "v0.1.1-rc.1", "v0.1.1"} {
+		t.Run(tag, func(t *testing.T) {
+			if sig, err := DefaultVerifier().Verify(context.Background(), releaseFixture(t, tag)); err != nil || sig != "native" {
+				t.Fatalf("published release refused: %q %v", sig, err)
+			}
+		})
+	}
+}
+
+// A release that does not match what was signed is never answered with "reinstall".
+func TestNativeTamperedReleaseIsNotATrustError(t *testing.T) {
+	for name, change := range map[string]func(*VerifyInput){
+		"tag swap": func(in *VerifyInput) { in.Tag = "v0.1.0" },
+		"tampered checksums": func(in *VerifyInput) {
+			in.Checksums = bytes.Clone(in.Checksums)
+			in.Checksums[0] ^= 1
+		},
+		"no transparency entry": func(in *VerifyInput) {
+			in.Bundle = editJSON(t, in.Bundle, func(b map[string]any) { delete(b["verificationMaterial"].(map[string]any), "tlogEntries") })
+		},
+		"missing bundle": func(in *VerifyInput) { in.Bundle = nil },
+	} {
+		for _, stale := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s stale=%v", name, stale), func(t *testing.T) {
+				verifier := nativeVerifier{}
+				if stale {
+					verifier.trusted = editedRoot(t, func(r map[string]any) { delete(r, "ctlogs") })
+				}
+				in := releaseFixture(t, "v0.1.1")
+				change(&in)
+				_, err := verifier.Verify(context.Background(), in)
+				if err == nil || errors.Is(err, errTrustMaterial) || signatureHint(err) != "update.tamper_hint" {
+					t.Fatalf("want a tampering error, got %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestNativeStaleRootIsATrustError(t *testing.T) {
+	expire := func(list string) func(map[string]any) {
+		return func(r map[string]any) {
+			for _, item := range r[list].([]any) {
+				entry := item.(map[string]any)
+				if key, ok := entry["publicKey"].(map[string]any); ok {
+					entry = key
+				}
+				entry["validFor"] = map[string]any{"start": "2021-01-01T00:00:00Z", "end": "2021-12-31T00:00:00Z"}
+			}
+		}
+	}
+	for name, change := range map[string]func(map[string]any){
+		"unknown authority":        func(r map[string]any) { delete(r, "certificateAuthorities") },
+		"unknown transparency log": func(r map[string]any) { delete(r, "tlogs") },
+		"unknown certificate log":  func(r map[string]any) { delete(r, "ctlogs") },
+		"expired authority":        expire("certificateAuthorities"),
+		"expired transparency log": expire("tlogs"),
+		"expired certificate log":  expire("ctlogs"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := (nativeVerifier{trusted: editedRoot(t, change)}).Verify(context.Background(), releaseFixture(t, "v0.1.1"))
+			if !errors.Is(err, errTrustMaterial) || signatureHint(err) != "update.verification_hint" {
+				t.Fatalf("want a trust material error, got %v", err)
+			}
+		})
+	}
+}
+
+func editJSON(t *testing.T, body []byte, change func(map[string]any)) []byte {
+	t.Helper()
+	var value map[string]any
+	if err := json.Unmarshal(body, &value); err != nil {
+		t.Fatal(err)
+	}
+	change(value)
+	out, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func editedRoot(t *testing.T, change func(map[string]any)) *root.TrustedRoot {
+	t.Helper()
+	tr, err := root.NewTrustedRootFromJSON(editJSON(t, trustedRoot, change))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tr
+}
+
 func TestNativeVerificationCannotFallBackToChecksumOnly(t *testing.T) {
-	verifier := DefaultVerifier(func(string) (string, error) { t.Fatal("native verifier searched for an external tool"); return "", nil })
+	verifier := DefaultVerifier()
 	for _, body := range [][]byte{nil, []byte("{}"), []byte("not-json")} {
 		if sig, err := verifier.Verify(context.Background(), VerifyInput{Tag: "v2.0.0", Checksums: []byte("tampered"), Bundle: body}); err == nil || sig == "none" {
 			t.Fatalf("accepted unsigned input: %s %v", sig, err)
@@ -63,26 +179,10 @@ func TestNativeVerificationCannotFallBackToChecksumOnly(t *testing.T) {
 		t.Fatal("ignored cancellation")
 	}
 }
-func TestNativeRejectsMissingTransparencyProof(t *testing.T) {
-	tr, err := root.NewTrustedRootFromJSON(nativeFixture(t, "root.json"))
-	if err != nil {
-		t.Fatal(err)
+func TestEmbeddedTrustedRootIsPinned(t *testing.T) {
+	if got := fmt.Sprintf("%x", sha256.Sum256(trustedRoot)); got != trustedRootSHA256 {
+		t.Fatalf("trusted-root.json is %s, pinned %s: review the change, then update the pin and docs/release.md", got, trustedRootSHA256)
 	}
-	var bundle map[string]any
-	if err = json.Unmarshal(nativeFixture(t, "official.json"), &bundle); err != nil {
-		t.Fatal(err)
-	}
-	material := bundle["verificationMaterial"].(map[string]any)
-	delete(material, "tlogEntries")
-	body, err := json.Marshal(bundle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = (nativeVerifier{trusted: tr}).Verify(context.Background(), VerifyInput{Tag: "v2.0.0", Checksums: nativeFixture(t, "checksums.txt"), Bundle: body}); err == nil {
-		t.Fatal("accepted bundle without transparency evidence")
-	}
-}
-func TestEmbeddedTrustedRootParses(t *testing.T) {
 	tr, err := root.NewTrustedRootFromJSON(trustedRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -118,6 +218,10 @@ func TestNativeApplyRejectsTamperedManifest(t *testing.T) {
 	})
 	_, err = u.Apply(context.Background(), ApplyOptions{Confirm: func(Staged) bool { t.Error("confirmation reached before signature rejection"); return true }})
 	errorCode(t, err, "integrity", "signature")
+	var ae *app.Error
+	if !errors.As(err, &ae) || ae.Args["hint_key"] != "update.tamper_hint" {
+		t.Fatalf("tampered manifest must not advise reinstalling: %v", err)
+	}
 	installed, err := os.ReadFile(u.o.Exe)
 	if err != nil || string(installed) != "old" {
 		t.Fatal("native signature rejection touched install")

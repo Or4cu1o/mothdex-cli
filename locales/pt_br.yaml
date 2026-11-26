@@ -1119,3 +1119,4 @@ update:
   updated: 'Atualizado {current} → {latest} (verificação: {signature}).'
   restart: 'Saia e abra o Mothdex novamente para usar a nova versão.'
   verification_hint: 'Não foi possível verificar a origem da versão. Se a raiz de assinatura mudou, reinstale com o comando oficial: {install_command}'
+  tamper_hint: 'A assinatura da versão não foi aceita: ela pode ter sido adulterada. Não reinstale; avise em privado: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'

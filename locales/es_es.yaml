@@ -806,3 +806,4 @@ update:
   updated: 'Actualizado {current} → {latest} (verificación: {signature}).'
   restart: 'Cierra y vuelve a abrir Mothdex para usar la nueva versión.'
   verification_hint: 'No se pudo verificar el origen de la versión. Si cambió la raíz de firma, reinstala con el comando oficial: {install_command}'
+  tamper_hint: 'La firma de la versión no se aceptó: puede haber sido manipulada. No reinstales; avisa en privado: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'

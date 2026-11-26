@@ -35,7 +35,7 @@ func run() error {
 	issuer := "https://token.actions.githubusercontent.com"
 	identity := "https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v2.0.0"
 	artifact := []byte("offline signed checksums fixture\n")
-	for _, tc := range []struct{ name, identity, issuer string }{{"official", identity, issuer}, {"wrong-repo", "https://github.com/evil/mothdex-cli/.github/workflows/release.yml@refs/tags/v2.0.0", issuer}, {"branch", "https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/heads/main", issuer}, {"issuer", identity, "https://evil.example"}} {
+	for _, tc := range []struct{ name, identity, issuer string }{{"official", identity, issuer}, {"wrong-repo", "https://github.com/evil/mothdex-cli/.github/workflows/release.yml@refs/tags/v2.0.0", issuer}, {"branch", "https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/heads/main", issuer}, {"issuer", identity, "https://evil.example"}, {"workflow", "https://github.com/Or4cu1o/mothdex-cli/.github/workflows/ci.yml@refs/tags/v2.0.0", issuer}} {
 		e, err := vs.SignWithVersion(tc.identity, tc.issuer, artifact, "v0.1")
 		if err != nil {
 			return err

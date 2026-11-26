@@ -12,6 +12,8 @@ Tests use TLS fixture servers, generated binary probes and temporary installatio
 T-110 TM-29 through TM-40 and `docs/contracts/cli/update.md` define the security boundary.
 
 The default verifier uses sigstore-go with the embedded Public Good root. It validates the artifact digest, Fulcio
-chain, exact release-workflow/tag identity, GitHub Actions OIDC issuer and authenticated transparency evidence/time.
+chain, exact release-workflow/tag identity, GitHub Actions OIDC issuer, certificate transparency proof (SCT) and
+authenticated transparency evidence/time. The root is pinned by SHA-256 (see docs/release.md), and `trust.go` limits
+the reinstall hint to failures the embedded root may explain.
 It performs no network requests and never falls back to tools or checksum-only verification. Refresh the embedded
 root through verified TUF metadata with `go run scripts/update-trusted-root.go`; review root changes with each release.

@@ -1120,3 +1120,4 @@ update:
   updated: 'Updated {current} → {latest} (verification: {signature}).'
   restart: 'Exit and open Mothdex again to use the new version.'
   verification_hint: 'Release origin could not be verified. If the signing root rotated, reinstall with the official command: {install_command}'
+  tamper_hint: 'The release signature did not verify: it may have been tampered with. Do not reinstall; report it privately: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'

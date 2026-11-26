@@ -160,10 +160,12 @@ should use their own installation method; an unmanaged upgrade exits 9 and print
 
 The updater uses the fixed official GitHub release origin. It verifies SHA-256 for every archive, then verifies origin
 natively with sigstore-go. The signed manifest must match its SHA-256, chain to the embedded Sigstore Public Good
-Fulcio roots, have verified Rekor transparency evidence and an authenticated observer timestamp, and have the exact
-certificate identity of `Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version>` with the GitHub Actions
+Fulcio roots, carry a verified certificate transparency proof (SCT), verified Rekor transparency evidence and an
+authenticated observer timestamp, and have the exact certificate identity of `Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version>` with the GitHub Actions
 OIDC issuer. A failure aborts before extraction or installation. `-f` never skips verification. No external tool or
-SHA-256-only fallback is selected.
+SHA-256-only fallback is selected. The reinstall hint appears only when the failure points to the embedded root (an
+unknown or expired certificate authority, transparency log or certificate transparency log). A wrong identity, altered
+file or missing bundle says the release may be tampered with, asks not to reinstall and to report it privately.
 
 The Public Good trusted root is **embedded**, refreshed through verified TUF metadata by
 `go run scripts/update-trusted-root.go` during release preparation and committed for review. Upgrades do not fetch
@@ -171,6 +173,16 @@ TUF, Fulcio, Rekor or certificate URLs at runtime. Root rotations require a new 
 material; a release signed only with an unknown new key fails closed and requires the current installer. Revocations
 and other trust changes are likewise learned through a Mothdex update, rather than a runtime TUF refresh. Root changes
 must be reviewed with the release code; the bundle itself can never supply a trust anchor.
+
+The embedded `internal/update/trusted-root.json` is pinned by SHA-256, and a test fails when the file and the pin differ:
+
+```text
+6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66
+```
+
+The refresh script prints the old and new hash. Review the JSON diff, then record the new hash here and in
+`trustedRootSHA256` (`internal/update/native.go`). A refresh must keep the older keys with their validity windows, or
+the fixtures of the published releases stop verifying.
 
 All components are staged and probed before confirmation. After replacement, the CLI and GUI are checked again.
 Failure restores the previous files in reverse order. The Windows alias hardlink is recreated for the new CLI;
