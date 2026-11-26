@@ -61,13 +61,11 @@ var unlogged = []string{cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestC
 
 // Logged says whether a command line gets a session log.
 func Logged(args []string, rules map[string]mlog.FlagRule) bool {
-	if slices.Contains(args, "--version") {
-		return false
-	}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "" || a[0] != '-' {
-			return !slices.Contains(unlogged, a)
+			// upgrade shadows the global boolean flag with its target version.
+			return (a == "upgrade" || a == "update") || (!slices.Contains(unlogged, a) && !slices.Contains(args, "--version"))
 		}
 		name := a[1:]
 		if len(name) > 0 && name[0] == '-' {
@@ -77,5 +75,5 @@ func Logged(args []string, rules map[string]mlog.FlagRule) bool {
 			i++ // the value of "--lang pt_br" is not the command
 		}
 	}
-	return true
+	return !slices.Contains(args, "--version")
 }
