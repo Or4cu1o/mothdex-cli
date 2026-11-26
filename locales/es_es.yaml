@@ -271,6 +271,7 @@ ui:
       new_version: 'Nueva versión: {version}'
       action: 'Actualizar'
       downloading: 'Descargando la actualización…'
+      verifying: 'Comprobando la descarga…'
       progress: '{done} de {total}'
       confirm: '¿Actualizar de {from} a {to}?'
       signature: 'Firma comprobada: {method}'

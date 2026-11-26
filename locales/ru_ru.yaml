@@ -279,6 +279,7 @@ ui:
       new_version: 'Новая версия: {version}'
       action: 'Обновить'
       downloading: 'Загрузка обновления…'
+      verifying: 'Проверка загрузки…'
       progress: '{done} из {total}'
       confirm: 'Обновить {from} до {to}?'
       signature: 'Подпись проверена: {method}'

@@ -19,6 +19,8 @@ import (
 type Updates interface {
 	// Check answers from the cache or the network within its own time limit. A zero Version means nothing newer.
 	Check(ctx context.Context) (Release, error)
+	// MarkNotified records that the notice of a version was shown, so that it is told once a day.
+	MarkNotified(version string) error
 	// Apply downloads, verifies and installs the new version. progress and confirm are called from the goroutine
 	// that runs Apply, one at a time. confirm blocks until the person answers; false changes nothing. Canceling
 	// ctx before the confirmation changes nothing either.
@@ -31,8 +33,12 @@ type Release struct {
 	Notify           bool
 }
 
-// UpdateProgress is how far the download is; Total is zero while it is unknown.
-type UpdateProgress struct{ Done, Total int64 }
+// UpdateProgress is the step Apply is on (docs/contracts/cli/update.md: discover, download, verify, stage, swap,
+// check, done) and how far it is; Total is zero while it is unknown.
+type UpdateProgress struct {
+	Step        string
+	Done, Total int64
+}
 
 // Staged is a downloaded and verified update that waits for the person. Notes come from the verified archive.
 type Staged struct {
@@ -97,16 +103,23 @@ func (m Model) checkUpdate() (Model, []Cmd) {
 	}}
 }
 
-func (m Model) onRelease(msg releaseMsg, now time.Time) Model {
+func (m Model) onRelease(msg releaseMsg, now time.Time) (Model, []Cmd) {
 	if msg.err != nil { // a notice nobody asked for must not become an error on screen
 		m.o.Log.Info("gui: update check", "err", msg.err)
-		return m
+		return m, nil
 	}
 	m.upd.release = Release{Version: app.SanitizeText(msg.release.Version), PageURL: app.SanitizeText(msg.release.PageURL), Notify: msg.release.Notify}
-	if m.upd.release.Version == "" || !msg.release.Notify {
-		return m
+	if m.upd.release.Version == "" || !msg.release.Notify || m.screen == screenExit {
+		return m, nil
 	}
-	return m.withToastFor(m.tr("ui.gui.update.available", map[string]any{"version": m.upd.release.Version}), toastInfo, noticeFor, now)
+	m = m.withToastFor(m.tr("ui.gui.update.available", map[string]any{"version": m.upd.release.Version}), toastInfo, noticeFor, now)
+	up, log, version := m.o.Updates, m.o.Log, msg.release.Version
+	return m, []Cmd{func() Msg {
+		if err := up.MarkNotified(version); err != nil {
+			log.Info("gui: update notice not recorded", "err", err)
+		}
+		return nil
+	}}
 }
 
 // startUpdate runs Apply off the render thread and shows its progress.
@@ -256,6 +269,9 @@ func (m Model) drawUpdate(p painter) {
 	met := m.metrics
 	u := met.Unit
 	title := m.tr("ui.gui.update.downloading", nil)
+	if step := m.upd.progress.Step; step == "verify" || step == "stage" {
+		title = m.tr("ui.gui.update.verifying", nil)
+	}
 	var lines []string
 	if m.upd.confirmed {
 		title = m.tr("ui.gui.update.installing", nil)

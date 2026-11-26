@@ -314,7 +314,7 @@ func (m Model) dispatch(msg Msg, now time.Time) (Model, []Cmd) {
 	case exportDoneMsg:
 		return m.onExportDone(msg, now), nil
 	case releaseMsg:
-		return m.onRelease(msg, now), nil
+		return m.onRelease(msg, now)
 	case updateProgressMsg:
 		return m.onUpdateProgress(msg)
 	case updateStagedMsg:

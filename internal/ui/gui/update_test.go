@@ -16,7 +16,10 @@ type fakeUpdates struct {
 	applies   int
 	installed bool
 	failure   error // returned by Apply after the confirmation
+	notified  []string
 }
+
+func (f *fakeUpdates) MarkNotified(v string) error { f.notified = append(f.notified, v); return nil }
 
 func (f *fakeUpdates) Check(context.Context) (Release, error) { f.checks++; return f.release, nil }
 
@@ -63,6 +66,16 @@ func TestTheUpdateCheckRunsOnceAfterTheStartScreen(t *testing.T) {
 		t.Fatalf("checks %d, applies %d: one check, and nothing installs by itself", f.checks, f.applies)
 	}
 	h.mustHave("Version 0.3.0 is available: Settings > About.")
+	if len(f.notified) != 1 || f.notified[0] != "0.3.0" {
+		t.Errorf("a notice that was shown is recorded once: %v", f.notified)
+	}
+	quiet := newer()
+	quiet.release.Notify = false // already told today: the About item stays, the notice does not
+	h = started(t, guitest.New(), 1280, 720, func(o *Options) { o.Updates = quiet })
+	h.mustNotMatch(`is available`)
+	if len(quiet.notified) != 0 || h.m.upd.release.Version != "0.3.0" {
+		t.Errorf("notified %v, release %+v", quiet.notified, h.m.upd.release)
+	}
 }
 
 // Nothing installs without a second yes on the pad, given after the download is verified; B and the default

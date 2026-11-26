@@ -272,6 +272,7 @@ ui:
       new_version: 'New version: {version}'
       action: 'Update'
       downloading: 'Downloading the update…'
+      verifying: 'Checking the download…'
       progress: '{done} of {total}'
       confirm: 'Update {from} to {to}?'
       signature: 'Signature checked: {method}'
