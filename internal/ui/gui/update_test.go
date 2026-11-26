@@ -142,6 +142,7 @@ func TestAFailedUpdateShowsHowToRecover(t *testing.T) {
 		{"another update running", "update_failed", false, failed("in_progress", false), "Nothing was changed.", command},
 		{"staged check failed", "update_failed", false, failed("check_failed", false), "Nothing was changed.", "incomplete"},
 		{"release without the GUI", "update_failed", false, failed("gui_missing", false), "Install again from a terminal: " + command, "incomplete"},
+		{"the new GUI cannot run here", "update_failed", false, failed("gui_not_eligible", true), "cannot run on this system: use mothdex tui.", "Try again"},
 		{"signing root", "integrity", false, map[string]any{"hint_key": "update.verification_hint", "install_command": command}, "reinstall with the official command: " + command, "previous version is back"},
 	} {
 		f := newer()

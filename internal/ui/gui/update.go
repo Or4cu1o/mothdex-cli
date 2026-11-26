@@ -286,6 +286,8 @@ func (m Model) recoveryHint(err error, f failure, swapped bool) string {
 	switch {
 	case ae.Args["reason"] == "gui_missing" && command != "":
 		return m.tr("ui.gui.update.hint_installer", with)
+	case ae.Args["reason"] == "gui_not_eligible": // the new GUI does not run here: trying again changes nothing
+		return m.tr("ui.gui.update.hint_not_eligible", nil)
 	case !swapped:
 		return m.tr("ui.gui.update.hint_unchanged", nil)
 	case restored:

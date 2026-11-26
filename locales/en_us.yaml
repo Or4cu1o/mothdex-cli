@@ -627,6 +627,7 @@ ui:
       canceled: 'Update canceled. Nothing changed.'
       hint_unchanged: 'Nothing was changed. Try again later.'
       hint_installer: "Install again from a terminal:\n{command}"
+      hint_not_eligible: 'Nothing was changed. The new GUI cannot run on this system: use mothdex tui.'
       hint_restored: 'The previous version is back. Try again later.'
       hint_reinstall: "The installation may be incomplete. Install again from a terminal:\n{command}"
       failed: 'Not updated'
