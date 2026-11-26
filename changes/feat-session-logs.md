@@ -5,4 +5,4 @@
 
 ### Security
 
-- Every log is redacted as it is written: the API address, credentials in URLs and authentication headers never reach `mothdex.log`, the session files or the console copy. A log folder that is a link or that other users can write to is not used.
+- Every log is redacted as it is written: the API address, credentials in URLs and authentication headers never reach `mothdex.log`, the session files or the console copy. A log folder that is a link or that other users can write to is replaced by the default one, or not used; folders on FAT, exFAT and NTFS, which have no permission bits, are used with a warning. Log files of another user or with a second hard link are refused, and secrets written as `key=value` are removed.

@@ -67,9 +67,13 @@ func Diagnostics(logs *mlog.Session, configFile, profile, lang string) (mlog.Bun
 	for i, s := range settings {
 		entries[i] = mlog.ConfigEntry{Key: s.Key, Value: s.Value, Source: string(s.Source)}
 	}
+	dir := paths.Logs
+	if logs != nil && logs.Dir() != "" {
+		dir = logs.Dir() // the default folder, when the configured one was refused
+	}
 	b := buildinfo.Get()
 	return mlog.BundleOptions{
-		Dir: paths.Logs, Home: plat.HomeDir, Secrets: []string{res.Config.API.BaseURL},
+		Dir: dir, Home: plat.HomeDir, Secrets: []string{res.Config.API.BaseURL},
 		Manifest: mlog.Manifest{Version: b.Version, Commit: b.Commit, Profile: profile, Lang: lang, Config: entries},
 	}, errors.Join(loadErr, attachErr)
 }
