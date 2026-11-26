@@ -795,6 +795,8 @@ rc_line_for() {
   esac
 }
 
+# Backslash and quote only: control characters never reach a field, because every value is a constant, a validated word
+# or a path that passed valid_path (or must equal a line already in a startup file).
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
 known_rc() {
