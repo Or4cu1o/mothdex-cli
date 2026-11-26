@@ -62,6 +62,11 @@ log:
   console: false
   max_size_mb: 10
   max_files: 5
+  session_level: debug          # debug | info | warn | error; session file and latest.log (logs.md §4)
+  sessions_keep: 20             # 1..100 session files kept
+update:                         # self-update and daily check (update.md §5)
+  check: true
+  channel: stable               # stable | beta
 gui:                            # the handheld front end (gui.md section 8)
   confirm_button: south         # south | east (east swaps confirm and back)
   text_size: normal             # normal | large
@@ -92,7 +97,7 @@ Portable paths are decided by the marker file alone (T-11 decision 1): they appl
 Rule: `MOTHDEX_` + the key path in upper case, with `.` replaced by `_`. Example: `download.first_byte_timeout` →
 `MOTHDEX_DOWNLOAD_FIRST_BYTE_TIMEOUT`; `cache.ttl.search` → `MOTHDEX_CACHE_TTL_SEARCH`. Lists are comma-separated.
 Because the schema is closed, the mapping is a fixed table generated from it; a test asserts that no two keys map
-to the same variable. Unknown `MOTHDEX_*` variables log a warning. Reserved: `MOTHDEX_CONFIG` (file path).
+to the same variable. Unknown `MOTHDEX_*` variables log a warning. Reserved: `MOTHDEX_CONFIG` (file path) and `MOTHDEX_NO_UPDATE_CHECK` (update.md §5).
 
 ## 5. Flags
 
