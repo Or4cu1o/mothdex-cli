@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 )
@@ -42,6 +44,9 @@ type Result struct {
 
 func canceled(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return failure(app.CodeNetwork, "timeout", err)
+		}
 		return failure(app.CodeCanceled, "canceled", err)
 	}
 	return nil
@@ -58,11 +63,14 @@ func step(ctx context.Context, o ApplyOptions, name string) error {
 
 // Apply verifies all components before confirmation, then commits or rolls back as one transaction.
 func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err error) {
+	caller := ctx
+	ctx, stopBudget := context.WithTimeout(ctx, 10*time.Minute)
+	defer stopBudget()
 	result.From = u.o.Current
 	committing := false
 	defer func() {
-		if err != nil && ctx.Err() != nil && !committing {
-			err = failure(app.CodeCanceled, "canceled", ctx.Err())
+		if err != nil && caller.Err() != nil && !committing {
+			err = failure(app.CodeCanceled, "canceled", caller.Err())
 		}
 		status := "current"
 		if result.RestartRequired {
@@ -74,6 +82,9 @@ func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err
 			status = "failed"
 			var ae *app.Error
 			if errors.As(err, &ae) {
+				if ae.Code == app.CodeUpdateFailed && !committing && ae.Args["reason"] != "gui_missing" {
+					ae.Args["hint_key"] = "update.unchanged_hint"
+				}
 				reason, _ = ae.Args["reason"].(string)
 				restored, _ = ae.Args["restored"].(bool)
 			}
@@ -94,6 +105,9 @@ func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err
 		return result, failure(app.CodeUpdateFailed, "in_progress", err)
 	}
 	defer unlock()
+	if err = writeProbe(dir); err != nil {
+		return result, err
+	}
 	if err = step(ctx, o, "discover"); err != nil {
 		return result, err
 	}
@@ -132,6 +146,8 @@ func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err
 	if err = canceled(ctx); err != nil {
 		return result, err
 	}
+	stopBudget()
+	ctx = caller // The person reading the confirmation has no staging deadline.
 	if o.Confirm == nil {
 		return result, failure(app.CodeConfirmationNeeded, "confirmation", nil)
 	}
@@ -241,8 +257,8 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 			return r, err
 		}
 		for name, data := range files {
-			if strings.HasPrefix(name, "THIRD_PARTY/") || name == "LICENSE" {
-				r.notices[name] = data
+			if gui && strings.HasPrefix(name, "THIRD_PARTY/") {
+				r.notices[strings.TrimPrefix(name, "THIRD_PARTY/")] = data
 			}
 		}
 		r.files = append(r.files, binaryName(gui))
@@ -265,7 +281,12 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 				if ctx.Err() != nil {
 					return r, canceled(ctx)
 				}
-				return r, failure(app.CodeUpdateFailed, "gui_not_eligible", err)
+				reason := "check_failed"
+				var exit *exec.ExitError
+				if eligibility && errors.As(err, &exit) && exit.ExitCode() == 8 {
+					reason = "gui_not_eligible"
+				}
+				return r, failure(app.CodeUpdateFailed, reason, err)
 			}
 		}
 	}
@@ -319,6 +340,11 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 		}
 		err := failure(app.CodeUpdateFailed, reason, cause)
 		err.Args["restored"] = restored
+		if restored {
+			err.Args["hint_key"] = "update.restored_hint"
+		} else {
+			delete(err.Args, "hint_key")
+		}
 		return err
 	}
 	for _, name := range r.files {
@@ -457,51 +483,4 @@ func relinkAlias(dir, alias string) (string, error) {
 		return "", fmt.Errorf("alias relink mismatch")
 	}
 	return aliasFileID(path)
-}
-
-func (u *Updater) writeNotices(dir string, notices map[string][]byte) {
-	for name, data := range notices {
-		path := filepath.Join(dir, name)
-		parent := filepath.Dir(path)
-		if parent != dir {
-			st, err := os.Lstat(parent)
-			if os.IsNotExist(err) {
-				err = os.Mkdir(parent, 0700)
-				st, _ = os.Lstat(parent)
-			}
-			if err != nil || st == nil || !st.IsDir() || isReparse(st) || st.Mode()&os.ModeSymlink != 0 {
-				u.o.Log.Warn("update licence write failed")
-				continue
-			}
-		}
-		if _, err := os.Lstat(path); err == nil {
-			if _, err = regular(path); err != nil {
-				u.o.Log.Warn("update licence write failed")
-				continue
-			}
-		}
-		f, err := os.CreateTemp(parent, ".mothdex-notice-")
-		if err != nil {
-			u.o.Log.Warn("update licence write failed")
-			continue
-		}
-		_, err = f.Write(data)
-		if err == nil {
-			err = f.Chmod(0644)
-		}
-		if err == nil {
-			err = f.Sync()
-		}
-		ce := f.Close()
-		if err == nil {
-			err = ce
-		}
-		if err == nil {
-			err = os.Rename(f.Name(), path)
-		}
-		_ = os.Remove(f.Name())
-		if err != nil {
-			u.o.Log.Warn("update licence write failed")
-		}
-	}
 }

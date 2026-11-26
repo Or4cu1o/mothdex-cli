@@ -50,3 +50,20 @@ func TestManagedPrivateGroupWritableAccepted(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestManagedFATExceptionKeepsOwnershipGate(t *testing.T) {
+	old := permissionless
+	defer func() { permissionless = old }()
+	u, s := fixture(t)
+	//nolint:gosec // Reproduces the modes returned by FAT and exFAT.
+	if err := os.Chmod(s.Dir, 0777); err != nil {
+		t.Fatal(err)
+	} //nolint:gosec // reproduces modes reported by FAT/exFAT.
+	permissionless = func(string) bool { return false }
+	_, err := u.Managed()
+	errorCode(t, err, "update_unavailable", "untrusted_dir")
+	permissionless = func(string) bool { return true }
+	if _, err = u.Managed(); err != nil {
+		t.Fatalf("FAT install refused: %v", err)
+	}
+}

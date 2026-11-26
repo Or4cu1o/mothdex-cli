@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 )
@@ -30,6 +31,7 @@ func allowedURL(u *url.URL) bool {
 }
 func newClient(in *http.Client) *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = 15 * time.Second
 	tr.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	c := &http.Client{Transport: tr}
 	if in != nil {
@@ -47,6 +49,10 @@ func newClient(in *http.Client) *http.Client {
 	return c
 }
 func (u *Updater) request(ctx context.Context, path string, limit int64, latest bool, progress ...func(int64, int64)) ([]byte, string, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	timer := u.startTimer(30*time.Second, cancel)
+	defer timer.Stop()
 	c := *u.o.Client
 	if latest {
 		c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -80,15 +86,18 @@ func (u *Updater) request(ctx context.Context, path string, limit int64, latest 
 	if resp.ContentLength > limit {
 		return nil, "", failure("size_mismatch", "body_limit", nil)
 	}
-	reader := io.Reader(resp.Body)
+	reader := io.Reader(&idleReader{r: resp.Body, timer: timer})
 	if len(progress) > 0 && progress[0] != nil {
 		total := resp.ContentLength
 		if total < 0 {
 			total = 0
 		}
-		reader = &downloadProgress{r: resp.Body, total: total, notify: progress[0]}
+		reader = &downloadProgress{r: reader, total: total, notify: progress[0]}
 	}
 	b, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil && ctx.Err() != nil {
+		return nil, "", failure(app.CodeNetwork, "timeout", err)
+	}
 	if int64(len(b)) > limit || (resp.ContentLength >= 0 && resp.ContentLength != int64(len(b))) {
 		return nil, "", failure("size_mismatch", "body_length", err)
 	}
@@ -154,6 +163,24 @@ func (r *downloadProgress) Read(b []byte) (int, error) {
 	r.done += int64(n)
 	if n > 0 {
 		r.notify(r.done, r.total)
+	}
+	return n, err
+}
+
+// Reset after every received chunk, independently of the overall operation budget.
+type idleTimer interface {
+	Reset(time.Duration) bool
+	Stop() bool
+}
+type idleReader struct {
+	r     io.Reader
+	timer idleTimer
+}
+
+func (r *idleReader) Read(b []byte) (int, error) {
+	n, err := r.r.Read(b)
+	if n > 0 {
+		r.timer.Reset(30 * time.Second)
 	}
 	return n, err
 }

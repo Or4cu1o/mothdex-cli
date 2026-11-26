@@ -29,9 +29,11 @@ is the `release.yml` workflow at `refs/tags/vX.Y.Z` of this repository, with iss
 
 The installers (`install.sh`, `install.ps1`) follow the same rule: they read
 only from this repository's GitHub releases, verify the SHA-256 (and the
-signature when cosign or `gh` is present) before installing, and are meant to be
-downloaded and read, never piped to a shell. See
-[docs/release.md](docs/release.md#installing).
+signature when cosign or `gh` is present) before installing. They may be run in
+one line through a pipe, which runs the script before anything has checked it;
+what that leaves to trust is written in
+[ADR-0003](docs/adr/ADR-0003-pipe-install.md). Downloading, verifying and reading
+the script first stays documented in the [README](README.md#install).
 
 One documented exception: on a Batocera or Recalbox share partition formatted
 as exFAT, FAT or NTFS, which has no file permissions, `install.sh` run as root

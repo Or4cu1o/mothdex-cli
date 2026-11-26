@@ -36,8 +36,9 @@ type Release struct {
 
 // Updater serializes Apply calls; Check is safe to call separately.
 type Updater struct {
-	o  Options
-	mu sync.Mutex
+	o          Options
+	mu         sync.Mutex
+	startTimer func(time.Duration, func()) idleTimer
 }
 
 // New builds an updater with a pinned HTTPS origin and validates its channel.
@@ -76,7 +77,7 @@ func New(o Options) (*Updater, error) {
 	if o.Verifier == nil {
 		o.Verifier = DefaultVerifier()
 	}
-	return &Updater{o: o}, nil
+	return &Updater{o: o, startTimer: func(d time.Duration, f func()) idleTimer { return time.AfterFunc(d, f) }}, nil
 }
 func (u *Updater) probe(ctx context.Context, path, version string, gui, eligibility bool) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

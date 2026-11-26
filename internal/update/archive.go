@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,6 +19,8 @@ import (
 )
 
 const archiveLimit = 128 << 20
+
+var extraNotice = regexp.MustCompile(`^THIRD_PARTY/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 var checksumLine = regexp.MustCompile(`^([a-fA-F0-9]{64}) [ *]([^\s]+)$`)
 
@@ -103,15 +104,48 @@ func members(gui bool) map[string]bool {
 
 // extract accepts the exact release member set, never arbitrary paths or archive links.
 func extract(b []byte, dir string, gui bool) (map[string][]byte, error) {
-	allowed := members(gui)
+	return extractArchive(b, dir, members(gui), binaryName(gui), runtime.GOOS == "windows")
+}
+
+func extractArchive(b []byte, dir string, allowed map[string]bool, executable string, zipped bool) (map[string][]byte, error) {
 	seen := map[string][]byte{}
+	names := map[string]bool{}
+	extras := 0
 	total := int64(0)
-	add := func(name string, size int64, mode os.FileMode, r io.Reader) error {
-		if !allowed[name] || seen[name] != nil || !mode.IsRegular() {
-			return failure("integrity", "archive_member", fmt.Errorf("unexpected member"))
+	directory := func(name string, size int64, mode os.FileMode) (bool, error) {
+		if !mode.IsDir() {
+			return false, nil
 		}
+		folded := strings.ToLower(name)
+		if mode&os.ModeType != os.ModeDir || name != "THIRD_PARTY/" || size != 0 || names[folded] {
+			return false, failure("integrity", "archive_member", nil)
+		}
+		names[folded] = true
+		return true, nil
+	}
+	add := func(name string, size int64, mode os.FileMode, r io.Reader) error {
+		folded := strings.ToLower(name)
+		if names[folded] || !mode.IsRegular() {
+			return failure("integrity", "archive_member", nil)
+		}
+		names[folded] = true
 		if size < 0 || size > archiveLimit-total {
 			return failure("size_mismatch", "expanded_limit", nil)
+		}
+		if !allowed[name] {
+			if !extraNotice.MatchString(name) || extras >= 64 {
+				return failure("integrity", "archive_member", nil)
+			}
+			if size > 1<<20 {
+				return failure("size_mismatch", "expanded_limit", nil)
+			}
+			extras++
+			n, err := io.Copy(io.Discard, io.LimitReader(r, size+1))
+			if err != nil || n != size {
+				return failure("integrity", "archive_read", err)
+			}
+			total += size
+			return nil
 		}
 		data, err := io.ReadAll(io.LimitReader(r, size+1))
 		if err != nil || int64(len(data)) != size {
@@ -121,12 +155,31 @@ func extract(b []byte, dir string, gui bool) (map[string][]byte, error) {
 		seen[name] = data
 		return nil
 	}
-	if runtime.GOOS == "windows" {
+	if zipped {
 		z, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
 		if err != nil {
 			return nil, failure("integrity", "zip", err)
 		}
 		for _, f := range z.File {
+			if f.UncompressedSize64 > archiveLimit {
+				return nil, failure("size_mismatch", "expanded_limit", nil)
+			}
+			skip, e := directory(f.Name, int64(f.UncompressedSize64), f.Mode())
+			if e != nil {
+				return nil, e
+			}
+			if skip {
+				r, e := f.Open()
+				if e != nil {
+					return nil, failure("integrity", "archive_member", e)
+				}
+				n, e := io.Copy(io.Discard, io.LimitReader(r, 1))
+				_ = r.Close()
+				if n != 0 || e != nil {
+					return nil, failure("integrity", "archive_member", e)
+				}
+				continue
+			}
 			r, err := f.Open()
 			if err != nil {
 				return nil, failure("integrity", "zip_member", err)
@@ -156,6 +209,13 @@ func extract(b []byte, dir string, gui bool) (map[string][]byte, error) {
 			if err != nil {
 				return nil, failure("integrity", "tar", err)
 			}
+			skip, e := directory(h.Name, h.Size, h.FileInfo().Mode())
+			if e != nil {
+				return nil, e
+			}
+			if skip {
+				continue
+			}
 			if h.Typeflag != tar.TypeReg {
 				return nil, failure("integrity", "tar_type", nil)
 			}
@@ -180,7 +240,7 @@ func extract(b []byte, dir string, gui bool) (map[string][]byte, error) {
 		return nil, failure("integrity", "missing_member", nil)
 	}
 	for name, data := range seen {
-		if name == binaryName(gui) || name == "SDL2.dll" {
+		if name == executable || name == "SDL2.dll" {
 			mode := os.FileMode(0755)
 			if name == "SDL2.dll" {
 				mode = 0644

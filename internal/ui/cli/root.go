@@ -44,21 +44,27 @@ type runtime struct {
 
 // Execute runs the command line and returns the process exit code. It prints every error itself.
 func Execute(ctx context.Context, d Deps, args []string) int {
-	r := &runtime{d: d, ctx: ctx}
+	return (&runtime{d: d, ctx: ctx}).execute(args)
+}
+
+func (r *runtime) execute(args []string) int {
+	d := r.d
 	root := r.rootCommand()
 	root.SetArgs(args)
 	root.SetOut(d.Stdout)
 	root.SetErr(d.Stderr)
-	err := root.ExecuteContext(ctx)
-	r.finishUpdateCheck()
+	err := root.ExecuteContext(r.ctx)
 	if r.sess != nil && r.sess.Close != nil {
 		defer r.sess.Close()
 	}
 	if err == nil {
+		r.finishUpdateCheck()
 		return 0
 	}
 	r.noteCommand(root, args)
-	return r.fail(err)
+	code := r.fail(err)
+	r.finishUpdateCheck()
+	return code
 }
 
 // noteCommand names the command that failed argument validation, which cobra reports before any hook

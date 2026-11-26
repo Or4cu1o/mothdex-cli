@@ -84,6 +84,8 @@ func (u *Updater) writeCache(c checkCache) {
 
 // Check is cache-aware; force is used by explicit upgrade --check and always rediscovers.
 func (u *Updater) Check(ctx context.Context, force bool) (result CheckResult, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	start := u.o.Now()
 	result = CheckResult{Current: u.o.Current, Channel: u.o.Channel}
 	defer func() {

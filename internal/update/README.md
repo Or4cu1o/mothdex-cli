@@ -17,3 +17,10 @@ authenticated transparency evidence/time. The root is pinned by SHA-256 (see doc
 the reinstall hint to failures the embedded root may explain.
 It performs no network requests and never falls back to tools or checksum-only verification. Refresh the embedded
 root through verified TUF metadata with `go run scripts/update-trusted-root.go`; review root changes with each release.
+
+Managed checks are read-only. Apply probes writability after locking, and gives preparation a ten-minute budget;
+confirmation has no preparation deadline. Explicit checks take at most thirty seconds; background checks take three.
+Headers have a fifteen-second limit and each response body a thirty-second idle limit. Future THIRD_PARTY notices
+are discarded within the bounded archive policy. Only known GUI notices refresh mothdex-licenses via a private folder
+and rename; unknown entries preserve the existing folder. The statfs exception for permissionless filesystems is
+shared with the logging and installer policy while effective-user ownership remains mandatory on Unix.

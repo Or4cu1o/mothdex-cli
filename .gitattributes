@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.png binary
+# cmd.exe can miss a label in a batch file with bare line feeds
+*.cmd text eol=crlf
