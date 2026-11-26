@@ -148,6 +148,232 @@ ui:
       one: '{count} arquivo'
       other: '{count} arquivos'
   cli:
+    help:
+      boxart:
+        example: |-
+          mothdex search mario
+          mothdex boxart 1 -o ./games
+        long: 'Salve a capa de um item na pasta de destino sem baixar o jogo.'
+        short: 'Salve a capa de um item'
+      cache:
+        example: 'mothdex cache stats'
+        long: 'Consulte o uso do cache local ou limpe dados do catálogo em cache. A sessão e o estado são preservados por padrão.'
+        short: 'Consulte ou limpe o cache'
+      cache_clear:
+        example: 'mothdex cache clear'
+        long: 'Limpe os namespaces selecionados ou, sem argumentos, os dados em cache exceto sessão e estado.'
+        short: 'Limpe dados em cache (preserva sessão e estado por padrão)'
+      cache_stats:
+        example: 'mothdex cache stats'
+        long: 'Mostre a quantidade de itens, tamanho e expiração por namespace do cache.'
+        short: 'Mostre o uso do cache'
+      completion:
+        example: 'mothdex completion bash'
+        long: 'Gere um script de autocompletar para mothdex e mdex. Carregue com source (bash/zsh), envie para source (fish) ou Invoke-Expression (PowerShell).'
+        short: 'Gere autocompletar para mothdex e mdex'
+      completion_bash:
+        example: 'mothdex completion bash'
+        long: 'Gere autocompletar de bash para mothdex e mdex. Carregue o script no arquivo de inicialização do seu shell.'
+        short: 'Gere autocompletar para bash'
+      completion_fish:
+        example: 'mothdex completion fish'
+        long: 'Gere autocompletar de fish para mothdex e mdex. Carregue o script no arquivo de inicialização do seu shell.'
+        short: 'Gere autocompletar para fish'
+      completion_powershell:
+        example: 'mothdex completion powershell'
+        long: 'Gere autocompletar de powershell para mothdex e mdex. Carregue o script no arquivo de inicialização do seu shell.'
+        short: 'Gere autocompletar para powershell'
+      completion_zsh:
+        example: 'mothdex completion zsh'
+        long: 'Gere autocompletar de zsh para mothdex e mdex. Carregue o script no arquivo de inicialização do seu shell.'
+        short: 'Gere autocompletar para zsh'
+      config:
+        example: 'mothdex config list'
+        long: 'Consulte as configurações efetivas e suas origens ou edite o arquivo YAML. Execute mothdex help config para consultar valores aceitos, padrões e variáveis de ambiente.'
+        short: 'Consulte ou altere configurações'
+      config_get:
+        example: 'mothdex config get interface.language'
+        long: 'Mostre o valor efetivo de uma chave de configuração com pontos.'
+        short: 'Mostre uma configuração'
+      config_list:
+        example: 'mothdex config list'
+        long: 'Liste os valores efetivos e suas origens: padrão, arquivo, ambiente ou flag do comando.'
+        short: 'Liste todas as configurações'
+      config_reset:
+        example: 'mothdex config reset interface.page_size'
+        long: 'Remova uma configuração para que uma chave, seção ou o arquivo inteiro volte aos padrões.'
+        short: 'Remova uma configuração do arquivo'
+      config_set:
+        example: 'mothdex config set interface.page_size 10'
+        long: 'Valide e salve um valor de configuração. A próxima execução lê o novo valor.'
+        short: 'Altere uma configuração no arquivo'
+      db_info:
+        example: 'mothdex db-info'
+        long: 'Mostre os totais do catálogo e os metadados do banco fornecidos pelo servidor.'
+        short: 'Mostre estatísticas do catálogo'
+      download:
+        example: |-
+          mothdex search mario
+          mothdex download 1
+          mothdex download 1 -o ./games
+          mothdex download --search mario
+          mothdex download 1 --link 1
+          mothdex download 1 --boxart
+        long: 'Baixe pelo número do resultado ou slug. Ao usar números, execute search primeiro. --search escolhe o primeiro resultado. --link escolhe um link numerado; -o define a pasta de destino e --boxart salva a capa.'
+        short: 'Baixe itens'
+      gui:
+        example: |-
+          mothdex gui
+          mothdex gui --lang pt_br
+        long: 'Execute mothdex-gui da pasta de instalação da CLI. Repasse --config, --profile e --lang ao GUI. Se estiver ausente, reinstale sem -NoGui / --no-gui ou use mothdex tui.'
+        short: 'Abra a interface com gamepad'
+      help:
+        example: |-
+          mothdex help download
+          mothdex help exit-codes
+          mothdex help config
+          mothdex help errors
+        long: 'Mostre a ajuda de um comando ou tópico de referência: exit-codes, config ou errors.'
+        short: 'Ajuda dos comandos e tópicos de referência'
+      history:
+        example: |-
+          mothdex history
+          mothdex history --failed
+        long: 'Liste downloads anteriores, incluindo falhas. Exporte registros com --export e --format.'
+        short: 'Mostre downloads anteriores'
+      info:
+        example: |-
+          mothdex search mario
+          mothdex info 1
+        long: 'Mostre um item e seus links de download. Use um número da última busca ou um slug explícito com --slug.'
+        short: 'Mostre um item e seus links'
+      platforms:
+        example: 'mothdex platforms'
+        long: 'Liste os identificadores de plataforma aceitos por --platform.'
+        short: 'Liste as plataformas'
+      profile:
+        example: 'mothdex profile show'
+        long: 'Consulte o perfil ativo do frontend e as pastas de jogos detectadas.'
+        short: 'Mostre ou detecte o perfil do frontend'
+      profile_detect:
+        example: 'mothdex profile detect'
+        long: 'Detecte novamente o perfil do frontend e mostre as pastas e os avisos resultantes.'
+        short: 'Detecte novamente o perfil'
+      profile_show:
+        example: 'mothdex profile show'
+        long: 'Mostre o frontend ativo, a pasta de jogos, a origem da detecção e os avisos de armazenamento.'
+        short: 'Mostre o perfil ativo'
+      random:
+        example: 'mothdex random'
+        long: 'Escolha itens aleatórios do catálogo, com filtros opcionais de plataforma e região.'
+        short: 'Mostre itens aleatórios'
+      regions:
+        example: 'mothdex regions'
+        long: 'Liste os identificadores de região aceitos por --region.'
+        short: 'Liste as regiões'
+      root:
+        example: |-
+          mothdex search mario
+          mothdex help config
+        long: |-
+          Pesquise no catálogo, consulte itens e baixe jogos. Use --json em scripts.
+          Consulte mothdex help config, mothdex help exit-codes ou mothdex help errors para referência.
+        short: 'Pesquise e baixe do catálogo Mothdex'
+      search:
+        example: |-
+          mothdex search mario
+          mothdex search mario --platform snes --page-size 10
+        long: 'Pesquise títulos e salve uma página numerada para info e download. Filtre por plataforma ou região; a ordenação vale para a página atual.'
+        short: 'Pesquise no catálogo'
+      shell:
+        example: 'mothdex shell'
+        long: 'Abra uma sessão interativa com histórico e autocompletar por Tab. Comandos exclusivos do shell: n, p, page, sort, last, clear, exit e quit.'
+        short: 'Abra o shell interativo'
+      tui:
+        example: 'mothdex tui'
+        long: 'Abra a interface de tela cheia no terminal. Tanto a entrada quanto a saída precisam ser terminais interativos.'
+        short: 'Abra a interface de tela cheia no terminal'
+      version:
+        example: 'mothdex version'
+        long: 'Mostre a versão, o commit e a data do build. --json retorna o envelope padrão de saída.'
+        short: 'Mostre a versão'
+    flags:
+      allow_executable: 'permita tipos de arquivo que podem executar código'
+      boxart: 'salve também a capa'
+      brand: 'somente esta marca'
+      class: 'somente esta classe'
+      config: 'arquivo de configuração'
+      count: 'quantidade de itens (1..20)'
+      export: 'grave os resultados ou registros em um arquivo ou pasta'
+      failed: 'somente downloads com falha'
+      force: 'pule confirmações; permita sobrescrever arquivos'
+      format: 'formato de exportação: txt | json | csv'
+      help: 'mostre a ajuda deste comando'
+      jobs: 'downloads simultâneos'
+      json: 'imprima um documento JSON na saída padrão'
+      lang: 'idioma da interface, por exemplo pt_br'
+      limit: 'registros mais recentes a mostrar (0 = todos)'
+      link: 'número do link a usar (tem prioridade sobre --prefer)'
+      no_boxart: 'não salve a capa'
+      no_color: 'desative as cores'
+      output: 'pasta de destino (vira a raiz; arquivos vão diretamente para ela)'
+      page: 'número da página'
+      page_size: 'resultados por página (1..100; padrão interface.page_size)'
+      platform: 'identificador de plataforma (pode repetir)'
+      prefer: 'ordene links: chave=valor[,valor...] (pode repetir)'
+      profile: 'identificador do perfil do frontend'
+      quiet: 'imprima somente o resultado e erros'
+      refresh: 'ignore leituras do cache, mas continue gravando'
+      region: 'identificador de região (pode repetir)'
+      search: 'pesquise e baixe o primeiro resultado'
+      serial: 'serial exato'
+      slug: 'interprete os argumentos como slugs'
+      sort: 'relevance | title | size (somente a página atual)'
+      verbose: 'mostre a causa dos erros'
+      version: 'mostre a versão e saia'
+    template:
+      default: 'padrão'
+      exit_codes: |-
+        Saída Significado                     error.code
+        0     Sucesso (inclui ignorados)       —
+        1     Erro interno inesperado         internal
+        2     Uso ou configuração             usage, invalid_config, invalid_request, confirmation_required, unmapped_platform
+        3     Não encontrado                  not_found, no_session, index_out_of_range
+        4     Rede/serviço indisponível        network, rate_limited, upstream, api_incompatible, untrusted_url, untrusted_redirect
+        5     Integridade                     size_mismatch, integrity
+        6     Sistema de arquivos local       permission_denied, disk_full, exists, path_rejected, unsafe_name
+        7     Lote parcial                    Primeira falha; todas em data.jobs[].error
+        9     Atualização não aplicada        update_unavailable, update_failed
+        130   Interrompido (prevalece sobre 7) canceled
+      config_intro: |-
+        Configuração: padrões < arquivo YAML < ambiente MOTHDEX_* < flags do comando.
+        Use mothdex config set <chave> <valor> para salvar uma configuração.
+      config_columns: 'Chave | Valores aceitos | Padrão | Ambiente'
+      config_footer: |-
+        profile.folders.<plataforma> | nome relativo da pasta | padrão do perfil | —
+        Caminhos vazios usam pastas específicas do sistema. interface.language aceita auto ou um idioma como en_us/pt_br.
+      error_reference: 'Referência de erros'
+      error_columns: '| Código | Significado | Como corrigir |'
+      no_error_action: 'Nenhuma ação necessária; execute o comando novamente para tentar outra vez.'
+      usage: 'Uso'
+      commands: 'Comandos disponíveis'
+      examples: 'Exemplos'
+      flags: 'Flags'
+      global_flags: 'Flags globais'
+      modes: 'Modos de uso'
+      shell_commands: 'Comandos do shell: n, p, page <n>, sort <key>, last, clear, exit, quit'
+      catalog: 'Catálogo'
+      downloads: 'Downloads'
+      interfaces: 'Interfaces'
+      system: 'Sistema'
+      command_token: 'comando'
+      flags_token: 'flags'
+      modes_table: |-
+        Modo    Como abrir                   Para quê
+        CLI     mdex <comando>               Scripts e uso rápido; aceita --json
+        Shell   mdex, ou mdex shell          Comandos em sequência, n/p, histórico, Tab
+        TUI     mdex tui                     Tela cheia, navegação por teclado
+        GUI     mdex gui, ou mothdex-gui     Interface com gamepad para RetroBat, Batocera e similares
     warning: 'aviso'
     usage_root_hint: 'Execute "mothdex --help".'
     name: 'Nome'
