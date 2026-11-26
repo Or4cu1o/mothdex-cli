@@ -526,6 +526,48 @@ ui:
       number: 'Show the entry with that number (same as info)'
       d: 'Download entries by number: d 1 3, or d 2-4'
   gui:
+    cmdline:
+      summary: "mothdex-gui is the gamepad interface of mothdex for emulation frontends.\nWith no flags it opens in full screen."
+      usage: 'Usage:'
+      options: 'flags'
+      flags_title: 'Flags:'
+      values:
+        file: 'file'
+        id: 'id'
+        level: 'level'
+        size: 'WxH'
+        name: 'name'
+      flags:
+        config: 'Configuration file (default: the standard location)'
+        profile: 'Frontend profile, such as batocera (default: detected)'
+        lang: "Interface language, such as pt_br\n(default: interface.language)"
+        log_level: "Log detail: debug, info, warn or error. Shortcut\nfor MOTHDEX_LOG_LEVEL (default: log.level)"
+        window: 'Open a window of that size instead of full screen'
+        driver: "Force an SDL video driver, such as dummy\n(default: SDL_VIDEODRIVER or SDL's choice)"
+        probe: "Check that SDL2 can be used, without a window:\nprint its version and exit"
+        version: 'Print the version and exit'
+        spike: "Test the SDL2 binding on a hidden window and\nexit (used by automated tests)"
+        help: 'Show this help and exit'
+      dashes: 'Flags take one dash or two: -config and --config are the same.'
+      exit_title: 'Exit codes:'
+      exit:
+        c0: 'Normal exit, also after SIGTERM or Ctrl+C'
+        c1: 'Unexpected internal error'
+        c2: 'Configuration error: configuration, flags or profile'
+        c8: 'SDL2 is missing or too old, or there is no display'
+      env_title: 'Environment variables:'
+      env:
+        config: 'Configuration file, when --config is not given'
+        log_level: 'Same as --log-level'
+        key: 'Any configuration key: upper case, dots as _'
+      examples_title: 'Examples:'
+      log_note: 'Failures are written to mothdex.log, in the logs folder (paths.logs).'
+      see_help: 'Run mothdex-gui --help to see the flags.'
+      unexpected_argument: 'Unexpected argument: {argument}'
+      unknown_flag: 'Unknown flag: {flag}'
+      missing_value: 'The flag {flag} needs a value.'
+      bad_flags: 'Invalid command line: {detail}'
+      bad_window: '--window wants WxH, at least 160x120, such as 1280x720.'
     kb:
       space: 'space'
       delete: 'Del'

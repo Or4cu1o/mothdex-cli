@@ -40,13 +40,18 @@ downloads only from the GitHub release of `Or4cu1o/mothdex-cli` over https.
 curl -fsSLO https://raw.githubusercontent.com/Or4cu1o/mothdex-cli/main/install.sh
 less install.sh
 sh install.sh --dry-run          # downloads and verifies in a temp dir, installs nothing
-sh install.sh                    # or: --version, --profile, --bin-dir, --launcher, --no-launcher, --gui, --no-gui, --uninstall
+sh install.sh                    # or: --version, --profile, --bin-dir, --launcher, --no-launcher, --gui, --no-gui, --no-modify-path, --uninstall
 ```
+
+The installer adds the install folder to your PATH without administrator rights: the user `Path` and the current
+session on Windows, one line marked `# mothdex` in your shell's startup file elsewhere (only when the folder and that
+file cannot be written by other users). `-NoModifyPath` / `--no-modify-path` prints the command to copy instead, and
+uninstall removes only the entry recorded in `.mothdex-install.json` ([contract](contracts/cli/install-state.md)).
 
 To install a specific version, fetch the installer from that tag (`.../mothdex-cli/vX.Y.Z/install.sh`) so installer and release match.
 
 On Windows, download `install.ps1`, read it, then run `.\install.ps1` (options
-`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-NoLauncher`, `-Gui`, `-NoGui`, `-DryRun`, `-Uninstall`).
+`-Version`, `-RetroBatPath`, `-BinDir`, `-Launcher`, `-NoLauncher`, `-Gui`, `-NoGui`, `-NoModifyPath`, `-DryRun`, `-Uninstall`).
 Both installers always check the SHA-256 of the archive against `checksums.txt`
 and, when `cosign` (or an authenticated `gh`) is on the machine, the signature
 and provenance with the identity below; a failing check aborts before anything

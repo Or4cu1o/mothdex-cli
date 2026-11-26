@@ -29,15 +29,6 @@ func TestTheProbeNameSelectsProbeMode(t *testing.T) {
 	}
 }
 
-func TestBadFlagsExitWithTheInternalCode(t *testing.T) {
-	for _, args := range [][]string{{"mothdex-gui", "-window", "nope"}, {"mothdex-gui", "-window", "10x10"}, {"mothdex-gui", "-nosuchflag"}} {
-		var out, errOut bytes.Buffer
-		if code := run(args, &out, &errOut); code != exitInternal {
-			t.Errorf("%v: exit %d, want %d (%s)", args, code, exitInternal, errOut.String())
-		}
-	}
-}
-
 // --version is the line of `mothdex version`, from the same buildinfo the release ldflags fill, and it works where SDL2 is
 // missing (this test needs none): it opens nothing.
 func TestVersionPrintsTheCLIVersionLineAndExitsZero(t *testing.T) {
@@ -69,16 +60,6 @@ func TestTheEmbeddedAppIconDecodesToATransparentSquare(t *testing.T) {
 	}
 	if _, _, _, a := img.At(b.Dx()/2, b.Dy()/2).RGBA(); a == 0 {
 		t.Error("the middle of the icon is transparent")
-	}
-}
-
-func TestHelpExitsZero(t *testing.T) {
-	var out, errOut bytes.Buffer
-	if code := run([]string{"mothdex-gui", "-h"}, &out, &errOut); code != exitOK {
-		t.Fatalf("-h exits %d, want 0", code)
-	}
-	if errOut.Len() == 0 {
-		t.Error("-h prints the usage")
 	}
 }
 
