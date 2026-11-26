@@ -834,6 +834,8 @@ state_valid() {
   v=$(state_string "$1" alias_kind) || return 1
   if [ -z "$ST_ALIAS" ]; then [ -z "$v" ] || return 1
   else valid_alias "$ST_ALIAS" && [ "$v" = symlink ] || return 1; fi
+  # the Windows file ID of a hard link: empty here, and absent in a state written before the field existed
+  if grep -q '"alias_file_id"' "$1"; then v=$(state_string "$1" alias_file_id) && [ -z "$v" ] || return 1; fi
   ST_KIND=$(state_string "$1" path_kind) || return 1
   ST_FILE=$(state_string "$1" path_file) || return 1
   ST_VALUE=$(state_string "$1" path_value) || return 1
@@ -879,6 +881,7 @@ write_state() {
   "gui": %s,
   "alias": "%s",
   "alias_kind": "%s",
+  "alias_file_id": "",
   "path_added": %s,
   "path_kind": "%s",
   "path_file": "%s",
@@ -920,7 +923,8 @@ alias_free() {
   return 1
 }
 
-# Sets ALIAS. A name the user chose has no fallback; otherwise the recorded one, then mdex, then mthd.
+# Sets ALIAS. A name the user chose has no fallback, and when it is taken a shortcut of ours stays; otherwise the recorded
+# one, then mdex, then mthd.
 choose_alias() {
   ALIAS=""
   [ "$NO_ALIAS" -eq 0 ] || return 0
@@ -932,6 +936,16 @@ choose_alias() {
     if alias_free "$name"; then ALIAS=$name; return 0; fi
     warn "$name is already used ($ALIAS_BUSY): left alone"
   done
+  if [ -n "$ALIAS_OPT" ]; then keep_alias; fi
+}
+
+# The recorded shortcut, when it is still our link.
+keep_alias() {
+  ALIAS=""
+  if [ -n "$ST_ALIAS" ] && alias_is_ours "$ST_ALIAS"; then
+    ALIAS=$ST_ALIAS
+    warn "keeping the shortcut $ST_ALIAS"
+  fi
 }
 
 remove_alias() { # name; only our link
@@ -948,7 +962,7 @@ update_alias() {
     # ln -s never replaces an existing name
     if ! ln -s mothdex "$BIN_DIR/$ALIAS" 2>/dev/null; then
       warn "cannot create the shortcut $BIN_DIR/$ALIAS (the file system may not support links)"
-      ALIAS=""
+      keep_alias
     fi
   fi
   if [ -n "$ST_ALIAS" ] && [ "$ST_ALIAS" != "$ALIAS" ]; then remove_alias "$ST_ALIAS"; fi

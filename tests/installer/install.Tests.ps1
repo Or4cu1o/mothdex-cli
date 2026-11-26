@@ -829,6 +829,49 @@ exit `$LASTEXITCODE
   Invoke-Install @{ Version = 'v1.5.0'; BinDir = (Join-Path $root 'alias-bad'); Alias = 'mx'; NoAlias = $true }
   Check '-Alias with -NoAlias is refused' $script:threw
 
+  # a link of ours that went stale (interrupted upgrade): recognised by its recorded file ID
+  $env:Path = $savedSessionPath
+  $a7 = Join-Path $root 'alias7'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  $link7 = Join-Path $a7 'mdex.exe'
+  $exe7 = Join-Path $a7 'mothdex.exe'
+  Check 'state records the file ID of the link' ((Get-State $a7).alias_file_id -cmatch '^[0-9]+:[0-9]+:[0-9]+\z')
+  function Set-Stale { Remove-Item -LiteralPath $exe7 -Force; Copy-Item (Join-Path $cliStage2 'mothdex.exe') $exe7 }
+  Set-Stale
+  Check 'the link is stale' ((& $link7) -eq 'mothdex 1.5.0')
+  Invoke-Install @{ Version = 'v1.5.1'; BinDir = $a7 }
+  Check 'a stale link of ours is relinked, with no second shortcut' (((& $link7) -eq 'mothdex 1.5.1') -and ((Get-LinkCount $link7) -eq 2) -and (-not (Test-Path (Join-Path $a7 'mthd.exe'))))
+  Set-Stale
+  Invoke-Install @{ BinDir = $a7; Uninstall = $true }
+  Check 'uninstall removes a stale link of ours' (-not (Test-Path $link7))
+
+  # a --version failure after the swap: the shortcut follows mothdex.exe and the state follows the shortcut
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  $idBefore = (Get-State $a7).alias_file_id
+  Invoke-Install @{ Version = 'v1.2.3'; BinDir = $a7 }
+  Check 'a failed --version leaves no shortcut on the old binary' ((Get-LinkCount $link7) -eq 2)
+  Check 'and only the recorded file ID changed' (((Get-State $a7).alias_file_id -cne $idBefore) -and ((Get-State $a7).version -ceq '1.5.0') -and ((Get-State $a7).alias -ceq 'mdex'))
+
+  # --alias with a taken name keeps the working shortcut
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7; Alias = 'dir' }
+  Check 'a taken -Alias keeps the previous shortcut' ((Test-Path $link7) -and ((Get-State $a7).alias -ceq 'mdex') -and ($script:output -match 'keeping the shortcut mdex'))
+
+  # only the renamed-aside names this installer makes are cleaned
+  foreach ($name in 'mdex.exe.old', 'mdex.exe.old-123', 'mdex.exe.old-abc', 'mdex.exe.oldx', 'mdex.exe.old-1.txt') { Set-Content -Path (Join-Path $a7 $name) -Value 'x' }
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  Check 'cleanup removes .old and .old-<number> only' (((Get-ChildItem $a7 -Filter 'mdex.exe.old*' | ForEach-Object Name | Sort-Object) -join ',') -ceq 'mdex.exe.old-1.txt,mdex.exe.old-abc,mdex.exe.oldx')
+  Set-Content -Path (Join-Path $a7 'mdex.exe.old-77') -Value 'x'
+  Invoke-Install @{ BinDir = $a7; Uninstall = $true }
+  Check 'uninstall cleans the .old file too' (-not (Test-Path (Join-Path $a7 'mdex.exe.old-77')))
+
+  # a state without the field stays valid
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  $st7 = Join-Path $a7 '.mothdex-install.json'
+  [IO.File]::WriteAllText($st7, ((Get-Content $st7 -Raw) -replace '\s*"alias_file_id": "[^"]*",', ''))
+  Invoke-Install @{ BinDir = $a7; Uninstall = $true }
+  Check 'a state without alias_file_id is still valid' ((-not (Test-Path $link7)) -and ($script:output -notmatch 'not a valid install state'))
+
   $env:Path = $savedSessionPath
   $a6 = Join-Path $root 'alias6'
   Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a6 }

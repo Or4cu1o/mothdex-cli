@@ -1442,6 +1442,27 @@ check "no fallback for a chosen name" absent_all $GB/mdex $GB/mthd
 inst --version v1.2.3 --alias cd
 check "builtin refused" absent $GB/cd
 
+reset alias-chosen-taken-keeps-previous
+inst --version v1.2.3
+inst --version v1.2.3 --alias ls
+check "exit 0" rc_is 0
+check "the working shortcut stays" link_to_mothdex $GB/mdex
+check "and stays recorded" file_has $ST '"alias": "mdex"'
+check "says so" out_has "keeping the shortcut mdex"
+check "the taken name is not created" absent $GB/ls
+
+reset alias-state-file-id
+inst --version v1.2.3
+check "alias_file_id is empty for a symlink" file_has $ST '"alias_file_id": ""'
+sed '/"alias_file_id"/d' $ST >/tmp/old.json && cp /tmp/old.json $ST
+inst --uninstall
+check "a state without the field is still valid" absent $GB/mdex
+inst --version v1.2.3
+sed 's|"alias_file_id": ""|"alias_file_id": "1:2:3"|' $ST >/tmp/old.json && cp /tmp/old.json $ST
+inst --uninstall
+check "a file ID in a symlink state is invalid" out_has "not a valid install state"
+rm -f /tmp/old.json
+
 reset alias-invalid
 for bad in mothdex mothdex-gui nul com1 lpt9 ../x a/b X Mdex -x 1x m abcdefghijklmnopq 'a b' 'a;b' "$(printf 'ab\ncd')"; do
   : >"$FAKE_LOG"
