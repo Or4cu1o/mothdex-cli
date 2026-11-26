@@ -26,6 +26,8 @@ func TestOnlyRealRunsGetASessionLog(t *testing.T) {
 		"search mario":           true,
 		"--lang pt_br search x":  true,
 		"search version":         true,
+		"logs path":              false,
+		"--json logs bundle":     false,
 		"__complete search x":    false,
 		"__completeNoDesc x":     false,
 		"completion bash":        false,
@@ -34,7 +36,7 @@ func TestOnlyRealRunsGetASessionLog(t *testing.T) {
 		"--config x.yaml shell":  true,
 		"--json --verbose cache": true,
 	} {
-		if got := Logged(strings.Fields(line)); got != want {
+		if got := Logged(strings.Fields(line), LogFlagRules()); got != want {
 			t.Errorf("Logged(%q) = %v", line, got)
 		}
 	}
