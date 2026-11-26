@@ -2,6 +2,7 @@ package compose
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -113,5 +114,27 @@ func TestDetectProfileWiresMemoryBackedStorage(t *testing.T) {
 				t.Fatalf("redetection %+v, %v", again, err)
 			}
 		})
+	}
+}
+
+// --log-level is the shortcut of MOTHDEX_LOG_LEVEL: it wins over the variable, and takes the same values.
+func TestOpenLogLevelFlagBeatsTheEnvironment(t *testing.T) {
+	isolated(t)
+	t.Setenv("MOTHDEX_LOG_LEVEL", "error")
+	for _, c := range []struct {
+		flag  string
+		debug bool
+	}{{"", false}, {"debug", true}} {
+		sess, err := Open(context.Background(), Options{LogLevel: c.flag})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sess.Log.Enabled(context.Background(), slog.LevelDebug); got != c.debug {
+			t.Errorf("LogLevel %q: debug enabled %v, want %v", c.flag, got, c.debug)
+		}
+		sess.Close()
+	}
+	if _, err := Open(context.Background(), Options{LogLevel: "loud"}); errCode(err) != app.CodeInvalidConfig {
+		t.Errorf("an unknown level: %v", err)
 	}
 }

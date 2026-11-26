@@ -42,6 +42,7 @@ type Options struct {
 	ConfigFile      string // --config; empty selects the default location
 	Profile         string // --profile
 	Lang            string // --lang; empty uses interface.language
+	LogLevel        string // --log-level; empty keeps log.level
 	Jobs            int    // -j; 0 keeps download.concurrency
 	Force           bool
 	AllowExecutable bool
@@ -94,6 +95,9 @@ func Open(_ context.Context, o Options) (*Session, error) {
 	flags := map[string]string{}
 	if o.Jobs > 0 {
 		flags["download.concurrency"] = strconv.Itoa(o.Jobs)
+	}
+	if o.LogLevel != "" {
+		flags["log.level"] = o.LogLevel
 	}
 	res, err := config.Load(config.Options{File: file, Environ: os.Environ(), Flags: flags, Force: o.Force && !o.Session}) // a session never honors a start-up -f, so a stored overwrite is reported here
 	if err != nil {

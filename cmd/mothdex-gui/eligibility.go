@@ -33,7 +33,7 @@ var (
 //
 //	exit 0, stdout "sdl X.Y.Z word" eligible; on Linux the word says where SDL2 was loaded from: system,
 //	                                ld_library_path, other or unknown (never a path; PRT-G9)
-//	exit 1, stderr the reason       not eligible (SDL2 missing, too old, or lacking a function; also a timeout)
+//	exit 8, stderr the reason       not eligible (SDL2 missing, too old, or lacking a function; also a timeout)
 //
 // It opens no window, starts no video or input subsystem, reads no configuration, writes no file and no log:
 // nothing runs before it but flag parsing. The reason is one line without control characters and at most
