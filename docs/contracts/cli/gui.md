@@ -218,8 +218,7 @@ stays in `internal/update`.
   quit questions and exits 0. The GUI never starts itself again: a frontend waits for the process it started, and a
   new one would open behind it (update.md §5 "restart by absolute path" does not apply).
 - A failed update shows the message, what to do, and `code · ref`. The updater's `hint_key` comes first (a rotated
-  signing root), then the install command for `reason: gui_missing`. When no file was swapped (the error's `swapped`, or without it the `swap` step never reported) the screen says
-  nothing was changed. Otherwise `restored: true` says the previous version is back, and `restored: false` that the
+  signing root), then the install command for `reason: gui_missing`. Before the `swap` step the screen says nothing was changed (update.md §6: `restored` is then true). After it, `restored: true` says the previous version is back, and `restored: false` that the
   installation may be incomplete, with the install command on its own line.
 - `main` calls `update.CleanupOld` for a run that opens the GUI only: it writes a lock file beside the program, and
   `--probe`, `--version`, `--spike` and `--help` write nothing (ports.md §5.2).

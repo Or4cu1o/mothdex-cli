@@ -142,8 +142,6 @@ func TestAFailedUpdateShowsHowToRecover(t *testing.T) {
 		{"another update running", "update_failed", false, failed("in_progress", false), "Nothing was changed.", command},
 		{"staged check failed", "update_failed", false, failed("check_failed", false), "Nothing was changed.", "incomplete"},
 		{"release without the GUI", "update_failed", false, failed("gui_missing", false), "Install again from a terminal: " + command, "incomplete"},
-		{"the updater says nothing moved", "update_failed", true, map[string]any{"swapped": false, "restored": false, "install_command": command}, "Nothing was changed.", command},
-		{"the updater says files moved", "update_failed", false, map[string]any{"swapped": true, "restored": false, "install_command": command}, "Install again from a terminal: " + command, "Nothing was changed"},
 		{"signing root", "integrity", false, map[string]any{"hint_key": "update.verification_hint", "install_command": command}, "reinstall with the official command: " + command, "previous version is back"},
 	} {
 		f := newer()

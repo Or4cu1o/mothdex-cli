@@ -283,9 +283,6 @@ func (m Model) recoveryHint(err error, f failure, swapped bool) string {
 	command, _ := ae.Args["install_command"].(string)
 	with := map[string]any{"command": command}
 	restored, _ := ae.Args["restored"].(bool)
-	if told, ok := ae.Args["swapped"].(bool); ok {
-		swapped = told // the updater knows whether a file moved; the step seen is what stands in for it otherwise
-	}
 	switch {
 	case ae.Args["reason"] == "gui_missing" && command != "":
 		return m.tr("ui.gui.update.hint_installer", with)
