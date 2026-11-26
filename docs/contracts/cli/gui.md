@@ -172,6 +172,11 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
   | 2 | configuration error: configuration, flags or profile |
   | 8 | SDL missing or too old, or no display |
 
+  **No display** includes SDL choosing its `offscreen` or `dummy` driver by itself, which it does when there is no
+  display or the one named does not answer: the GUI would run unseen. A driver asked for with `--driver` or
+  `SDL_VIDEODRIVER` (`SDL_VIDEO_DRIVER`) is used as asked. `--probe` starts no video subsystem (ports.md §5.2), so it
+  does not check for a display.
+
   Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors.
 - Every failure of a normal start is written to the log file, because a Port has no visible terminal, and also to
   stderr. A command line or configuration error found before the log is open goes to stderr only until T-115 PR 2,
@@ -180,7 +185,8 @@ The GUI is a separate binary, `cmd/mothdex-gui`, built `CGO_ENABLED=0` with buil
 **Command line.** `--config`, `--profile` and `--lang` mean what they mean in the CLI. `--log-level` is the shortcut
 of `MOTHDEX_LOG_LEVEL` (`log.level`, flag over variable over file). `--help` lists the flags, exit codes and variables
 in the language of `--lang`, else `interface.language`, else the system's (en_us fills what a locale lacks); it loads
-no SDL2 and writes nothing. Flags take one dash or two.
+no SDL2 and writes nothing. Flags take one dash or two. The program takes no positional argument: one is a command
+line error (exit 2).
 
 **Console window on Windows.** The release build does not pass `-H=windowsgui`, so Windows opens a console window
 along with the GUI. Kept on purpose during the beta (it shows start-up errors to a tester); to review for 1.0.

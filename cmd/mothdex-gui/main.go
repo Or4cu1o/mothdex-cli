@@ -103,11 +103,16 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 		}
 	}()
 	var o options
-	if err := newFlags(&o).Parse(argv[1:]); err != nil {
-		return usageError(o, stderr, "ui.gui.cmdline.bad_flags", i18n.Args{"detail": err.Error()})
+	flags := newFlags(&o)
+	if err := flags.Parse(argv[1:]); err != nil {
+		key, args := parseProblem(err)
+		return usageError(withLanguageFlags(o, argv[1:]), stderr, key, args)
 	}
 	if o.help { // before the checks below and every mode: asking for help never fails on another flag's value
 		return runHelp(o, stdout, stderr)
+	}
+	if flags.NArg() > 0 { // the program takes none, and parsing stops at one: the flags after it would be lost
+		return usageError(withLanguageFlags(o, argv[1:]), stderr, "ui.gui.cmdline.unexpected_argument", i18n.Args{"argument": flags.Arg(0)})
 	}
 	if o.window != "" {
 		if _, err := fmt.Sscanf(o.window, "%dx%d", &o.width, &o.height); err != nil || o.width < 160 || o.height < 120 {

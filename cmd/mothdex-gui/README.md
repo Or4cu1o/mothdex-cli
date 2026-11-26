@@ -12,7 +12,7 @@ mothdex-gui --spike [--driver dummy]
 mothdex-gui --help
 ```
 
-Flags take one dash or two (`-config` and `--config` are the same).
+Flags take one dash or two (`-config` and `--config` are the same). There are no positional arguments.
 
 | Flag | Meaning |
 |---|---|
@@ -37,7 +37,7 @@ Exit codes ([`cli-output.md`](../../docs/contracts/cli/cli-output.md) §4.1):
 | 0 | normal exit or SIGTERM/SIGINT |
 | 1 | internal error (a panic is logged with its stack) |
 | 2 | configuration error: configuration, flags or profile |
-| 8 | SDL2 missing or too old, or no display |
+| 8 | SDL2 missing or too old, or no display (also when SDL would fall back to `offscreen` or `dummy` without being asked to) |
 
 Releases before 0.2.0 used 1 for SDL, 2 for configuration and 3 for internal errors. A failure of a normal start is
 written to the log file and to stderr.
