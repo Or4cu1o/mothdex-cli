@@ -217,10 +217,12 @@ stays in `internal/update`.
 - After it, a dialog says `Updated to <v>` and `Close and open Mothdex again.`; its only button goes through the
   quit questions and exits 0. The GUI never starts itself again: a frontend waits for the process it started, and a
   new one would open behind it (update.md §5 "restart by absolute path" does not apply).
-- A failed update shows the message, what to do, and `code · ref`. The updater's `hint_key` comes first (a rotated
-  signing root), then the install command for `reason: gui_missing`, and for `gui_not_eligible` that the new GUI cannot run here
-  (`mothdex tui`). Before the `swap` step the screen says nothing was changed (update.md §6: `restored` is then true). After it, `restored: true` says the previous version is back, and `restored: false` that the
-  installation may be incomplete, with the install command on its own line.
+- A failed update shows the message, what to do, and `code · ref`. For `reason: gui_not_eligible` it says that the new
+  GUI cannot run here (`mothdex tui`), over any `hint_key`. Otherwise the updater's `hint_key` comes first (nothing
+  changed, previous version restored, possible tampering, a rotated signing root), then the install command for
+  `reason: gui_missing`. Without either: before the `swap` step the screen says nothing was changed (update.md §6:
+  `restored` is then true); after it, `restored: true` says the previous version is back, and `restored: false` that
+  the installation may be incomplete, with the install command on its own line.
 - `main` calls `update.CleanupOld` for a run that opens the GUI only: it writes a lock file beside the program, and
   `--probe`, `--version`, `--spike` and `--help` write nothing (ports.md §5.2).
 
