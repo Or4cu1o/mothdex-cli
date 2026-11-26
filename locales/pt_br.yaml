@@ -3,6 +3,12 @@ locale:
   name: 'Português (Brasil)'
   iso_code: 'pt-BR'
 errors:
+  update_unavailable:
+    message: 'Esta instalação não pode ser atualizada pelo mothdex.'
+    hint: 'Instale com o comando de uma linha para seu sistema: {install_command}'
+  update_failed:
+    message: 'Não foi possível concluir a atualização.'
+    hint: 'Se a versão anterior foi restaurada, tente mothdex upgrade mais tarde; caso contrário, reinstale: {install_command}'
   usage:
     message: 'Uso inválido: {detail}'
     hint: 'Execute "mothdex {command} --help".'

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Grouped command help, full descriptions and executable examples, usage modes, separate global flags, and config/exit-code/error reference topics. `docs/errors.md` is generated from the error locale keys. Shell help includes its navigation commands.
+- `mothdex gui` launches the sibling GUI and forwards configuration, profile and language. Usage follows the invoked binary name; completion scripts register both mothdex and mdex.
+
 ## [0.1.1] - 2026-11-23
 
 **Upgrading from v0.1.0:** the installers of v0.1.0 refuse this release and install nothing, not even the CLI. Download `install.sh` or `install.ps1` from the v0.1.1 tag and run that one, or pass `--no-gui` (`-NoGui` on Windows) to the old installer to update only the CLI.

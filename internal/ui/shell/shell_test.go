@@ -587,3 +587,23 @@ func TestAPersonAtATerminalDoesTakeSIGINTOver(t *testing.T) {
 		t.Fatalf("Interrupts taken %d times, want 1", taken)
 	}
 }
+
+type topicRunner struct{ *fakeRunner }
+
+func (r topicRunner) HelpTopics() []string { return []string{"exit-codes", "config", "errors", "logs"} }
+func (r topicRunner) Commands() []cli.CommandInfo {
+	return append(r.fakeRunner.Commands(), cli.CommandInfo{Name: "help", Short: "duplicate help"})
+}
+
+func TestHelpRoutesReferenceTopicsAndListsHelpOnce(t *testing.T) {
+	r := newRig(t, false, lines("help", "help exit-codes", "help config", "help errors", "help logs")...)
+	r.sh.o.Runner = topicRunner{r.run}
+	r.sh.Loop(context.Background())
+	want := [][]string{{"help", "exit-codes"}, {"help", "config"}, {"help", "errors"}, {"help", "logs"}}
+	if !reflect.DeepEqual(r.run.runs, want) {
+		t.Fatalf("reference topics routed as %v, want %v", r.run.runs, want)
+	}
+	if strings.Contains(r.out.String(), "duplicate help") {
+		t.Fatal("help appears twice")
+	}
+}

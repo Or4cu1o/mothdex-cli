@@ -22,7 +22,7 @@ TUI   func(ctx context.Context, env TUIEnv) int
 ```
 `Deps.Shell` and `Deps.TUI` are the only cli-to-UI edges, so the import graph stays acyclic. This extends the import rule in the intro of `app-service.md`.
 
-**Cobra commands.** `shell` and `tui` replace the `soonCmd` stubs; `gui` stays a stub until E-M3. Each one:
+**Cobra commands.** `shell` and `tui` replace the `soonCmd` stubs; `gui` launches the installed sibling binary (T-112, beta adjustments §3). The Shell and TUI each:
 - takes `cobra.NoArgs`;
 - sets `Globals.Downloads = true`, opens the session once with `r.open()`, and calls its launcher;
 - returns the launcher's exit code through `exitError`, with `silent` set.
@@ -251,3 +251,7 @@ Deviations from the UX docs, to be confirmed by Bússola via Regente:
 - **D2.** Shell `help` text is the cobra help (English, the same as `--help`) until command help is translated. The UX doc names i18n keys `help.<cmd>`.
 - **D3.** Shell `n`, `p` and `last` after a restart print `ui.shell.no_page` (§2.2). Indexes keep working.
 - **D4.** Inside the Shell, `--allow-executable` and `-j` are a usage error and `-f` only skips prompts; start-up `-f` is not applied to the session (§2.1).
+
+## GUI command launcher (T-112)
+
+`mothdex gui` executes `mothdex-gui` (`mothdex-gui.exe` on Windows) from the CLI executable directory, with inherited input/output and context cancellation. It forwards `--config`, `--profile` and `--lang`, and preserves the child exit code. It does not open an app session in the parent. If absent, it returns `usage` with a hint to reinstall without `-NoGui` / `--no-gui` or run `mothdex tui`.
