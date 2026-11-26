@@ -21,8 +21,6 @@ var (
 	// installBudget is how long a run that is leaving waits for an installation: its own steps are bounded, and
 	// leaving in the middle of the swap would strand it without its check or rollback.
 	installBudget = time.Minute
-	// restartProcess replaces this run with the program at path (TM-40).
-	restartProcess = restart
 )
 
 // guiUpdates gives the model the updater the CLI uses (internal/update); the rules are all there.
@@ -85,8 +83,7 @@ func (g *guiUpdates) wait() {
 	}
 }
 
-// executable is the path of this program with links resolved. It is read before any update: afterwards the
-// system may name the replaced file.
+// executable is the path of this program with links resolved.
 func executable(log *slog.Logger) string {
 	path, err := os.Executable()
 	if err == nil {

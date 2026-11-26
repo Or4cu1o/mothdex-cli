@@ -667,7 +667,9 @@ Rows come from `ConfigList` (value and source). Keys:
 - **Update** (About, only with a newer version): About lists `New version: <v>`, the release page and `[Update]`
   before `[Export logs]` (Left/Right choose). A progress panel (`Downloading…`, `Checking…`, with `(B) Cancel`), then
   `Update <from> to <to>?` with the signature result, up to 6 lines of notes, `[Cancel]` focused and `[Update]`;
-  while installing, `Keep the device on until it ends.` and no action; then `[Later]` `[Restart]`. A notice
+  while installing, `Keep the device on until it ends.` and no action; then `Updated to <v>`, `Close and open
+  Mothdex again.` and `[Quit]`. A failure shows `Not updated`, the message, the recovery hint (with the install
+  command on its own line when the old version was not restored), `code · ref` and `[OK]`. A notice
   `Version <v> is available: Settings > About.` shows once a day.
 - **Export logs** (About, and the crash screen of §6) opens `Export the logs?` with `[Cancel]` focused and
   `[Export logs]`, then `Logs saved` with the folder and the file name, or `The logs were not saved` with the code and

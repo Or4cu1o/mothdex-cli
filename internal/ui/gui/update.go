@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
+	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/draw"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
 )
@@ -49,6 +50,7 @@ const (
 	notesLines  = 6 // of the CHANGELOG summary in the confirmation: what fits a small screen
 	updateEvent = 8 // events waiting for the model; progress beyond that is dropped
 	signedNone  = "none"
+	failedLines = 12 // of a failure: the install command must never be cut
 )
 
 // updateRun is one Apply in progress. The goroutine that runs it talks to the model through events.
@@ -65,7 +67,6 @@ type updateState struct {
 	progress  UpdateProgress
 	staged    Staged
 	confirmed bool // the person said yes: files may be changing, so nothing cancels it
-	restart   bool // the person asked to restart
 }
 
 type (
@@ -86,9 +87,6 @@ type (
 		err error
 	}
 )
-
-// RestartRequested reports that the run ended because the person chose to restart into the new version.
-func (m Model) RestartRequested() bool { return m.done && m.upd.restart }
 
 // checkUpdate starts the one check of the run, once Home is up so that it never delays the start.
 func (m Model) checkUpdate() (Model, []Cmd) {
@@ -236,20 +234,52 @@ func (m Model) onUpdateDone(msg updateDoneMsg, now time.Time) (Model, []Cmd) {
 	switch {
 	case installed:
 		m.upd.release = Release{}
+		// The program does not start itself again: a frontend waits for this process, and a second one would
+		// open behind it. The person closes, and opens it from the frontend.
 		return m.openDialog(dialogState{
-			kind: dialogRestart, title: m.tr("ui.gui.update.done", map[string]any{"version": app.SanitizeText(m.upd.staged.To)}),
-			detail:  m.tr("ui.gui.update.restart_ask", nil),
-			buttons: []dialogButton{{btnLater, m.tr("ui.gui.update.later", nil)}, {btnRestart, m.tr("ui.gui.update.restart", nil)}},
+			kind: dialogUpdated, title: m.tr("ui.gui.update.done", map[string]any{"version": app.SanitizeText(m.upd.staged.To)}),
+			detail: m.tr("ui.gui.update.reopen", nil), buttons: []dialogButton{{btnQuit, m.tr("ui.gui.quit.quit", nil)}},
 		}, now), nil
 	case msg.err == nil || declined(msg.err):
 		return m.withToast(m.tr("ui.gui.update.canceled", nil), toastInfo, now), nil
 	}
 	f := m.report(msg.err, "update")
+	lines := []string{f.msg}
+	if hint := m.recoveryHint(msg.err, f); hint != "" {
+		lines = append(lines, hint)
+	}
+	lines = append(lines, m.tr("ui.gui.error.code_ref", map[string]any{"code": f.code, "ref": f.ref}))
 	return m.openDialog(dialogState{
 		kind: dialogExported, title: m.tr("ui.gui.update.failed", nil),
-		detail: f.msg + "\n" + m.tr("ui.gui.error.code_ref", map[string]any{"code": f.code, "ref": f.ref}), lines: exportDoneLines,
+		detail: strings.Join(lines, "\n"), lines: failedLines,
 		buttons: []dialogButton{{btnOK, m.tr("ui.gui.logs.ok", nil)}},
 	}, now), nil
+}
+
+// recoveryHint is what the person does about a failed update (docs/contracts/cli/update.md sections 4 and 6).
+// The updater's own hint (Args hint_key, such as a rotated signing root) comes first. A swap that failed says
+// whether the previous version is back; when it is not, the line carries the command that installs again.
+func (m Model) recoveryHint(err error, f failure) string {
+	var ae *app.Error
+	if !errors.As(err, &ae) {
+		return f.hint
+	}
+	if key, ok := ae.Args["hint_key"].(string); ok && m.o.T.Has(key) {
+		if text := m.o.T.T(key, i18n.Args(ae.Args)); !unfilled.MatchString(text) {
+			return app.SanitizeText(text)
+		}
+	}
+	if ae.Code != app.CodeUpdateFailed {
+		return f.hint
+	}
+	command, _ := ae.Args["install_command"].(string)
+	switch restored, known := ae.Args["restored"].(bool); {
+	case known && restored:
+		return m.tr("ui.gui.update.hint_restored", nil)
+	case known && command != "":
+		return m.tr("ui.gui.update.hint_reinstall", map[string]any{"command": command})
+	}
+	return f.hint
 }
 
 // declined reports an Apply that ended because the person said no.

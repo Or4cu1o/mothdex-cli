@@ -309,10 +309,10 @@ ui:
       installing: 'Instalando…'
       keep_on: 'No apagues el dispositivo hasta que termine.'
       done: 'Actualizado a {version}'
-      restart_ask: 'Reinicia mothdex para usarla.'
-      later: 'Más tarde'
-      restart: 'Reiniciar'
+      reopen: 'Cierra y vuelve a abrir Mothdex.'
       canceled: 'Actualización cancelada. No ha cambiado nada.'
+      hint_restored: 'Se ha restaurado la versión anterior. Inténtalo más tarde.'
+      hint_reinstall: "La instalación puede estar incompleta. Vuelve a instalar desde un terminal:\n{command}"
       failed: 'No se actualizó'
     error:
       code: 'código: {code}'

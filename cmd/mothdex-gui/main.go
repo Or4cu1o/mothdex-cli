@@ -140,14 +140,5 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 		// file, and --probe, which the installer runs as root, writes nothing (ports.md section 5.2).
 		update.CleanupOld(filepath.Dir(exe), logs.Logger())
 	}
-	again := false
-	code = runGUI(o, logs, &again, stderr)
-	if again && code == exitOK { // after runGUI: the window and the service are closed
-		_ = logs.Close() // the new run starts its own log
-		if err := restartProcess(exe, argv[1:]); err != nil {
-			_, _ = fmt.Fprintf(stderr, "mothdex-gui: cannot restart: %v\n", err)
-			return exitInternal
-		}
-	}
-	return code
+	return runGUI(o, logs, stderr)
 }

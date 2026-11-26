@@ -623,10 +623,10 @@ ui:
       installing: 'Installing…'
       keep_on: 'Keep the device on until it ends.'
       done: 'Updated to {version}'
-      restart_ask: 'Restart mothdex to use it.'
-      later: 'Later'
-      restart: 'Restart'
+      reopen: 'Close and open Mothdex again.'
       canceled: 'Update canceled. Nothing changed.'
+      hint_restored: 'The previous version is back. Try again later.'
+      hint_reinstall: "The installation may be incomplete. Install again from a terminal:\n{command}"
       failed: 'Not updated'
     error:
       code: 'code: {code}'

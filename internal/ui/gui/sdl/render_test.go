@@ -429,8 +429,14 @@ var renderScenes = []scene{
 		updateAbout(p)
 		p.press(input.Confirm)
 	}},
-	{name: "update-done", what: "T-117: installed, restart now or later", expect: []string{"Updated to 0.4.0", "Later", "Restart"}, steps: func(p *player) {
+	{name: "update-done", what: "T-117: installed: close and open again", expect: []string{"Updated to 0.4.0", "Close and open Mothdex again.", "Quit"}, steps: func(p *player) {
 		updateAbout(p)
+		p.press(input.Confirm)
+		p.advance(200 * time.Millisecond)
+		p.press(input.Right, input.Confirm)
+	}},
+	{name: "update-failed", what: "T-117: a failed update with the reinstall command", expect: []string{"Not updated", "install.sh | sh"}, steps: func(p *player) {
+		updateAboutWith(p, renderUpdates{fail: true})
 		p.press(input.Confirm)
 		p.advance(200 * time.Millisecond)
 		p.press(input.Right, input.Confirm)
@@ -453,7 +459,7 @@ func aboutExport(p *player) {
 func crashed(p *player) { p.m = gui.NewCrash(p.o, nil, "7F3K2Q", p.now) }
 
 // renderUpdates is an update that goes straight to its question and installs when told to.
-type renderUpdates struct{}
+type renderUpdates struct{ fail bool }
 
 func (renderUpdates) Check(context.Context) (gui.Release, error) {
 	return gui.Release{Version: "0.4.0", PageURL: "https://github.com/Or4cu1o/mothdex-cli/releases/tag/v0.4.0", Notify: true}, nil
@@ -461,14 +467,20 @@ func (renderUpdates) Check(context.Context) (gui.Release, error) {
 
 func (renderUpdates) MarkNotified(string) error { return nil }
 
-func (renderUpdates) Apply(_ context.Context, _ func(gui.UpdateProgress), confirm func(gui.Staged) bool) error {
+func (r renderUpdates) Apply(_ context.Context, _ func(gui.UpdateProgress), confirm func(gui.Staged) bool) error {
 	confirm(gui.Staged{From: "0.3.0", To: "0.4.0", Signature: "none", Notes: "## [0.4.0] - 2026-12-01\n### Added\n- T-117: the GUI tells you about a new version and updates itself when you ask.\n- Session logs and crash files.\n### Fixed\n- With no display the GUI exits with code 8."})
+	if r.fail {
+		return &app.Error{Code: app.CodeUpdateFailed, Message: "swap", Args: map[string]any{"restored": false,
+			"install_command": "curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh | sh"}}
+	}
 	return nil
 }
 
 // updateAbout starts over with an updater, reaches Home so that the check runs, and opens About.
-func updateAbout(p *player) {
-	p.o.Updates = renderUpdates{}
+func updateAbout(p *player) { updateAboutWith(p, renderUpdates{}) }
+
+func updateAboutWith(p *player, up renderUpdates) {
+	p.o.Updates = up
 	m, cmds := gui.New(p.o, p.now)
 	p.m = m
 	p.run(cmds)

@@ -214,8 +214,12 @@ stays in `internal/update`.
 - `Update` downloads and verifies (B or a signal cancels, changing nothing), then asks with `Cancel` focused,
   showing the signature result and the notes of the verified archive. Only that yes installs. While it installs
   the screen takes no action, and a program told to leave waits for it (up to 1 minute).
-- After it, `Later` or `Restart`; Restart goes through the quit questions, closes SDL and the service, and runs the
-  new `mothdex-gui` by its absolute path with the same arguments (TM-40).
+- After it, a dialog says `Updated to <v>` and `Close and open Mothdex again.`; its only button goes through the
+  quit questions and exits 0. The GUI never starts itself again: a frontend waits for the process it started, and a
+  new one would open behind it (update.md §5 "restart by absolute path" does not apply).
+- A failed update shows the message, what to do, and `code · ref`. The updater's `hint_key` comes first (a rotated
+  signing root); `restored: true` says the previous version is back; `restored: false` gives the install command on
+  its own line.
 - `main` calls `update.CleanupOld` for a run that opens the GUI only: it writes a lock file beside the program, and
   `--probe`, `--version`, `--spike` and `--help` write nothing (ports.md §5.2).
 

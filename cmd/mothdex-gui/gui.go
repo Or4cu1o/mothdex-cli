@@ -34,8 +34,7 @@ const userMappingsFile = "gamecontrollerdb.txt" // in paths.data (docs/contracts
 
 // runGUI is the normal mode: build the service, open SDL, run the loop. Every failure gets a ref and goes to
 // the session log as well as to stderr, because a Port has no visible terminal.
-// again is set when the person asked to restart into a new version.
-func runGUI(o options, logs *mlog.Session, again *bool, stderr io.Writer) (code int) {
+func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	defer recoverInternal(&code, o, logs, stderr) // a panic before there is a service
@@ -140,7 +139,6 @@ func runGUI(o options, logs *mlog.Session, again *bool, stderr io.Writer) (code 
 	if err != nil {
 		return fail(sdlExitCode(err), err)
 	}
-	*again = final.RestartRequested()
 	closeAll := func() {
 		updates.wait()
 		be.Close()

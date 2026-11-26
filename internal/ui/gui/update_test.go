@@ -98,15 +98,12 @@ func TestAnUpdateInstallsOnlyAfterTheConfirmationOnThePad(t *testing.T) {
 	if !f.installed {
 		t.Fatal("the confirmed update did not install")
 	}
-	h.mustHave("Updated to 0.3.0", "Later", "Restart")
+	h.mustHave("Updated to 0.3.0", "Close and open Mothdex again.", "Quit")
 	h.advance(dialogIgnore)
-	h.press(input.Right)
-	h.press(input.Confirm)
-	if !h.m.RestartRequested() && !h.m.done {
-		h.advance(exitMinShow)
-	}
-	if !h.m.RestartRequested() {
-		t.Fatalf("Restart was chosen: done %v", h.m.done)
+	h.press(input.Confirm) // the only button leaves
+	h.advance(exitMinShow)
+	if !h.m.Done() {
+		t.Fatalf("the confirm button must quit: screen %d", h.m.screen)
 	}
 }
 
@@ -119,7 +116,33 @@ func TestAFailedUpdateShowsItsCodeAndRef(t *testing.T) {
 	h.press(input.Confirm)
 	h.mustHave("Not updated")
 	h.mustMatch(`^code: integrity · ref: \w{6}$`)
-	h.mustNotMatch(`Restart`)
+	h.mustNotMatch(`Close and open`)
+}
+
+// A failed update says what to do next: whether the old version is back, the command that installs again when it
+// is not, and the updater's own hint when it has one.
+func TestAFailedUpdateShowsHowToRecover(t *testing.T) {
+	const command = "curl -fsSL https://example.test/install.sh | sh"
+	for _, c := range []struct {
+		name, code string
+		args       map[string]any
+		want, not  string
+	}{
+		{"not restored", "update_failed", map[string]any{"restored": false, "install_command": command}, "Install again from a terminal: " + command, "previous version is back"},
+		{"restored", "update_failed", map[string]any{"restored": true, "install_command": command}, "The previous version is back.", command},
+		{"signing root", "integrity", map[string]any{"hint_key": "update.verification_hint", "install_command": command}, "reinstall with the official command: " + command, "previous version is back"},
+	} {
+		f := newer()
+		f.failure = &app.Error{Code: c.code, Message: c.name, Args: c.args}
+		h := toUpdate(t, f)
+		h.advance(dialogIgnore)
+		h.press(input.Right)
+		h.press(input.Confirm)
+		shown := strings.Join(h.texts(), " ") // a wrapped line reads as one again
+		if !strings.Contains(shown, c.want) || strings.Contains(shown, c.not) {
+			t.Errorf("%s: want %q and not %q in %q", c.name, c.want, c.not, shown)
+		}
+	}
 }
 
 // Without an Updates (the check is off, or the installation is not managed) there is no check and no action.

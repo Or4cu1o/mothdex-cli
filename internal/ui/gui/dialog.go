@@ -23,8 +23,6 @@ const (
 	btnExport       = "export"
 	btnOK           = "ok"
 	btnUpdate       = "update"
-	btnLater        = "later"
-	btnRestart      = "restart"
 )
 
 // dialogKind says what a dialog is about, so its buttons know what to do.
@@ -40,7 +38,7 @@ const (
 	dialogExportLogs                        // Export logs: the confirmation (T-110 TM-27)
 	dialogExported                          // where the bundle is, or why there is none: one OK button
 	dialogUpdate                            // install the verified update?
-	dialogRestart                           // the update is installed
+	dialogUpdated                           // the update is installed: close and open again
 )
 
 type dialogButton struct {
@@ -122,12 +120,8 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 		return m, nil
 	case dialogUpdate:
 		return m.decideUpdate(id == btnUpdate)
-	case dialogRestart:
-		if id == btnRestart {
-			m.upd.restart = true
-			return m.askQuit(QuitFromMenu, now) // downloads that are running are asked about first
-		}
-		return m, nil
+	case dialogUpdated:
+		return m.askQuit(QuitFromMenu, now) // downloads that are running are asked about first
 	case dialogConfirmDownload, dialogDownloadAgain:
 		if id == btnDownload || id == btnAgain {
 			return m.enqueue(d.pending)
@@ -153,8 +147,6 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 		return m, nil
 	}
 	switch id {
-	case btnStay, btnKeep:
-		m.upd.restart = false // the person stays: a later quit is only a quit
 	case btnQuit:
 		return m.startExit(false, false, now)
 	case btnWhenFinished:

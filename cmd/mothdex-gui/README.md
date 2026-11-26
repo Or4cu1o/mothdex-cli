@@ -46,7 +46,7 @@ to the session log and to stderr.
 
 In an installation made by the installer, the GUI checks once, after Home, for a newer version (`update.check`,
 `MOTHDEX_NO_UPDATE_CHECK` and `CI` turn it off). Settings › About then offers **Update**: it downloads and verifies,
-asks you to confirm, installs, and offers to restart.
+asks you to confirm, installs, and asks you to close and open it again.
 
 ### Logs and errors
 
