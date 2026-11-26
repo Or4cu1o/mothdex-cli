@@ -177,6 +177,49 @@ func TestTheCrashScreenLeavesOnSignalAndOnBack(t *testing.T) {
 	}
 }
 
+// Leaving while the bundle is being written would lose it without a word: the crash screen waits, but a signal from
+// the frontend does not.
+func TestTheCrashScreenDoesNotQuitInTheMiddleOfAnExport(t *testing.T) {
+	var f supportFake
+	h := newHarness(t, zeldaService(1), 640, 480, f.options)
+	h.m = NewCrash(h.m.o, nil, "7F3K2Q", h.now)
+	h.press(input.Confirm)
+	h.advance(dialogIgnore)
+	h.hold = true // the export has started and not ended
+	h.press(input.Right)
+	h.press(input.Confirm)
+	h.press(input.Back)
+	if h.m.Done() {
+		t.Fatal("B left during the export")
+	}
+	h.hold = false
+	h.run(h.held)
+	h.advance(dialogIgnore)
+	h.press(input.Confirm) // OK
+	h.press(input.Back)
+	if !h.m.Done() {
+		t.Fatal("B leaves once the export ended")
+	}
+}
+
+// With something else open, the toast still says what happened, not only a path.
+func TestAnExportThatEndsUnderAnOverlayKeepsItsTitle(t *testing.T) {
+	var f supportFake
+	h := openSettingsFromHome(t, settingsFixture(), 1280, 720)
+	f.options(&h.m.o)
+	openAbout(t, h)
+	h.press(input.Confirm)
+	h.advance(dialogIgnore)
+	h.hold = true
+	h.press(input.Right)
+	h.press(input.Confirm)
+	h.press(input.Back) // leaves About
+	h.press(input.Menu)
+	h.hold = false
+	h.run(h.held)
+	h.mustMatch(`Logs saved: `)
+}
+
 func openAbout(t *testing.T, h *harness) {
 	t.Helper()
 	for i := 0; i < 20 && h.m.settings.focus != "about"; i++ {

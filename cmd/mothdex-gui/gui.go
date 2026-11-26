@@ -114,6 +114,12 @@ func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 	}
 	model, cmds := gui.New(opts, time.Now())
 
+	// Read now, for the crash screen: after a panic the service is not called again, since a lock it holds may never
+	// be released.
+	settings, err := sess.Svc.ConfigList()
+	if err != nil {
+		log.Warn("gui: ConfigList", "err", err) // a crash screen would keep the default buttons and sizes
+	}
 	run := loop.Config{
 		Model: model, Cmds: cmds, Backend: wrapBackend(be), Events: sess.Svc, Clock: time.Now, Signals: terminationSignals(), Log: log,
 	}
@@ -122,10 +128,6 @@ func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 		ref := reportPanic(logs, crash.value, crash.stack)
 		_, _ = fmt.Fprintln(stderr, "mothdex-gui: internal error")
 		support(stderr, sess.T, app.CodeInternal, ref, logs.LogPath())
-		settings, err := sess.Svc.ConfigList()
-		if err != nil {
-			log.Warn("gui: ConfigList", "err", err) // the crash screen keeps the default buttons and sizes
-		}
 		showCrash(ctx, gui.NewCrash(opts, settings, ref, time.Now()), run)
 		leaveCrashed(be.Close, sess.Close, logs, exitProcess)
 		return exitInternal // only reached by a test: os.Exit does not return
