@@ -13,6 +13,8 @@ import (
 // Codes are the stable error codes of cli-output.md section 4 (also the i18n keys under
 // errors.<code>).
 const (
+	CodeUpdateUnavailable   = "update_unavailable"
+	CodeUpdateFailed        = "update_failed"
 	CodeInternal            = "internal"
 	CodeUsage               = "usage"
 	CodeInvalidRequest      = "invalid_request"
@@ -74,6 +76,8 @@ func (e *Error) ExitCode() int { return ExitCodeFor(e.Code) }
 // ExitCodeFor returns the exit code of an error code; unknown codes are internal errors.
 func ExitCodeFor(code string) int {
 	switch code {
+	case CodeUpdateUnavailable, CodeUpdateFailed:
+		return 9
 	case CodeUsage, CodeInvalidConfig, CodeInvalidRequest, CodeConfirmationNeeded, CodeUnmappedPlatform:
 		return exitUsage
 	case CodeNotFound, CodeNoSession, CodeIndexOutOfRange:

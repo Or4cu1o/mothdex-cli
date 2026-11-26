@@ -31,6 +31,7 @@ type Config struct {
 	Profile   Profile
 	Log       Log
 	GUI       GUI
+	Update    Update
 }
 
 // API holds the api-client settings.
@@ -116,4 +117,10 @@ type Log struct {
 
 	SessionLevel string // level of the session file and latest.log
 	SessionsKeep int    // session files kept
+}
+
+// Update configures release discovery and automatic checks.
+type Update struct {
+	Check   bool
+	Channel string
 }

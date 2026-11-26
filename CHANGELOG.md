@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- English and Brazilian Portuguese command help, examples, flag descriptions and help headings now follow --lang or interface.language. Other locales fall back to English per key; tests reject commands or flags without English keys.
+
 - Grouped command help, full descriptions and executable examples, usage modes, separate global flags, and config/exit-code/error reference topics. `docs/errors.md` is generated from the error locale keys. Shell help includes its navigation commands.
 - `mothdex gui` launches the sibling GUI and forwards configuration, profile and language. Usage follows the invoked binary name; completion scripts register both mothdex and mdex.
 
