@@ -271,7 +271,15 @@ func (r *runtime) transfer(ctx context.Context, s *Session, reqs []app.DownloadR
 		p.warning(res.RefreshWarning)
 	}
 	recs := r.recordsFor(ctx, s, res.Jobs)
-	out := outcome{data: map[string]any{"jobs": jobsJSON(res.Jobs, recs, p.ref)}, human: func(p *printer) { r.downloadHuman(p, res, time.Since(started)) },
+	// A ref is given to an error that is shown: here only --json shows these, the human output
+	// asks for the ref of each line it prints.
+	jobRef := func(e *app.Error) string {
+		if !r.g.JSON {
+			return ""
+		}
+		return p.ref(e)
+	}
+	out := outcome{data: map[string]any{"jobs": jobsJSON(res.Jobs, recs, jobRef)}, human: func(p *printer) { r.downloadHuman(p, res, time.Since(started)) },
 		warn: func(p *printer) { // the size drift notes (3.2 step 7), in both modes
 			for _, j := range res.Jobs {
 				if j.SizeDrift {

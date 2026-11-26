@@ -3,8 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
-	"slices"
+
+	"github.com/spf13/pflag"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
@@ -92,17 +94,32 @@ func (r *Runner) Report(code, message string) []string {
 	return lines
 }
 
+// panicGlobals reads again the global flags that decide where the log goes and how the error is
+// printed: the parsed ones are lost with the panic.
+func panicGlobals(args []string) Globals {
+	var g Globals
+	flags := pflag.NewFlagSet("panic", pflag.ContinueOnError)
+	flags.ParseErrorsAllowlist.UnknownFlags = true
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&g.Config, "config", "", "")
+	flags.StringVar(&g.Profile, "profile", "", "")
+	flags.StringVar(&g.Lang, "lang", "", "")
+	flags.BoolVar(&g.JSON, "json", false, "")
+	_ = flags.Parse(args) // what was read before a bad flag still counts
+	return g
+}
+
 // ReportPanic is the recover of main: the panic goes to the log and to a crash file, and the
 // person sees an internal error with its ref. It returns the exit code.
 func ReportPanic(d Deps, args []string, recovered any, stack []byte) int {
-	g := Globals{JSON: slices.Contains(args, "--json")}
+	g := panicGlobals(args)
 	var t *i18n.Translator
 	if d.Translator != nil {
-		t = d.Translator("")
+		t = d.Translator(g.Lang)
 	}
 	p := newPrinter(d, &g, t)
 	e := &app.Error{Code: app.CodeInternal, Message: "panic", Cause: fmt.Errorf("%v", recovered)}
-	ref := p.rep.Ref("", e, slog.String("stack", string(stack)))
+	ref := p.rep.Ref(g.Command, e, slog.String("stack", string(stack)))
 	var crash string
 	if d.Logs != nil {
 		crash, _ = d.Logs.WriteCrash(recovered, stack, ref) // the log line above already holds the stack

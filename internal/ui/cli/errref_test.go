@@ -136,6 +136,43 @@ func TestEachFailedJobHasItsOwnRef(t *testing.T) {
 	}
 	findOne(t, dir, refs[0][1])
 	findOne(t, dir, refs[1][1])
+	if list := mlog.List(dir, ""); len(list) != 1 || list[0].Errors != 2 {
+		t.Errorf("only the errors shown are recorded: %+v", list)
+	}
+}
+
+// version, completion and the logs commands keep no session, and the ref they show is still found.
+func TestARefShownWithoutASessionIsFoundInTheGeneralLog(t *testing.T) {
+	bundle, err := i18n.Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "logs")
+	config := ""
+	for _, args := range [][]string{{"version", "--bogus"}, {"--config", "x.yaml", "version", "extra"}} {
+		logs := mlog.StartSession(mlog.SessionOptions{Binary: "cli", Args: args, GeneralOnly: !cli.Logged(args, cli.LogFlagRules())})
+		var out, errOut bytes.Buffer
+		d := cli.Deps{
+			Logs: logs, Stdout: &out, Stderr: &errOut, Stdin: strings.NewReader(""),
+			Translator: func(string) *i18n.Translator { return bundle.New("en_us") },
+			Diagnostics: func(g cli.Globals) (mlog.BundleOptions, error) {
+				config = g.Config
+				return mlog.BundleOptions{Dir: dir}, logs.Attach(mlog.AttachOptions{Dir: dir})
+			},
+		}
+		code := cli.Execute(context.Background(), d, args)
+		if err := logs.Close(); err != nil {
+			t.Fatal(err)
+		}
+		m := shownRef.FindStringSubmatch(errOut.String())
+		if code != 2 || m == nil || !strings.Contains(errOut.String(), mlog.FileName) {
+			t.Fatalf("%v: exit %d: %q", args, code, errOut.String())
+		}
+		findOne(t, dir, m[1])
+	}
+	if config != "x.yaml" || len(mlog.List(dir, "")) != 0 {
+		t.Errorf("config %q, sessions %+v", config, mlog.List(dir, ""))
+	}
 }
 
 func TestAnErrorBeforeTheServiceIsLoggedToo(t *testing.T) {
@@ -162,7 +199,7 @@ func TestAPanicLeavesACrashFileAndARef(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	d := cli.Deps{Logs: logs, Stdout: &out, Stderr: &errOut, Translator: func(string) *i18n.Translator { return bundle.New("en_us") }}
-	code := cli.ReportPanic(d, []string{"search"}, "boom https://h.example/x?token=S3CRET", []byte("goroutine 1 [running]:\nmain.boom()"))
+	code := cli.ReportPanic(d, []string{"search", "--platform", "snes", "--config=x.yaml"}, "boom https://h.example/x?token=S3CRET", []byte("goroutine 1 [running]:\nmain.boom()"))
 	m := shownRef.FindStringSubmatch(errOut.String())
 	if code != 1 || m == nil {
 		t.Fatalf("exit %d: %q", code, errOut.String())

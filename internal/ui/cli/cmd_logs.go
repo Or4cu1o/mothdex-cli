@@ -235,12 +235,24 @@ func (r *runtime) logsOpenCmd() *cobra.Command {
 					open = func(dir string) error { return openFolder(r.d.Getenv, dir) }
 				}
 				if err := open(e.options.Dir); err != nil {
-					return nil, nil, usageErr("logs", "%s", e.p.T("ui.logs.cannot_open", i18n.Args{"path": clean(e.options.Dir)}))
+					return nil, nil, openFailure(e, err)
 				}
 				return map[string]any{"dir": e.options.Dir}, func(p *printer) { p.info("%s", clean(e.options.Dir)) }, nil
 			})
 		},
 	}
+}
+
+// openFailure keeps the cause for the log. Without a graphical session it is a usage mistake, as
+// the contract says; anything else is a failure of the machine.
+func openFailure(e logsEnv, err error) *app.Error {
+	message := e.p.T("ui.logs.cannot_open", i18n.Args{"path": clean(e.options.Dir)})
+	if errors.Is(err, errNoDisplay) {
+		u := usageErr("logs", "%s", message)
+		u.Cause = err
+		return u
+	}
+	return &app.Error{Code: app.CodeInternal, Message: message, Cause: err, Args: map[string]any{"message_key": "ui.logs.cannot_open", "path": e.options.Dir}}
 }
 
 // openerFor is the file manager of an operating system and its arguments. The folder is always one
