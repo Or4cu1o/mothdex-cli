@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -15,6 +16,9 @@ import (
 func (r *runtime) guiCmd() *cobra.Command {
 	return &cobra.Command{Use: "gui", Short: "Open the gamepad interface", Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
+			if r.g.JSON {
+				return usageErr("gui", "--json cannot be used with the GUI")
+			}
 			locate := r.d.Executable
 			if locate == nil {
 				locate = os.Executable
@@ -43,10 +47,24 @@ func (r *runtime) guiCmd() *cobra.Command {
 			}
 			child := exec.CommandContext(r.ctx, path, args...) //nolint:gosec // Fixed sibling filename in the installed executable directory; no PATH or shell lookup.
 			child.Stdin, child.Stdout, child.Stderr = r.d.Stdin, r.d.Stdout, r.d.Stderr
+			child.Cancel = func() error {
+				if goruntime.GOOS == "windows" {
+					return child.Process.Kill()
+				} // Windows cannot send os.Interrupt to a process.
+				return child.Process.Signal(os.Interrupt)
+			}
+			child.WaitDelay = 5 * time.Second
 			if err := child.Run(); err != nil {
+				if r.ctx.Err() != nil {
+					return &exitError{err: &app.Error{Code: app.CodeCanceled}, code: 130, silent: true}
+				}
 				var status *exec.ExitError
 				if errors.As(err, &status) {
-					return &exitError{err: &app.Error{Code: app.CodeInternal, Message: "GUI exited"}, code: status.ExitCode(), silent: true}
+					code := status.ExitCode()
+					if code < 0 {
+						code = 130
+					}
+					return &exitError{err: &app.Error{Code: app.CodeInternal, Message: "GUI exited"}, code: code, silent: true}
 				}
 				return err
 			}

@@ -81,6 +81,9 @@ type Session struct {
 
 // Deps are the things the commands need from the outside: tests replace all of them.
 type Deps struct {
+	// ProgramName is the invoked name; empty uses os.Args[0].
+	ProgramName string
+
 	// HelpTopics extends help without coupling commands to another interface.
 	HelpTopics []HelpTopic
 	// Executable locates the CLI for the sibling GUI launcher; nil uses os.Executable.

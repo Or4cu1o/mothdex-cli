@@ -21,9 +21,19 @@ func Errors(b *i18n.Bundle, lang string) string {
 	var out strings.Builder
 	out.WriteString("# Error reference\n\n<!-- Generated from errors.<code> locale keys. Run go run ./scripts/gen-errors. -->\n\n| Code | Meaning | How to fix |\n| --- | --- | --- |\n")
 	t := b.New(lang)
-	escape := func(s string) string { return strings.NewReplacer("|", "\\|", "\n", " ").Replace(s) }
+	escape := func(s string) string {
+		return strings.NewReplacer("|", "\\|", "\n", " ", "{", "[", "}", "]").Replace(s)
+	}
 	for _, code := range codes {
-		fmt.Fprintf(&out, "| `%s` | %s | %s |\n", code, escape(t.T("errors."+code+".message", nil)), escape(t.T("errors."+code+".hint", nil)))
+		fmt.Fprintf(&out, "| `%s` | %s | %s |\n", code, escape(t.T("errors."+code+".message", nil)), escape(referenceHint(t, code)))
 	}
 	return out.String()
+}
+
+func referenceHint(t *i18n.Translator, code string) string {
+	hint := t.T("errors."+code+".hint", nil)
+	if hint == "" {
+		return "No action required; run the command again to retry."
+	}
+	return hint
 }

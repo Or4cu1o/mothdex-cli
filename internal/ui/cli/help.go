@@ -29,7 +29,11 @@ func helpID(c *cobra.Command) string {
 }
 
 func (r *runtime) configureHelp(root *cobra.Command) {
-	root.Use = strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	name := r.d.ProgramName
+	if name == "" {
+		name = os.Args[0]
+	}
+	root.Use = strings.TrimSuffix(filepath.Base(name), ".exe")
 	root.AddGroup(&cobra.Group{ID: "catalog", Title: "Catalog"}, &cobra.Group{ID: "downloads", Title: "Downloads"}, &cobra.Group{ID: "interfaces", Title: "Interfaces"}, &cobra.Group{ID: SystemGroup, Title: "System"})
 	root.SetHelpCommand(r.helpCmd(root))
 	root.InitDefaultHelpCmd()
@@ -67,7 +71,31 @@ func walkCommands(c *cobra.Command, f func(*cobra.Command)) {
 }
 
 func (r *runtime) helpCmd(root *cobra.Command) *cobra.Command {
-	return &cobra.Command{Use: "help [command or topic]", Short: "Help for commands and reference topics", RunE: func(c *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "help [command or topic]", Short: "Help for commands and reference topics", ValidArgsFunction: func(_ *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
+		target, _, err := root.Find(args)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var values []string
+		seen := map[string]bool{}
+		add := func(name string) {
+			if !seen[name] && strings.HasPrefix(name, prefix) {
+				values = append(values, name)
+				seen[name] = true
+			}
+		}
+		for _, sub := range target.Commands() {
+			if !sub.Hidden {
+				add(sub.Name())
+			}
+		}
+		if len(args) == 0 {
+			for _, topic := range append(referenceTopics(), r.d.HelpTopics...) {
+				add(topic.Name)
+			}
+		}
+		return values, cobra.ShellCompDirectiveNoFileComp
+	}, RunE: func(c *cobra.Command, args []string) error {
 		if len(args) == 1 {
 			for _, topic := range append(referenceTopics(), r.d.HelpTopics...) {
 				if topic.Name == args[0] {
@@ -116,7 +144,7 @@ func (r *runtime) printHelp(c *cobra.Command) {
 		printCommands("Available Commands", "")
 	}
 	if c.Example != "" {
-		_, _ = fmt.Fprintln(out, "\nExamples:\n"+c.Example)
+		_, _ = fmt.Fprintln(out, "\nExamples:\n  "+strings.ReplaceAll(c.Example, "\n", "\n  "))
 	}
 	local := pflag.NewFlagSet("local", pflag.ContinueOnError)
 	c.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) { local.AddFlag(f) })

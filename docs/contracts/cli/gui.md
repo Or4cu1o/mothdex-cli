@@ -252,4 +252,4 @@ Other items:
 
 ## Opening from the CLI (T-112)
 
-Use `mothdex gui` or `mdex gui` when the alias is installed. The CLI runs the GUI from its own installation folder and forwards `--config`, `--profile` and `--lang` using the same two-dash spelling. For example: `mothdex gui --config ./mothdex.yaml --profile retrobat --lang pt_br`. The child exit code is preserved. When the GUI is missing, reinstall without `-NoGui` / `--no-gui`, or use `mothdex tui`.
+Use `mothdex gui` or `mdex gui` when the alias is installed. The CLI runs the GUI from its own installation folder and forwards `--config`, `--profile` and `--lang` using the same two-dash spelling. For example: `mothdex gui --config ./mothdex.yaml --profile retrobat --lang pt_br`. The child exit code is preserved. On Unix, cancellation forwards an interrupt and allows five seconds for cleanup; cancellation and signal termination map to exit 130. On Windows, process cancellation uses the supported kill operation. `--json` is rejected for this interactive command. When the GUI is missing, reinstall without `-NoGui` / `--no-gui`, or use `mothdex tui`.

@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +31,16 @@ import (
 // testing parses them, so this exercises the real subprocess and forwarding path.
 func TestMain(m *testing.M) {
 	if target := os.Getenv("MOTHDEX_TEST_GUI_ARGS"); target != "" && strings.HasPrefix(filepath.Base(os.Args[0]), "mothdex-gui") {
+		if os.Getenv("MOTHDEX_TEST_GUI_WAIT") == "1" {
+			signals := make(chan os.Signal, 1)
+			signal.Notify(signals, os.Interrupt)
+			_, _ = fmt.Fprintln(os.Stdout, "ready")
+			<-signals
+			if err := os.WriteFile(target, []byte("interrupted"), 0o600); err != nil { //nolint:gosec // Test-only child output path.
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
 		data, _ := json.Marshal(os.Args[1:])
 		if err := os.WriteFile(target, data, 0o600); err != nil { //nolint:gosec // Test-only child output path set by guiFixture.
 			os.Exit(1)
@@ -72,10 +85,8 @@ func helpDeps(t *testing.T) (Deps, *bytes.Buffer) {
 }
 
 func TestHelpAliasGroupsAndTopics(t *testing.T) {
-	old := os.Args[0]
-	os.Args[0] = filepath.Join("bin", "mdex.exe")
-	t.Cleanup(func() { os.Args[0] = old })
 	d, out := helpDeps(t)
+	d.ProgramName = filepath.Join("bin", "mdex.exe")
 	d.HelpTopics = []HelpTopic{{Name: "logs", Text: func() string { return "session logs reference" }}}
 	for _, tc := range []struct {
 		args []string
@@ -295,4 +306,56 @@ func TestEveryExampleAgainstFakeServer(t *testing.T) {
 			}
 		})
 	})
+}
+
+// Cancel after the child has installed its handler; no clock or polling is involved.
+type cancelOnReady struct{ cancel context.CancelFunc }
+
+func (w cancelOnReady) Write(p []byte) (int, error) {
+	if strings.Contains(string(p), "ready") {
+		w.cancel()
+	}
+	return len(p), nil
+}
+func TestGUIInterruptIsGraceful(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("Windows console Ctrl+C is broadcast by the console host")
+	}
+	d, _ := helpDeps(t)
+	file := guiFixture(t, &d)
+	t.Setenv("MOTHDEX_TEST_GUI_WAIT", "1")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Stdout = cancelOnReady{cancel: cancel}
+	if code := Execute(ctx, d, []string{"gui"}); code != 130 {
+		t.Fatalf("canceled GUI exit %d, want 130", code)
+	}
+	data, err := os.ReadFile(file) //nolint:gosec // Child fixture output.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "interrupted" {
+		t.Fatalf("child did not clean up: %s", data)
+	}
+}
+
+func TestHelpTopicCompletion(t *testing.T) {
+	d, out := helpDeps(t)
+	if code := Execute(context.Background(), d, []string{"__complete", "help", "co"}); code != 0 || !strings.Contains(out.String(), "config") || !strings.Contains(out.String(), "completion") {
+		t.Fatalf("help completion: %d %s", code, out)
+	}
+}
+func TestCompletionIncludesFallbackAndInvokedAlias(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
+		d, out := helpDeps(t)
+		d.ProgramName = "mydex"
+		if code := Execute(context.Background(), d, []string{"completion", shell}); code != 0 {
+			t.Fatal(code)
+		}
+		for _, alias := range []string{"mthd", "mydex"} {
+			if !strings.Contains(out.String(), alias) {
+				t.Errorf("%s lacks %s", shell, alias)
+			}
+		}
+	}
 }
