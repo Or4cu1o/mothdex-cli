@@ -64,6 +64,8 @@ var schema = []setting{
 	boolean("log.console", false, func(c *Config) *bool { return &c.Log.Console }),
 	integer("log.max_size_mb", 10, 1, 1024, func(c *Config) *int { return &c.Log.MaxSizeMB }),
 	integer("log.max_files", 5, 1, 100, func(c *Config) *int { return &c.Log.MaxFiles }),
+	oneOf("log.session_level", "debug", func(c *Config) *string { return &c.Log.SessionLevel }, "debug", "info", "warn", "error"),
+	integer("log.sessions_keep", 20, 1, 100, func(c *Config) *int { return &c.Log.SessionsKeep }),
 
 	oneOf("gui.confirm_button", "south", func(c *Config) *string { return &c.GUI.ConfirmButton }, "south", "east"),
 	oneOf("gui.text_size", "normal", func(c *Config) *string { return &c.GUI.TextSize }, "normal", "large"),

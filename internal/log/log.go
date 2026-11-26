@@ -27,6 +27,8 @@ type Options struct {
 	MaxSizeMB int    // rotate when the file would grow past this
 	MaxFiles  int    // active file plus rotated copies kept (>= 1)
 	Stderr    io.Writer
+	Session   *Session // the process log; it receives every record the logger gets
+	Secrets   []string // values never written, besides the session's
 }
 
 // FromConfig maps the typed configuration and the resolved paths to Options.
@@ -71,17 +73,27 @@ func New(opts Options) (*slog.Logger, io.Closer, error) {
 	var handlers []slog.Handler
 	var closer io.Closer = noopCloser{}
 	var fileErr error
+	// Every destination is redacted (TM-16); the session's handler redacts for itself.
+	redact := newRedactor(opts.Secrets...)
+	if opts.Session != nil {
+		redact = opts.Session.redact
+		redact.add(opts.Secrets...)
+		handlers = append(handlers, opts.Session.Handler())
+	}
+	sink := func(w io.Writer) slog.Handler {
+		return redactHandler{next: slog.NewTextHandler(w, handlerOpts), r: redact}
+	}
 	if opts.File {
 		w, err := newRotator(filepath.Join(opts.Dir, FileName), int64(opts.MaxSizeMB)<<20, opts.MaxFiles)
 		if err != nil {
 			fileErr = fmt.Errorf("log file: %w", err)
 		} else {
-			handlers = append(handlers, slog.NewTextHandler(w, handlerOpts))
+			handlers = append(handlers, sink(w))
 			closer = w
 		}
 	}
 	if opts.Console && opts.Stderr != nil {
-		handlers = append(handlers, slog.NewTextHandler(opts.Stderr, handlerOpts))
+		handlers = append(handlers, sink(opts.Stderr))
 	}
 
 	var logger *slog.Logger
@@ -93,9 +105,24 @@ func New(opts Options) (*slog.Logger, io.Closer, error) {
 	default:
 		logger = slog.New(slog.NewMultiHandler(handlers...))
 	}
+	if opts.Session != nil {
+		opts.Session.setProcessLogger(logger)
+		closer = processCloser{closer, opts.Session}
+	}
 	return logger, closer, errors.Join(levelErr, fileErr)
 }
 
 type noopCloser struct{}
 
 func (noopCloser) Close() error { return nil }
+
+// processCloser closes mothdex.log; the session lives on and is the process logger again.
+type processCloser struct {
+	io.Closer
+	s *Session
+}
+
+func (c processCloser) Close() error {
+	c.s.setProcessLogger(nil)
+	return c.Closer.Close()
+}

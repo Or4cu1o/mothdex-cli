@@ -187,6 +187,7 @@ func (r *runtime) rootCommand() *cobra.Command {
 	f.BoolVarP(&r.g.Force, "force", "f", false, "skip prompts; allow overwriting files")
 	f.BoolVar(&r.g.Refresh, "refresh", false, "skip cache reads, still write")
 	f.BoolVar(&r.g.Version, "version", false, "print the version and exit")
+	logValues(f, "json", "quiet", "verbose", "no-color", "lang", "profile", "force", "refresh", "version")
 	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
 		r.cmd = commandName(c)
 		return usageErr(r.cmd, "%s", err.Error())

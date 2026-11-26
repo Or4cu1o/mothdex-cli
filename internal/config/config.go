@@ -113,4 +113,7 @@ type Log struct {
 	Console   bool
 	MaxSizeMB int
 	MaxFiles  int
+
+	SessionLevel string // level of the session file and latest.log
+	SessionsKeep int    // session files kept
 }
