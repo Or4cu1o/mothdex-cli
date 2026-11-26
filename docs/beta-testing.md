@@ -98,3 +98,14 @@ Found a bug that is not about a device? Use the
 [bug report form](https://github.com/Or4cu1o/mothdex-cli/issues/new?template=bug.yml). Questions go to
 [Discussions](https://github.com/Or4cu1o/mothdex-cli/discussions/categories/q-a). The MCP server has its own
 [issue forms](https://github.com/Or4cu1o/mothdex-mcp/issues/new/choose).
+
+## Beta channel and rollback
+
+Run `mdex config set update.channel beta` to include prereleases in version checks and upgrades, or use
+`mdex upgrade --channel beta` for one invocation. To return to stable discovery, run
+`mdex config set update.channel stable`. This does not downgrade an installed beta automatically.
+
+To go back to a known release, run `mdex upgrade --version X.Y.Z` and confirm the downgrade (or add `-f`). The exact
+release is downloaded and verified again; neither the local cache nor a previous backup supplies its binaries.
+A failed post-update version check restores the previous binaries automatically. Exit and reopen all Mothdex
+interfaces after a successful change. For a failed rollback, use the reinstall command shown in the error hint.

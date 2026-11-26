@@ -12,6 +12,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
 	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 )
 
@@ -62,16 +63,20 @@ type Globals struct {
 
 // Session is what Open returns: the service plus the settings the commands read.
 type Session struct {
-	Svc      Service
-	T        *i18n.Translator
-	Prefer   app.Preference // download.prefer baseline; --prefer replaces a key's list
-	Boxart   bool           // download.boxart
-	Confirm  bool           // interface.confirm_downloads
-	PageSize int            // interface.page_size
-	Color    string         // interface.color: auto | always | never
-	Warnings []string
-	LogPath  string // the log file, for the internal error hint
-	Close    func() // releases the service; may be nil
+	Updater       *update.Updater
+	NewUpdater    func(channel string) (*update.Updater, error)
+	UpdateCheck   bool
+	UpdateChannel string
+	Svc           Service
+	T             *i18n.Translator
+	Prefer        app.Preference // download.prefer baseline; --prefer replaces a key's list
+	Boxart        bool           // download.boxart
+	Confirm       bool           // interface.confirm_downloads
+	PageSize      int            // interface.page_size
+	Color         string         // interface.color: auto | always | never
+	Warnings      []string
+	LogPath       string // the log file, for the internal error hint
+	Close         func() // releases the service; may be nil
 
 	// What the interactive UIs need (ui.md section 1).
 	DataDir string        // resolved paths.data, home of the UI-owned files
@@ -83,6 +88,8 @@ type Session struct {
 
 // Deps are the things the commands need from the outside: tests replace all of them.
 type Deps struct {
+	// CleanupOld runs after flags are parsed, only for commands that open a session.
+	CleanupOld func()
 	// ProgramName is the invoked name; empty uses os.Args[0].
 	ProgramName string
 
@@ -124,20 +131,22 @@ type Deps struct {
 
 // TUIEnv is what the TUI launcher receives. The session is open with the downloads capability.
 type TUIEnv struct {
-	Session    *Session
-	Stdin      io.Reader
-	Stdout     io.Writer
-	Stderr     io.Writer
-	Interrupts func() (sig <-chan os.Signal, release func())
+	UpdateNotice string
+	Session      *Session
+	Stdin        io.Reader
+	Stdout       io.Writer
+	Stderr       io.Writer
+	Interrupts   func() (sig <-chan os.Signal, release func())
 }
 
 // ShellEnv is what the Shell launcher receives.
 type ShellEnv struct {
-	Runner     *Runner
-	Session    *Session
-	Stdin      io.Reader
-	Stdout     io.Writer
-	Stderr     io.Writer
-	IsTerminal bool // stdin and stdout are terminals
-	Interrupts func() (sig <-chan os.Signal, release func())
+	UpdateNotice string
+	Runner       *Runner
+	Session      *Session
+	Stdin        io.Reader
+	Stdout       io.Writer
+	Stderr       io.Writer
+	IsTerminal   bool // stdin and stdout are terminals
+	Interrupts   func() (sig <-chan os.Signal, release func())
 }

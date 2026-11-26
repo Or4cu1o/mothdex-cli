@@ -8,7 +8,7 @@ errors:
     hint: 'Установите с помощью команды для вашей системы: {install_command}'
   update_failed:
     message: 'Не удалось завершить обновление.'
-    hint: 'Если предыдущая версия восстановлена, повторите mothdex upgrade позже; иначе переустановите: {install_command}'
+    hint: 'Переустановите официальной командой: {install_command}'
   usage:
     message: 'Неверное использование: {detail}'
     hint: 'Выполните "mothdex {command} --help".'
@@ -57,7 +57,7 @@ errors:
     message: 'Скачанный файл имеет неверный размер ({got} из {expected}).'
     hint: 'Повторите или выберите другую ссылку через --link.'
   integrity:
-    message: 'Скачанный файл повреждён (проверка архива не пройдена).'
+    message: 'Скачанное содержимое не прошло проверку целостности или происхождения.'
     hint: 'Повторите или выберите другую ссылку через --link.'
   permission_denied:
     message: 'Не удаётся записать в {path}.'
@@ -823,3 +823,17 @@ ui:
       history: 'история'
       settings: 'настройки'
       help: 'помощь'
+
+update:
+  notice: 'Доступна новая версия: {current} → {latest}. Обновление: {command} upgrade'
+  confirm: 'Обновить {current} → {latest} (проверка: {signature}).'
+  confirm_downgrade: 'Вернуться с {current} на {latest} (проверка: {signature}).'
+  prompt: 'Применить обновление? [д/Н]'
+  current: 'Установлена актуальная версия Mothdex {current}.'
+  available: 'Доступна новая версия: {current} → {latest}. Выполните mothdex upgrade.'
+  updated: 'Обновлено {current} → {latest} (проверка: {signature}).'
+  restart: 'Закройте и снова откройте Mothdex, чтобы использовать новую версию.'
+  restored_hint: 'Предыдущая версия восстановлена. Повторите попытку позже.'
+  unchanged_hint: 'Установка не изменена. Предыдущая версия осталась на месте.'
+  verification_hint: 'Не удалось проверить источник версии. Если корень доверия изменился, переустановите официальной командой: {install_command}'
+  tamper_hint: 'Подпись версии не прошла проверку: возможна подмена. Не переустанавливайте; сообщите об этом приватно: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'

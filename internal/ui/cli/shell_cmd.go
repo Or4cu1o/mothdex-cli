@@ -61,7 +61,7 @@ func (r *runtime) runShell() error {
 	terminal := r.isTTY(r.d.Stdin) && r.isTTY(r.d.Stdout)
 	runner := NewRunner(r.d, s, terminal)
 	code := r.d.Shell(r.ctx, ShellEnv{
-		Runner: runner, Session: s, Stdin: r.d.Stdin, Stdout: r.d.Stdout, Stderr: r.d.Stderr,
+		UpdateNotice: r.cachedUpdateNotice(s), Runner: runner, Session: s, Stdin: r.d.Stdin, Stdout: r.d.Stdout, Stderr: r.d.Stderr,
 		IsTerminal: terminal, Interrupts: r.d.Interrupts,
 	})
 	if code == 0 {
@@ -97,7 +97,7 @@ func (r *runtime) runTUI() error {
 	if err != nil {
 		return err
 	}
-	code := r.d.TUI(r.ctx, TUIEnv{Session: s, Stdin: r.d.Stdin, Stdout: r.d.Stdout, Stderr: r.d.Stderr, Interrupts: r.d.Interrupts})
+	code := r.d.TUI(r.ctx, TUIEnv{UpdateNotice: r.cachedUpdateNotice(s), Session: s, Stdin: r.d.Stdin, Stdout: r.d.Stdout, Stderr: r.d.Stderr, Interrupts: r.d.Interrupts})
 	if code == 0 {
 		return nil
 	}

@@ -58,20 +58,21 @@ type service interface {
 
 // Options is everything a Shell needs; tests build one with fakes.
 type Options struct {
-	Runner      runner
-	Service     service
-	Editor      lineEditor
-	Out, Err    io.Writer
-	T           *i18n.Translator
-	Now         func() time.Time
-	Interrupts  func() (<-chan os.Signal, func())
-	DataDir     string
-	Log         *slog.Logger
-	Interactive bool   // a person at a terminal: banner, history, prompts
-	Color       bool   // styles allowed
-	Version     string // for the banner
-	Clear       string // the sequence that clears the screen; empty when the terminal cannot
-	Paths       func(prefix string) []string
+	UpdateNotice string
+	Runner       runner
+	Service      service
+	Editor       lineEditor
+	Out, Err     io.Writer
+	T            *i18n.Translator
+	Now          func() time.Time
+	Interrupts   func() (<-chan os.Signal, func())
+	DataDir      string
+	Log          *slog.Logger
+	Interactive  bool   // a person at a terminal: banner, history, prompts
+	Color        bool   // styles allowed
+	Version      string // for the banner
+	Clear        string // the sequence that clears the screen; empty when the terminal cannot
+	Paths        func(prefix string) []string
 }
 
 // Run is the launcher the composition root injects as cli.Deps.Shell.
@@ -89,7 +90,7 @@ func Run(ctx context.Context, env cli.ShellEnv) int {
 		version = "dev"
 	}
 	opts := Options{
-		Runner: env.Runner, Service: s.Svc, Editor: ed, Out: env.Stdout, Err: env.Stderr, T: s.T, Now: time.Now,
+		UpdateNotice: env.UpdateNotice, Runner: env.Runner, Service: s.Svc, Editor: ed, Out: env.Stdout, Err: env.Stderr, T: s.T, Now: time.Now,
 		Interrupts: env.Interrupts, DataDir: s.DataDir, Log: s.Log, Interactive: env.IsTerminal,
 		Color: env.IsTerminal && !s.NoColor, Version: version, Paths: completePaths,
 	}

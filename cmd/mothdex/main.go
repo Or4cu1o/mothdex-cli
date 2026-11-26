@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/shell"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/tui"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 )
 
@@ -59,6 +61,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 func deps(stdin io.Reader, stdout, stderr io.Writer, logs *mlog.Session) cli.Deps {
 	return cli.Deps{
 		Open:       opener(logs),
+		CleanupOld: func() { cleanupOld(logs) },
 		Translator: embeddedTranslator,
 		Version:    buildinfo.Get,
 		Logs:       logs,
@@ -98,4 +101,12 @@ func terminalWidth() int {
 		return 0
 	}
 	return n
+}
+
+func cleanupOld(logs *mlog.Session) {
+	if exe, err := os.Executable(); err == nil {
+		if exe, err = filepath.EvalSymlinks(exe); err == nil {
+			update.CleanupOld(filepath.Dir(exe), logs.Logger())
+		}
+	}
 }

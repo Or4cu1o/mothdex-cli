@@ -23,6 +23,7 @@ const exitInterrupted = 130
 // Run is the launcher the composition root injects as cli.Deps.TUI.
 func Run(ctx context.Context, tenv cli.TUIEnv) int {
 	e := newEnvFrom(ctx, tenv.Session)
+	e.updateNotice = tenv.UpdateNotice
 	m := newModel(e, newSearch(readState(e.dataDir)))
 	p := tea.NewProgram(guard{m, e}, tea.WithContext(ctx), tea.WithInput(tenv.Stdin), tea.WithOutput(tenv.Stdout), tea.WithoutSignalHandler())
 	if tenv.Interrupts != nil {

@@ -93,6 +93,7 @@ func (s *Session) BundleOptions() BundleOptions {
 // clearKeys are the settings shown as they are. Every other key, including one added later, is
 // masked; a test fails on a schema key that is in neither list (TM-18).
 var clearKeys = []string{
+	"update.check", "update.channel",
 	"api.timeout", "api.rate_limit", "api.max_retries",
 	"download.concurrency", "download.max_attempts", "download.not_found_retries", "download.first_byte_timeout",
 	"download.idle_timeout", "download.on_exists", "download.max_file_size", "download.verify", "download.boxart",

@@ -8,7 +8,7 @@ errors:
     hint: 'Install using the one-line command for your OS: {install_command}'
   update_failed:
     message: 'The update could not be completed.'
-    hint: 'If the previous version was restored, try mothdex upgrade again later; otherwise reinstall: {install_command}'
+    hint: 'Reinstall with the official command: {install_command}'
   usage:
     message: 'Invalid usage: {detail}'
     hint: 'Run "mothdex {command} --help".'
@@ -57,7 +57,7 @@ errors:
     message: 'The downloaded file has the wrong size ({got} of {expected}).'
     hint: 'Try again, or choose another link with --link.'
   integrity:
-    message: 'The downloaded file is corrupt (archive check failed).'
+    message: 'The downloaded content failed integrity or origin verification.'
     hint: 'Try again, or choose another link with --link.'
   permission_denied:
     message: 'Cannot write to {path}.'
@@ -195,6 +195,18 @@ ui:
       other: '{count} files'
   cli:
     help:
+      upgrade:
+        short: 'Update a managed installation'
+        long: 'Verify and update all installed Mothdex components. Verification always runs before confirmation. Use --version to select an exact version, including a downgrade.'
+        example: |
+          mdex upgrade
+          mdex upgrade --check
+          mdex upgrade --channel beta
+          mdex upgrade --version 0.2.0 -f
+        flags:
+          check: 'check for a newer version without downloading archives'
+          version: 'install this exact version (allows downgrade)'
+          channel: 'release channel: stable | beta'
       logs:
         example: 'mothdex logs list'
         long: 'Every run writes its own log. These commands find them and make the zip to attach to a bug report. Run mothdex help logs for the steps.'
@@ -455,6 +467,7 @@ ui:
         Use mothdex config set <key> <value> to save an override.
       config_columns: 'Key | Accepted values | Default | Environment'
       config_footer: |-
+        Automatic update checks send no version or identifier. Disable with update.check=false or MOTHDEX_NO_UPDATE_CHECK=1.
         profile.folders.<platform> | relative folder name | profile default | —
         Empty paths use platform-specific directories. interface.language accepts auto or a locale such as en_us/pt_br.
       error_reference: 'Error reference'
@@ -1096,3 +1109,17 @@ ui:
       history: 'history'
       settings: 'settings'
       help: 'help'
+
+update:
+  notice: 'New version available: {current} → {latest}. Update with: {command} upgrade'
+  confirm: 'Update {current} → {latest} (verification: {signature}).'
+  confirm_downgrade: 'Downgrade {current} → {latest} (verification: {signature}).'
+  prompt: 'Apply this update? [y/N]'
+  current: 'Mothdex {current} is current.'
+  available: 'New version available: {current} → {latest}. Run mothdex upgrade.'
+  updated: 'Updated {current} → {latest} (verification: {signature}).'
+  restart: 'Exit and open Mothdex again to use the new version.'
+  restored_hint: 'Your previous version was restored. Try again later.'
+  unchanged_hint: 'Nothing in your installation changed. Your previous version is still in place.'
+  verification_hint: 'Release origin could not be verified. If the signing root rotated, reinstall with the official command: {install_command}'
+  tamper_hint: 'The release signature did not verify: it may have been tampered with. Do not reinstall; report it privately: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'

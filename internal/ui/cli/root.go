@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
+
 	"github.com/spf13/cobra"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
@@ -31,7 +33,9 @@ type runtime struct {
 	ctx  context.Context
 	cmd  string // command name used in the --json envelope
 
-	jsonDone bool // the envelope was already written (a partial batch result)
+	updateResult <-chan update.CheckResult
+	updateCancel context.CancelFunc
+	jsonDone     bool // the envelope was already written (a partial batch result)
 
 	// run is set when the line comes from the Shell: the session is already open and belongs to the
 	// Shell, the command tree has no shell, tui or gui, and some flags are start-up only.
@@ -40,20 +44,27 @@ type runtime struct {
 
 // Execute runs the command line and returns the process exit code. It prints every error itself.
 func Execute(ctx context.Context, d Deps, args []string) int {
-	r := &runtime{d: d, ctx: ctx}
+	return (&runtime{d: d, ctx: ctx}).execute(args)
+}
+
+func (r *runtime) execute(args []string) int {
+	d := r.d
 	root := r.rootCommand()
 	root.SetArgs(args)
 	root.SetOut(d.Stdout)
 	root.SetErr(d.Stderr)
-	err := root.ExecuteContext(ctx)
+	err := root.ExecuteContext(r.ctx)
 	if r.sess != nil && r.sess.Close != nil {
 		defer r.sess.Close()
 	}
 	if err == nil {
+		r.finishUpdateCheck()
 		return 0
 	}
 	r.noteCommand(root, args)
-	return r.fail(err)
+	code := r.fail(err)
+	r.finishUpdateCheck()
+	return code
 }
 
 // noteCommand names the command that failed argument validation, which cobra reports before any hook
@@ -143,11 +154,15 @@ func (r *runtime) open() (*Session, error) {
 		p.logPath = r.sess.LogPath
 		return r.sess, nil
 	}
+	if r.d.CleanupOld != nil {
+		r.d.CleanupOld()
+	}
 	s, err := r.d.Open(r.ctx, r.g)
 	if err != nil {
 		return nil, err
 	}
 	r.sess = s
+	r.startUpdateCheck(s)
 	p := r.printer()
 	p.t = s.T
 	p.setColor(s.Color)
@@ -203,7 +218,7 @@ func (r *runtime) rootCommand() *cobra.Command {
 	root.AddCommand(
 		r.searchCmd(), r.infoCmd(), r.randomCmd(), r.downloadCmd(), r.boxartCmd(),
 		r.platformsCmd(), r.regionsCmd(), r.dbInfoCmd(), r.historyCmd(), r.cacheCmd(),
-		r.configCmd(), r.profileCmd(), r.versionCmd(), r.logsCmd(),
+		r.configCmd(), r.profileCmd(), r.versionCmd(), r.upgradeCmd(), r.logsCmd(),
 	)
 	if r.run == nil { // the Shell never runs shell, tui or gui
 		root.AddCommand(r.shellCmd(), r.tuiCmd(), r.guiCmd())

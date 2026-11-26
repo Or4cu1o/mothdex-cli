@@ -96,3 +96,14 @@ Project history is in [CHANGELOG.md](CHANGELOG.md).
 ## License
 
 [GPL-3.0](LICENSE)
+
+## Update
+
+Managed installations update all installed components with `mdex upgrade`. Use `mdex upgrade --check` to check first,
+`mdex upgrade -f` for an unattended update, or `mdex upgrade --version X.Y.Z -f` to select an exact version.
+Archives are always checked against the release SHA-256 manifest; the origin verification result is shown before installation.
+A failed version check restores the previous binaries. After an update, exit and reopen any shell, TUI or GUI session.
+
+Version checks run in the background, at most once every 24 hours. Disable them with `mdex config set update.check false`
+or `MOTHDEX_NO_UPDATE_CHECK=1`. CI, dev builds and unmanaged installations do not check automatically; JSON and quiet
+commands never show a notice or start a check. See [release updates](docs/release.md#update) for details.

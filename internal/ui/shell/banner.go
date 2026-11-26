@@ -21,6 +21,9 @@ func (s *Shell) banner(ctx context.Context) {
 	}
 	line := s.t("ui.shell.banner", i18n.Args{"version": s.o.Version, "entries": entries, "profile": s.o.Service.ActiveProfile().ID})
 	_, _ = fmt.Fprintln(s.o.Out, app.SanitizeText(line))
+	if s.o.UpdateNotice != "" {
+		_, _ = fmt.Fprintln(s.o.Out, app.SanitizeText(s.o.UpdateNotice))
+	}
 }
 
 // helpRow is one line of the command list.

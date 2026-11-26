@@ -63,7 +63,7 @@ EOF
     printf '\n================================================================================\nModule: %s %s\n================================================================================\n' "$path" "$version"
     for f in "${files[@]}"; do
       printf '\n--- %s ---\n\n' "$(basename "$f")"
-      cat "$f"
+      tr -d '\r' <"$f" # some licences ship CRLF; git stores the notices as LF, so --check must compare LF
       [ -z "$(tail -c1 "$f")" ] || printf '\n'
     done
     count=$((count + 1))

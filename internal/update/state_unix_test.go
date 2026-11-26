@@ -1,0 +1,69 @@
+//go:build !windows
+
+package update
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/Or4cu1o/mothdex-cli/internal/app"
+)
+
+func TestManagedUntrustedOwnerAndLinks(t *testing.T) {
+	t.Run("world writable", func(t *testing.T) {
+		u, s := fixture(t)
+		_ = os.Chmod(s.Dir, 0777) //nolint:gosec // installation fixtures intentionally reproduce executable and state permissions.
+		_, err := u.Managed()
+		errorCode(t, err, app.CodeUpdateUnavailable, "untrusted_dir")
+	})
+	t.Run("foreign owner", func(t *testing.T) {
+		if os.Geteuid() != 0 {
+			t.Skip("requires root fixture ownership")
+		}
+		u, s := fixture(t)
+		if err := os.Chown(s.Dir, 65534, 65534); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chown(s.Dir, 0, 0) })
+		_, err := u.Managed()
+		errorCode(t, err, app.CodeUpdateUnavailable, "not_owner")
+	})
+	t.Run("state symlink", func(t *testing.T) {
+		u, s := fixture(t)
+		p := filepath.Join(s.Dir, stateName)
+		_ = os.Rename(p, p+".fixture")
+		if err := os.Symlink(p+".fixture", p); err != nil {
+			t.Fatal(err)
+		}
+		_, err := u.Managed()
+		errorCode(t, err, app.CodeUpdateUnavailable, "bad_state")
+	})
+}
+
+func TestManagedPrivateGroupWritableAccepted(t *testing.T) {
+	u, s := fixture(t)
+	if err := os.Chmod(s.Dir, 0770); err != nil { //nolint:gosec // fixture for installer-approved group write.
+		t.Fatal(err)
+	} //nolint:gosec // installer permits group write, contract #150.
+	if _, err := u.Managed(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestManagedFATExceptionKeepsOwnershipGate(t *testing.T) {
+	old := permissionless
+	defer func() { permissionless = old }()
+	u, s := fixture(t)
+	//nolint:gosec // Reproduces the modes returned by FAT and exFAT.
+	if err := os.Chmod(s.Dir, 0777); err != nil {
+		t.Fatal(err)
+	} //nolint:gosec // reproduces modes reported by FAT/exFAT.
+	permissionless = func(string) bool { return false }
+	_, err := u.Managed()
+	errorCode(t, err, "update_unavailable", "untrusted_dir")
+	permissionless = func(string) bool { return true }
+	if _, err = u.Managed(); err != nil {
+		t.Fatalf("FAT install refused: %v", err)
+	}
+}

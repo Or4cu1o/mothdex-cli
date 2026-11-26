@@ -299,6 +299,10 @@ func TestEveryExampleAgainstFakeServer(t *testing.T) {
 			return
 		}
 		t.Run(helpID(c), func(t *testing.T) {
+			if c.Name() == "upgrade" {
+				testUpgradeExamples(t, c.Example)
+				return
+			}
 			store, err := cache.Open(t.TempDir(), cache.Config{}, exampleClock{}, nil)
 			if err != nil {
 				t.Fatal(err)

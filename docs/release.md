@@ -149,3 +149,71 @@ These are repository settings, not files, and need the owner's approval:
 
 The ordered owner steps for the first release (gates, tag, approval, verification of the published assets, rollback) are in
 [release-v0.1.0-checklist.md](release-v0.1.0-checklist.md).
+
+## Update
+
+`mdex upgrade` updates installations created by the official installer and recorded in `.mothdex-install.json`.
+Existing installations without that state file should run the installer again. Third-party packages and source builds
+should use their own installation method; an unmanaged upgrade exits 9 and prints the installer command.
+
+- `mdex upgrade --check`: discover the latest version without downloading archives.
+- `mdex upgrade --channel beta`: include prereleases for this invocation.
+- `mdex upgrade --version X.Y.Z`: select an exact release, including a downgrade, with a confirmation.
+- `mdex upgrade -f`: skip confirmation, retaining every verification.
+- `mdex upgrade --json -f`: use the standard JSON envelope, including the signature result and restart hint.
+
+The updater uses the fixed official GitHub release origin. It verifies SHA-256 for every archive, then verifies origin
+natively with sigstore-go. The signed manifest must match its SHA-256, chain to the embedded Sigstore Public Good
+Fulcio roots, carry a verified certificate transparency proof (SCT), verified Rekor transparency evidence and an
+authenticated observer timestamp, and have the exact certificate identity of `Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version>` with the GitHub Actions
+OIDC issuer. A failure aborts before extraction or installation. `-f` never skips verification. No external tool or
+SHA-256-only fallback is selected. The reinstall hint appears only when the failure points to the embedded root (an
+unknown or expired certificate authority, transparency log or certificate transparency log). A wrong identity, altered
+file or missing bundle says the release may be tampered with, asks not to reinstall and to report it privately.
+
+The Public Good trusted root is **embedded**, refreshed through verified TUF metadata by
+`go run scripts/update-trusted-root.go` during release preparation and committed for review. Upgrades do not fetch
+TUF, Fulcio, Rekor or certificate URLs at runtime. Root rotations require a new Mothdex release with refreshed trust
+material; a release signed only with an unknown new key fails closed and requires the current installer. Revocations
+and other trust changes are likewise learned through a Mothdex update, rather than a runtime TUF refresh. Root changes
+must be reviewed with the release code; the bundle itself can never supply a trust anchor.
+
+The embedded `internal/update/trusted-root.json` is pinned by SHA-256, and a test fails when the file and the pin differ:
+
+```text
+6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66
+```
+
+The refresh script prints the old and new hash. Review the JSON diff, then record the new hash here and in
+`trustedRootSHA256` (`internal/update/native.go`). A refresh must keep the older keys with their validity windows, or
+the fixtures of the published releases stop verifying.
+
+All components are staged and probed before confirmation. After replacement, the CLI and GUI are checked again.
+Failure restores the previous files in reverse order. The Windows alias hardlink is recreated for the new CLI;
+locked backup files remain until a later start can remove them. Successful updates require persistent interfaces to restart.
+A failure whose `details.restored` is false needs a reinstall using the command in the error hint.
+
+Automatic checks request only public release metadata, sending a fixed `mothdex` User-Agent with no version, identifier,
+cookie or authentication token. GitHub sees the connection's IP and timing. Checks are cached under
+`paths.data/update-check.json`, limited to once per 24 hours and canceled after 3 seconds. The CLI never waits for a
+pending check on exit. A notice appears on interactive stderr only, once per day for each new version. Shell and TUI
+show the validated cache hint. No update is installed automatically.
+
+Set `update.check=false`, or `MOTHDEX_NO_UPDATE_CHECK=1`, to make no automatic request. CI, unmanaged installations,
+dev builds, non-terminal stderr, `--json`, `-q`, completion, version, logs and upgrade commands also skip automatic
+checks. `upgrade --check` is an explicit request and ignores configuration, environment and CI opt-outs. The channel
+is `update.channel=stable` by default; `beta` includes prereleases. These settings also have the environment overrides
+`MOTHDEX_UPDATE_CHECK` and `MOTHDEX_UPDATE_CHANNEL`.
+
+The upgrade's preparation phase has a ten-minute budget, with fifteen seconds for response headers and thirty seconds
+of body inactivity; explicit checks have a thirty-second limit. Reading the confirmation has no preparation deadline.
+Even `-f` prints a downgrade warning (or records it in JSON warnings). A failure before replacement says that the
+previous installation remains intact; only an incomplete rollback, or a missing GUI asset, advises reinstalling.
+Known GUI notices refresh `mothdex-licenses/` beside the executable, preserving folders containing foreign entries.
+Future regular notices under `THIRD_PARTY/` are accepted within the archive limits and discarded; they are never run.
+
+The native verifier increases the stripped Linux amd64 CLI from 13,566,112 to 25,088,160 bytes (+11,522,048; +84.93%) with
+CGO_ENABLED=0 and identical -trimpath -buildvcs=false -ldflags '-s -w' builds. Allow about 11 MB extra storage and
+additional verification memory on Ports and handhelds; an update stages archives alongside the installed binaries.
+The pflag and YAML module updates are required by sigstore-go v1.4.0 and its Rekor/OpenAPI graph; its minimum Go
+version is 1.27.0. They are not independent dependency upgrades.
