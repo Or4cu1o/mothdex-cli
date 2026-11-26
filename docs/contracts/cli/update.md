@@ -46,6 +46,35 @@ staging is deleted and the result is `canceled`. `-f` passes a `Confirm` that al
 the value the `Verifier` returned. A single `Updater` runs one `Apply` at a time. Every error is an `*app.Error` with a code
 from §6.
 
+**Addendum (T-116, agreed with Forja):**
+
+- **Progress.** `Progress{Step string; Done, Total int64}`. `Step` is one of `discover`, `download`, `verify`,
+  `stage`, `swap`, `check` or `done`. `Total` is 0 when the size is unknown.
+  - Both `Progress` and `Confirm` are called on `Apply`'s own goroutine, one at a time. A front end that draws on
+    another thread must copy the value it receives and must not block for long.
+- **CheckResult.** `CheckResult{Current, Latest, Channel, PageURL string; Available, Notify, FromCache bool;
+  CheckedAt time.Time; Skipped string}`.
+  - `Latest` has passed the SemVer check (TM-38), or is `""` when none is known.
+  - `Available` means `Latest > Current`.
+  - `Notify` applies the notice-once rule of §5. The caller that shows the notice calls `MarkNotified(latest)`,
+    which rewrites `notified_*`.
+  - `Skipped` carries the off-switch reason, and then no request was made.
+- **Cancellation.** `Apply` checks `ctx` before every step and again right after `Confirm` returns.
+  - Up to step 4 (§3), a cancelled `ctx` deletes the staging folder and returns `canceled`.
+  - A `Confirm` that waits on a dialog must also watch `ctx.Done()` and return false when it fires.
+  - From the first rename of §4 on, `ctx` is no longer read. The swap, check and commit, or the rollback, always run
+    to the end, so a cancel never leaves a half-swapped installation.
+- **Off switches** (§5) are decided only in the `update` package. A single function takes `Options.Getenv` and the
+  `update.check` value and returns the reason (`config`, `env`, `ci`, `unmanaged` or `dev_build`), or `""` when the
+  check is on. Front ends never test these conditions themselves.
+- **Wiring in compose.** `compose.NewUpdater(cfg config.Update, dataDir string, log *slog.Logger) (*update.Updater, error)`.
+  `compose.Session` gets `Updater *update.Updater` and `UpdateCheck bool`, which is the off-switch result for this
+  run.
+- **`target`, and `linux_arm` in particular.** `GOOS_GOARCH`, except that `GOARCH=arm` becomes `armv6` or `armv7`
+  according to the `GOARM` build setting in `runtime/debug.ReadBuildInfo`. Without that setting (a dev build) the
+  result is `update_unavailable` with `reason: dev_build`. The `armv8l` kernel installs `linux_armv7`
+  (release-artifacts.md §3), and the state file's `target` must equal this value.
+
 ## 2. Network and latest discovery (no GitHub API)
 
 - **Origin (TM-29).** Every URL is built from the constant `https://github.com/Or4cu1o/mothdex-cli/releases`. No config

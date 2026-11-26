@@ -48,7 +48,7 @@ func TestOneLineCutsToTheLimitOnACharacterBoundary(t *testing.T) {
 }
 
 // Whatever SDL is or is not on the machine running the test, --probe keeps its contract: exit 0 with one line
-// "sdl X.Y.Z" on stdout and nothing on stderr, or exit 1 with nothing on stdout and one clean line of reason.
+// "sdl X.Y.Z" on stdout and nothing on stderr, or exit 8 with nothing on stdout and one clean line of reason.
 func TestProbeKeepsItsContract(t *testing.T) {
 	for _, flag := range []string{"--probe", "-probe"} { // Go takes both dashes
 		var out, errOut bytes.Buffer
@@ -66,7 +66,7 @@ func TestProbeKeepsItsContract(t *testing.T) {
 				t.Errorf("%s not eligible: stdout %q stderr %q", flag, out.String(), reason)
 			}
 		default:
-			t.Errorf("%s: exit %d, want 0 or 1", flag, code)
+			t.Errorf("%s: exit %d, want 0 or 8", flag, code)
 		}
 	}
 }
