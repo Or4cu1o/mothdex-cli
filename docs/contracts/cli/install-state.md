@@ -112,7 +112,7 @@ Otherwise the result is `update_unavailable`, with `details.reason` set to the f
 | the file exists and holds valid JSON within 16 KiB | `no_state` / `bad_state` |
 | `schema_version == 1` and `source == "installer"` | `state_newer` / `not_installer` |
 | `dir`, cleaned and with symlinks resolved, equals the folder of the running binary (case-insensitive on Windows) | `moved` |
-| the folder passes the installer trust rules: not a link or reparse point, not writable by group or others (Windows: no write ACE for Users, Everyone or Authenticated Users) | `untrusted_dir` |
+| the folder passes the installer trust rules: not a link or reparse point, not writable by others (Unix mode `o+w`; group write is accepted, as in the installer, because a user-private group with umask 002 makes `0775` common), and on Windows no write ACE for Users, Everyone or Authenticated Users | `untrusted_dir` |
 | the effective user owns the folder (so `sudo mdex upgrade` on a user install is refused), and a temporary file can be created and removed in it | `not_owner` / `read_only` |
 | every field passes its §2 rule, `version` is valid SemVer, and `target` is the running binary's `GOOS_GOARCH` | `bad_state` |
 
@@ -125,7 +125,7 @@ The file never redirects a write. Upgrade writes only to the running binary's fo
   `mothdex.exe` (TM-12, TM-13). Otherwise it stays, with a warning.
 - **PATH** (TM-8, TM-10): on Windows, removes exactly the `path_value` entry from the raw user `Path` and leaves the
   rest byte for byte. On Unix, removes only lines equal to `path_value`, and only when `path_value` is the TM-9 line
-  for `dir` and `path_file` is one of `~/.bashrc`, `~/.zshrc`, `~/.profile` or `~/.config/fish/config.fish` under the
+  for `dir` and `path_file` is one of `~/.bashrc`, `~/.bash_profile` (bash login file on macOS), `~/.zshrc`, `~/.profile` or `~/.config/fish/config.fish` under the
   current `HOME`.
 - **Launcher:** only when the file still carries our marker (ports.md).
 - **Without a state file** (installs from 0.1.x), uninstall behaves as it does today and cannot remove an alias or
