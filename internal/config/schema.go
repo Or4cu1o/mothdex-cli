@@ -16,6 +16,8 @@ const (
 // schema is the closed list of keys, in the order of config.md section 2. It is the single
 // source for defaults, validation, environment names and `config list` order.
 var schema = []setting{
+	boolean("update.check", true, func(c *Config) *bool { return &c.Update.Check }),
+	oneOf("update.channel", "stable", func(c *Config) *string { return &c.Update.Channel }, "stable", "beta"),
 	text("api.base_url", "https://api.mothdex.net/v1", func(c *Config) *string { return &c.API.BaseURL }, httpURL),
 	duration("api.timeout", 15*time.Second, time.Second, 5*minute, func(c *Config) *time.Duration { return &c.API.Timeout }),
 	rate("api.rate_limit", 5, 1, 10, func(c *Config) *float64 { return &c.API.RateLimit }),

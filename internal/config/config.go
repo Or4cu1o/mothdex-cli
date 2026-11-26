@@ -31,6 +31,7 @@ type Config struct {
 	Profile   Profile
 	Log       Log
 	GUI       GUI
+	Update    Update
 }
 
 // API holds the api-client settings.
@@ -113,4 +114,10 @@ type Log struct {
 	Console   bool
 	MaxSizeMB int
 	MaxFiles  int
+}
+
+// Update configures release discovery and automatic checks.
+type Update struct {
+	Check   bool
+	Channel string
 }

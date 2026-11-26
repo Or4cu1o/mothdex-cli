@@ -22,6 +22,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/library"
 	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
 	"github.com/Or4cu1o/mothdex-cli/internal/proxy"
+	"github.com/Or4cu1o/mothdex-cli/internal/update"
 	"github.com/Or4cu1o/mothdex-cli/locales"
 	"github.com/Or4cu1o/mothdex-cli/pkg/mothdex"
 	"github.com/Or4cu1o/mothdex-cli/profiles"
@@ -58,19 +59,21 @@ type Options struct {
 // Session is what Open returns: the service plus the settings the front end reads. It carries no
 // UI types, so every front end wraps it.
 type Session struct {
-	Svc      *app.Service
-	T        *i18n.Translator
-	Prefer   app.Preference // download.prefer baseline
-	Boxart   bool           // download.boxart
-	Confirm  bool           // interface.confirm_downloads
-	PageSize int            // interface.page_size
-	Color    string         // interface.color: auto | always | never
-	Warnings []string
-	LogPath  string       // the log file
-	DataDir  string       // resolved paths.data
-	NoColor  bool         // the final color decision of cli-conventions section 4
-	Log      *slog.Logger // never nil
-	Close    func()       // releases the service and the log
+	Updater     *update.Updater
+	UpdateCheck bool
+	Svc         *app.Service
+	T           *i18n.Translator
+	Prefer      app.Preference // download.prefer baseline
+	Boxart      bool           // download.boxart
+	Confirm     bool           // interface.confirm_downloads
+	PageSize    int            // interface.page_size
+	Color       string         // interface.color: auto | always | never
+	Warnings    []string
+	LogPath     string       // the log file
+	DataDir     string       // resolved paths.data
+	NoColor     bool         // the final color decision of cli-conventions section 4
+	Log         *slog.Logger // never nil
+	Close       func()       // releases the service and the log
 }
 
 // Open builds config, logger, i18n, cache, API client, cover fetcher, history, profile and the app
@@ -187,7 +190,12 @@ func Open(_ context.Context, o Options) (*Session, error) {
 			return nil, wrapInternal(err)
 		}
 	}
+	updater, uerr := NewUpdater(cfg.Update, paths.Data, logger)
+	if uerr != nil {
+		logger.Debug("update unavailable", "cause", uerr)
+	}
 	return &Session{
+		Updater: updater, UpdateCheck: cfg.Update.Check,
 		Svc: svc, T: tr, Prefer: preference(cfg.Download.Prefer), Boxart: cfg.Download.Boxart, Confirm: cfg.Interface.ConfirmDownloads,
 		PageSize: cfg.Interface.PageSize, Color: cfg.Interface.Color, Warnings: warnings, LogPath: filepath.Join(paths.Logs, mlog.FileName),
 		Close:   func() { _ = svc.Close(); _ = closeLog.Close() },

@@ -37,7 +37,7 @@ func envLayer(environ []string, foldCase bool) (values map[string]any, warnings 
 		if foldCase {
 			name = strings.ToUpper(name)
 		}
-		if !ok || !strings.HasPrefix(name, envPrefix) || name == EnvConfig {
+		if !ok || !strings.HasPrefix(name, envPrefix) || (name == EnvConfig || name == "MOTHDEX_NO_UPDATE_CHECK") {
 			continue
 		}
 		key, known := envKeys[name]
