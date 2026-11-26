@@ -22,7 +22,10 @@ func TestPathFlagsAreNeverLogged(t *testing.T) {
 
 func TestOnlyRealRunsGetASessionLog(t *testing.T) {
 	for line, want := range map[string]bool{
-		"":                       true,
+		"":                           true,
+		"upgrade --version 0.2.0 -f": true,
+		"update --version 0.2.0 -f":  true,
+		"--lang pt_br upgrade --version 0.2.0 -f": true,
 		"search mario":           true,
 		"--lang pt_br search x":  true,
 		"search version":         true,
