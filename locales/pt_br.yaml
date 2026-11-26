@@ -624,6 +624,8 @@ ui:
       done: 'Atualizado para {version}'
       reopen: 'Feche e abra o Mothdex de novo.'
       canceled: 'Atualização cancelada. Nada mudou.'
+      hint_unchanged: 'Nada foi alterado. Tente de novo mais tarde.'
+      hint_installer: "Instale de novo em um terminal:\n{command}"
       hint_restored: 'A versão anterior foi restaurada. Tente de novo mais tarde.'
       hint_reinstall: "A instalação pode estar incompleta. Instale de novo em um terminal:\n{command}"
       failed: 'Não atualizado'

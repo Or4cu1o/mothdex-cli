@@ -467,9 +467,10 @@ func (renderUpdates) Check(context.Context) (gui.Release, error) {
 
 func (renderUpdates) MarkNotified(string) error { return nil }
 
-func (r renderUpdates) Apply(_ context.Context, _ func(gui.UpdateProgress), confirm func(gui.Staged) bool) error {
+func (r renderUpdates) Apply(_ context.Context, progress func(gui.UpdateProgress), confirm func(gui.Staged) bool) error {
 	confirm(gui.Staged{From: "0.3.0", To: "0.4.0", Signature: "none", Notes: "## [0.4.0] - 2026-12-01\n### Added\n- T-117: the GUI tells you about a new version and updates itself when you ask.\n- Session logs and crash files.\n### Fixed\n- With no display the GUI exits with code 8."})
 	if r.fail {
+		progress(gui.UpdateProgress{Step: "swap"})
 		return &app.Error{Code: app.CodeUpdateFailed, Message: "swap", Args: map[string]any{"restored": false,
 			"install_command": "curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh | sh"}}
 	}

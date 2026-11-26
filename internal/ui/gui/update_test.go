@@ -15,6 +15,7 @@ type fakeUpdates struct {
 	checks    int
 	applies   int
 	installed bool
+	swaps     bool  // Apply reaches its swap step before it fails
 	failure   error // returned by Apply after the confirmation
 	notified  []string
 }
@@ -28,6 +29,9 @@ func (f *fakeUpdates) Apply(_ context.Context, progress func(UpdateProgress), co
 	progress(UpdateProgress{Done: 1 << 20, Total: 2 << 20})
 	if !confirm(Staged{From: "0.2.0", To: "0.3.0", Signature: "none", Notes: "### Added\n- a \x1b[31mthing"}) {
 		return &app.Error{Code: app.CodeCanceled}
+	}
+	if f.swaps {
+		progress(UpdateProgress{Step: "swap"})
 	}
 	f.installed = f.failure == nil
 	return f.failure
@@ -123,17 +127,27 @@ func TestAFailedUpdateShowsItsCodeAndRef(t *testing.T) {
 // is not, and the updater's own hint when it has one.
 func TestAFailedUpdateShowsHowToRecover(t *testing.T) {
 	const command = "curl -fsSL https://example.test/install.sh | sh"
+	failed := func(reason string, restored bool) map[string]any {
+		return map[string]any{"reason": reason, "restored": restored, "install_command": command}
+	}
 	for _, c := range []struct {
 		name, code string
+		swaps      bool
 		args       map[string]any
 		want, not  string
 	}{
-		{"not restored", "update_failed", map[string]any{"restored": false, "install_command": command}, "Install again from a terminal: " + command, "previous version is back"},
-		{"restored", "update_failed", map[string]any{"restored": true, "install_command": command}, "The previous version is back.", command},
-		{"signing root", "integrity", map[string]any{"hint_key": "update.verification_hint", "install_command": command}, "reinstall with the official command: " + command, "previous version is back"},
+		{"swap not restored", "update_failed", true, failed("swap_failed", false), "Install again from a terminal: " + command, "Nothing was changed"},
+		{"swap restored", "update_failed", true, failed("check_failed", true), "The previous version is back.", command},
+		// before the swap the updater also says restored=false: nothing changed, and installing now could interfere
+		{"another update running", "update_failed", false, failed("in_progress", false), "Nothing was changed.", command},
+		{"staged check failed", "update_failed", false, failed("check_failed", false), "Nothing was changed.", "incomplete"},
+		{"release without the GUI", "update_failed", false, failed("gui_missing", false), "Install again from a terminal: " + command, "incomplete"},
+		{"the updater says nothing moved", "update_failed", true, map[string]any{"swapped": false, "restored": false, "install_command": command}, "Nothing was changed.", command},
+		{"the updater says files moved", "update_failed", false, map[string]any{"swapped": true, "restored": false, "install_command": command}, "Install again from a terminal: " + command, "Nothing was changed"},
+		{"signing root", "integrity", false, map[string]any{"hint_key": "update.verification_hint", "install_command": command}, "reinstall with the official command: " + command, "previous version is back"},
 	} {
 		f := newer()
-		f.failure = &app.Error{Code: c.code, Message: c.name, Args: c.args}
+		f.swaps, f.failure = c.swaps, &app.Error{Code: c.code, Message: c.name, Args: c.args}
 		h := toUpdate(t, f)
 		h.advance(dialogIgnore)
 		h.press(input.Right)

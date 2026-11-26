@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/app"
@@ -58,6 +59,9 @@ type updateRun struct {
 	events chan Msg
 	answer chan bool
 	cancel context.CancelFunc
+	// swapped is set when Apply reports its swap step: from then on files of the installation may have changed.
+	// The progress events the model gets can be dropped, so this is kept apart.
+	swapped atomic.Bool
 }
 
 type updateState struct {
@@ -135,6 +139,9 @@ func (m Model) startUpdate() (Model, []Cmd) {
 		go func() {
 			defer cancel()
 			err := up.Apply(ctx, func(p UpdateProgress) {
+				if p.Step == "swap" {
+					run.swapped.Store(true)
+				}
 				select {
 				case run.events <- updateProgressMsg{run: run, p: p}:
 				default: // the screen is behind: the next one says more
@@ -245,7 +252,7 @@ func (m Model) onUpdateDone(msg updateDoneMsg, now time.Time) (Model, []Cmd) {
 	}
 	f := m.report(msg.err, "update")
 	lines := []string{f.msg}
-	if hint := m.recoveryHint(msg.err, f); hint != "" {
+	if hint := m.recoveryHint(msg.err, f, msg.run.swapped.Load()); hint != "" {
 		lines = append(lines, hint)
 	}
 	lines = append(lines, m.tr("ui.gui.error.code_ref", map[string]any{"code": f.code, "ref": f.ref}))
@@ -256,10 +263,11 @@ func (m Model) onUpdateDone(msg updateDoneMsg, now time.Time) (Model, []Cmd) {
 	}, now), nil
 }
 
-// recoveryHint is what the person does about a failed update (docs/contracts/cli/update.md sections 4 and 6).
-// The updater's own hint (Args hint_key, such as a rotated signing root) comes first. A swap that failed says
-// whether the previous version is back; when it is not, the line carries the command that installs again.
-func (m Model) recoveryHint(err error, f failure) string {
+// recoveryHint is what the person does about a failed update (docs/contracts/cli/update.md sections 3, 4 and 6).
+// The updater's own hint (Args hint_key, such as a rotated signing root) comes first. A release without this
+// program is fixed by the installer. Otherwise a failure before the swap changed nothing; after it, either the
+// previous version is back or the installation may be incomplete and the command installs it again.
+func (m Model) recoveryHint(err error, f failure, swapped bool) string {
 	var ae *app.Error
 	if !errors.As(err, &ae) {
 		return f.hint
@@ -273,11 +281,20 @@ func (m Model) recoveryHint(err error, f failure) string {
 		return f.hint
 	}
 	command, _ := ae.Args["install_command"].(string)
-	switch restored, known := ae.Args["restored"].(bool); {
-	case known && restored:
+	with := map[string]any{"command": command}
+	restored, _ := ae.Args["restored"].(bool)
+	if told, ok := ae.Args["swapped"].(bool); ok {
+		swapped = told // the updater knows whether a file moved; the step seen is what stands in for it otherwise
+	}
+	switch {
+	case ae.Args["reason"] == "gui_missing" && command != "":
+		return m.tr("ui.gui.update.hint_installer", with)
+	case !swapped:
+		return m.tr("ui.gui.update.hint_unchanged", nil)
+	case restored:
 		return m.tr("ui.gui.update.hint_restored", nil)
-	case known && command != "":
-		return m.tr("ui.gui.update.hint_reinstall", map[string]any{"command": command})
+	case command != "":
+		return m.tr("ui.gui.update.hint_reinstall", with)
 	}
 	return f.hint
 }
