@@ -224,3 +224,19 @@ func TestUpgradeJSONUnavailableIncludesReason(t *testing.T) {
 		t.Fatal("JSON run printed update notice")
 	}
 }
+
+func TestCleanupSkipsBinaryOnlyModes(t *testing.T) {
+	for _, args := range [][]string{{"--version"}, {"version"}, {"--help"}, {"completion", "bash"}, {"__complete", ""}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			d, out := helpDeps(t)
+			d.CleanupOld = func() { t.Error("read-only mode invoked cleanup") }
+			d.Open = func(context.Context, Globals) (*Session, error) {
+				t.Fatal("read-only mode opened service")
+				return nil, nil
+			}
+			if code := Execute(context.Background(), d, args); code != 0 {
+				t.Fatalf("exit %d: %s", code, out)
+			}
+		})
+	}
+}

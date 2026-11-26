@@ -95,11 +95,6 @@ func newFlags(o *options) *flag.FlagSet {
 
 // run takes os.Args: the name the program was started under, then its flags.
 func run(argv []string, stdout, stderr io.Writer) (code int) {
-	if exe, err := os.Executable(); err == nil {
-		if exe, err = filepath.EvalSymlinks(exe); err == nil {
-			update.CleanupOld(filepath.Dir(exe), nil)
-		}
-	}
 	// A panic outside the normal mode (which logs its own, gui.go) must not leave with the code Go gives a
 	// crash, 2, which the contract keeps for configuration errors.
 	defer func() {
@@ -133,6 +128,11 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 		return runEligibility(stdout, stderr)
 	case o.spike || probeByName(argv[0]):
 		return runProbe(o.driver, stdout, stderr)
+	}
+	if exe, err := os.Executable(); err == nil {
+		if exe, err = filepath.EvalSymlinks(exe); err == nil {
+			update.CleanupOld(filepath.Dir(exe), nil)
+		}
 	}
 	return runGUI(o, stderr)
 }

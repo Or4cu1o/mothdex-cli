@@ -86,6 +86,8 @@ type Session struct {
 
 // Deps are the things the commands need from the outside: tests replace all of them.
 type Deps struct {
+	// CleanupOld runs after flags are parsed, only for commands that open a session.
+	CleanupOld func()
 	// ProgramName is the invoked name; empty uses os.Args[0].
 	ProgramName string
 

@@ -148,6 +148,9 @@ func (r *runtime) open() (*Session, error) {
 		p.logPath = r.sess.LogPath
 		return r.sess, nil
 	}
+	if r.d.CleanupOld != nil {
+		r.d.CleanupOld()
+	}
 	s, err := r.d.Open(r.ctx, r.g)
 	if err != nil {
 		return nil, err

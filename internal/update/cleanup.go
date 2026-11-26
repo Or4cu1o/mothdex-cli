@@ -15,7 +15,8 @@ var stagingMember = regexp.MustCompile(`^(?:mothdex(?:-gui)?(?:\.exe)?|SDL2\.dll
 var oldSuffix = regexp.MustCompile(`^(?:\.old(?:-[a-zA-Z0-9]+)?|\.failed)$`)
 
 // CleanupOld touches only known regular backup files and old unlocked staging directories.
-func CleanupOld(exeDir string, log *slog.Logger) {
+func CleanupOld(exeDir string, log *slog.Logger) { cleanupOld(exeDir, log, time.Now()) }
+func cleanupOld(exeDir string, log *slog.Logger, now time.Time) {
 	if !filepath.IsAbs(exeDir) {
 		return
 	}
@@ -63,7 +64,7 @@ func CleanupOld(exeDir string, log *slog.Logger) {
 			continue
 		}
 		// No recursive deletion of arbitrary trees: staging cleanup accepts only known regular members.
-		if stagingName.MatchString(entry.Name()) && st.IsDir() && time.Since(st.ModTime()) > time.Hour {
+		if stagingName.MatchString(entry.Name()) && st.IsDir() && now.Sub(st.ModTime()) > time.Hour {
 			files, e := os.ReadDir(path)
 			if e != nil {
 				continue

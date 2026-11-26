@@ -228,7 +228,7 @@ func validState(s State) bool {
 		return runtime.GOOS == "windows" && s.PathFile == "" && samePath(s.PathValue, s.Dir)
 	case "rc_line":
 		allowed := false
-		for _, n := range []string{".bashrc", ".zshrc", ".profile"} {
+		for _, n := range []string{".bashrc", ".bash_profile", ".zshrc", ".profile"} {
 			allowed = allowed || samePath(s.PathFile, filepath.Join(home, n))
 		}
 		return runtime.GOOS != "windows" && allowed && s.PathValue == `export PATH="`+s.Dir+`:$PATH" # mothdex`
