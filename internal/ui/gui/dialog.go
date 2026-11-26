@@ -20,6 +20,8 @@ const (
 	btnAgain        = "again"
 	btnCancelAll    = "cancel_all"
 	btnClear        = "clear"
+	btnExport       = "export"
+	btnOK           = "ok"
 )
 
 // dialogKind says what a dialog is about, so its buttons know what to do.
@@ -32,6 +34,8 @@ const (
 	dialogCancelAll                         // the Queue's Cancel all downloads
 	dialogAnyway                            // "Download anyway": the real size of a stopped download needs a person's OK
 	dialogClearCache                        // Settings › Cache: Clear cache (84 MB)?
+	dialogExportLogs                        // Export logs: the confirmation (T-110 TM-27)
+	dialogExported                          // where the bundle is, or why there is none
 )
 
 type dialogButton struct {
@@ -45,6 +49,7 @@ type dialogState struct {
 	kind    dialogKind
 	title   string
 	detail  string
+	lines   int // the most lines of detail; zero is dialogMaxLines
 	buttons []dialogButton
 	initial int      // the button that has focus first; 0, the safe one, unless a screen says otherwise
 	pending download // the download a confirmation is about
@@ -103,6 +108,13 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 	d := m.dlg
 	m = m.closeOverlay()
 	switch d.kind {
+	case dialogExportLogs:
+		if id == btnExport {
+			return m.startExport(now)
+		}
+		return m, nil
+	case dialogExported:
+		return m, nil
 	case dialogConfirmDownload, dialogDownloadAgain:
 		if id == btnDownload || id == btnAgain {
 			return m.enqueue(d.pending)
@@ -172,7 +184,11 @@ func (m Model) dialogGeometry() dialogGeom {
 	maxText := min(met.Safe.W-4*u-2*pad, 24*met.Body)
 	g.titleLines = p.wrap(met.Body, d.title, maxText, dialogMaxLines)
 	if d.detail != "" {
-		g.detailLines = p.wrap(met.Secondary, d.detail, maxText, dialogMaxLines)
+		most := dialogMaxLines
+		if d.lines > 0 {
+			most = d.lines
+		}
+		g.detailLines = p.wrap(met.Secondary, d.detail, maxText, most)
 	}
 	textW := 0
 	for _, l := range g.titleLines {

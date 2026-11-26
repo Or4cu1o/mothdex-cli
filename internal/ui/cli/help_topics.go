@@ -25,6 +25,7 @@ func referenceTopics(t *i18n.Translator) []HelpTopic {
 			}
 			return helpreference.Errors(b, t.Locale())
 		}},
+		logsTopic(t),
 	}
 }
 

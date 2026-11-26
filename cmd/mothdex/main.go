@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 	"time"
@@ -16,7 +17,9 @@ import (
 	"golang.org/x/term"
 
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
+	"github.com/Or4cu1o/mothdex-cli/internal/compose"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/cli"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/shell"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/tui"
@@ -26,7 +29,7 @@ import (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigs := make(chan os.Signal, 4)
@@ -38,18 +41,34 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			router.handle(sig)
 		}
 	}()
-	d := deps(stdin, stdout, stderr)
+	// The session starts before cobra and compose, so that their errors are logged too.
+	rules := cli.LogFlagRules()
+	logs := mlog.StartSession(mlog.SessionOptions{Binary: "cli", Args: args, Flags: rules, Build: buildinfo.Get(),
+		GeneralOnly: !cli.Logged(args, rules)})
+	logs.Update(mlog.Info{Mode: "command"})
+	defer func() { _ = logs.Close() }() // nothing is left to tell it to
+	d := deps(stdin, stdout, stderr, logs)
 	d.Interrupts = router.interrupts
+	// Deferred after the session's Close, so it runs while the log is still open.
+	defer func() {
+		if v := recover(); v != nil {
+			code = cli.ReportPanic(d, args, v, debug.Stack())
+		}
+	}()
 	return cli.Execute(ctx, d, args)
 }
 
-func deps(stdin io.Reader, stdout, stderr io.Writer) cli.Deps {
+func deps(stdin io.Reader, stdout, stderr io.Writer, logs *mlog.Session) cli.Deps {
 	return cli.Deps{
-		Open:       open,
-		CleanupOld: cleanupOld,
+		Open:       opener(logs),
+		CleanupOld: func() { cleanupOld(logs) },
 		Translator: embeddedTranslator,
 		Version:    buildinfo.Get,
-		Stdin:      stdin, Stdout: stdout, Stderr: stderr,
+		Logs:       logs,
+		Diagnostics: func(g cli.Globals) (mlog.BundleOptions, error) {
+			return compose.Diagnostics(logs, g.Config, g.Profile, g.Lang)
+		},
+		Stdin: stdin, Stdout: stdout, Stderr: stderr,
 		IsTerminal: isTerminal,
 		Width:      terminalWidth,
 		Getenv:     os.Getenv,
@@ -84,10 +103,10 @@ func terminalWidth() int {
 	return n
 }
 
-func cleanupOld() {
+func cleanupOld(logs *mlog.Session) {
 	if exe, err := os.Executable(); err == nil {
 		if exe, err = filepath.EvalSymlinks(exe); err == nil {
-			update.CleanupOld(filepath.Dir(exe), nil)
+			update.CleanupOld(filepath.Dir(exe), logs.Logger())
 		}
 	}
 }

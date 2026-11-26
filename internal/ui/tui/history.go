@@ -188,7 +188,7 @@ func (s historyScreen) onExported(msg exportDoneMsg, rt *shared) (screen, tea.Cm
 		return s, nil
 	}
 	f := rt.failureOf(msg.err)
-	return s, toastCmd(f.msg+" ["+f.code+"]", toastError)
+	return s, toastCmd(f.msg+" "+f.tag(), toastError)
 }
 
 func (s historyScreen) onKey(ev keyEv, rt *shared) (screen, tea.Cmd) {
@@ -510,8 +510,8 @@ func (s historyScreen) detailView(rt *shared, r app.HistoryRecord) screenView {
 		row("duration", clock(time.Duration(r.DurationMS)*time.Millisecond)),
 	}
 	if r.Error != nil {
-		f := rt.failureOf(&app.Error{Code: r.Error.Code, Message: r.Error.Message})
-		lines = append(lines, row("error", f.msg+" ["+f.code+"]"))
+		f := rt.describe(&app.Error{Code: r.Error.Code, Message: r.Error.Message}) // past: no new ref
+		lines = append(lines, row("error", f.msg+" "+f.tag()))
 	}
 	return screenView{body: lines, status: rt.T("ui.tui.history.detail_help", nil)}
 }

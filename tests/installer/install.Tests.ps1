@@ -622,7 +622,7 @@ try {
     Check 'path: the value kind stays REG_EXPAND_SZ' ($envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::ExpandString)
     Check 'path: the current session has it' ((Count-Entry $env:Path $p1) -eq 1)
     Check 'path: mothdex runs by name in this window' ((Get-Command mothdex.exe -ErrorAction SilentlyContinue).Source -ieq (Join-Path $p1 'mothdex.exe'))
-    Check 'path: final message' (($script:output -match 'mothdex 1\.5\.0 (installed in|instalado em)') -and ($script:output -match 'mothdex --version'))
+    Check 'path: final message' (($script:output -match 'mothdex 1\.5\.0 (installed in|instalado em)') -and ($script:output -match 'mdex --version'))
     $bytes = [IO.File]::ReadAllBytes($st)
     $data = [IO.File]::ReadAllText($st) | ConvertFrom-Json
     Check 'state: no byte order mark' ($bytes[0] -eq 0x7B)
@@ -749,6 +749,138 @@ exit `$LASTEXITCODE
     (-not (Get-Variable Repo, State, NoModifyPath, SignerIdentity, MothdexVersion -ErrorAction SilentlyContinue)) -and ($base -ceq $baseBefore))
   Check 'iex keeps the variables of the user' (($Version -ceq 'mine') -and ($BinDir -ceq 'mine') -and ($Uninstall -ceq 'mine') -and (-not (Get-Variable Mothdex* -ErrorAction SilentlyContinue)))
   Check 'TLS settings are not weakened' (([int][Net.ServicePointManager]::SecurityProtocol -band [int]$tlsBefore) -eq [int]$tlsBefore)
+  # the shortcut (TM-12, TM-13)
+  Set-RawPath $preset
+  New-Tag 'v1.5.1' $false
+  $cliStage2 = Join-Path $root 'stage-cli-ok2'
+  New-Item -ItemType Directory -Path $cliStage2 | Out-Null
+  Copy-Item (New-FakeExe 'cli-ok2' 'class P { static int Main(string[] a) { System.Console.WriteLine("mothdex 1.5.1"); return 0; } }') (Join-Path $cliStage2 'mothdex.exe')
+  $cliZip2 = Join-Path $release 'v1.5.1\mothdex_1.5.1_windows_amd64.zip'
+  Remove-Item $cliZip2
+  [IO.Compression.ZipFile]::CreateFromDirectory($cliStage2, $cliZip2)
+  Set-Content -Path (Join-Path $release 'v1.5.1\checksums.txt') -Value "$((Get-FileHash $cliZip2 -Algorithm SHA256).Hash.ToLowerInvariant())  mothdex_1.5.1_windows_amd64.zip"
+  function Get-State([string]$Dir) { return [IO.File]::ReadAllText((Join-Path $Dir '.mothdex-install.json')) | ConvertFrom-Json }
+  function Get-LinkCount([string]$File) { return @(& fsutil.exe hardlink list $File).Count }
+
+  $env:Path = $savedSessionPath
+  $a1 = Join-Path $root 'alias1'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a1 }
+  $mdex = Join-Path $a1 'mdex.exe'
+  Check 'alias: mdex.exe is created' ((-not $script:threw) -and (Test-Path $mdex))
+  Check 'alias: it is a hard link, not a shim' (((Get-LinkCount $mdex) -eq 2) -and (-not (Test-Path (Join-Path $a1 'mdex.cmd'))))
+  Check 'alias: state and message' (((Get-State $a1).alias -ceq 'mdex') -and ((Get-State $a1).alias_kind -ceq 'hardlink') -and ($script:output -match 'mdex --version'))
+  Check 'alias: runs' ((& $mdex --version) -eq 'mothdex 1.5.0')
+  Invoke-Install @{ Version = 'v1.5.1'; BinDir = $a1 }
+  Check 'alias: an upgrade recreates the hard link' ((-not $script:threw) -and ((& $mdex --version) -eq 'mothdex 1.5.1') -and ((Get-LinkCount $mdex) -eq 2))
+  Check 'alias: no second shortcut and no leftovers' ((-not (Test-Path (Join-Path $a1 'mthd.exe'))) -and (@(Get-ChildItem $a1 -Filter '*.old*').Count -eq 0))
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a1; Alias = 'mx-1' }
+  Check 'alias: a new choice replaces ours' ((Test-Path (Join-Path $a1 'mx-1.exe')) -and (-not (Test-Path $mdex)) -and ((Get-State $a1).alias -ceq 'mx-1'))
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a1 }
+  Check 'alias: a reinstall keeps the chosen name' ((Get-State $a1).alias -ceq 'mx-1')
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a1; NoAlias = $true }
+  Check 'alias: -NoAlias removes ours' ((-not (Test-Path (Join-Path $a1 'mx-1.exe'))) -and ((Get-State $a1).alias -ceq '') -and ($script:output -notmatch 'hortcut|Atalho'))
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a1 }
+  Invoke-Install @{ BinDir = $a1; Uninstall = $true }
+  Check 'alias: uninstall removes it' ((-not (Test-Path $mdex)) -and (-not (Test-Path (Join-Path $a1 'mothdex.exe'))))
+
+  $foreign = Join-Path $root 'foreign'
+  New-Item -ItemType Directory -Path $foreign | Out-Null
+  Set-Content -Path (Join-Path $foreign 'mdex.cmd') -Value '@echo foreign'
+  $env:Path = "$($env:Path);$foreign"
+  $a2 = Join-Path $root 'alias2'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a2 }
+  Check 'alias conflict on PATH: mthd instead, with a warning' ((Test-Path (Join-Path $a2 'mthd.exe')) -and (-not (Test-Path (Join-Path $a2 'mdex.exe'))) -and ($script:output -match 'mdex is already used'))
+  Check 'alias conflict: the foreign file is unchanged' ((Get-Content (Join-Path $foreign 'mdex.cmd')) -eq '@echo foreign')
+  Set-Content -Path (Join-Path $foreign 'mthd.cmd') -Value '@echo foreign'
+  $a3 = Join-Path $root 'alias3'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a3 }
+  Check 'alias: both taken, none created and it says so' ((-not $script:threw) -and (@(Get-ChildItem $a3 -Filter '*.exe').Count -eq 1) -and ($script:output -match 'No shortcut|Sem atalho') -and ((Get-State $a3).alias -ceq ''))
+  $env:Path = $savedSessionPath
+
+  $env:Path = $savedSessionPath
+  $a4 = Join-Path $root 'alias4'
+  New-Item -ItemType Directory -Path $a4 | Out-Null
+  Set-Content -Path (Join-Path $a4 'mdex.exe') -Value 'mine'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a4 }
+  Check 'alias: a file of the user is not overwritten' (((Get-Content (Join-Path $a4 'mdex.exe')) -eq 'mine') -and ((Get-State $a4).alias -ceq 'mthd'))
+  Invoke-Install @{ BinDir = $a4; Uninstall = $true }
+  Check 'alias: and uninstall keeps it' ((Get-Content (Join-Path $a4 'mdex.exe')) -eq 'mine')
+
+  $env:Path = $savedSessionPath
+  $a5 = Join-Path $root 'alias5'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a5 }
+  Remove-Item (Join-Path $a5 'mdex.exe')
+  Set-Content -Path (Join-Path $a5 'mdex.exe') -Value 'mine'
+  Invoke-Install @{ Version = 'v1.5.1'; BinDir = $a5 }
+  Check 'alias: a file that replaced our link is not overwritten on reinstall' ((Get-Content (Join-Path $a5 'mdex.exe')) -eq 'mine')
+  Invoke-Install @{ BinDir = $a5; Uninstall = $true }
+  Check 'alias: nor removed by uninstall' (Test-Path (Join-Path $a5 'mdex.exe'))
+
+  $env:Path = $savedSessionPath
+  foreach ($taken in 'dir', 'where') {
+    $ad = Join-Path $root "alias-$taken"
+    Invoke-Install @{ Version = 'v1.5.0'; BinDir = $ad; Alias = $taken }
+    Check "alias '$taken' (a PowerShell command) is refused, with no fallback" ((-not $script:threw) -and (@(Get-ChildItem $ad -Filter '*.exe').Count -eq 1))
+  }
+  foreach ($bad in 'mothdex', 'mothdex-gui', 'nul', 'com1', 'lpt9', '..\x', 'a/b', 'Mdex', '1x', 'm', 'abcdefghijklmnopq', 'a b', 'a;b') {
+    Invoke-Install @{ Version = 'v1.5.0'; BinDir = (Join-Path $root 'alias-bad'); Alias = $bad }
+    Check "invalid alias '$bad' is refused before any download" ($script:threw -and ($global:urls.Count -eq 0))
+  }
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = (Join-Path $root 'alias-bad'); Alias = 'mx'; NoAlias = $true }
+  Check '-Alias with -NoAlias is refused' $script:threw
+
+  # a link of ours that went stale (interrupted upgrade): recognised by its recorded file ID
+  $env:Path = $savedSessionPath
+  $a7 = Join-Path $root 'alias7'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  $link7 = Join-Path $a7 'mdex.exe'
+  $exe7 = Join-Path $a7 'mothdex.exe'
+  Check 'state records the file ID of the link' ((Get-State $a7).alias_file_id -cmatch '^[0-9]+:[0-9]+:[0-9]+\z')
+  function Set-Stale { Remove-Item -LiteralPath $exe7 -Force; Copy-Item (Join-Path $cliStage2 'mothdex.exe') $exe7 }
+  Set-Stale
+  Check 'the link is stale' ((& $link7) -eq 'mothdex 1.5.0')
+  Invoke-Install @{ Version = 'v1.5.1'; BinDir = $a7 }
+  Check 'a stale link of ours is relinked, with no second shortcut' (((& $link7) -eq 'mothdex 1.5.1') -and ((Get-LinkCount $link7) -eq 2) -and (-not (Test-Path (Join-Path $a7 'mthd.exe'))))
+  Set-Stale
+  Invoke-Install @{ BinDir = $a7; Uninstall = $true }
+  Check 'uninstall removes a stale link of ours' (-not (Test-Path $link7))
+
+  # a --version failure after the swap: the shortcut follows mothdex.exe and the state follows the shortcut
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  $idBefore = (Get-State $a7).alias_file_id
+  Invoke-Install @{ Version = 'v1.2.3'; BinDir = $a7 }
+  Check 'a failed --version leaves no shortcut on the old binary' ((Get-LinkCount $link7) -eq 2)
+  Check 'and only the recorded file ID changed' (((Get-State $a7).alias_file_id -cne $idBefore) -and ((Get-State $a7).version -ceq '1.5.0') -and ((Get-State $a7).alias -ceq 'mdex'))
+
+  # --alias with a taken name keeps the working shortcut
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7; Alias = 'dir' }
+  Check 'a taken -Alias keeps the previous shortcut' ((Test-Path $link7) -and ((Get-State $a7).alias -ceq 'mdex') -and ($script:output -match 'keeping the shortcut mdex'))
+
+  # only the renamed-aside names this installer makes are cleaned
+  foreach ($name in 'mdex.exe.old', 'mdex.exe.old-123', 'mdex.exe.old-abc', 'mdex.exe.oldx', 'mdex.exe.old-1.txt') { Set-Content -Path (Join-Path $a7 $name) -Value 'x' }
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  Check 'cleanup removes .old and .old-<number> only' (((Get-ChildItem $a7 -Filter 'mdex.exe.old*' | ForEach-Object Name | Sort-Object) -join ',') -ceq 'mdex.exe.old-1.txt,mdex.exe.old-abc,mdex.exe.oldx')
+  Set-Content -Path (Join-Path $a7 'mdex.exe.old-77') -Value 'x'
+  Invoke-Install @{ BinDir = $a7; Uninstall = $true }
+  Check 'uninstall cleans the .old file too' (-not (Test-Path (Join-Path $a7 'mdex.exe.old-77')))
+
+  # a state without the field stays valid
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a7 }
+  $st7 = Join-Path $a7 '.mothdex-install.json'
+  [IO.File]::WriteAllText($st7, ((Get-Content $st7 -Raw) -replace '\s*"alias_file_id": "[^"]*",', ''))
+  Invoke-Install @{ BinDir = $a7; Uninstall = $true }
+  Check 'a state without alias_file_id is still valid' ((-not (Test-Path $link7)) -and ($script:output -notmatch 'not a valid install state'))
+
+  $env:Path = $savedSessionPath
+  $a6 = Join-Path $root 'alias6'
+  Invoke-Install @{ Version = 'v1.5.0'; BinDir = $a6 }
+  $st6 = Join-Path $a6 '.mothdex-install.json'
+  $victim = Join-Path $root 'victim.exe'
+  Set-Content -Path $victim -Value 'keep'
+  [IO.File]::WriteAllText($st6, ((Get-Content $st6 -Raw) -replace '"alias": "mdex"', '"alias": "..\\victim"'))
+  Invoke-Install @{ BinDir = $a6; Uninstall = $true }
+  Check 'hostile alias in the state: nothing it names is removed' ((Test-Path $victim) -and (Test-Path (Join-Path $a6 'mdex.exe')))
 } finally {
   if ($null -ne $savedPath) { $envKey.SetValue('Path', $savedPath, $savedKind) } else { $envKey.DeleteValue('Path', $false) }
   $envKey.Dispose()

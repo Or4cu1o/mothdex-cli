@@ -64,7 +64,10 @@ func (u *Updater) Apply(ctx context.Context, o ApplyOptions) (result Result, err
 		if err != nil && ctx.Err() != nil && !committing {
 			err = failure(app.CodeCanceled, "canceled", ctx.Err())
 		}
-		status := "updated"
+		status := "current"
+		if result.RestartRequired {
+			status = "updated"
+		}
 		reason := ""
 		restored := false
 		if err != nil {
@@ -267,12 +270,14 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 }
 func releaseNotes(b []byte, current string) string {
 	var lines []string
+	include := false
 	for _, line := range strings.Split(string(b), "\n") {
 		if strings.HasPrefix(line, "## [") {
 			v, _, _ := strings.Cut(strings.TrimPrefix(line, "## ["), "]")
-			if validVersion(v) && compare(v, current) <= 0 {
-				break
-			}
+			include = validVersion(v) && compare(v, current) > 0
+		}
+		if !include {
+			continue
 		}
 		if len(lines) >= 20 {
 			break

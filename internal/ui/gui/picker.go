@@ -86,7 +86,7 @@ func (m Model) loadCatalog(kind pickerKind, now time.Time) (Model, []Cmd) {
 
 func (m Model) onPlatforms(msg platformsMsg) Model {
 	if msg.err != nil {
-		m.platforms.phase, m.platforms.fail = loadFailed, m.failureOf(msg.err)
+		m.platforms.phase, m.platforms.fail = loadFailed, m.reportOr(msg.err, "platforms")
 		return m
 	}
 	m.platforms = catalogLoad[mothdex.Platform]{phase: loadOK, items: msg.items}
@@ -98,7 +98,7 @@ func (m Model) onPlatforms(msg platformsMsg) Model {
 
 func (m Model) onRegions(msg regionsMsg) Model {
 	if msg.err != nil {
-		m.regions.phase, m.regions.fail = loadFailed, m.failureOf(msg.err)
+		m.regions.phase, m.regions.fail = loadFailed, m.reportOr(msg.err, "regions")
 		return m
 	}
 	m.regions = catalogLoad[mothdex.Region]{phase: loadOK, items: msg.items}

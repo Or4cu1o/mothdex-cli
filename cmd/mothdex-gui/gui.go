@@ -20,6 +20,7 @@ import (
 	"github.com/Or4cu1o/mothdex-cli/internal/buildinfo"
 	"github.com/Or4cu1o/mothdex-cli/internal/compose"
 	"github.com/Or4cu1o/mothdex-cli/internal/i18n"
+	mlog "github.com/Or4cu1o/mothdex-cli/internal/log"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/assets"
 	"github.com/Or4cu1o/mothdex-cli/internal/ui/gui/input"
@@ -31,26 +32,34 @@ import (
 
 const userMappingsFile = "gamecontrollerdb.txt" // in paths.data (docs/contracts/cli/gui.md section 4)
 
-// runGUI is the normal mode: build the service, open SDL, run the loop. Every failure goes to the log file
-// as well as to stderr, because a Port has no visible terminal.
-func runGUI(o options, stderr io.Writer) (code int) {
+// runGUI is the normal mode: build the service, open SDL, run the loop. Every failure gets a ref and goes to
+// the session log as well as to stderr, because a Port has no visible terminal.
+func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
+	defer recoverInternal(&code, o, logs, stderr) // a panic before there is a service
 
-	sess, err := compose.Open(ctx, compose.Options{ConfigFile: o.config, Profile: o.profile, Lang: o.lang, LogLevel: o.logLevel, Downloads: true, Session: true})
+	sess, err := compose.Open(ctx, compose.Options{ConfigFile: o.config, Profile: o.profile, Lang: o.lang, LogLevel: o.logLevel, Logs: logs, Downloads: true, Session: true})
 	if err != nil {
+		errCode, message := appError(err)
+		ref := recordError(logs.Logger(), errCode, message, err)
+		_ = logs.Close() // a configuration that did not load: the lines go to the default log folder
 		_, _ = fmt.Fprintf(stderr, "mothdex-gui: %v\n", err)
+		if tr, terr := cmdlineTranslator(o.config, o.lang); terr == nil {
+			support(stderr, tr, errCode, ref, logs.SessionPath())
+		}
 		return configExitCode(err)
 	}
 	defer sess.Close()
 	log := sess.Log
-	defer recoverInternal(&code, log, sess.LogPath, stderr)
+	defer recoverInternal(&code, o, logs, stderr) // runs before sess.Close, so mothdex.log gets the line too
 	for _, w := range sess.Warnings {
 		log.Warn(w)
 	}
 	fail := func(code int, err error) int {
-		log.Error("gui: "+err.Error(), "exit", code)
-		_, _ = fmt.Fprintf(stderr, "mothdex-gui: %v (see %s)\n", err, sess.LogPath)
+		ref := recordError(log, app.CodeInternal, fmt.Sprintf("gui: stopped with exit code %d", code), err)
+		_, _ = fmt.Fprintf(stderr, "mothdex-gui: %v\n", err)
+		support(stderr, sess.T, app.CodeInternal, ref, logs.LogPath())
 		return code
 	}
 
@@ -95,34 +104,60 @@ func runGUI(o options, stderr io.Writer) (code int) {
 	}.attrs()...)
 	log.Info("gui: started", "driver", be.Driver(), "width", w, "height", h, "version", buildinfo.Get().Version)
 
-	model, cmds := gui.New(gui.Options{
+	opts := gui.Options{
 		Service: sess.Svc, T: tr, Font: font, Display: display, Clock: gui.SystemClock(), Log: log, DataDir: sess.DataDir,
 		MappingsPath: filepath.Join(sess.DataDir, userMappingsFile),
 		Version:      buildinfo.Get().Version, LocaleFallback: fallback, Width: w, Height: h, Safe: gui.AutoSafeArea,
-		LogPath: sess.LogPath, Prefer: sess.Prefer, Boxart: sess.Boxart, Confirm: sess.Confirm,
-	}, time.Now())
+		Prefer: sess.Prefer, Boxart: sess.Boxart, Confirm: sess.Confirm,
+		LogPath:    func() string { return mlog.DisplayPath(logs.LogPath()) },
+		ExportLogs: exportLogs(logs, sess.BundleOptions),
+	}
+	model, cmds := gui.New(opts, time.Now())
 
-	final, err := loop.Run(ctx, loop.Config{
-		Model: model, Cmds: cmds, Backend: be, Events: sess.Svc, Clock: time.Now, Signals: terminationSignals(), Log: log,
-	})
+	// Read now, for the crash screen: after a panic the service is not called again, since a lock it holds may never
+	// be released.
+	settings, err := sess.Svc.ConfigList()
+	if err != nil {
+		log.Warn("gui: ConfigList", "err", err) // a crash screen would keep the default buttons and sizes
+	}
+	run := loop.Config{
+		Model: model, Cmds: cmds, Backend: wrapBackend(be), Events: sess.Svc, Clock: time.Now, Signals: terminationSignals(), Log: log,
+	}
+	final, crash, err := runLoop(ctx, run)
+	if crash != nil {
+		ref := reportPanic(logs, crash.value, crash.stack)
+		_, _ = fmt.Fprintln(stderr, "mothdex-gui: internal error")
+		support(stderr, sess.T, app.CodeInternal, ref, logs.LogPath())
+		showCrash(ctx, gui.NewCrash(opts, settings, ref, time.Now()), run)
+		leaveCrashed(be.Close, sess.Close, logs, exitProcess)
+		return exitInternal // only reached by a test: os.Exit does not return
+	}
 	if err != nil {
 		return fail(sdlExitCode(err), err)
 	}
-	if leaveStuck(final.ExitTimedOut(), log, be.Close, os.Exit) {
+	closeAll := func() {
+		be.Close()
+		_ = logs.Close()
+	}
+	if leaveStuck(final.ExitTimedOut(), log, closeAll, os.Exit) {
 		return exitOK // only reached by a test: os.Exit does not return
 	}
 	return exitOK
 }
 
-// recoverInternal turns a panic into exit code 1, with the stack in the log line: a Port has no visible
-// terminal, so the log is the only place a tester's report can take it from. It must be deferred directly.
-func recoverInternal(code *int, log *slog.Logger, logPath string, stderr io.Writer) {
+// recoverInternal turns a panic into exit code 1, with a ref, the stack in the log line and a crash file: a
+// Port has no visible terminal, so those are what a tester can send. The value is not printed: only the log is
+// redacted. It must be deferred directly.
+func recoverInternal(code *int, o options, logs *mlog.Session, stderr io.Writer) {
 	r := recover()
 	if r == nil {
 		return
 	}
-	log.Error("gui: internal error", "panic", r, "stack", string(debug.Stack()))
-	_, _ = fmt.Fprintf(stderr, "mothdex-gui: internal error: %s (see %s)\n", oneLine(fmt.Sprint(r), reasonMax), logPath)
+	ref := reportPanic(logs, r, debug.Stack())
+	_, _ = fmt.Fprintln(stderr, "mothdex-gui: internal error")
+	if tr, err := cmdlineTranslator(o.config, o.lang); err == nil {
+		support(stderr, tr, app.CodeInternal, ref, logs.LogPath())
+	}
 	*code = exitInternal
 }
 

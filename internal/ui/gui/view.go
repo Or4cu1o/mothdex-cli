@@ -215,6 +215,11 @@ func (m Model) Render(now time.Time, l *draw.List) {
 	case screenSettings:
 		m.drawFrame(p, m.settingsFrame())
 		m.drawSettings(p)
+	case screenCrash: // Start does nothing here, so the hint bar does not offer it
+		spec := m.crashFrame()
+		m.drawTopBar(p, spec)
+		m.drawHintBar(p, spec.hints, "", false)
+		m.drawCrash(p)
 	}
 	switch m.overlay {
 	case overlayMenu:

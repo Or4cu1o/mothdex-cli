@@ -71,7 +71,7 @@ func (r *runtime) upgradeCmd() *cobra.Command {
 						kind = "update.confirm_downgrade"
 					}
 					_, _ = fmt.Fprintf(p.err, "%s\n%s\n", clean(p.T(kind, i18n.Args{"current": st.From, "latest": st.To, "signature": signatureLabel(st.Signature)})), st.Notes)
-					answer, err := r.readAnswer(p.T("update.prompt", nil) + " ")
+					answer, err := r.readUpdateAnswer(ctx, p.T("update.prompt", nil)+" ")
 					return err == nil && p.isYes(strings.TrimSpace(answer))
 				}})
 				if err != nil {
@@ -111,4 +111,27 @@ func signatureLabel(s string) string {
 		return "SHA-256 only"
 	}
 	return s
+}
+
+// Only a standalone command may abandon its stdin reader: it exits after cancellation.
+// The Shell owns a shared editor and must finish its synchronous prompt before reading again.
+func (r *runtime) readUpdateAnswer(ctx context.Context, label string) (string, error) {
+	if r.run != nil {
+		return r.readAnswer(label)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	type answer struct {
+		line string
+		err  error
+	}
+	ch := make(chan answer, 1)
+	go func() { line, err := r.readAnswer(label); ch <- answer{line, err} }()
+	select {
+	case a := <-ch:
+		return a.line, a.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }

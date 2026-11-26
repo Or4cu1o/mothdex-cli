@@ -251,7 +251,9 @@ func (m Model) onConfigSet(msg configSetMsg) (Model, []Cmd) {
 		changed[k] = v
 	}
 	if msg.err != nil {
-		errs[msg.row] = m.tr("ui.gui.settings.not_saved", map[string]any{"message": m.failureOf(msg.err).msg})
+		f := m.report(msg.err, "settings")
+		errs[msg.row] = m.tr("ui.gui.settings.not_saved", map[string]any{"message": f.msg}) + // the ref has a line of its own,
+			"\n" + m.tr("ui.gui.error.code_ref", map[string]any{"code": f.code, "ref": f.ref}) // so a cut never takes it
 		s.errs, s.changed = errs, changed
 		if s.ed != nil && s.ed.kind != edMargin { // the working copy may be wrong now: close the editor, the list shows the truth
 			s.ed = nil
@@ -280,7 +282,7 @@ func (m Model) onCacheStats(msg cacheStatsMsg) Model {
 
 func (m Model) onCacheClear(msg cacheClearMsg, now time.Time) (Model, []Cmd) {
 	if msg.err != nil {
-		return m.withToast(m.failureOf(msg.err).msg, toastError, now), nil
+		return m.withToast(m.report(msg.err, "cache clear").short(), toastError, now), nil
 	}
 	m = m.withToast(m.tr("ui.gui.settings.cache_done", nil), toastOK, now)
 	return m, []Cmd{cacheStatsCmd(m.o.Service)}
@@ -290,7 +292,7 @@ func (m Model) onCacheClear(msg cacheClearMsg, now time.Time) (Model, []Cmd) {
 
 func (m Model) onSettingsAction(a input.Action, now time.Time) (Model, []Cmd) {
 	if m.settings.ed != nil {
-		return m.onEditorAction(a)
+		return m.onEditorAction(a, now)
 	}
 	items := m.settingItems()
 	rows := focusableRows(items)
@@ -395,6 +397,9 @@ func (m Model) editRow(r *settingRow, ro bool, now time.Time) (Model, []Cmd) {
 	case kindCache:
 		return m.askClearCache(now), nil
 	case kindInfo:
+		if r.id == "about" {
+			m.logFile = m.logPath()
+		}
 		m.settings.ed = &settingsEditor{kind: edInfo, row: r.id}
 	}
 	return m, nil
@@ -505,7 +510,7 @@ func (m Model) choiceLabel(c choice) string {
 	return m.tr("ui.gui.settings."+c.label, args)
 }
 
-func (m Model) onEditorAction(a input.Action) (Model, []Cmd) {
+func (m Model) onEditorAction(a input.Action, now time.Time) (Model, []Cmd) {
 	e := *m.settings.ed
 	switch e.kind {
 	case edMargin:
@@ -527,6 +532,9 @@ func (m Model) onEditorAction(a input.Action) (Model, []Cmd) {
 		m.settings.ed = &e
 		return m, nil
 	case edInfo:
+		if a == input.Confirm && m.canExport(e.row) {
+			return m.askExport(now), nil
+		}
 		switch a {
 		case input.Back, input.Confirm:
 			m.settings.ed = nil

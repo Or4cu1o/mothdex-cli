@@ -629,7 +629,11 @@ func (m Model) drawDetails(p painter) {
 		add("status", m.consentRow(j)+" ["+j.Err.Code+"]")
 	case j.Err != nil:
 		f := m.failureOf(j.Err)
-		add("error", f.msg+" ["+f.code+"]")
+		tag := f.code
+		if ref := m.jobRefs[j.ID]; ref != "" {
+			tag += " · " + ref
+		}
+		add("error", f.msg+" ["+tag+"]")
 	}
 	maxW := min(met.Safe.W-4*u, 28*met.Body)
 	var wrapped []string
