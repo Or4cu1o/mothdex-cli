@@ -35,7 +35,7 @@ One line, no administrator rights:
 | Linux, with options | `curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh \| sh -s -- --no-gui` |
 | Windows PowerShell | `irm https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1 \| iex` |
 | PowerShell, with options | `& ([scriptblock]::Create((irm https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1))) -NoGui` |
-| Windows CMD | `curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.cmd -o "%TEMP%\mothdex-install.cmd" && "%TEMP%\mothdex-install.cmd" && del "%TEMP%\mothdex-install.cmd"` |
+| Windows CMD | `curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.cmd -o "%TEMP%\mothdex-install.cmd" && "%TEMP%\mothdex-install.cmd" & del "%TEMP%\mothdex-install.cmd"` |
 
 On Windows, look at the prompt: `PS C:\>` is PowerShell; `C:\>` without `PS` is CMD.
 

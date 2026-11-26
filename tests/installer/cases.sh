@@ -1548,7 +1548,11 @@ sh /tmp/stamped/install.sh --version v1.2.3 --no-gui >"$OUT" 2>&1
 check "--version still wins" out_has "mothdex 1.2.3 installed in"
 reset stamp-bad-version
 check "a version with a quote is refused" sh -c "cd '$REPO' && ! sh scripts/stamp-installers.sh '1\";x' /tmp/stamped-bad >'$OUT' 2>&1"
-rm -rf /tmp/stamped /tmp/stamped-bad
+reset stamp-over-the-sources
+mkdir -p /tmp/stamp-src && cp "$REPO/install.sh" "$REPO/install.ps1" "$REPO/install.cmd" "$REPO/scripts/stamp-installers.sh" /tmp/stamp-src/
+check "an output folder equal to the source is refused" sh -c "cd /tmp/stamp-src && ! sh stamp-installers.sh 1.2.3 . >'$OUT' 2>&1"
+check "and the sources are intact" cmp -s "$REPO/install.sh" /tmp/stamp-src/install.sh
+rm -rf /tmp/stamped /tmp/stamped-bad /tmp/stamp-src
 INST_LAUNCHER=1
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"

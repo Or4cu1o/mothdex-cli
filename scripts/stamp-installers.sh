@@ -21,6 +21,11 @@ stamp() {
 }
 
 mkdir -p "$out"
+# writing over the sources would empty them: the redirect truncates the file being read
+if [ "$(cd "$out" && pwd -P)" = "$(pwd -P)" ]; then
+  echo "stamp-installers: the output folder must not be the repository root" >&2
+  exit 2
+fi
 stamp install.sh 'STAMPED_VERSION=""' "STAMPED_VERSION=\"$version\""
 stamp install.ps1 "\$StampedVersion = ''" "\$StampedVersion = '$version'"
 

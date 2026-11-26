@@ -905,9 +905,11 @@ $cmdSource = [IO.File]::ReadAllText((Join-Path (Split-Path -Parent $installer) '
 $download = "& ([scriptblock]::Create((irm 'https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1')))"
 Check 'install.cmd runs the downloaded script as a script block' $cmdSource.Contains($download)
 $shim = Join-Path $root 'cmd-shim.ps1'
+$argLog = Join-Path $root 'cmd-args-left.txt'
 Set-Content -Path $shim -Value @"
 `$env:PROCESSOR_ARCHITECTURE = 'AMD64'
 function Invoke-WebRequest { param([string]`$Uri, [string]`$OutFile, [switch]`$UseBasicParsing, [int]`$MaximumRedirection, [switch]`$PassThru)
+  Set-Content -LiteralPath '$argLog' -Value @(Get-ChildItem Env: | Where-Object { `$_.Name -like 'MOTHDEX_ARG_*' }).Count
   Copy-Item -LiteralPath (Join-Path '$release' ((`$Uri.Substring('$base'.Length) -replace '^download/', '' -replace '^latest/download/', 'latest/') -replace '/', '\')) -Destination `$OutFile
   return [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = [uri]`$Uri } } }
 "@
@@ -927,6 +929,7 @@ function Invoke-Cmd([string]$Arguments) {
 $cmdBin = Join-Path $root 'cmd bin'
 Invoke-Cmd "-Version v1.5.0 -BinDir `"$cmdBin`" -NoModifyPath -NoAlias"
 Check "install.cmd installs and exits 0 (exit $($script:exitCode))" (($script:exitCode -eq 0) -and (Test-Path (Join-Path $cmdBin 'mothdex.exe')))
+Check 'install.cmd leaves no MOTHDEX_ARG_ variable to the programs the installer starts' ((Get-Content -LiteralPath $argLog) -eq '0')
 Invoke-Cmd "-version v1.5.0 -bindir `"$cmdBin`" -nomodifypath -noalias -DryRun"
 Check 'install.cmd takes options in any letter case' (($script:exitCode -eq 0) -and ($script:output -match 'Dry run'))
 Invoke-Cmd "-Version v1.3.2 -BinDir `"$(Join-Path $root 'cmd-partial')`" -NoModifyPath -NoAlias"

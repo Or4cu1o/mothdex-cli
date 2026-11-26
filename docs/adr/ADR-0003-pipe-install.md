@@ -41,10 +41,10 @@ None of these checks protects the **script itself**: with a pipe it runs before 
 |---|---|
 | R1 | Script authenticity is not checked before it runs. Whoever can change what `latest/download/install.*` serves (owner account, release workflow before publish, GitHub) runs code as the user on every new install, and the checks inside the script then prove nothing. Reduced by immutable releases, the `v*` tag ruleset, release environment reviewers, installers inside the signed and attested `checksums.txt` (after-the-fact audit) and owner 2FA. |
 | R2 | TLS interception by a certificate authority the machine trusts (corporate proxy, malware) can swap the script; the pipe adds no check. |
-| R3 | A short domain, if added, brings its DNS, registrar and host into the trusted base. It may only redirect to the URL in the README (HTTPS, HSTS, registrar lock). |
+| R3 | A short domain, if added, brings its DNS, registrar and host into the trusted base. It may only redirect to the URL in the README (HTTPS, HSTS, registrar lock) and never through HTTP: the one-line fetch itself (`curl -fsSL`, `irm` on Windows PowerShell 5.1, and the `irm` inside `install.cmd`) does not force HTTPS across redirects. The check inside the script covers only what the script downloads. |
 | R4 | Copy-and-paste lures (lookalike URLs, edited commands in issues or chats). One canonical URL in one place only reduces it. |
-| R5 | The line run in an elevated PowerShell runs the installer as administrator; it warns and still changes only the user's PATH. |
-| R6 | Without `cosign` or a logged-in `gh` (most users), installs are SHA-256 only: transit integrity, not origin. |
+| R5 | The line run in an elevated PowerShell runs the installer as administrator; it warns and still changes only the user's PATH. On Linux and macOS, piping it to `sudo sh` runs it as root: it installs as root and leaves the user's startup files alone (TM-9). |
+| R6 | Without `cosign` or a logged-in `gh` (most users), an installer run (first install or reinstall) is SHA-256 only: transit integrity, not origin. `mothdex upgrade` is to verify the release signature itself (D35, required before 0.2.0), which does not cover the installer runs. |
 | R7 | The shortcut conflict check sees only what the installer process sees: aliases and functions of the user's interactive shell are missed, and its PATH may differ. |
 | R8 | A malicious release produced by the real workflow passes every check: signatures prove origin, not intent. `mothdex upgrade` would carry it to the installations that run it. |
 | R9 | Log bundle redaction is pattern-based: new secret formats or user content can remain in a bundle posted to a public issue; the tester reviews it first. |
