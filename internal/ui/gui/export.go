@@ -23,8 +23,21 @@ type exportDoneMsg struct {
 	err  error
 }
 
-// canExport says whether the info panel of a settings row offers the action.
-func (m Model) canExport(row string) bool { return row == "about" && m.o.ExportLogs != nil }
+// infoButtons are the actions of the info panel of a settings row: in About, "Update" when there is a newer
+// version, then "Export logs".
+func (m Model) infoButtons(row string) []dialogButton {
+	var out []dialogButton
+	if row != "about" {
+		return out
+	}
+	if m.upd.release.Version != "" {
+		out = append(out, dialogButton{btnUpdate, m.tr("ui.gui.update.action", nil)})
+	}
+	if m.o.ExportLogs != nil {
+		out = append(out, dialogButton{btnExport, m.tr("ui.gui.logs.export", nil)})
+	}
+	return out
+}
 
 func (m Model) askExport(now time.Time) Model {
 	if m.exporting {

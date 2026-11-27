@@ -664,6 +664,13 @@ Rows come from `ConfigList` (value and source). Keys:
 | System | — | read-only: `ActiveProfile()` name, ROM root, `Verified` and each warning |
 | About | — | read-only: version, catalog entries, controller name and GUID, log file path; one action, `Export logs` (A) |
 
+- **Update** (About, only with a newer version): About lists `New version: <v>`, the release page and `[Update]`
+  before `[Export logs]` (Left/Right choose). A progress panel (`Downloading…`, `Checking…`, with `(B) Cancel`), then
+  `Update <from> to <to>?` with the signature result, up to 6 lines of notes, `[Cancel]` focused and `[Update]`;
+  while installing, `Keep the device on until it ends.` and no action; then `Updated to <v>`, `Close and open
+  Mothdex again.` and `[Quit]`. A failure shows `Not updated`, the message, the recovery hint (with the install
+  command on its own line when the old version was not restored), `code · ref` and `[OK]`. A notice
+  `Version <v> is available: Settings > About.` shows once a day.
 - **Export logs** (About, and the crash screen of §6) opens `Export the logs?` with `[Cancel]` focused and
   `[Export logs]`, then `Logs saved` with the folder and the file name, or `The logs were not saved` with the code and
   the ref, and `[OK]`. The dialog says the zip holds search terms and file names and that nothing is sent.
@@ -776,7 +783,8 @@ test) does the same.
 - **Crash screen** (after a panic of the run loop): `Something went wrong` in `error` color, one sentence that asks for
   the logs and the ref, `code · ref`, the log path, then `[Export logs]` (focused) and `[Quit]`. Hints: `(A) Choose`,
   `(B) Quit`; Start does nothing and is not shown.
-- Messages come from `errors.<code>.message`. **Hints** come from `errors.<code>.hint`, except where the CLI hint names
+- Messages come from the error's `message_key` when it names one that can be shown, else from `errors.<code>.message`,
+  as in the CLI. **Hints** come from `errors.<code>.hint`, except where the CLI hint names
   a flag or command the couch user cannot type; those codes use GUI hints `ui.gui.hints.<code>`:
 
 | Code | GUI hint |

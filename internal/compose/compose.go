@@ -62,9 +62,9 @@ type Options struct {
 // Session is what Open returns: the service plus the settings the front end reads. It carries no
 // UI types, so every front end wraps it.
 type Session struct {
-	Updater       *update.Updater
-	UpdateCheck   bool
-	UpdateChannel string
+	Updater       *update.Updater // nil when it cannot be built
+	UpdateCheck   bool            // the automatic check is on: every off switch applied
+	UpdateChannel string          // update.channel
 	Svc           *app.Service
 	T             *i18n.Translator
 	Prefer        app.Preference // download.prefer baseline

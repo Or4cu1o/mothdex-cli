@@ -228,6 +228,8 @@ func (m Model) Render(now time.Time, l *draw.List) {
 		m.drawButtons(p)
 	case overlayDialog:
 		m.drawDialog(p)
+	case overlayUpdate:
+		m.drawUpdate(p)
 	}
 	m.drawToast(p, now)
 }

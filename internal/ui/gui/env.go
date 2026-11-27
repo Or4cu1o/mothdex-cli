@@ -103,6 +103,10 @@ type Options struct {
 	Boxart  bool
 	Confirm bool
 
+	// Updates is the version notice and "Update"; nil hides both (the check is off, or the installation is not
+	// managed).
+	Updates Updates
+
 	// Settings known before ConfigList answers (the command line or the environment may set them).
 	ConfirmEast bool
 	LargeText   bool

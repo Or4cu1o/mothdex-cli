@@ -134,10 +134,11 @@ func run(argv []string, stdout, stderr io.Writer) (code int) {
 	}
 	logs := startLog(argv[1:]) // before the configuration, so that its errors are logged too
 	defer func() { _ = logs.Close() }()
-	if exe, err := os.Executable(); err == nil {
-		if exe, err = filepath.EvalSymlinks(exe); err == nil {
-			update.CleanupOld(filepath.Dir(exe), logs.Logger())
-		}
+	exe := executable(logs.Logger())
+	if exe != "" {
+		// What an earlier update left behind (update.md section 4). Not before the modes above: it writes a lock
+		// file, and --probe, which the installer runs as root, writes nothing (ports.md section 5.2).
+		update.CleanupOld(filepath.Dir(exe), logs.Logger())
 	}
 	return runGUI(o, logs, stderr)
 }

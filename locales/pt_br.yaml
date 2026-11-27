@@ -609,6 +609,27 @@ ui:
       number: 'Mostra a entrada com esse número (igual a info)'
       d: 'Baixa entradas pelo número: d 1 3, ou d 2-4'
   gui:
+    update:
+      available: 'A versão {version} está disponível: Configurações > Sobre.'
+      new_version: 'Nova versão: {version}'
+      action: 'Atualizar'
+      downloading: 'Baixando a atualização…'
+      verifying: 'Conferindo o download…'
+      progress: '{done} de {total}'
+      confirm: 'Atualizar de {from} para {to}?'
+      signature: 'Assinatura conferida: {method}'
+      signature_none: 'Integridade conferida só por SHA-256'
+      installing: 'Instalando…'
+      keep_on: 'Mantenha o aparelho ligado até terminar.'
+      done: 'Atualizado para {version}'
+      reopen: 'Feche e abra o Mothdex de novo.'
+      canceled: 'Atualização cancelada. Nada mudou.'
+      hint_unchanged: 'Nada foi alterado. Tente de novo mais tarde.'
+      hint_installer: "Instale de novo em um terminal:\n{command}"
+      hint_not_eligible: 'Nada foi alterado. A nova GUI não roda neste sistema: use mothdex tui.'
+      hint_restored: 'A versão anterior foi restaurada. Tente de novo mais tarde.'
+      hint_reinstall: "A instalação pode estar incompleta. Instale de novo em um terminal:\n{command}"
+      failed: 'Não atualizado'
     error:
       code: 'código: {code}'
       code_ref: 'código: {code} · ref: {ref}'

@@ -610,6 +610,27 @@ ui:
       number: 'Show the entry with that number (same as info)'
       d: 'Download entries by number: d 1 3, or d 2-4'
   gui:
+    update:
+      available: 'Version {version} is available: Settings > About.'
+      new_version: 'New version: {version}'
+      action: 'Update'
+      downloading: 'Downloading the update…'
+      verifying: 'Checking the download…'
+      progress: '{done} of {total}'
+      confirm: 'Update {from} to {to}?'
+      signature: 'Signature checked: {method}'
+      signature_none: 'Integrity checked by SHA-256 only'
+      installing: 'Installing…'
+      keep_on: 'Keep the device on until it ends.'
+      done: 'Updated to {version}'
+      reopen: 'Close and open Mothdex again.'
+      canceled: 'Update canceled. Nothing changed.'
+      hint_unchanged: 'Nothing was changed. Try again later.'
+      hint_installer: "Install again from a terminal:\n{command}"
+      hint_not_eligible: 'Nothing was changed. The new GUI cannot run on this system: use mothdex tui.'
+      hint_restored: 'The previous version is back. Try again later.'
+      hint_reinstall: "The installation may be incomplete. Install again from a terminal:\n{command}"
+      failed: 'Not updated'
     error:
       code: 'code: {code}'
       code_ref: 'code: {code} · ref: {ref}'

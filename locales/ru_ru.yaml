@@ -304,6 +304,27 @@ ui:
       number: 'Показать запись с этим номером (как info)'
       d: 'Скачать записи по номерам: d 1 3 или d 2-4'
   gui:
+    update:
+      available: 'Доступна версия {version}: Настройки > О программе.'
+      new_version: 'Новая версия: {version}'
+      action: 'Обновить'
+      downloading: 'Загрузка обновления…'
+      verifying: 'Проверка загрузки…'
+      progress: '{done} из {total}'
+      confirm: 'Обновить {from} до {to}?'
+      signature: 'Подпись проверена: {method}'
+      signature_none: 'Целостность проверена только по SHA-256'
+      installing: 'Установка…'
+      keep_on: 'Не выключайте устройство до окончания.'
+      done: 'Обновлено до {version}'
+      reopen: 'Закройте и снова откройте Mothdex.'
+      canceled: 'Обновление отменено. Ничего не изменено.'
+      hint_unchanged: 'Ничего не изменено. Повторите позже.'
+      hint_installer: "Установите заново из терминала:\n{command}"
+      hint_not_eligible: 'Ничего не изменено. Новый GUI не работает в этой системе: используйте mothdex tui.'
+      hint_restored: 'Восстановлена предыдущая версия. Повторите позже.'
+      hint_reinstall: "Установка может быть неполной. Установите заново из терминала:\n{command}"
+      failed: 'Не обновлено'
     error:
       code: 'код: {code}'
       code_ref: 'код: {code} · ref: {ref}'

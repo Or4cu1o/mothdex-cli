@@ -22,6 +22,7 @@ const (
 	btnClear        = "clear"
 	btnExport       = "export"
 	btnOK           = "ok"
+	btnUpdate       = "update"
 )
 
 // dialogKind says what a dialog is about, so its buttons know what to do.
@@ -35,7 +36,9 @@ const (
 	dialogAnyway                            // "Download anyway": the real size of a stopped download needs a person's OK
 	dialogClearCache                        // Settings › Cache: Clear cache (84 MB)?
 	dialogExportLogs                        // Export logs: the confirmation (T-110 TM-27)
-	dialogExported                          // where the bundle is, or why there is none
+	dialogExported                          // where the bundle is, or why there is none: one OK button
+	dialogUpdate                            // install the verified update?
+	dialogUpdated                           // the update is installed: close and open again
 )
 
 type dialogButton struct {
@@ -115,6 +118,10 @@ func (m Model) activateDialog(id string, now time.Time) (Model, []Cmd) {
 		return m, nil
 	case dialogExported:
 		return m, nil
+	case dialogUpdate:
+		return m.decideUpdate(id == btnUpdate)
+	case dialogUpdated:
+		return m.askQuit(QuitFromMenu, now) // downloads that are running are asked about first
 	case dialogConfirmDownload, dialogDownloadAgain:
 		if id == btnDownload || id == btnAgain {
 			return m.enqueue(d.pending)

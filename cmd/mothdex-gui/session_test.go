@@ -123,16 +123,31 @@ func TestTheSessionHeaderNeverHoldsAPathOrAnUnknownValue(t *testing.T) {
 	}
 }
 
+// updateLock is the file update.CleanupOld would create beside the program.
+func updateLock(t *testing.T) string {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(filepath.Dir(exe), ".mothdex-update.lock")
+}
+
 // The installer runs --probe as root: it, --version, --help and --spike leave no file behind.
 func TestProbeVersionAndHelpWriteNoLog(t *testing.T) {
 	defer func(old func() (sdl.Found, error)) { checkSDL = old }(checkSDL)
 	checkSDL = func() (sdl.Found, error) { return sdl.Found{Version: sdl.Version{Major: 2, Minor: 32}}, nil }
 	for _, args := range [][]string{{"--probe"}, {"--version"}, {"--help"}, {"--probe", "extra"}, {"--version", "--window", "bad"}} {
 		home := isolate(t)
+		lock := updateLock(t)
+		_ = os.Remove(lock) // an earlier test that opened the GUI leaves it
 		var out, errOut bytes.Buffer
 		run(append([]string{"mothdex-gui"}, args...), &out, &errOut)
 		if got := files(t, home); len(got) != 0 {
 			t.Errorf("%v wrote %v", args, got)
+		}
+		if _, err := os.Stat(lock); err == nil {
+			t.Errorf("%v left the update lock beside the program", args)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"regexp"
@@ -70,10 +71,10 @@ func (f failure) tagged(text string) string {
 // error, whose occurrence report already recorded.
 func (m Model) failureOf(err error) failure { return m.failureWith(err, "") }
 
-// failureWith localizes an error from the service the way the CLI does (errors.<code>.message), with the hint
-// of ui.gui.hints.<code> where the CLI hint names a flag or command a person on a couch cannot type, and
-// errors.<code>.hint otherwise. A message or hint with a placeholder that has no value falls back to the
-// service text. Server text is cleaned.
+// failureWith localizes an error from the service the way the CLI does (Args message_key, or else
+// errors.<code>.message), with the hint of ui.gui.hints.<code> where the CLI hint names a flag or command a person
+// on a couch cannot type, and errors.<code>.hint otherwise. A message or hint with a placeholder that has no value
+// falls back to the next one, the message last to the service text. Server text is cleaned.
 func (m Model) failureWith(err error, logPath string) failure {
 	var ae *app.Error
 	if !errors.As(err, &ae) {
@@ -86,22 +87,9 @@ func (m Model) failureWith(err error, logPath string) failure {
 	for k, v := range ae.Args {
 		args[k] = v
 	}
-	msg := ae.Message
-	if key := "errors." + ae.Code + ".message"; m.o.T.Has(key) {
-		if text := m.o.T.T(key, args); !unfilled.MatchString(text) {
-			msg = text
-		}
-	}
-	hint := ""
-	for _, key := range []string{"ui.gui.hints." + ae.Code, "errors." + ae.Code + ".hint"} {
-		if !m.o.T.Has(key) {
-			continue
-		}
-		if text := m.o.T.T(key, args); !unfilled.MatchString(text) {
-			hint = text
-			break
-		}
-	}
+	named, _ := ae.Args["message_key"].(string) // a message more precise than the one of the code
+	msg := cmp.Or(m.firstText(args, named, "errors."+ae.Code+".message"), ae.Message)
+	hint := m.firstText(args, "ui.gui.hints."+ae.Code, "errors."+ae.Code+".hint")
 	f := failure{
 		msg: app.SanitizeText(msg), hint: app.SanitizeText(hint), code: ae.Code,
 		retryable: ae.Retryable || ae.Code == app.CodeNetwork || ae.Code == app.CodeUpstream,
@@ -111,6 +99,19 @@ func (m Model) failureWith(err error, logPath string) failure {
 		f.retryAfter = strings.TrimSpace(app.SanitizeText(stringArg(ae.Args["retry_after"])))
 	}
 	return f
+}
+
+// firstText is the text of the first key that exists and has every value it asks for, or "".
+func (m Model) firstText(args i18n.Args, keys ...string) string {
+	for _, key := range keys {
+		if !m.o.T.Has(key) {
+			continue
+		}
+		if text := m.o.T.T(key, args); !unfilled.MatchString(text) {
+			return text
+		}
+	}
+	return ""
 }
 
 func stringArg(v any) string {

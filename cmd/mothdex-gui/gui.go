@@ -104,7 +104,10 @@ func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 	}.attrs()...)
 	log.Info("gui: started", "driver", be.Driver(), "width", w, "height", h, "version", buildinfo.Get().Version)
 
+	updates := newUpdates(sess.Updater, sess.UpdateCheck)
+	defer updates.wait() // runs before the closes above: an installation ends before the program does
 	opts := gui.Options{
+		Updates: updates.model(),
 		Service: sess.Svc, T: tr, Font: font, Display: display, Clock: gui.SystemClock(), Log: log, DataDir: sess.DataDir,
 		MappingsPath: filepath.Join(sess.DataDir, userMappingsFile),
 		Version:      buildinfo.Get().Version, LocaleFallback: fallback, Width: w, Height: h, Safe: gui.AutoSafeArea,
@@ -129,6 +132,7 @@ func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 		_, _ = fmt.Fprintln(stderr, "mothdex-gui: internal error")
 		support(stderr, sess.T, app.CodeInternal, ref, logs.LogPath())
 		showCrash(ctx, gui.NewCrash(opts, settings, ref, time.Now()), run)
+		updates.wait()
 		leaveCrashed(be.Close, sess.Close, logs, exitProcess)
 		return exitInternal // only reached by a test: os.Exit does not return
 	}
@@ -136,6 +140,7 @@ func runGUI(o options, logs *mlog.Session, stderr io.Writer) (code int) {
 		return fail(sdlExitCode(err), err)
 	}
 	closeAll := func() {
+		updates.wait()
 		be.Close()
 		_ = logs.Close()
 	}
