@@ -10,7 +10,7 @@
 | `disk_full` | Not enough free space in [path] (needs [needed]). | Free some space or choose another folder with -o. |
 | `exists` | [path] already exists. | Set download.on_exists to rename or overwrite. |
 | `index_out_of_range` | Result #[index] does not exist (last search has [count]). | Pick a number between 1 and [count]. |
-| `integrity` | The downloaded file is corrupt (archive check failed). | Try again, or choose another link with --link. |
+| `integrity` | The downloaded content failed integrity or origin verification. | Try again, or choose another link with --link. |
 | `internal` | Unexpected error. | Details are in [log_path]. Please report it. |
 | `invalid_config` | Invalid setting [key]=[value] (from [source]). | Run "mothdex config reset [key]". |
 | `invalid_request` | Invalid request: [detail]. | Check the slug, filters and values you passed. |
@@ -25,7 +25,7 @@
 | `unsafe_name` | Refusing to save [name]: its file type can run code. | Nothing was written. Choose another link with --link, or pass --allow-executable if you trust it. |
 | `untrusted_redirect` | The server redirected to [host], which is not trusted. | Nothing was sent there. Try again later; if it persists, report it. |
 | `untrusted_url` | Refusing to download from [host]. | Only [allowed] is trusted. |
-| `update_failed` | The update could not be completed. | If the previous version was restored, try mothdex upgrade again later; otherwise reinstall: [install_command] |
+| `update_failed` | The update could not be completed. | Reinstall with the official command: [install_command] |
 | `update_unavailable` | This installation cannot be updated by mothdex. | Install using the one-line command for your OS: [install_command] |
 | `upstream` | The server had a problem (HTTP [status]). | Try again in a few minutes. |
 | `usage` | Invalid usage: [detail] | Run "mothdex [command] --help". |

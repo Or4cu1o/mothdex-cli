@@ -311,7 +311,7 @@ func TestStagedGUIFailureReasonsAndRestoredState(t *testing.T) {
 			if !errors.As(err, &ae) || ae.Args["restored"] != true {
 				t.Fatalf("intact installation not reported: %v", err)
 			}
-			if tc.mode == "missing" && ae.Args["hint_key"] != nil {
+			if tc.mode == "missing" && ae.Args["hint_key"] != "errors.update_failed.hint" {
 				t.Fatal("missing GUI lost installer hint")
 			}
 			if tc.mode != "missing" && ae.Args["hint_key"] != "update.unchanged_hint" {
@@ -359,7 +359,7 @@ func TestIncompleteRollbackRequiresReinstall(t *testing.T) {
 	}}, s, stage, stagedRelease{version: "2.0.0", files: []string{binaryName(false)}})
 	errorCode(t, err, "update_failed", "check_failed")
 	var ae *app.Error
-	if !errors.As(err, &ae) || ae.Args["restored"] != false || ae.Args["hint_key"] != nil || ae.Args["install_command"] != InstallCommand() {
+	if !errors.As(err, &ae) || ae.Args["restored"] != false || ae.Args["hint_key"] != "errors.update_failed.hint" || ae.Args["install_command"] != InstallCommand() {
 		t.Fatalf("incomplete rollback hint: %v", err)
 	}
 }

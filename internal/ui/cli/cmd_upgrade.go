@@ -47,7 +47,7 @@ func (r *runtime) upgradeCmd() *cobra.Command {
 				}
 			}
 			if u == nil {
-				return outcome{}, &app.Error{Code: app.CodeUpdateUnavailable, Message: "updater unavailable", Args: map[string]any{"reason": "dev_build", "install_command": update.InstallCommand()}}
+				return outcome{}, update.Unavailable("dev_build")
 			}
 			data := upgradeData{Channel: channel}
 			if data.Channel == "" {

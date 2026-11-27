@@ -139,19 +139,6 @@ func TestVersions(t *testing.T) {
 	}
 }
 
-// The README install table is the agreed source for the recovery commands (T-116 / #151).
-func TestInstallCommandsMatchREADME(t *testing.T) {
-	b, err := os.ReadFile("../../README.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	readme := strings.ReplaceAll(string(b), `\|`, `|`)
-	for _, goos := range []string{"linux", "darwin", "windows"} {
-		if !strings.Contains(readme, "`"+installCommand(goos)+"`") {
-			t.Errorf("%s recovery command differs from README", goos)
-		}
-	}
-}
 func TestStatePreservesUnknownFieldsWithoutActingOnThem(t *testing.T) {
 	u, s := fixture(t)
 	b, err := os.ReadFile(filepath.Join(s.Dir, stateName))

@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"github.com/Or4cu1o/mothdex-cli/internal/app"
 )
 
 const stateName = ".mothdex-install.json"
@@ -51,16 +49,6 @@ func installCommand(goos string) string {
 		return "irm https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.ps1 | iex"
 	}
 	return "curl -fsSL https://github.com/Or4cu1o/mothdex-cli/releases/latest/download/install.sh | sh"
-}
-func failure(code, reason string, cause error) *app.Error {
-	e := &app.Error{Code: code, Message: reason, Cause: cause, Args: map[string]any{"reason": reason, "restored": true, "install_command": InstallCommand()}}
-	if code == app.CodeUpdateFailed && reason != "gui_missing" {
-		e.Args["hint_key"] = "update.unchanged_hint"
-	}
-	return e
-}
-func unavailable(reason string, cause error) error {
-	return failure(app.CodeUpdateUnavailable, reason, cause)
 }
 func target() string {
 	arch := runtime.GOARCH

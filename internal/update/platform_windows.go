@@ -49,6 +49,7 @@ func trustedDir(dir string) (string, error) {
 			return "untrusted_dir", fmt.Errorf("unsupported ACL type")
 		}
 
+		//nolint:gosec // G103: SidStart begins the variable-length SID in the ACE returned by GetAce.
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
 		if ace.Mask&0x500d0156 != 0 && !trustedWindowsOwner(sid) && sid.String() != "S-1-3-0" {
 			return "untrusted_dir", fmt.Errorf("broad write ACL")

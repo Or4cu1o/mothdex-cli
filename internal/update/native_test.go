@@ -227,3 +227,50 @@ func TestNativeApplyRejectsTamperedManifest(t *testing.T) {
 		t.Fatal("native signature rejection touched install")
 	}
 }
+
+func TestMissingGUIInTamperedManifestDoesNotAdviseReinstall(t *testing.T) {
+	u, s := fixture(t)
+	s.GUI = true
+	writeStateFixture(t, s)
+	before, err := os.ReadFile(filepath.Join(s.Dir, stateName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := archiveFixture(t, []byte("must never execute"), "")
+	digest := sha256.Sum256(archive)
+	// Self-consistent CLI archive, but the manifest is unsigned and omits the GUI line.
+	sums := []byte(fmt.Sprintf("%x  %s\n", digest, archiveName("2.0.0", s.Target, false)))
+	trusted, err := root.NewTrustedRootFromJSON(nativeFixture(t, "root.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.o.Verifier = nativeVerifier{trusted: trusted}
+	bundle := nativeFixture(t, "official.json")
+	serve(t, u, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/latest"):
+			w.Header().Set("Location", origin+"/tag/v2.0.0")
+			w.WriteHeader(302)
+		case strings.HasSuffix(r.URL.Path, "checksums.txt"):
+			_, _ = w.Write(sums)
+		case strings.HasSuffix(r.URL.Path, ".sigstore.json"):
+			_, _ = w.Write(bundle)
+		default:
+			_, _ = w.Write(archive)
+		}
+	})
+	_, err = u.Apply(context.Background(), ApplyOptions{Confirm: func(Staged) bool { t.Fatal("confirmation after tampered manifest"); return true }})
+	errorCode(t, err, "integrity", "signature")
+	var ae *app.Error
+	if !errors.As(err, &ae) || ae.Args["hint_key"] != "update.tamper_hint" || ae.Args["restored"] != true {
+		t.Fatalf("unsafe recovery advice: %v", err)
+	}
+	after, e := os.ReadFile(filepath.Join(s.Dir, stateName))
+	if e != nil || !bytes.Equal(before, after) {
+		t.Fatal("tampered manifest changed install state")
+	}
+	installed, e := os.ReadFile(u.o.Exe)
+	if e != nil || string(installed) != "old" {
+		t.Fatal("tampered manifest changed executable")
+	}
+}
