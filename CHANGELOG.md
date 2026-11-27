@@ -7,7 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
 ### Added
+
+- T-115: `mothdex-gui --help` lists every flag, the exit codes and the environment variables, in the interface language
+  (en_us and pt_br, also es_es and ru_ru).
+- T-115: `mothdex-gui --log-level debug` is a shortcut for `MOTHDEX_LOG_LEVEL`.
+- T-115: `mothdex-gui` writes a session log and `latest.log`. A bad command line or a configuration that does not load
+  is logged in the default log folder, so a Port with no terminal still leaves something to send.
+- T-115: every error the GUI shows has a `ref`, on screen and in the log, next to its code and the log path.
+- T-115: after a panic, `crash/` holds the stack and the GUI shows a screen with the ref, "Export logs" and "Quit".
+- T-115: "Export logs" in Settings > About writes the zip to attach to a report and says where it is.
+- T-117: `mothdex-gui` tells you when a newer version exists and, from Settings > About, updates by gamepad: it
+  downloads and verifies, installs only after you confirm, and asks you to close and open it again. Nothing starts on its own, and with
+  `update.check: false`, `MOTHDEX_NO_UPDATE_CHECK`, `CI` or an installation the installer does not manage there is no
+  check at all.
+- T-114: every error shown by the command line, the shell and the terminal UI carries a 6-character `ref` and names the log file; `--json` has it as `error.ref` and `data.jobs[].error.ref`. A panic writes a crash file under `logs/crash/`.
+- T-114: `mothdex logs` (`path`, `last`, `list`, `show`, `open`, `bundle`, `clear`) and `mothdex help logs`. The bundle is a zip of at most 10 MB without tokens, the API address or the home folder.
+- T-114: `docs/beta-testing.md` explains how to send an error, and the bug report form asks for the ref and the bundle.
+- T-114: `version`, `completion` and the commands that read the logs keep no session; their errors go to `mothdex.log`, where `logs show --ref` finds them.
+- T-114: every run of `mothdex` writes its own log under `logs/sessions/`, and the newest one also as `logs/latest.log`, at the level of the new `log.session_level` setting (`debug` by default during the beta). `log.sessions_keep` (20) sets how many sessions are kept.
+- T-114: the core behind error refs, crash files and the diagnostic bundle (`docs/contracts/cli/logs.md`), ready for the command line, the terminal interfaces and the GUI.
+- T-116: shared managed-install updater with pinned release discovery, archive checksums, replaceable origin verification,
+  staging, version probes and rollback; shared constructor for CLI and GUI.
+- T-116: `upgrade` (alias `update`) supports explicit version and channel selection, check-only and JSON output;
+  background version checks have a private daily cache and opt-outs, with terminal-only CLI, shell and TUI notices.
+  Failed upgrades report exit 9 with a reinstall hint; all interfaces share progress, confirmation and restart semantics.
+- T-116: reject malformed state and trailing archive payloads; keep installer probes read-only. Windows updates
+  accept the installer's trusted owners and record alias file IDs after both commit and rollback.
+- T-116 review: keep checks read-only; accept installer-trusted FAT/exFAT mounts; bound staging and stalled downloads;
+  preserve unknown state fields; retain the previous version status on staging errors. Refresh GUI notices only in
+  mothdex-licenses, preserve foreign entries, and accept bounded future notices without writing or executing them.
+  Forced downgrades warn before replacement, and automatic notices follow command errors.
 
 - Install with one line: `curl ... | sh` on Linux, macOS and WSL, `irm ... | iex` in PowerShell, and a new `install.cmd` for the Command Prompt (the commands are in the README). The installers are now release assets, signed and attested with the rest, and each one installs its own release. Downloading and reading the script first still works.
 - The installers create a short name for `mothdex`: `mdex`, or `mthd` when `mdex` is already taken on the machine (a hard link on Windows, a symbolic link elsewhere). They never overwrite a command or file that is not theirs. `-Alias <name>` / `--alias <name>` chooses another name, `-NoAlias` / `--no-alias` creates none, an upgrade keeps it working, and uninstall removes only the one the installer created. A shortcut left on an older binary by an interrupted upgrade is recognised and fixed, and asking for a name that is taken keeps the shortcut you have.
@@ -19,8 +51,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- T-115: **the exit codes of `mothdex-gui` changed**, to line up with the CLI: 1 internal error (was 3), 2 configuration
+  error, now also for a bad flag (was 3), 8 SDL2 missing or too old, or no display (was 1). `mothdex-gui --probe` exits 8
+  when the machine is not eligible (was 1). A script that tests for 1 or 3 must be updated.
+- T-115: `mothdex-gui --help` and `-h` print to stdout, and a bad command line gets a translated message.
+- The bug report form moved from `bug_report.yml` to `bug.yml`.
+
 - `install.ps1` is safe to run as text in your PowerShell session: it never closes the window, sets `$LASTEXITCODE` on failure and leaves no settings, functions or variables behind. `install.sh` is safe to run from a pipe: a truncated download runs nothing, and no program it starts can read the script.
 - Linux installer: `mothdex-gui --probe` exit 8 means the GUI cannot run here. Exit 1 means the same only for releases 0.1.x and older; from 0.2.0 on it is reported as an error.
+
+### Fixed
+
+- T-115: an internal error (panic) of `mothdex-gui` is logged with its stack trace.
+- T-115: when SDL2 cannot open the window (no display, an unknown `--driver`), `mothdex-gui` says why and exits with
+  the SDL code instead of crashing.
+- T-115: with no display, `mothdex-gui` exits 8 instead of running unseen on SDL's `offscreen` driver. Asking for that
+  driver with `--driver` or `SDL_VIDEODRIVER` still works.
+- T-115: a positional argument is a command line error (exit 2); before, it was ignored together with the flags after
+  it.
+- T-118: updater failures use shared localized update messages and recovery hints instead of raw reasons or game
+  download guidance. Errors before replacement say the previous installation is intact; signature failures retain
+  the tampering or trusted-root advice. Preserve explicit installer hints for unmanaged installs, missing GUI assets
+  and incomplete rollback. Remove the documentation-text test and document the Windows ACE SID pointer conversion.
+- T-118 review: retain actionable force/help hints and retry guidance, centralize unavailable-install errors, and
+  verify the manifest signature before reporting a missing GUI asset or recommending the installer.
+
+### Security
+
+- T-115: the panic value and stack of `mothdex-gui` are written only through the log redactor, and stderr no longer
+  prints the value.
+- Every log is redacted as it is written: the API address, credentials in URLs and authentication headers never reach `mothdex.log`, the session files or the console copy. A log folder that is a link or that other users can write to is replaced by the default one, or not used; folders on FAT, exFAT and NTFS, which have no permission bits, are used with a warning. Log files and folders of another user (on Windows too, where Administrators and the system accounts are trusted) or with a second hard link are refused, and secrets written as `key=value` are removed.
+- T-116, D35: upgrades verify release origin natively with sigstore-go and an embedded, TUF-verified Public Good root;
+  require the exact official release workflow identity and tag. Missing tools no longer permit SHA-256-only upgrades,
+  and an invalid bundle never falls back to a weaker verifier.
+- T-116b: the verifier also requires a certificate transparency proof (SCT); the trusted root is pinned by SHA-256; the
+  reinstall hint appears only when the embedded root may be out of date, and any other failure warns of possible
+  tampering.
+- T-116 review integration: retain the restored-state, read-only gate, bounded archive/download and GUI-notice fixes;
+  refresh normalized module licence notices and remove the obsolete checksum-only signature label.
 
 ## [0.1.1] - 2026-11-23
 
