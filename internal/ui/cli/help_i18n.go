@@ -71,7 +71,7 @@ func localizeHelp(root *cobra.Command, t *i18n.Translator) {
 // inputs here, excluding the unfinished last word, before descriptions are collected.
 func (r *runtime) localizeCompletion(c *cobra.Command, args []string) {
 	flags := pflag.NewFlagSet("completion-language", pflag.ContinueOnError)
-	flags.ParseErrorsWhitelist.UnknownFlags = true
+	flags.ParseErrorsAllowlist.UnknownFlags = true
 	flags.StringVar(&r.g.Lang, "lang", r.g.Lang, "")
 	flags.StringVar(&r.g.Config, "config", r.g.Config, "")
 	if len(args) > 0 {

@@ -375,3 +375,29 @@ func TestNoticeFollowsCommandFailure(t *testing.T) {
 		t.Fatalf("notice before error: %s", output)
 	}
 }
+
+func TestUpgradeOptionErrorsKeepActionableHints(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"confirmation", []string{"upgrade", "--json"}, "Add --force"},
+		{"usage", []string{"upgrade", "--channel", "invalid", "--json", "-f"}, `mothdex upgrade --help`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, _ := helpDeps(t)
+			var stdout, stderr bytes.Buffer
+			d.Stdout, d.Stderr = &stdout, &stderr
+			d.Open = func(context.Context, Globals) (*Session, error) {
+				return &Session{T: d.Translator("en_us"), NewUpdater: func(channel string) (*update.Updater, error) { return update.New(update.Options{Channel: channel}) }}, nil
+			}
+			if code := Execute(context.Background(), d, tc.args); code != 2 {
+				t.Fatalf("exit=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("missing next action %q: %s", tc.want, stderr.String())
+			}
+		})
+	}
+}

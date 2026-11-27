@@ -1131,6 +1131,29 @@ ui:
       help: 'ajuda'
 
 update:
+  errors:
+    integrity:
+      message: 'Os arquivos da atualização falharam na verificação de integridade.'
+    size_mismatch:
+      message: 'Os arquivos da atualização têm um tamanho inválido.'
+    not_found:
+      message: 'Os arquivos da atualização solicitada não foram encontrados.'
+    untrusted_redirect:
+      message: 'A atualização foi redirecionada para um endereço não confiável.'
+    network:
+      message: 'O servidor de atualização não respondeu ou a transferência foi interrompida.'
+    signature:
+      message: 'Não foi possível verificar a assinatura da versão.'
+    update_failed:
+      message: 'Não foi possível concluir a atualização.'
+    update_unavailable:
+      message: 'Esta instalação não pode ser atualizada automaticamente.'
+    usage:
+      message: 'As opções de atualização são inválidas.'
+    canceled:
+      message: 'A atualização foi cancelada.'
+    confirmation_required:
+      message: 'A atualização precisa da sua confirmação.'
   notice: 'Nova versão disponível: {current} → {latest}. Atualize com: {command} upgrade'
   confirm: 'Atualizar {current} → {latest} (verificação: {signature}).'
   confirm_downgrade: 'Voltar de {current} para {latest} (verificação: {signature}).'
@@ -1140,6 +1163,7 @@ update:
   updated: 'Atualizado {current} → {latest} (verificação: {signature}).'
   restart: 'Saia e abra o Mothdex novamente para usar a nova versão.'
   restored_hint: 'A versão anterior foi restaurada. Tente novamente mais tarde.'
-  unchanged_hint: 'Nada na instalação foi alterado. A versão anterior continua instalada.'
-  tamper_hint: 'Possível adulteração: não reinstale a partir desta versão. Relate a falha de verificação.'
-  verification_hint: 'Não foi possível verificar a origem da versão. Se a raiz de assinatura mudou, reinstale com o comando oficial: {install_command}'
+  network_hint: 'A versão anterior continua instalada. Verifique a conexão e tente novamente.'
+  unchanged_hint: 'Nada na instalação foi alterado. A versão anterior continua instalada. Tente atualizar novamente mais tarde.'
+  verification_hint: 'A versão anterior continua instalada. Não foi possível verificar a origem da versão. Se a raiz de assinatura mudou, reinstale com o comando oficial: {install_command}'
+  tamper_hint: 'A versão anterior continua instalada. A assinatura da versão não foi aceita: ela pode ter sido adulterada. Não reinstale; avise em privado: https://github.com/Or4cu1o/mothdex-cli/security/advisories/new'

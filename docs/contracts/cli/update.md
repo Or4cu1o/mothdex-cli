@@ -16,20 +16,21 @@ type Options struct {
     DataDir  string                       // paths.data, for the check cache (§5)
     Log      *slog.Logger
     Now      func() time.Time
-    Verifier Verifier                     // nil => DefaultVerifier(LookPath); §3
-    LookPath func(string) (string, error) // exec.LookPath; cosign, gh
+    Verifier Verifier                     // nil => DefaultVerifier(): native sigstore-go (D35); §3
+    LookPath func(string) (string, error) // unused since D35, kept for source compatibility
 }
 
 // Verifier proves the origin of a release's checksums.txt and archives (step 3). SHA-256 against checksums.txt
-// (step 2/4) is never part of it and never optional. DefaultVerifier tries cosign, then gh attestation, else reports
-// "none". A native sigstore-go verifier (TM-32, pending owner decision) replaces it without touching any caller.
+// (step 2/4) is never part of it and never optional. DefaultVerifier is the native sigstore-go verifier (D35): the
+// embedded Public Good trusted root, no network or TUF request at runtime, the policy of §3 step 3. It returns
+// "native". No Verifier may return "none".
 type Verifier interface {
     Verify(ctx context.Context, r VerifyInput) (Signature string, err error) // "cosign" | "attestation" | "native" | "none"
 }
 type VerifyInput struct {
     Tag                 string            // v<version>
-    Checksums, Bundle   []byte            // checksums.txt and checksums.txt.sigstore.json (Bundle may be nil)
-    Archives            map[string]string // asset name -> verified local path, for attestations
+    Checksums, Bundle   []byte            // checksums.txt and checksums.txt.sigstore.json; nil or empty Bundle (404) => integrity
+    Archives            map[string]string // asset name -> verified local path; unused by the native verifier
 }
 func New(o Options) (*Updater, error)
 func (u *Updater) Managed() (State, error)                       // install-state.md §4; *app.Error update_unavailable
@@ -117,16 +118,23 @@ from §6.
    says `gui: true`. A GUI archive missing from a release is `update_failed` with `reason: gui_missing`, and the hint
    is the installer command.
 3. **Signature (TM-31),** through `Verifier`. It is called once, after the SHA-256 of every archive (first bullet of
-   step 4) and before extraction. `DefaultVerifier` uses the first tool `LookPath` finds (absolute paths
-   only):
-   - **cosign:** `cosign verify-blob --bundle … --certificate-identity https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version> --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt`;
-   - **otherwise a logged-in `gh`:**
-     `gh attestation verify <archive> --repo Or4cu1o/mothdex-cli --signer-workflow Or4cu1o/mothdex-cli/.github/workflows/release.yml --source-ref refs/tags/v<version>`,
-     run on **every** archive after step 4;
-   - **otherwise `none`,** printed and logged as "SHA-256 only", the way the installer reports it (residual R6).
-
-   Tools run by argv, never through a shell, with a 60 s timeout, and pass only on exit 0. A tool that is present and
-   fails, or times out, is `integrity`.
+   step 4) and before extraction. The default is the **native sigstore-go verifier (D35, TM-32)**. Its policy:
+   - **Bundle and identity.** The bundle must verify the bytes of `checksums.txt` (artifact digest). The certificate SAN
+     must be exactly `https://github.com/Or4cu1o/mothdex-cli/.github/workflows/release.yml@refs/tags/v<version>`, and
+     the issuer exactly `https://token.actions.githubusercontent.com`.
+   - **Evidence.** It requires at least one verified transparency-log entry, at least one SCT
+     (`WithSignedCertificateTimestamps(1)`, as `cosign verify-blob` checks by default), and at least one
+     authenticated observer timestamp. The certificate is validated at that time, not at the wall clock.
+   - **Trusted root.** The trusted root is `internal/update/trusted-root.json`, embedded. A test pins its SHA-256, and
+     `scripts/update-trusted-root.go` refreshes it through Sigstore TUF, writing pretty JSON and printing the old and
+     new hashes. Nothing is fetched at runtime.
+   - **Failure.** Any verification failure, including a missing bundle, is `integrity` with `reason: signature`.
+     There is no SHA-256-only path.
+   - **Hints.** The reinstall hint is shown only for trust-material errors: an unknown CA, an unknown log key, or a
+     time outside the root's validity. Identity or digest mismatches and a missing bundle show a neutral "possible
+     tampering, do not reinstall, report it" hint. Otherwise a tampered release would steer users to the SHA-256-only
+     installers (R6). A bundle signed by a private CA also looks like a trust-material gap, and still gets the
+     reinstall hint. That is accepted under R1/R12 (T-110), because the hint names only the constant install command.
 4. **Archives.**
    - Download into `<dir>/.mothdex-update-<random>/` (mode `0700`) and check each SHA-256 against its line. A mismatch
      is `integrity`; a body longer than its limit is `size_mismatch`.
@@ -135,7 +143,19 @@ from §6.
    - Staged files are created with `O_EXCL` under unique names and `fsync`ed.
    - Extract only the exact root members of release-artifacts.md §1 that the install needs (IC-4). Regular files only:
      a link, a path, an extra member or a duplicate name is `integrity`. A member that decompresses past 128 MiB is
-     `size_mismatch`.
+     `size_mismatch`. Forward compatibility (Crivo M3, agreed with Regente):
+     - **Executables and DLLs keep exact names**, and an extra member at the archive root is still `integrity`.
+     - **Extra regular files under `THIRD_PARTY/` are accepted**, at most 64 of them, each at most 1 MiB, within the
+       128 MiB total. The name must match `^THIRD_PARTY/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`: a base name of at most 64 characters, with no
+       path and no leading dot.
+     - **Accepted extras are never executed**, and are written to `mothdex-licenses` only when they are on the known
+       notice list.
+     - **Duplicate names are `integrity`,** including names that differ only in case: they would collide on Windows
+       and on case-insensitive volumes. This holds for every member, not only the extras.
+     - **Extras are never used as notes** or for the CHANGELOG summary, and their content is never logged: only the
+       count, or a sanitized name (Sentinela).
+     - **Directory entries:** an empty directory entry named exactly `THIRD_PARTY/` is ignored; any other is
+       `integrity`.
    - Run the staged `mothdex --version --json` in the staging folder with a scrubbed environment (IC-1 style) and a
      10 s limit; `data.version` must equal the target version exactly.
    - With the GUI: the staged `mothdex-gui --version` must succeed, and `mothdex-gui --probe` must exit 0. Exit 8 is
@@ -147,8 +167,17 @@ from §6.
 ## 4. Swap, check, rollback (`update_failed` on any failure from here on)
 
 The swap set (TM-34) is `mothdex[.exe]`, plus the Windows hardlink alias `<alias>.exe`, plus `mothdex-gui[.exe]` and on
-Windows `SDL2.dll` when `gui` is true. The licence
-notices are replaced after the binaries; a failure there is only a warning.
+Windows `SDL2.dll` when `gui` is true. The licence notices are replaced after the binaries, and a failure there is
+only a warning.
+- **Where they go.** Into `<dir>/mothdex-licenses/`, under the flat names the installers use (their `NOTICE_NAMES`
+  list, T-70 IC-5), and only from the GUI archive's `THIRD_PARTY/`. A CLI-only install has no notices folder.
+- **Nothing else.** `LICENSE` and the files of `THIRD_PARTY/` are never written at the root of `dir`, which may be a
+  shared `~/.local/bin`.
+- **How, the installers' rule (agreed with Guindaste).**
+  1. Build the complete set in a private folder, `<dir>/.mothdex-licenses.new.<id>`.
+  2. Check the existing `mothdex-licenses` before removing anything. If it is a link or a reparse point, or holds any
+     file outside the known names, leave the whole folder untouched, with a warning.
+  3. Otherwise replace it with a rename.
 
 5. **Swap, Linux and macOS:** for each file, first `link(f, f.old)`, or a copy that keeps the mode when the file system
    has no hardlinks. Then `rename(staged, f)`, which is atomic in the same folder.
@@ -186,7 +215,9 @@ notices are replaced after the binaries; a failure there is only a warning.
      only for a run that opens the GUI.
    - It deletes, in the executable's folder only,
      `mothdex.exe`, `mothdex-gui.exe`, `SDL2.dll` and `<alias>.exe` followed by `.old`, `.old-*` or `.failed`. It also
-     deletes `.mothdex-update-*` folders older than 1 h whose lock is free.
+     deletes `.mothdex-update-*` folders older than 1 h whose lock is free. It also deletes regular files matching
+     `^\.mothdex-(write-probe|json)-[0-9]+$` that are older than 1 h, while holding the update lock: the leftovers of
+     an `Apply` that crashed.
    - **TM-35:** only regular files, never reparse points or links, and only exact names: never a broader glob. A
      locked file stays and is retried at the next start. Failures go to the log.
 
@@ -213,7 +244,11 @@ notices are replaced after the binaries; a failure there is only a warning.
   and rules, and shows the notice and the Settings › About item.
   - "Update" needs an explicit confirmation on the gamepad and never starts on its own. It runs the same `Apply`,
     and the confirmation comes after staging, so it can show the verified notes.
-  - The restart runs the new `mothdex-gui` by its absolute path, with argv only (TM-40).
+  - **No self-restart (Regente, cli#149).** A frontend waits for this process, and a second one would open behind it.
+    After a successful update the GUI says to close it and open it again from the frontend, then exits 0.
+  - **A failed update** shows the updater's hint, then whether the previous version is back (`details.restored`),
+    and, only when it is not, the install command on its own line. Exception: for `reason: gui_not_eligible` the GUI
+    shows its own hint (the new GUI cannot run here, use `mothdex tui`) instead of the updater hint (cli#149, gui.md).
 - **Off switches** (no connection at all, TM-36): `update.check: false`; `MOTHDEX_NO_UPDATE_CHECK` set to anything but `""`,
   `0` or `false`; `CI` not empty; an unmanaged installation or a dev build. `upgrade --check` is an explicit request
   and ignores the first three, but it never applies anything.
@@ -233,7 +268,23 @@ notices are replaced after the binaries; a failure there is only a warning.
   `swap_failed` or `check_failed`, and `details.restored` is a bool.
 - **Reused codes:** `integrity`, `size_mismatch`, `network`, `untrusted_redirect`, `not_found`, and
   `confirmation_required` (`--json` without `-f`).
-- **`upgrade --json` data:** `{current, latest, available, updated, channel, signature, restart_required, notes}`.
+- **Time limits (Crivo M1).**
+  - Network: `ResponseHeaderTimeout` 15 s, and a 30 s idle limit on each body.
+  - An interactive `Check` or `upgrade --check` gets 30 s; the background check keeps 3 s.
+  - `Apply` gives discover, download, verify and stage 10 min together. The `Confirm` wait has no limit, because a
+    person is reading. The swap, check and commit run under their own 10 s probes and ignore `ctx` (§1 addendum).
+- **`details.restored`** is `true` whenever the previous version is in place: a failure before the first rename, or
+  a complete rollback. It is `false` only when a rollback step failed, and only then is the hint the install command.
+  - **Exception: `reason: gui_missing`.** The release has no GUI archive for this machine, so nothing moved
+    (`restored: true`). The hint is still the install command, because only the installer can turn this into a
+    CLI-only install.
+  - **No `swapped` field.** `restored` already tells whether the previous version is in place, so front ends decide
+    from `restored` and `reason` alone (agreed with Vitral and Forja).
+- **`upgrade --json` data:** `{current, latest, available, updated, channel, signature, restart_required, notes,
+  downgrade}`.
+  - A downgrade, even with `-f`, prints a warning on stderr before the swap (human output). Under `--json` the same
+    text goes into `warnings[]` instead (cli-output.md §1).
+  - `-f` skips only the prompt, never the warning.
 - **Log lines:** `msg="update check"` with `current latest channel result duration_ms` (result is `available`,
   `current`, `failed` or `skipped:<reason>`), and `msg="update apply"` with `from to signature result reason restored`.
 
@@ -242,7 +293,7 @@ notices are replaced after the binaries; a failure there is only a warning.
 These run against a TLS test server and a temporary install folder:
 
 - a tampered `checksums.txt`, or a tampered archive, changes nothing;
-- a cosign failure aborts;
+- a bundle with the wrong tag, repo, ref or issuer, a tampered `checksums.txt`, no tlog entry, no SCT, or a missing bundle aborts and leaves the install byte-identical; one fixture is a real public release bundle verified against the embedded root;
 - a redirect to another host is refused;
 - a new binary whose `--version` fails is rolled back;
 - the Windows rename path runs while the old `.exe` is still open, and `CleanupOld` then deletes the `.old`;
@@ -261,7 +312,7 @@ the threat model for its test).
 | TM-29 | §2 Origin |
 | TM-30 | §2 latest and cross-check |
 | TM-31 | §3 |
-| TM-32 | `Verifier` (§1), pending the owner |
+| TM-32 | §1 and §3, done (D35) |
 | TM-33 | install-state.md §4 |
 | TM-34 | §4 |
 | TM-35 | §4 step 8 |
@@ -273,8 +324,9 @@ the threat model for its test).
 
 Residual risks:
 
-- **R6.** Without cosign, a logged-in gh or a native verifier, an upgrade is SHA-256 only: it proves transit, not
-  origin.
+- **R6.** Closed for `upgrade` by D35. Installers without cosign or a logged-in gh remain SHA-256 only.
+- **Embedded root staleness (new, D35).** A Sigstore root, CA or Rekor-shard rotation that the embedded root lacks
+  makes older binaries fail closed, and they need a reinstall. Revocations arrive only with a Mothdex release.
 - **R8.** A malicious release built by the real workflow passes every check. It reaches only the users who run
   `upgrade`, because nothing is ever installed automatically.
 - **R10.** The check reveals IP address and timing to GitHub. The off switches exist for that.

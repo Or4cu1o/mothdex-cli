@@ -25,7 +25,7 @@ type Options struct {
 	Log                            *slog.Logger
 	Now                            func() time.Time
 	Verifier                       Verifier
-	LookPath                       func(string) (string, error)
+	LookPath                       func(string) (string, error) // unused since D35, kept for source compatibility
 }
 
 // Release is validated public metadata, with no unverified release notes.
@@ -75,7 +75,7 @@ func New(o Options) (*Updater, error) {
 		o.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	if o.Verifier == nil {
-		o.Verifier = DefaultVerifier(o.LookPath)
+		o.Verifier = DefaultVerifier()
 	}
 	return &Updater{o: o, startTimer: func(d time.Duration, f func()) idleTimer { return time.AfterFunc(d, f) }}, nil
 }

@@ -176,6 +176,12 @@ inside the script protect the binaries, not the script. Everything below limits 
 - TM-32 [Suggestion, owner/Alicerce decision] Verify the cosign bundle natively in Go (sigstore-go) so the upgrade path
   is always signature-checked instead of SHA-256-only when cosign/gh are absent. Check licence (Apache-2.0) and size.
   Without it: residual R6.
+  Status 2026-11-26: done by D35 (owner), cli#152 at d75e60a (Sentinela re-checked the root-hash test, the SCT
+  requirement and the trust-material-only reinstall hint). `mothdex upgrade` verifies natively with an embedded Public Good
+  trusted root, pinned by hash in a test. The checks are the exact workflow SAN for the tag, the exact issuer, the
+  artifact digest of checksums.txt, a tlog entry, an SCT and an observer timestamp, with no SHA-256-only fallback
+  (update.md §3 step 3). The reinstall hint is shown only for trust-material errors. Installers keep cosign or
+  gh attestation when present.
 - TM-33 [Major] Managed-install gate. Update only when the state file exists, origin=installer, its dir equals
   filepath.Dir(EvalSymlinks(os.Executable())) (alias invocation resolves to the same dir), the dir passes the
   installer's trust rules (owner, not writable by others, not a link), and the effective user owns it (refuse sudo on a
@@ -203,7 +209,8 @@ inside the script protect the binaries, not the script. Everything below limits 
 - TM-39 [Minor] Untrusted display text. CHANGELOG summary shown before confirmation comes from the verified archive (or
   is labelled unverified), control chars stripped, length capped; same for shell banner, TUI footer and GUI About.
 - TM-40 [Minor] GUI update (T-117) uses the same internal/update with explicit gamepad confirmation, never automatic;
-  restart execs the new mothdex-gui by absolute path with argv only.
+  restart execs the new mothdex-gui by absolute path with argv only. Status: the GUI no longer restarts itself
+  (Regente, cli#149). It asks the person to close it and reopen it from the frontend, so the restart clause is moot.
 
 ## Residual risks (for the ADR)
 
@@ -215,8 +222,8 @@ inside the script protect the binaries, not the script. Everything below limits 
 - R3 A short domain later adds its DNS, registrar and host to the trusted base (TM-6).
 - R4 Copy-paste lures (lookalike URLs, edited commands in issues/chats). One canonical URL in docs only reduces it.
 - R5 Running the line in an elevated PowerShell runs the installer as admin; it warns and stays per-user.
-- R6 Without cosign or a logged-in gh (most users), installs and upgrades are SHA-256 only: transit integrity, not origin
-  (unless TM-32 is taken for upgrade).
+- R6 Without cosign or a logged-in gh (most users), installs are SHA-256 only: transit integrity, not origin. Closed
+  for `mothdex upgrade` by TM-32/D35, which always verifies the signature natively.
 - R7 The alias conflict check sees only what the installer process sees: a non-interactive sh / -NoProfile PowerShell
   misses functions and aliases from the user rc/profile; the PATH it sees may differ from the interactive one.
 - R8 A malicious release produced by the real workflow passes every check: signatures prove origin, not intent. Upgrade
@@ -226,5 +233,13 @@ inside the script protect the binaries, not the script. Everything below limits 
 - R10 The daily check reveals IP and timing of mothdex use to GitHub; opt-outs exist.
 - R11 Same-user malware can rewrite the install dir, state file, rc files and PATH regardless of these controls (out of
   scope: same trust level).
+- R12 (added with D35) Embedded-root staleness. Upgrade trusts only the Sigstore root embedded in the running binary.
+  A rotation of the Sigstore root, Fulcio CA or Rekor shard that this root lacks makes that binary fail closed, and the
+  user must reinstall. A revocation reaches users only with a Mothdex release: until a binary updates, it keeps trusting key material that
+  Sigstore has since revoked. Refreshed by
+  scripts/update-trusted-root.go; the reinstall hint is limited to trust-material errors (TM-32 status). An
+  attacker who controls the release assets and signs with a private CA also gets that hint: offline, it cannot be
+  told apart from a real rotation. The hint only gives the constant one-line install command, so it adds nothing
+  beyond R1.
 
 Verdict: design-stage model, no code to audit. Controls marked Major block the corresponding PR at audit if missing.

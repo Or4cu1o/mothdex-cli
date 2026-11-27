@@ -192,6 +192,8 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 	}
 	archives := map[string]string{}
 	bodies := map[bool][]byte{}
+	// Missing-GUI advice can invoke the installer; authenticate the manifest before surfacing it.
+	var missingGUI error
 	for _, gui := range []bool{false, true} {
 		if gui && !s.GUI {
 			continue
@@ -199,8 +201,10 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 		name := archiveName(version, s.Target, gui)
 		hash, err := checksum(sums, name)
 		if err != nil {
-			if gui && strings.Contains(err.Error(), "missing_checksum") {
-				return r, failure(app.CodeUpdateFailed, "gui_missing", err)
+			var checksumError *app.Error
+			if gui && errors.As(err, &checksumError) && checksumError.Args["reason"] == "missing_checksum" {
+				missingGUI = err
+				break
 			}
 			return r, err
 		}
@@ -235,11 +239,17 @@ func (u *Updater) stage(ctx context.Context, o ApplyOptions, s State, dir, versi
 	}
 	signature, err := u.o.Verifier.Verify(ctx, VerifyInput{Tag: "v" + version, Checksums: sums, Bundle: bundle, Archives: archives})
 	if err != nil {
+		if ctx.Err() != nil {
+			return r, canceled(ctx)
+		}
 		e := failure("integrity", "signature", err)
-		e.Args["hint_key"] = "update.tamper_hint"
+		e.Args["hint_key"] = signatureHint(err)
 		return r, e
 	}
 	r.signature = signature
+	if missingGUI != nil {
+		return r, failure(app.CodeUpdateFailed, "gui_missing", missingGUI)
+	}
 	if err = step(ctx, o, "stage"); err != nil {
 		return r, err
 	}
@@ -340,7 +350,7 @@ func (u *Updater) swap(ctx context.Context, o ApplyOptions, s State, stage strin
 		if restored {
 			err.Args["hint_key"] = "update.restored_hint"
 		} else {
-			delete(err.Args, "hint_key")
+			err.Args["hint_key"] = "errors.update_failed.hint"
 		}
 		return err
 	}
