@@ -8,7 +8,7 @@ require (
 	charm.land/bubbles/v2 v2.2.2
 	charm.land/bubbletea/v2 v2.1.2
 	charm.land/lipgloss/v2 v2.1.1
-	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/charmbracelet/x/ansi v0.11.10
 	github.com/ebitengine/purego v0.11.3
 	github.com/google/certificate-transparency-go v1.4.0
 	github.com/knadh/koanf/parsers/yaml v1.1.1
@@ -18,8 +18,8 @@ require (
 	github.com/peterh/liner v1.2.3
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
-	go.yaml.in/yaml/v3 v3.0.5
+	github.com/spf13/pflag v1.1.0
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261115193255-739070949446
 	golang.org/x/image v0.48.0
 	golang.org/x/sys v0.50.0
