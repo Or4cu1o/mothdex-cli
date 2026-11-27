@@ -249,7 +249,8 @@ only a warning.
   - **No self-restart (Regente, cli#149).** A frontend waits for this process, and a second one would open behind it.
     After a successful update the GUI says to close it and open it again from the frontend, then exits 0.
   - **A failed update** shows the updater's hint, then whether the previous version is back (`details.restored`),
-    and, only when it is not, the install command on its own line. Exception: for `reason: gui_not_eligible` the GUI
+    and, only when it is not, a hint that names the install command (inline, as in
+    `errors.update_failed.hint`). Exception: for `reason: gui_not_eligible` the GUI
     shows its own hint (the new GUI cannot run here, use `mothdex tui`) instead of the updater hint (cli#149, gui.md).
 - **Off switches** (no connection at all, TM-36): `update.check: false`; `MOTHDEX_NO_UPDATE_CHECK` set to anything but `""`,
   `0` or `false`; `CI` not empty; an unmanaged installation or a dev build. `upgrade --check` is an explicit request
