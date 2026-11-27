@@ -116,7 +116,9 @@ from §6.
 2. **Checksums.** Download `checksums.txt` of `v<version>`. A 404 is `not_found`. The file must have exactly one valid
    line for `mothdex_<version>_<target>.<ext>`, and also for `mothdex-gui_<version>_<target>.<ext>` when the state
    says `gui: true`. A GUI archive missing from a release is `update_failed` with `reason: gui_missing`, and the hint
-   is the installer command.
+   is the installer command. **`gui_missing` is decided only from a verified `checksums.txt`** (Sentinela R-157,
+   cli#157): the bundle signature over `checksums.txt` is checked first, and a signature failure wins, so an altered
+   `checksums.txt` cannot steer anyone to the reinstall hint.
 3. **Signature (TM-31),** through `Verifier`. It is called once, after the SHA-256 of every archive (first bullet of
    step 4) and before extraction. The default is the **native sigstore-go verifier (D35, TM-32)**. Its policy:
    - **Bundle and identity.** The bundle must verify the bytes of `checksums.txt` (artifact digest). The certificate SAN
@@ -247,7 +249,8 @@ only a warning.
   - **No self-restart (Regente, cli#149).** A frontend waits for this process, and a second one would open behind it.
     After a successful update the GUI says to close it and open it again from the frontend, then exits 0.
   - **A failed update** shows the updater's hint, then whether the previous version is back (`details.restored`),
-    and, only when it is not, the install command on its own line. Exception: for `reason: gui_not_eligible` the GUI
+    and, only when it is not, a hint that names the install command (inline, as in
+    `errors.update_failed.hint`). Exception: for `reason: gui_not_eligible` the GUI
     shows its own hint (the new GUI cannot run here, use `mothdex tui`) instead of the updater hint (cli#149, gui.md).
 - **Off switches** (no connection at all, TM-36): `update.check: false`; `MOTHDEX_NO_UPDATE_CHECK` set to anything but `""`,
   `0` or `false`; `CI` not empty; an unmanaged installation or a dev build. `upgrade --check` is an explicit request
@@ -277,7 +280,7 @@ only a warning.
   a complete rollback. It is `false` only when a rollback step failed, and only then is the hint the install command.
   - **Exception: `reason: gui_missing`.** The release has no GUI archive for this machine, so nothing moved
     (`restored: true`). The hint is still the install command, because only the installer can turn this into a
-    CLI-only install.
+    CLI-only install. It is reported only after the signature of `checksums.txt` verified (§3 step 2).
   - **No `swapped` field.** `restored` already tells whether the previous version is in place, so front ends decide
     from `restored` and `reason` alone (agreed with Vitral and Forja).
 - **`upgrade --json` data:** `{current, latest, available, updated, channel, signature, restart_required, notes,
