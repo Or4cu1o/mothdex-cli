@@ -100,6 +100,11 @@ Removing a field or changing its meaning bumps the version.
     describes the link on disk.
   - Everything else still waits for `--version` to pass (TM-11): creating, renaming or removing an alias name, PATH,
     and the rest of the state.
+- **Reinstall without a valid state** (0.1.x, a lost or invalid file, or an earlier failed write; T-124). The
+  installer adopts an existing alias instead of treating its own link as taken. It looks only at the candidate names:
+  the `--alias` given to this run, or else the default names in order (`mdex`, then the fallback `mthd`). It adopts
+  the first one that is **provably ours** (§4) and records it; no second link is created. Another provably-ours link
+  stays, with a warning. A name that fails the test is foreign, as before.
 - **Installs from 0.1.x** have no file. Running the one-line installer again creates it; until then `mothdex upgrade`
   reports `update_unavailable` (update.md §6).
 - **`internal/update`, after a successful swap and its check (update.md §4).** It sets `version`, `target`, `gui`,
@@ -111,6 +116,11 @@ Removing a field or changing its meaning bumps the version.
   ACL. Folder permissions are the installer's job (TH-31): the file holds no secret.
 - **If the write fails,** the installer warns `mothdex upgrade will not be available for this install` and still
   exits 0. The install itself is complete.
+  - **No unrecorded alias** (T-124). The installer then removes the alias that this run created, only if it is still
+    provably ours (§4), and says so. An alias that existed before the run (recorded or adopted) stays. When a run
+    replaces a recorded alias with a new name, the old one is removed only after the new state is written, so a
+    failed write leaves the old state and the old alias matching.
+  - A PATH entry added by this run stays, unrecorded, as for 0.1.x installs: removing it would break the install.
 - **`--uninstall`** deletes the file last, after it has removed what the file names.
 
 ## 4. Who reads it, and the checks
@@ -138,13 +148,20 @@ The file never redirects a write. Upgrade writes only to the running binary's fo
 - **Alias:** removed only when it is a symlink to `mothdex`, or on Windows a hardlink whose file ID equals that of
   `mothdex.exe` or the recorded `alias_file_id` (TM-12, TM-13). Otherwise it stays, with a warning. The same test
   decides whether a reinstall may relink it.
+- **Provably ours**, the test used without a recorded alias (§3, and uninstall without a state below). The name passes
+  the §2 `alias` rule and deny-list, sits in `dir`, and is either a symlink whose link text (read, not resolved) is
+  exactly `mothdex`, or on Windows a regular file whose file ID equals that of `mothdex.exe`, read before any swap or
+  removal of `mothdex.exe`. A stale Windows link (an older file ID) cannot be proved without the state, so it stays.
 - **PATH** (TM-8, TM-10): on Windows, removes exactly the `path_value` entry from the raw user `Path` and leaves the
   rest byte for byte. On Unix, removes only lines equal to `path_value`, and only when `path_value` is the TM-9 line
   for `dir` and `path_file` is one of `~/.bashrc`, `~/.bash_profile` (bash login file on macOS), `~/.zshrc`, `~/.profile` or `~/.config/fish/config.fish` under the
   current `HOME`.
 - **Launcher:** only when the file still carries our marker (ports.md).
-- **Without a state file** (installs from 0.1.x), uninstall behaves as it does today and cannot remove an alias or
-  PATH entry. It says so.
+- **Without a valid state file** (0.1.x installs, a lost or invalid file; T-124), uninstall removes the binaries and
+  only the one kind of thing it can prove: an alias among the candidate names (the `--alias` given to this run, or
+  else `mdex` and `mthd`) that is provably ours, checked before `mothdex` is removed. Such a link would dangle once the
+  binary goes, or on Windows keep a copy of it alive. It never removes a PATH entry or rc line without the state, and
+  says so.
 
 Other readers (`mothdex logs bundle` manifest, `mothdex version -v`) may show `version`, `profile`, `gui` and
 `alias`. They never show `dir` or paths without the home-folder replacement of logs.md §6.
@@ -156,6 +173,8 @@ Other readers (`mothdex logs bundle` manifest, `mothdex version -v`) may show `v
   - reinstalling keeps `installed_at`;
   - `--dry-run` writes nothing;
   - uninstall removes only the alias and PATH entry the file names, and leaves a foreign `mdex` in place;
+  - without a valid state, a reinstall adopts our own `mdex` (no `mthd`), and uninstall removes it but leaves a
+    foreign `mdex` and every PATH line; a failed state write leaves no alias created by that run;
   - the TM-14 hostile state (`alias=../../etc/x`, `path_file=/etc/profile`, a value holding `$(touch /tmp/p)`)
     removes nothing and runs nothing.
 - **Go:** a table of state files covering every row of §4, each with its `reason`; a copied state file, a
